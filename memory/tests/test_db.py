@@ -75,3 +75,14 @@ async def test_schema_reapplies_cleanly(conn, db_url):
         c.execute((MEMORY / "db" / "schema.sql").read_text(encoding="utf-8"))
     cur = await conn.execute("select count(*) as n from link_type_weight")
     assert (await cur.fetchone())["n"] == 2  # decisions supersedes decisions, preferences relates decisions
+
+
+async def test_english_query_skips_the_chinese_ranker(conn):
+    from kb.search import a1_components
+    parts, _ = await a1_components(conn, "oolong temperature")
+    assert parts["zh"] == [] and parts["keyword"] == parts["en"]
+
+
+async def test_search_text_carries_the_project_title(conn):
+    cur = await conn.execute("select search_text from entry where id = 'tea-supplier'")
+    assert "Tea brewing" in (await cur.fetchone())["search_text"]

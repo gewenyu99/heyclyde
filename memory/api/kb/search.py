@@ -4,7 +4,6 @@ import re
 from .config import config
 from .embed import embed, has_vector, to_pgvector
 
-RRF_K = 60
 CJK = re.compile(r"[㐀-鿿豈-﫿]")
 WORD = re.compile(r"[a-z0-9][a-z0-9.+-]*")
 STOP = set("a an and are as at be but by can do does for from how i if in is it its me my of on or so that the this "
@@ -36,18 +35,22 @@ async def index_lines(conn):
     for r in await cur.fetchall():
         title = f"~~{r['title']}~~ → {r['superseded_by']}" if r["superseded_by"] else r["title"]
         lock = " 🔒" if r["sensitivity"] == "private" else ""
-        lines.append((r["id"], f"- `{r['id']}` {title} [{r['authority']}, {r['scope']}]{lock} ({r['project_title']})"))
+        lines.append((r["id"], f"- `{r['id']}` {title} [{r['authority']}, {r['scope']}]{lock} ({r['project_title']})",
+                      r["authority"]))
     return lines
 
 
 async def a0(conn, query):
+    """grep over the index map. Drafts rank at half weight, so a confirmed decision beats a suggestion on a tie.
+
+    Stemming and IDF weighting were tried on the train split. Stemming cost two hits, IDF changed nothing."""
     q = tokens(query)
     scored = []
-    for eid, line in await index_lines(conn):
+    for eid, line, authority in await index_lines(conn):
         hit = len(q & tokens(line + " " + eid.replace("-", " ")))
         if hit:
-            scored.append((eid, float(hit), line))
-    scored.sort(key=lambda s: -s[1])
+            scored.append((eid, hit * (config.a0_draft_factor if authority == "draft" else 1.0), line))
+    scored.sort(key=lambda s: (-s[1], s[0]))
     return scored[:config.candidates], None
 
 
@@ -65,11 +68,24 @@ async def keyword_ranks(conn, query, cfg, column):
     return [r["id"] for r in await cur.fetchall()]
 
 
+_query_vectors = {}
+
+
+async def query_vector(query):
+    """bge-m3 on 2 vCPUs takes a few hundred ms per query, so keep the last 512."""
+    key = (config.embed_model, query)
+    if key not in _query_vectors:
+        if len(_query_vectors) >= 512:
+            _query_vectors.pop(next(iter(_query_vectors)))
+        [_query_vectors[key]] = await embed([query])
+    return _query_vectors[key]
+
+
 async def vector_ranks(conn, query):
     if not await has_vector(conn):
         return [], "no-vector"
     try:
-        [vec] = await embed([query])
+        vec = await query_vector(query)
     except Exception as exc:  # Ollama down or model missing: keyword ranks still answer.
         return [], f"embed-failed: {type(exc).__name__}"
     cur = await conn.execute(
@@ -78,19 +94,34 @@ async def vector_ranks(conn, query):
     return [r["id"] for r in await cur.fetchall()], None
 
 
-def rrf(*rankings):
+def rrf(*rankings, weights=None, k=None):
+    k = config.rrf_k if k is None else k
     score = {}
-    for ranking in rankings:
+    for ranking, w in zip(rankings, weights or [1.0] * len(rankings)):
         for rank, eid in enumerate(ranking, 1):
-            score[eid] = score.get(eid, 0.0) + 1.0 / (RRF_K + rank)
+            score[eid] = score.get(eid, 0.0) + w / (k + rank)
     return sorted(score.items(), key=lambda kv: (-kv[1], kv[0]))
 
 
-async def a1(conn, query):
-    en = await keyword_ranks(conn, query, "english", "tsv_en")
-    zh = await keyword_ranks(conn, query, "kb_zh", "tsv_zh")
+async def a1_components(conn, query):
+    """Each ranker's list on its own, so an eval can tell which one lost an entry.
+
+    jieba also segments English, so the 中文 ranker only runs on queries with 中文 in them. Running it on English
+    queries counted the same keyword evidence twice and buried entries both keyword and vector search ranked first."""
     vec, degraded = await vector_ranks(conn, query)
-    return [(eid, s, None) for eid, s in rrf(en, zh, vec)[:config.candidates]], degraded
+    en = await keyword_ranks(conn, query, "english", "tsv_en")
+    if CJK.search(query):
+        zh = await keyword_ranks(conn, query, "kb_zh", "tsv_zh")
+        keyword = [eid for eid, _ in rrf(en, zh)]
+    else:
+        zh, keyword = [], en
+    return {"en": en, "zh": zh, "keyword": keyword, "vec": vec}, degraded
+
+
+async def a1(conn, query):
+    parts, degraded = await a1_components(conn, query)
+    fused = rrf(parts["keyword"], parts["vec"], weights=[1.0, config.vec_weight])
+    return [(eid, s, None) for eid, s in fused[:config.candidates]], degraded
 
 
 ARMS = {"A0": a0, "A1": a1}

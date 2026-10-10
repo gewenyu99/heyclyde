@@ -34,6 +34,17 @@ Private entries never leave the Droplet unredacted. The agent and the decider se
 
 Each MCP session draws an arm at random on its first call and keeps it. The tools, their descriptions and the packet shape are identical across arms, so the agent can't tell which one it got. Every packet is capped at 8 items and 1,500 tokens.
 
+## Fair arms
+
+Every arm gets its best implementation before any comparison counts. A bad number is a question, not a verdict.
+
+- **Place every miss in the funnel.** `retrieval_eval.py --misses` says whether the gold entry was never retrieved, ranked out of the packet, or cut by the token budget. For A1 it also gives the rank in each ranker.
+- **Name the cause.** A loss is implementation (tokenizer, query construction, fusion, embedding text) until it's shown to be the design's limit. Fix implementation causes in every arm they touch.
+- **Tune on train, report test once.** Knobs move only on the train split. The test split is read after the knobs are frozen.
+- **Keep what earns its place.** Each change is ablated alone. Stemming and IDF were tried in A0 and dropped, since they cost hits or changed nothing.
+
+The first pass found an implementation bug, not a design limit. A1's fusion counted keyword evidence twice and buried entries both rankers had first. With that fixed, A1 went from 74% to 90% on train and 6 of 6 on test. Its remaining misses need a link from a task to Wen's preferences, which is A2's job.
+
 ## The tools
 
 - **`recall(query, task)`.** Searches memory. The packet starts with a retrieval id.

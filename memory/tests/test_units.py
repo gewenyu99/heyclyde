@@ -113,3 +113,9 @@ def test_openai_relevance_never_sends_private_text():
     out = asyncio.run(d.relevant("brew tea", [row("p", "supplier is secret co", "private")]))
     assert out["p"] == {"p": 0.2}
     assert "secret co" not in fake.calls[0]["input"]
+
+
+def test_weighted_rrf_favours_the_weighted_ranker():
+    # Each entry tops one list. Unweighted, the tie falls to id order. Weighting the second list decides it.
+    assert search.rrf(["a"], ["b"], k=10)[0][0] == "a"
+    assert search.rrf(["a"], ["b"], weights=[1, 1.5], k=10)[0][0] == "b"

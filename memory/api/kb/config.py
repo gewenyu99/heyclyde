@@ -17,6 +17,11 @@ class Config:
     packet_items: int = 8
     packet_tokens: int = 1500
     candidates: int = 50
+    # Ranking knobs, tuned on the train split only (eval/retrieval_eval.py --split train). A1 holds 91% on train for
+    # k 5 to 10 and vector weight 1 to 3, so these sit mid-plateau. Demoting drafts cost A1 a hit, so only A0 does it.
+    rrf_k: float = field(default_factory=lambda: float(os.environ.get("KB_RRF_K", "10")))
+    vec_weight: float = field(default_factory=lambda: float(os.environ.get("KB_VEC_WEIGHT", "1.5")))
+    a0_draft_factor: float = field(default_factory=lambda: float(os.environ.get("KB_A0_DRAFT_FACTOR", "0.5")))
 
 
 config = Config()

@@ -20,10 +20,33 @@ do $$ begin
   end if;
 end $$;
 
+-- search_text is what keyword search and embeddings read: the entry plus its project's title, so "the course" finds
+-- "Module 3 is next". Postgres can't reference another row in a generated column, so a trigger keeps it current.
+alter table entry add column if not exists search_text text;
+create or replace function entry_search_text() returns trigger language plpgsql as $$
+begin
+  new.search_text := concat_ws(' ', new.title, new.body, new.evidence,
+    (select p.title from entry p where p.id = new.project and p.id <> new.id));
+  return new;
+end $$;
+drop trigger if exists entry_search_text on entry;
+create trigger entry_search_text before insert or update of title, body, evidence, project on entry
+  for each row execute function entry_search_text();
+update entry set title = title where search_text is distinct from concat_ws(' ', title, body, evidence,
+  (select p.title from entry p where p.id = entry.project and p.id <> entry.id));
+
+-- Earlier deploys generated the tsvectors from title, body and evidence. Rebuild them from search_text once.
+do $$ begin
+  if exists (select 1 from information_schema.columns where table_name = 'entry' and column_name = 'tsv_en'
+             and generation_expression not like '%search_text%') then
+    drop view if exists entry_current;
+    alter table entry drop column tsv_en, drop column tsv_zh;
+  end if;
+end $$;
 alter table entry add column if not exists tsv_en tsvector generated always as (
-  to_tsvector('english'::regconfig, coalesce(title, '') || ' ' || coalesce(body, '') || ' ' || coalesce(evidence, ''))) stored;
+  to_tsvector('english'::regconfig, coalesce(search_text, ''))) stored;
 alter table entry add column if not exists tsv_zh tsvector generated always as (
-  to_tsvector('kb_zh'::regconfig, coalesce(title, '') || ' ' || coalesce(body, '') || ' ' || coalesce(evidence, ''))) stored;
+  to_tsvector('kb_zh'::regconfig, coalesce(search_text, ''))) stored;
 create index if not exists entry_tsv_en on entry using gin (tsv_en);
 create index if not exists entry_tsv_zh on entry using gin (tsv_zh);
 

@@ -66,7 +66,7 @@ The keyword baseline on the seed: 21 of 31 pushbacks caught, 12 of 129 other tur
 | Deliverable | State |
 |---|---|
 | Postgres 17 with pgvector and pg_jieba, seed loaded | Built and tested locally with the real seed |
-| A0 and A1 behind `recall`, English and 中文 | Built and tested. Practice queries, test split: A0 5 of 6 gold hits, A1 5 of 6 |
+| A0 and A1 behind `recall`, English and 中文 | Built and tested. Practice queries, test split: A0 5 of 6 gold hits, A1 6 of 6 |
 | Claude Code hooks landing events in Postgres | Built and tested end to end |
 | Decider run-off on the seeded reactions | Keyword baseline done. OpenAI run needs `OPEN_AI` |
 | Nightly restic backup and one restore test | Scripts written, untested until Spaces keys exist |

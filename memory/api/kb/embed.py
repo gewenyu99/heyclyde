@@ -9,7 +9,8 @@ DIM = 1024
 
 
 def entry_text(row):
-    return "\n".join(s for s in (row["title"], row["body"], row["evidence"]) if s)
+    """The same text keyword search reads: the entry plus its project's title (see search_text in db/schema.sql)."""
+    return row["search_text"] or "\n".join(s for s in (row["title"], row["body"], row["evidence"]) if s)
 
 
 def content_sha(text):
@@ -45,7 +46,7 @@ async def sync_embeddings(conn, batch=16):
     if not await has_vector(conn):
         return 0
     cur = await conn.execute(
-        "select e.id, e.title, e.body, e.evidence, x.content_sha256 from entry e "
+        "select e.id, e.title, e.body, e.evidence, e.search_text, x.content_sha256 from entry e "
         "left join entry_embedding x on x.entry_id = e.id")
     stale = [(r, entry_text(r)) for r in await cur.fetchall()]
     stale = [(r, t) for r, t in stale if r["content_sha256"] != content_sha(t)]
