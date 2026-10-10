@@ -1,5 +1,5 @@
 #!/bin/sh
-# Ship memory/ to the Droplet, start the stack, load the seed, apply the schema and install the nightly backup.
+# Ship memory/ to the Droplet over SSH, then run deploy/install.sh there.
 #   deploy/deploy.sh [path/to/pkg-seed/out]
 # The seed directory is optional and private. It is copied straight to the Droplet and never into git.
 set -eu
@@ -16,16 +16,5 @@ if [ -n "$SEED_OUT" ]; then
   tar czf - -C "$SEED_OUT" . | $SSH 'tar xzf - -C /opt/kb/seed-out'
 fi
 
-$SSH 'set -e
-cd /opt/kb/deploy
-docker compose up -d --build
-until docker compose exec -T db pg_isready -U kb -d kb >/dev/null 2>&1; do sleep 2; done
-if [ -f /opt/kb/seed-out/seed.sql ]; then
-  docker compose exec -T db psql -q -U kb -d kb -v ON_ERROR_STOP=1 < /opt/kb/seed-out/seed.sql
-fi
-docker compose exec -T db psql -q -U kb -d kb -v ON_ERROR_STOP=1 < /opt/kb/db/schema.sql
-docker compose restart api
-chmod +x /opt/kb/deploy/backup.sh /opt/kb/deploy/restore-test.sh
-( crontab -l 2>/dev/null | grep -v kb/deploy/backup.sh; echo "17 8 * * * /opt/kb/deploy/backup.sh >> /var/log/kb-backup.log 2>&1" ) | crontab -
-docker compose ps'
+$SSH 'sh /opt/kb/deploy/install.sh'
 echo "https://$KB_DOMAIN/healthz"
