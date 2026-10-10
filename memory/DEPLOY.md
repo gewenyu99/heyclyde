@@ -59,6 +59,8 @@ cp memory/hooks/kb-hook ~/.claude/kb-hook
 
 Then merge `memory/hooks/claude-settings.json` into `~/.claude/settings.json` with the real `KB_URL` and `KB_TOKEN`.
 
+`KB_TOKEN` lives in `/opt/kb/deploy/.env` on the Droplet. Without SSH, open the Droplet in the DigitalOcean dashboard, pick Access, then Launch Droplet Console, and run `grep KB_TOKEN /opt/kb/deploy/.env`. To SSH from your own machine, add your public key in that console with `echo '<your key>' >> /root/.ssh/authorized_keys`. Also register it with `doctl compute ssh-key import mac --public-key-file ~/.ssh/id_ed25519.pub` so you can find it again later.
+
 Codex: append `memory/hooks/codex-config.toml` to `~/.codex/config.toml` and export `KB_TOKEN`.
 
 ## Run the decider run-off
@@ -77,12 +79,12 @@ The keyword baseline on the seed: 21 of 31 pushbacks caught, 12 of 129 other tur
 
 | Deliverable | State |
 |---|---|
-| Postgres 17 with pgvector and pg_jieba, seed loaded | Built and tested locally with the real seed |
-| Index and hybrid arms behind `recall`, English and 中文 | Built and tested. Held-out practice queries: index 5 of 6, hybrid 6 of 6 |
-| Claude Code hooks landing events in Postgres | Built and tested end to end |
-| Decider run-off on the seeded reactions | Keyword baseline done. OpenAI run needs `OPEN_AI` |
-| Nightly restic backup and one restore test | Scripts written, untested until Spaces keys exist |
-| Droplet running | Waits on `DO` |
+| Postgres 17 with pgvector and pg_jieba, seed loaded | Done on the Droplet, 2026-10-10. Every entry embedded with bge-m3 |
+| Index and hybrid arms behind `recall`, English and 中文 | Done. `recall` over MCP with the bearer token returns a packet, and without it gets 401. On the Droplet, held-out: hybrid 6 of 6 with no leaks, index 5 of 6 with leaks on 2 of 7. Train: hybrid 90%, index 81% |
+| Claude Code hooks landing events in Postgres | Built and tested end to end locally. Live once a client is connected |
+| Decider run-off on the seeded reactions | Done. Keywords caught 21 of 31 with 12 of 129 false alarms. `gpt-6-luna` caught 26 of 31 with 24 of 129, p50 158 ms, p95 288 ms. Its misses need the previous assistant turn, and some false alarms are real pushback the weak labels miss |
+| Nightly restic backup and one restore test | Done. `backup.sh` saved to Spaces and `restore-test.sh` restored every entry. Fixed on the way: the restore raced the image's init server, and a destroyed Droplet left a stale lock |
+| Droplet running | Done, through `cloud-deploy.py`, since the cloud session that deployed it can't reach port 22. `provision.py` and the Spaces key endpoint worked first try |
 
 ## Open questions for Wen
 
