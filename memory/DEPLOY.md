@@ -36,6 +36,18 @@ Check it:
 curl https://$KB_DOMAIN/healthz
 ```
 
+### Ship without SSH
+
+Use this when your machine reaches HTTPS but not port 22, as in a Claude Code cloud session.
+
+```bash
+python memory/deploy/cloud-deploy.py /path/to/pkg-seed/out --recreate
+```
+
+It encrypts the code, `.env` and the seed with a one-off key and uploads them to the backup bucket. It then destroys the kb Droplet and creates a new one. Cloud-init on the new box fetches the bundle, runs `deploy/install.sh` and `deploy/selftest.sh`, and uploads the encrypted log back. The script prints the log and deletes both files from Spaces. The self-test waits for every embedding, runs the retrieval eval on both splits, backs up once and runs the restore test.
+
+`--recreate` loses the database. Back up first if the box holds anything the seed doesn't. The new Droplet gets a new IP, so `KB_DOMAIN` changes, and the script rewrites `.env` to match.
+
 ## Connect the clients
 
 Claude Code, user scope so it fires in every repo:
