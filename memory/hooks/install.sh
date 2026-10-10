@@ -1,14 +1,16 @@
 #!/bin/sh
 # Connect this machine's Claude Code and Codex to the memory server. Rerun it after a redeploy or a token change.
 #   memory/hooks/install.sh <droplet-ip>
-# It reads KB_TOKEN over SSH, so your key must be on the Droplet (name it kb-<something> in DigitalOcean).
+# With KB_TOKEN or mem_pass set it uses that. Otherwise it reads KB_TOKEN over SSH, so your key must be on the Droplet.
 # The token goes to ~/.config/kb/token, ~/.claude/settings.json and the claude mcp config. It is never printed.
 set -eu
 IP=${1:?usage: install.sh <droplet-ip>}
 HERE=$(cd "$(dirname "$0")" && pwd)
 URL="https://kb.$(echo "$IP" | tr . -).sslip.io"
 
-TOKEN=$(ssh ${KB_SSH_KEY:+-i "$KB_SSH_KEY"} -o StrictHostKeyChecking=accept-new "root@$IP" \
+# A token you already know (KB_TOKEN or mem_pass) skips SSH. Otherwise read it from the Droplet.
+TOKEN=${KB_TOKEN:-${mem_pass:-}}
+[ -n "$TOKEN" ] || TOKEN=$(ssh ${KB_SSH_KEY:+-i "$KB_SSH_KEY"} -o StrictHostKeyChecking=accept-new "root@$IP" \
   "sed -n 's/^KB_TOKEN=//p' /opt/kb/deploy/.env")
 [ -n "$TOKEN" ] || { echo "no KB_TOKEN on $IP" >&2; exit 1; }
 code=$(curl -sS -m 10 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "$URL/mcp" || true)
