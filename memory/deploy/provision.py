@@ -61,7 +61,10 @@ def droplet(key_id):
         d = found[0]
         print(f"found droplet {d['id']}")
     else:
-        d = call("POST", "/droplets", {"name": NAME, "region": REGION, "size": SIZE, "image": IMAGE, "ssh_keys": [key_id],
+        # Account keys named kb-* (say kb-wen-mac) go on every build too, so a recreate keeps your access.
+        extra = [k["id"] for k in call("GET", "/account/keys?per_page=200")["ssh_keys"] if k["name"].startswith("kb-")]
+        d = call("POST", "/droplets", {"name": NAME, "region": REGION, "size": SIZE, "image": IMAGE,
+                                       "ssh_keys": sorted({key_id, *extra}),
                                        "tags": [NAME], "user_data": USER_DATA, "monitoring": True, "ipv6": True})["droplet"]
         print(f"created droplet {d['id']}")
     for _ in range(90):
