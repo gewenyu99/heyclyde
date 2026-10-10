@@ -1,10 +1,10 @@
 -- Runtime schema. Applied after seed/out/seed.sql, which creates source, entry, link, question, qrel and entry_current.
 -- Idempotent: safe to rerun on every deploy.
 
--- pgvector and pg_jieba ship in db/Dockerfile. Locally either may be missing, so A1 degrades instead of failing.
+-- pgvector and pg_jieba ship in db/Dockerfile. Locally either may be missing, so hybrid search degrades instead of failing.
 do $$ begin
   create extension if not exists vector;
-exception when others then raise notice 'pgvector unavailable: A1 runs keyword-only';
+exception when others then raise notice 'pgvector unavailable: hybrid runs keyword-only';
 end $$;
 do $$ begin
   create extension if not exists pg_jieba;
@@ -84,7 +84,7 @@ create table if not exists retrieval (
   task text,
   candidates jsonb not null default '[]',  -- [{id, score}] before packing
   delivered jsonb not null default '[]',   -- ids in the packet, in order
-  rejected jsonb not null default '[]',    -- ids the filter cut (A2)
+  rejected jsonb not null default '[]',    -- ids the filter cut (spreading)
   latency_ms integer,
   degraded text,                           -- why a ranker was skipped, e.g. 'no-vector'
   created_at timestamptz not null default now()
@@ -110,7 +110,7 @@ create table if not exists feedback (
   created_at timestamptz not null default now()
 );
 
--- A2's learnable parameters, one per (source pattern, link type, target pattern), starting at 1.0.
+-- The spreading arm's learnable parameters, one per (source pattern, link type, target pattern), starting at 1.0.
 create table if not exists link_type_weight (
   src_pattern text not null,
   link_type text not null,
@@ -125,3 +125,7 @@ insert into link_type_weight (src_pattern, link_type, dst_pattern, n_links)
   where l.type <> 'part_of'
   group by 1, 2, 3
 on conflict (src_pattern, link_type, dst_pattern) do update set n_links = excluded.n_links;
+
+-- The arms were called A0 and A1 before they had names.
+update kb_session set arm = case arm when 'A0' then 'index' else 'hybrid' end where arm in ('A0', 'A1');
+update retrieval set arm = case arm when 'A0' then 'index' else 'hybrid' end where arm in ('A0', 'A1');

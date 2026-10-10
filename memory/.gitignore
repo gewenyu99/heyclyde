@@ -1,6 +1,6 @@
-deploy/.env
-__pycache__/
 .pytest_cache/
+__pycache__/
+deploy/.env
+seed/bootstrap/
 seed/out/
 seed/vault/
-seed/bootstrap/

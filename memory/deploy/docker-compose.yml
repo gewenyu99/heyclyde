@@ -31,7 +31,7 @@ services:
     environment:
       DATABASE_URL: postgresql://kb:${PG_PASSWORD}@db:5432/kb
       KB_TOKEN: ${KB_TOKEN:?set KB_TOKEN in .env}
-      KB_ARMS: ${KB_ARMS:-A0,A1}
+      KB_ARMS: ${KB_ARMS:-index,hybrid}
       OLLAMA_URL: http://ollama:11434
       EMBED_MODEL: bge-m3
       OPEN_AI: ${OPEN_AI:-}

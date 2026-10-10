@@ -1,4 +1,4 @@
-"""Against a real Postgres (pgvector and pg_jieba optional). Ollama is pointed at a dead port, so A1 runs keyword-only."""
+"""Against a real Postgres (pgvector and pg_jieba optional). Ollama is pointed at a dead port, so hybrid runs keyword-only."""
 import json
 import uuid
 
@@ -6,20 +6,20 @@ import pytest
 
 from kb import service
 from kb.config import config
-from kb.search import a0, a1
+from kb.search import hybrid_components, hybrid_search, index_search
 
 pytestmark = pytest.mark.asyncio
 
 
-async def test_a1_serves_current_entries_only(conn):
-    ranked, degraded = await a1(conn, "what temperature for oolong?")
+async def test_hybrid_serves_current_entries_only(conn):
+    ranked, degraded = await hybrid_search(conn, "what temperature for oolong?")
     ids = [e for e, _, _ in ranked]
     assert "tea-oolong-temp" in ids and "tea-oolong-old" not in ids
     assert degraded
 
 
-async def test_a0_shows_replaced_entries_struck_through(conn):
-    ranked, _ = await a0(conn, "oolong temperature")
+async def test_index_shows_replaced_entries_struck_through(conn):
+    ranked, _ = await index_search(conn, "oolong temperature")
     lines = {e: line for e, _, line in ranked}
     assert "~~Brew oolong at 100C~~ → tea-oolong-temp" in lines["tea-oolong-old"]
 
@@ -28,7 +28,7 @@ async def test_chinese_query_finds_chinese_entry(conn):
     cur = await conn.execute("select exists (select 1 from pg_extension where extname = 'pg_jieba') as ok")
     if not (await cur.fetchone())["ok"]:
         pytest.skip("needs pg_jieba: the simple fallback cannot segment 中文")
-    ranked, _ = await a1(conn, "乌龙茶")
+    ranked, _ = await hybrid_search(conn, "乌龙茶")
     assert "tea-zh" in [e for e, _, _ in ranked]
 
 
@@ -41,13 +41,13 @@ async def test_session_keeps_its_arm(conn):
 
 async def test_recall_logs_and_hides_private_text(conn):
     sid = f"t-{uuid.uuid4()}"
-    await conn.execute("insert into kb_session (id, arm) values (%s, 'A1')", (sid,))
+    await conn.execute("insert into kb_session (id, arm) values (%s, 'hybrid')", (sid,))
     text = await service.recall(conn, sid, "oolong supplier")
     rid = text.split()[1]
     assert "secret co" not in text
     cur = await conn.execute("select arm, delivered from retrieval where id = %s", (uuid.UUID(rid),))
     r = await cur.fetchone()
-    assert r["arm"] == "A1" and r["delivered"]
+    assert r["arm"] == "hybrid" and r["delivered"]
     assert "secret co" not in await service.get_entry(conn, sid, "tea-supplier")
 
 
@@ -78,8 +78,7 @@ async def test_schema_reapplies_cleanly(conn, db_url):
 
 
 async def test_english_query_skips_the_chinese_ranker(conn):
-    from kb.search import a1_components
-    parts, _ = await a1_components(conn, "oolong temperature")
+    parts, _ = await hybrid_components(conn, "oolong temperature")
     assert parts["zh"] == [] and parts["keyword"] == parts["en"]
 
 
