@@ -11,7 +11,7 @@ STOP = set("a an and are as at be but by can do does for from how i if in is it 
 
 
 def tokens(text):
-    """Lowercase words plus 中文 bigrams, for the A0 index grep."""
+    """Lowercase words plus 中文 bigrams, for the index arm's grep."""
     text = text.lower()
     out = {w.strip(".+-") for w in WORD.findall(text)} - STOP
     for run in re.findall(r"[㐀-鿿豈-﫿]+", text):
@@ -24,7 +24,7 @@ def estimate_tokens(text):
     return cjk + (len(text) - cjk) // 4
 
 
-# ---------------------------------------------------------------- A0: files + index
+# ---------------------------------------------------------------- index: grep the index map
 async def index_lines(conn):
     """The INDEX.md map, one line per entry, superseded entries struck through, as build.py writes it."""
     cur = await conn.execute(
@@ -40,7 +40,7 @@ async def index_lines(conn):
     return lines
 
 
-async def a0(conn, query):
+async def index_search(conn, query):
     """grep over the index map. Drafts rank at half weight, so a confirmed decision beats a suggestion on a tie.
 
     Stemming and IDF weighting were tried on the train split. Stemming cost two hits, IDF changed nothing."""
@@ -49,12 +49,12 @@ async def a0(conn, query):
     for eid, line, authority in await index_lines(conn):
         hit = len(q & tokens(line + " " + eid.replace("-", " ")))
         if hit:
-            scored.append((eid, hit * (config.a0_draft_factor if authority == "draft" else 1.0), line))
+            scored.append((eid, hit * (config.index_draft_factor if authority == "draft" else 1.0), line))
     scored.sort(key=lambda s: (-s[1], s[0]))
     return scored[:config.candidates], None
 
 
-# ---------------------------------------------------------------- A1: hybrid search
+# ---------------------------------------------------------------- hybrid: keyword plus vector search
 def or_query(cfg):
     # plainto_tsquery ANDs every term, which a natural-language question rarely satisfies. OR them instead.
     return f"nullif(replace(plainto_tsquery('{cfg}', %(q)s)::text, ' & ', ' | '), '')::tsquery"
@@ -103,7 +103,7 @@ def rrf(*rankings, weights=None, k=None):
     return sorted(score.items(), key=lambda kv: (-kv[1], kv[0]))
 
 
-async def a1_components(conn, query):
+async def hybrid_components(conn, query):
     """Each ranker's list on its own, so an eval can tell which one lost an entry.
 
     jieba also segments English, so the 中文 ranker only runs on queries with 中文 in them. Running it on English
@@ -118,13 +118,13 @@ async def a1_components(conn, query):
     return {"en": en, "zh": zh, "keyword": keyword, "vec": vec}, degraded
 
 
-async def a1(conn, query):
-    parts, degraded = await a1_components(conn, query)
+async def hybrid_search(conn, query):
+    parts, degraded = await hybrid_components(conn, query)
     fused = rrf(parts["keyword"], parts["vec"], weights=[1.0, config.vec_weight])
     return [(eid, s, None) for eid, s in fused[:config.candidates]], degraded
 
 
-ARMS = {"A0": a0, "A1": a1}
+ARMS = {"index": index_search, "hybrid": hybrid_search}
 
 
 # ---------------------------------------------------------------- packing

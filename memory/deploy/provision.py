@@ -107,7 +107,7 @@ def main():
             f"KB_DOMAIN=kb.{ip.replace('.', '-')}.sslip.io",
             f"KB_TOKEN={secrets.token_urlsafe(32)}",
             f"PG_PASSWORD={secrets.token_urlsafe(24)}",
-            "KB_ARMS=A0,A1",
+            "KB_ARMS=index,hybrid",
             f"OPEN_AI={os.environ.get('OPEN_AI', '')}",
             f"SPACES_REGION={REGION}",
             f"SPACES_BUCKET=kb-backup-{secrets.token_hex(4)}",

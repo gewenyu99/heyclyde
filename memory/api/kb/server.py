@@ -17,6 +17,7 @@ from starlette.responses import JSONResponse
 from . import service
 from .config import config
 from .embed import pull_model, sync_embeddings
+from .search import ARMS
 
 log = logging.getLogger("kb")
 pool = AsyncConnectionPool(config.database_url, open=False, kwargs={"row_factory": dict_row})
@@ -90,10 +91,13 @@ async def _embed_in_background():
         async with pool.connection() as conn:
             log.info("embedded %d entries", await sync_embeddings(conn))
     except Exception:
-        log.exception("embedding sync failed; A1 serves keyword ranks until it succeeds")
+        log.exception("embedding sync failed; hybrid serves keyword ranks until it succeeds")
 
 
 def build_app():
+    unknown = set(config.arms) - set(ARMS)
+    if unknown:
+        raise SystemExit(f"KB_ARMS names unknown arms {sorted(unknown)}. Known: {sorted(ARMS)}")
     inner = mcp.streamable_http_app()
     mcp_lifespan = inner.router.lifespan_context
 

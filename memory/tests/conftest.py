@@ -13,7 +13,7 @@ import yaml
 
 MEMORY = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(MEMORY / "api"))
-# Ollama on a dead port: A1 must answer with keyword ranks alone.
+# Ollama on a dead port: hybrid must answer with keyword ranks alone.
 os.environ["OLLAMA_URL"] = "http://127.0.0.1:9"
 
 SOURCES = [{"id": "src-a", "kind": "claude_chat", "title": "Test chat", "uri": "https://example.com/a", "date": "2026-09-01"},

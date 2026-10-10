@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run each arm on the practice queries in the database and score the packets against their known answers.
 
-  DATABASE_URL=... python eval/retrieval_eval.py [--arms A0,A1] [--split all|train|test] [--misses] [--json]
+  DATABASE_URL=... python eval/retrieval_eval.py [--arms index,hybrid] [--split all|train|test] [--misses] [--json]
 
 Gold hit: a gold entry was delivered in the packet. must_not leak: a replaced or draft item the query names was delivered.
 
@@ -9,7 +9,7 @@ Every miss is placed in the funnel, so a loss points at a stage rather than at t
   not-retrieved   no gold entry in the arm's candidates
   ranked-out      a gold entry was a candidate but ranked below the packet's item cap
   budget-cut      a gold entry ranked inside the item cap but the token budget cut it
-For A1 the gold entry's rank in each ranker (en, zh, vec) shows which ranker found it and which didn't.
+For hybrid the gold entry's rank in each ranker (en, zh, vec) shows which ranker found it and which didn't.
 No session is written: this reads the arms directly.
 """
 import argparse
@@ -24,7 +24,7 @@ import psycopg  # noqa: E402
 from psycopg.rows import dict_row  # noqa: E402
 
 from kb.config import config  # noqa: E402
-from kb.search import ARMS, a1_components, fetch_entries, pack  # noqa: E402
+from kb.search import ARMS, hybrid_components, fetch_entries, pack  # noqa: E402
 
 
 def rank_of(ids, wanted):
@@ -61,8 +61,8 @@ async def run(arms, split):
                      "gold_hit": bool(set(q["gold"]) & set(delivered)) if q["gold"] else None,
                      "gold_rank": rank_of(candidates, q["gold"]), "stage": stage(q["gold"], candidates, delivered),
                      "leaks": sorted(set(q["must_not"]) & set(delivered)), "delivered": delivered, "degraded": degraded}
-                if arm == "A1" and q["gold"]:
-                    parts, _ = await a1_components(conn, q["text"])
+                if arm == "hybrid" and q["gold"]:
+                    parts, _ = await hybrid_components(conn, q["text"])
                     p["ranker_ranks"] = {k: rank_of(v, q["gold"]) for k, v in parts.items()}
                 per_q.append(p)
             answerable = [p for p in per_q if p["gold_hit"] is not None]

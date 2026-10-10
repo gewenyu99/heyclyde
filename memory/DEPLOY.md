@@ -28,7 +28,7 @@ cd /path/to/pkg-seed && PKG_SEED_DIR=$PWD python /path/to/like-vincent/memory/se
 /path/to/like-vincent/memory/deploy/deploy.sh /path/to/pkg-seed/out
 ```
 
-`deploy.sh` copies the code and the compiled seed to `/opt/kb`, builds and starts the stack, loads `seed.sql`, applies `db/schema.sql`, restarts the API and installs the nightly backup cron. On start the API pulls bge-m3 into Ollama and embeds every entry. That takes about a minute on CPU, and A1 answers keyword-only until it finishes.
+`deploy.sh` copies the code and the compiled seed to `/opt/kb`, builds and starts the stack, loads `seed.sql`, applies `db/schema.sql`, restarts the API and installs the nightly backup cron. On start the API pulls bge-m3 into Ollama and embeds every entry. That takes about a minute on CPU, and the hybrid arm answers keyword-only until it finishes.
 
 Check it:
 
@@ -66,7 +66,7 @@ The keyword baseline on the seed: 21 of 31 pushbacks caught, 12 of 129 other tur
 | Deliverable | State |
 |---|---|
 | Postgres 17 with pgvector and pg_jieba, seed loaded | Built and tested locally with the real seed |
-| A0 and A1 behind `recall`, English and 中文 | Built and tested. Practice queries, test split: A0 5 of 6 gold hits, A1 6 of 6 |
+| Index and hybrid arms behind `recall`, English and 中文 | Built and tested. Held-out practice queries: index 5 of 6, hybrid 6 of 6 |
 | Claude Code hooks landing events in Postgres | Built and tested end to end |
 | Decider run-off on the seeded reactions | Keyword baseline done. OpenAI run needs `OPEN_AI` |
 | Nightly restic backup and one restore test | Scripts written, untested until Spaces keys exist |
@@ -76,5 +76,5 @@ The keyword baseline on the seed: 21 of 31 pushbacks caught, 12 of 129 other tur
 
 - How many Claude Code and Codex sessions do you run a week? It sets how long the live test runs.
 - Should private entries reach the agent unredacted? Today they don't, per the plan.
-- Should links to approved decisions be exempt from weakening in A2?
-- Which two arms join A2 live: A0, A1 or A3?
+- Should links to approved decisions be exempt from weakening in the spreading arm?
+- Which two arms join spreading in the live test: index, hybrid or hindsight?
