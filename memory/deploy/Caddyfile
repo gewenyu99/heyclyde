@@ -1,0 +1,4 @@
+# Port 80 is closed, so certificates come through the TLS-ALPN challenge on 443.
+{$KB_DOMAIN} {
+	reverse_proxy api:8000
+}

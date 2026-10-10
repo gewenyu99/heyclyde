@@ -1,0 +1,4 @@
+# Append to ~/.codex/config.toml. Codex reads the token from the KB_TOKEN environment variable.
+[mcp_servers.kb]
+url = "https://kb.example.com/mcp"
+bearer_token_env_var = "KB_TOKEN"
