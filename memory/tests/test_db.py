@@ -85,3 +85,13 @@ async def test_english_query_skips_the_chinese_ranker(conn):
 async def test_search_text_carries_the_project_title(conn):
     cur = await conn.execute("select search_text from entry where id = 'tea-supplier'")
     assert "Tea brewing" in (await cur.fetchone())["search_text"]
+
+
+async def test_message_board_delivers_once_per_reader(conn):
+    assert "Posted" in await service.post_message(conn, "claude", "codex", "check the deploy log")
+    await service.post_message(conn, "codex", "all", "token rotated")
+    codex = await service.read_messages(conn, "codex")
+    assert "check the deploy log" in codex and "token rotated" not in codex
+    assert await service.read_messages(conn, "codex") == ""
+    claude = await service.read_messages(conn, "claude")
+    assert "token rotated" in claude and "check the deploy log" not in claude

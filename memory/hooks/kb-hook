@@ -1,7 +1,12 @@
 #!/bin/sh
 # kb-hook <event>: forward a Claude Code hook payload (stdin) to the memory server.
-# It never loads memory into context and never blocks the agent: no config, a slow server or an error all exit 0.
+# On SessionStart and UserPromptSubmit it also prints unread messages from Wen's other agents, and Claude Code adds
+# that output to the agent's context. It never loads memory and never blocks: no config, a slow server or an error all exit 0.
 [ -n "$1" ] && [ -n "$KB_URL" ] && [ -n "$KB_TOKEN" ] || exit 0
 curl -sS -m 3 -o /dev/null -X POST "$KB_URL/hooks/$1" \
   -H "Authorization: Bearer $KB_TOKEN" -H "Content-Type: application/json" --data-binary @- 2>/dev/null
+case $1 in
+  SessionStart|UserPromptSubmit)
+    curl -sS -m 3 -H "Authorization: Bearer $KB_TOKEN" "$KB_URL/messages/${KB_AGENT:-claude}" 2>/dev/null ;;
+esac
 exit 0

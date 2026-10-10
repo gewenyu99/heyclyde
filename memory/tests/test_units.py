@@ -70,6 +70,15 @@ def test_bearer_auth_fails_closed():
     assert c.get("/healthz").status_code == 200
 
 
+def test_bearer_auth_checks_the_token_hash():
+    import hashlib
+    inner = Starlette(routes=[Route("/x", lambda r: PlainTextResponse("ok"))])
+    c = TestClient(BearerAuth(inner, "old", hashlib.sha256(b"pw").hexdigest()))
+    assert c.get("/x", headers={"Authorization": "Bearer pw"}).status_code == 200
+    assert c.get("/x", headers={"Authorization": "Bearer old"}).status_code == 401
+    assert c.get("/x", headers={"Authorization": "pw"}).status_code == 401
+
+
 class FakeDecisions:
     """Stands in for client.decisions and returns SDK-typed answers, so the parsing is checked against the real types."""
 
@@ -119,3 +128,10 @@ def test_weighted_rrf_favours_the_weighted_ranker():
     # Each entry tops one list. Unweighted, the tie falls to id order. Weighting the second list decides it.
     assert search.rrf(["a"], ["b"], k=10)[0][0] == "a"
     assert search.rrf(["a"], ["b"], weights=[1, 1.5], k=10)[0][0] == "b"
+
+
+def test_agent_name_from_client():
+    from kb.service import agent_name
+    assert agent_name("claude-code") == "claude"
+    assert agent_name("codex-mcp-client") == "codex"
+    assert agent_name(None) == "agent"

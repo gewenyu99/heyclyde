@@ -19,7 +19,7 @@ It creates a `s-2vcpu-4gb` Ubuntu 24.04 Droplet tagged `kb`, an SSH key at `~/.s
 
 It then writes `memory/deploy/.env` with a fresh `KB_TOKEN`, Postgres password and restic password. The domain is `kb.<ip-with-dashes>.sslip.io`, so Caddy gets a real certificate without a domain purchase. It tries to mint a Spaces key for backups. If the account refuses, fill `SPACES_KEY` and `SPACES_SECRET` by hand.
 
-`.env` is gitignored. Never commit it.
+`.env` is gitignored. Never commit it. Set `KB_TOKEN_SHA256` to the SHA-256 hex of a password you pick, and the server checks that instead of `KB_TOKEN`. Then you install clients with your own password and never read it off the box.
 
 ## Ship
 
@@ -62,6 +62,16 @@ Then merge `memory/hooks/claude-settings.json` into `~/.claude/settings.json` wi
 `KB_TOKEN` lives in `/opt/kb/deploy/.env` on the Droplet. Without SSH, open the Droplet in the DigitalOcean dashboard, pick Access, then Launch Droplet Console, and run `grep KB_TOKEN /opt/kb/deploy/.env`. To SSH from your own machine, add your public key in that console with `echo '<your key>' >> /root/.ssh/authorized_keys`. Also register it with `doctl compute ssh-key import mac --public-key-file ~/.ssh/id_ed25519.pub` so you can find it again later.
 
 Codex: append `memory/hooks/codex-config.toml` to `~/.codex/config.toml` and export `KB_TOKEN`.
+
+## Message your other agents
+
+The server has a small message board, so your Claude Code and Codex agents can leave each other notes. Each agent is named after its client: `claude` or `codex`.
+
+- **`post_message(to, body)`.** MCP tool. `to` is `claude`, `codex` or `all`.
+- **`check_messages()`.** MCP tool. Returns unread messages and marks them read for that agent only.
+- **`kb-hook`.** On session start and on every prompt, it prints Claude's unread messages, so Claude Code sees them without asking.
+
+Codex has no hooks, so the server's MCP instructions tell it to call `check_messages` when it starts a task.
 
 ## Run the decider run-off
 

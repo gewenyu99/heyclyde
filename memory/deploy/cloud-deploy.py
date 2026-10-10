@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Deploy without SSH: ship memory/ through Spaces and let cloud-init install it on a fresh Droplet.
 
-  python deploy/cloud-deploy.py [path/to/pkg-seed/out] [--recreate]
+  python deploy/cloud-deploy.py [path/to/pkg-seed/out] [--recreate] [--restore]
 
 For hosts that can reach HTTPS but not port 22. It encrypts the code, deploy/.env and the seed with a one-off key,
 uploads the bundle to the backup bucket, and creates the kb Droplet with a cloud-init script that fetches the bundle,
 runs deploy/install.sh and deploy/selftest.sh, and uploads the encrypted log back. This machine then prints the log.
---recreate destroys the existing kb Droplet first. Its database goes with it, so take a backup before you use it on a
-live box. The key and the presigned URLs sit in the Droplet's user data, so the bundle is deleted once the log is back.
+--recreate destroys the existing kb Droplet first. Pass --restore with it so the new box restores the latest restic
+backup of the database instead of loading the seed, since the database is the store of record. The key and the presigned URLs sit in the Droplet's user data, so the bundle is deleted once the log is back.
 Needs boto3 and openssl.
 """
 import argparse
@@ -39,7 +39,7 @@ curl -fsS '{get}' | openssl enc -d -aes-256-cbc -pbkdf2 -pass pass:{key} | tar x
 ip=$(curl -fsS http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address)
 sed -i "s/^KB_HOST=.*/KB_HOST=$ip/; s/^KB_DOMAIN=.*/KB_DOMAIN=kb.$(echo $ip | tr . -).sslip.io/" /opt/kb/deploy/.env
 chmod 600 /opt/kb/deploy/.env
-sh /opt/kb/deploy/install.sh
+{restore}sh /opt/kb/deploy/install.sh
 sh /opt/kb/deploy/selftest.sh
 """
 
@@ -69,6 +69,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("seed_out", nargs="?")
     ap.add_argument("--recreate", action="store_true")
+    ap.add_argument("--restore", action="store_true", help="restore the latest database backup instead of loading the seed")
     ap.add_argument("--wait", type=int, default=3600, help="seconds to wait for the selftest log")
     a = ap.parse_args()
     e = env()
@@ -98,7 +99,7 @@ def main():
         print(f"destroyed droplet {d['id']}")
     while found and p.call("GET", f"/droplets?tag_name={p.NAME}")["droplets"]:
         time.sleep(5)
-    boot = "".join(f"      {line}\n" for line in BOOT.format(key=key, get=get, put=put).splitlines())
+    boot = "".join(f"      {line}\n" for line in BOOT.format(key=key, get=get, put=put, restore="KB_RESTORE=1 " if a.restore else "").splitlines())
     user_data = p.USER_DATA + "  - [sh, /root/kb-boot.sh]\nwrite_files:\n  - path: /root/kb-boot.sh\n    permissions: '0700'\n    content: |\n" + boot
     p.USER_DATA = user_data
     ip = p.droplet(p.ssh_key())

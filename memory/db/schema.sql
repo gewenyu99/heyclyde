@@ -110,6 +110,17 @@ create table if not exists feedback (
   created_at timestamptz not null default now()
 );
 
+-- The message board. Agents leave each other notes by name: claude, codex, or all.
+create table if not exists message (
+  id bigserial primary key,
+  sender text not null,
+  recipient text not null,
+  body text not null,
+  read_by text[] not null default '{}',
+  created_at timestamptz not null default now()
+);
+create index if not exists message_recipient on message (recipient, created_at);
+
 -- The spreading arm's learnable parameters, one per (source pattern, link type, target pattern), starting at 1.0.
 create table if not exists link_type_weight (
   src_pattern text not null,
