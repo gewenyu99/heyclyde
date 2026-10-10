@@ -69,7 +69,7 @@ Codex: append `memory/hooks/codex-config.toml` to `~/.codex/config.toml` and exp
 PKG_SEED_DIR=/path/to/pkg-seed OPEN_AI=... python memory/eval/decider_eval.py --out /tmp/decider.json
 ```
 
-The keyword baseline on the seed: 21 of 31 pushbacks caught, 12 of 129 other turns flagged. OpenAI Decisions with `gpt-6-luna` has to beat that to earn the filter and audit jobs.
+The keyword baseline on the seed: 21 of 31 pushbacks caught, 12 of 129 other turns flagged. OpenAI Decisions with `gpt-6-luna` beat it on recall, and Wen picked it for the filter and audit jobs.
 
 ## Back up and restore
 
@@ -82,7 +82,7 @@ The keyword baseline on the seed: 21 of 31 pushbacks caught, 12 of 129 other tur
 | Postgres 17 with pgvector and pg_jieba, seed loaded | Done on the Droplet, 2026-10-10. Every entry embedded with bge-m3 |
 | Index and hybrid arms behind `recall`, English and 中文 | Done. `recall` over MCP with the bearer token returns a packet, and without it gets 401. On the Droplet, held-out: hybrid 6 of 6 with no leaks, index 5 of 6 with leaks on 2 of 7. Train: hybrid 90%, index 81%. After 6 deploy-context entries joined the seed, hybrid's held-out score fell to 5 of 6. q25 "where does the PKG run" ranked its gold out at 12, behind the new `pkg-server-where`, which answers it better than the stale gold does. The fault in that packet is a draft at rank 1, `docs-draft-measure-yourself`, which matched on "runs". Index demotes drafts and hybrid doesn't. Both are left for Wen, since the fix would tune on the test split |
 | Claude Code hooks landing events in Postgres | Built and tested end to end locally. Live once a client is connected |
-| Decider run-off on the seeded reactions | Done. Keywords caught 21 of 31 with 12 of 129 false alarms. `gpt-6-luna` caught 26 of 31 with 24 of 129, p50 158 ms, p95 288 ms. Its misses need the previous assistant turn, and some false alarms are real pushback the weak labels miss |
+| Decider run-off on the seeded reactions | Done. Keywords caught 21 of 31 with 12 of 129 false alarms. `gpt-6-luna` caught 26 of 31 with 24 of 129, p50 158 ms, p95 288 ms. Its misses need the previous assistant turn, and some false alarms are real pushback the weak labels miss. Wen picked `gpt-6-luna`. It costs about $0.00002 a call, at 232 input tokens median and $0.10 per million input tokens. Tuned on half the turns and tested on the other half, neither a tighter wording nor a 0.7 threshold held up, so both stay as they were. Next: send the previous assistant turn when the decider gets wired into the hooks |
 | Nightly restic backup and one restore test | Done. `backup.sh` saved to Spaces and `restore-test.sh` restored every entry. Fixed on the way: the restore raced the image's init server, and a destroyed Droplet left a stale lock |
 | Droplet running | Done, through `cloud-deploy.py`, since the cloud session that deployed it can't reach port 22. `provision.py` and the Spaces key endpoint worked first try |
 
