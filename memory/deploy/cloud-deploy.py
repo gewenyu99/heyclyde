@@ -8,10 +8,11 @@ uploads the bundle to the backup bucket, and creates the kb Droplet with a cloud
 runs deploy/install.sh and deploy/selftest.sh, and uploads the encrypted log back. This machine then prints the log.
 --recreate destroys the existing kb Droplet first. Pass --restore with it so the new box restores the latest restic
 backup of the database instead of loading the seed, since the database is the store of record. The key and the presigned URLs sit in the Droplet's user data, so the bundle is deleted once the log is back.
-Needs boto3 and openssl.
+Needs boto3 and openssl, plus restic for --restore.
 """
 import argparse
 import io
+import json
 import os
 import secrets
 import subprocess
@@ -65,6 +66,19 @@ def crypt(data, key, decrypt=False):
     return subprocess.run(args, input=data, capture_output=True, check=True).stdout
 
 
+def latest_backup(e):
+    """Exit unless restic holds a database snapshot. Prints its time, since anything written after it is lost."""
+    env = dict(os.environ, RESTIC_PASSWORD=e["RESTIC_PASSWORD"], AWS_ACCESS_KEY_ID=e["SPACES_KEY"],
+               AWS_SECRET_ACCESS_KEY=e["SPACES_SECRET"],
+               RESTIC_REPOSITORY=f"s3:https://{e['SPACES_REGION']}.digitaloceanspaces.com/{e['SPACES_BUCKET']}/restic")
+    r = subprocess.run(["restic", "snapshots", "--tag", "pg", "--latest", "1", "--json", "--no-lock"],
+                       env=env, capture_output=True, text=True)
+    snaps = json.loads(r.stdout or "[]") if r.returncode == 0 else []
+    if not snaps:
+        sys.exit(f"--restore needs a database snapshot and found none ({r.stderr.strip()[:200]}). Nothing was destroyed")
+    print(f"restoring snapshot {snaps[0]['short_id']} from {snaps[0]['time'][:19]} UTC. Writes after it are lost")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("seed_out", nargs="?")
@@ -91,6 +105,8 @@ def main():
     put = s3.generate_presigned_url("put_object", Params={"Bucket": bucket, "Key": RESULT}, ExpiresIn=6 * 3600)
     print("uploaded bundle")
 
+    if a.restore:
+        latest_backup(e)
     found = p.call("GET", f"/droplets?tag_name={p.NAME}")["droplets"]
     if found and not a.recreate:
         sys.exit(f"droplet {found[0]['id']} exists. Use deploy.sh over SSH, or --recreate to replace it (its data goes too)")
@@ -101,8 +117,7 @@ def main():
         time.sleep(5)
     boot = "".join(f"      {line}\n" for line in BOOT.format(key=key, get=get, put=put, restore="KB_RESTORE=1 " if a.restore else "").splitlines())
     user_data = p.USER_DATA + "  - [sh, /root/kb-boot.sh]\nwrite_files:\n  - path: /root/kb-boot.sh\n    permissions: '0700'\n    content: |\n" + boot
-    p.USER_DATA = user_data
-    ip = p.droplet(p.ssh_key())
+    ip = p.droplet(p.ssh_key(), user_data)
     p.firewall()
     text = (ROOT / "deploy/.env").read_text().replace(f"KB_HOST={e['KB_HOST']}", f"KB_HOST={ip}")
     text = text.replace(f"KB_DOMAIN={e['KB_DOMAIN']}", f"KB_DOMAIN=kb.{ip.replace('.', '-')}.sslip.io")
@@ -117,7 +132,9 @@ def main():
         except s3.exceptions.NoSuchKey:
             time.sleep(20)
     else:
-        sys.exit("no selftest log yet. Rerun with a longer --wait, or check the Droplet console")
+        s3.delete_object(Bucket=bucket, Key=BUNDLE)
+        sys.exit(f"no selftest log after {a.wait}s. The box may still be installing: check "
+                 f"https://kb.{ip.replace('.', '-')}.sslip.io/healthz before anything else, and don't rerun --recreate on it")
     with tarfile.open(fileobj=io.BytesIO(crypt(blob, key, decrypt=True))) as tar:
         sys.stdout.write(tar.extractfile("var/log/kb-boot.log").read().decode(errors="replace"))
     for k in (BUNDLE, RESULT):

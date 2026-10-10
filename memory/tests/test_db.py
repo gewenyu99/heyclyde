@@ -95,3 +95,17 @@ async def test_message_board_delivers_once_per_reader(conn):
     assert await service.read_messages(conn, "codex") == ""
     claude = await service.read_messages(conn, "claude")
     assert "token rotated" in claude and "check the deploy log" not in claude
+
+
+async def test_message_board_claims_each_message_once(conn, db_url):
+    import asyncio
+    import psycopg
+    from psycopg.rows import dict_row
+    await service.post_message(conn, "codex", "claude", "once only")
+    async with await psycopg.AsyncConnection.connect(db_url, row_factory=dict_row) as other:
+        a, b = await asyncio.gather(service.read_messages(conn, "claude"), service.read_messages(other, "claude"))
+    assert [a, b].count("") == 1
+
+
+async def test_message_board_rejects_unknown_recipients(conn):
+    assert "Need a recipient" in await service.post_message(conn, "claude", "claud", "typo")

@@ -2,9 +2,7 @@
 # Nightly: pg_dump plus the seed directory, encrypted with restic, to DigitalOcean Spaces. Keeps 7 daily and 4 weekly.
 set -eu
 cd /opt/kb/deploy
-. ./.env
-export RESTIC_PASSWORD AWS_ACCESS_KEY_ID="$SPACES_KEY" AWS_SECRET_ACCESS_KEY="$SPACES_SECRET"
-export RESTIC_REPOSITORY="s3:https://$SPACES_REGION.digitaloceanspaces.com/$SPACES_BUCKET/restic"
+. ./restic-env.sh
 
 restic cat config >/dev/null 2>&1 || restic init
 restic unlock  # clears locks left by a dead process or a destroyed Droplet. Live locks stay.

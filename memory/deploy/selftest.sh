@@ -9,6 +9,8 @@ for _ in $(seq 360); do
   [ "$(q 'select count(*) from entry e left join entry_embedding x on x.entry_id = e.id where x.entry_id is null')" -eq 0 ] && break
   sleep 5
 done
+# A restored database already holds its embeddings, so also wait until Ollama has the model for query embeddings.
+for _ in $(seq 120); do docker compose exec -T ollama ollama list 2>/dev/null | grep -q '^bge-m3' && break; sleep 5; done
 echo "entries $(q 'select count(*) from entry'), embedded $(q 'select count(*) from entry_embedding')"
 docker compose logs api | tail -20
 

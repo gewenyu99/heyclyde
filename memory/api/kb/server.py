@@ -148,6 +148,8 @@ class BearerAuth:
         if not header.startswith(b"Bearer "):
             return False
         got = header[7:]
+        if not got:
+            return False
         if self.sha:
             return hmac.compare_digest(hashlib.sha256(got).hexdigest().encode(), self.sha)
         return bool(self.token) and hmac.compare_digest(got, self.token)

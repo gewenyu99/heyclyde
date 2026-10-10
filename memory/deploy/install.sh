@@ -7,9 +7,7 @@ docker compose up -d --build
 until docker compose exec -T db pg_isready -U kb -d kb >/dev/null 2>&1; do sleep 2; done
 if [ -n "${KB_RESTORE:-}" ]; then
   # Rebuilding a box: the database is the store of record, so restore its latest backup rather than the seed.
-  . ./.env
-  export RESTIC_PASSWORD AWS_ACCESS_KEY_ID="$SPACES_KEY" AWS_SECRET_ACCESS_KEY="$SPACES_SECRET"
-  export RESTIC_REPOSITORY="s3:https://$SPACES_REGION.digitaloceanspaces.com/$SPACES_BUCKET/restic"
+  . ./restic-env.sh
   restic dump --tag pg latest /kb.dump | docker compose exec -T db pg_restore -U kb -d kb --no-owner
 elif [ -f /opt/kb/seed-out/seed.sql ]; then
   docker compose exec -T db psql -q -U kb -d kb -v ON_ERROR_STOP=1 < /opt/kb/seed-out/seed.sql

@@ -102,9 +102,12 @@ def agent_name(client):
     return "claude" if "claude" in c else "codex" if "codex" in c else c or "agent"
 
 
+AGENTS = ("claude", "codex", "all")
+
+
 async def post_message(conn, sender, to, body):
     to, body = to.strip().lower(), body.strip()
-    if not to or not body:
+    if to not in AGENTS or not body:
         return "Need a recipient (claude, codex or all) and a body."
     cur = await conn.execute(
         "insert into message (sender, recipient, body) values (%s, %s, %s) returning id", (sender, to, body))
@@ -113,19 +116,19 @@ async def post_message(conn, sender, to, body):
     return f"Posted message {mid} to {to}."
 
 
-async def read_messages(conn, me, mark_read=True):
-    """Unread messages for me or all, oldest first, as text. Reading marks them read for me only."""
+async def read_messages(conn, me):
+    """Unread messages for me or all, oldest first, as text, marked read for me only. One statement claims them, so
+    two readers at once never get the same message."""
     cur = await conn.execute(
-        "select id, sender, recipient, body, created_at from message "
-        "where recipient in (%s, 'all') and sender <> %s and not (%s = any(read_by)) order by id limit 20",
-        (me, me, me))
-    rows = await cur.fetchall()
+        "update message set read_by = array_append(read_by, %s) where id in ("
+        "  select id from message where recipient in (%s, 'all') and sender <> %s and not (%s = any(read_by))"
+        "  order by id limit 20 for update skip locked) "
+        "returning id, sender, recipient, body, created_at",
+        (me, me, me, me))
+    rows = sorted(await cur.fetchall(), key=lambda r: r["id"])
+    await conn.commit()
     if not rows:
         return ""
-    if mark_read:
-        await conn.execute("update message set read_by = array_append(read_by, %s) where id = any(%s)",
-                           (me, [r["id"] for r in rows]))
-        await conn.commit()
     lines = [f"- #{r['id']} from {r['sender']} to {r['recipient']} at {r['created_at']:%Y-%m-%d %H:%M} UTC: {r['body']}"
              for r in rows]
-    return "Messages from your other agents (reply with post_message):\n" + "\n".join(lines)
+    return "Messages from your other agents (reply with post_message):\n" + "\n".join(lines) + "\n"

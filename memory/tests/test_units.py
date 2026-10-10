@@ -77,6 +77,8 @@ def test_bearer_auth_checks_the_token_hash():
     assert c.get("/x", headers={"Authorization": "Bearer pw"}).status_code == 200
     assert c.get("/x", headers={"Authorization": "Bearer old"}).status_code == 401
     assert c.get("/x", headers={"Authorization": "pw"}).status_code == 401
+    empty = TestClient(BearerAuth(inner, "", hashlib.sha256(b"").hexdigest()))
+    assert empty.get("/x", headers={"Authorization": "Bearer "}).status_code == 401
 
 
 class FakeDecisions:

@@ -2,9 +2,7 @@
 # Monthly: restore the latest dump into a throwaway Postgres and check the entries came back. Touches nothing live.
 set -eu
 cd /opt/kb/deploy
-. ./.env
-export RESTIC_PASSWORD AWS_ACCESS_KEY_ID="$SPACES_KEY" AWS_SECRET_ACCESS_KEY="$SPACES_SECRET"
-export RESTIC_REPOSITORY="s3:https://$SPACES_REGION.digitaloceanspaces.com/$SPACES_BUCKET/restic"
+. ./restic-env.sh
 
 name=kb-restore-test
 docker rm -f $name >/dev/null 2>&1 || true

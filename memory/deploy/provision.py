@@ -55,7 +55,7 @@ def ssh_key():
     return call("POST", "/account/keys", {"name": "kb-deploy", "public_key": pub})["ssh_key"]["id"]
 
 
-def droplet(key_id):
+def droplet(key_id, user_data=USER_DATA):
     found = call("GET", f"/droplets?tag_name={NAME}")["droplets"]
     if found:
         d = found[0]
@@ -65,7 +65,7 @@ def droplet(key_id):
         extra = [k["id"] for k in call("GET", "/account/keys?per_page=200")["ssh_keys"] if k["name"].startswith("kb-")]
         d = call("POST", "/droplets", {"name": NAME, "region": REGION, "size": SIZE, "image": IMAGE,
                                        "ssh_keys": sorted({key_id, *extra}),
-                                       "tags": [NAME], "user_data": USER_DATA, "monitoring": True, "ipv6": True})["droplet"]
+                                       "tags": [NAME], "user_data": user_data, "monitoring": True, "ipv6": True})["droplet"]
         print(f"created droplet {d['id']}")
     for _ in range(90):
         d = call("GET", f"/droplets/{d['id']}")["droplet"]
