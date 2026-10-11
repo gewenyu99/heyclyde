@@ -1,0 +1,71 @@
+# The lv harness tiers 1 to 3, and memory's own tests. Tier 4 calls real models, so it never runs here.
+name: harness
+
+on:
+  push:
+    paths: ['harness/**', 'memory/**', 'skills/**', '.github/workflows/harness.yml']
+  pull_request:
+    paths: ['harness/**', 'memory/**', 'skills/**', '.github/workflows/harness.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  node:
+    name: Tiers 1 and 2
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: harness
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: harness/package-lock.json
+      - run: npm ci --ignore-scripts
+      - name: Tier 1, unit and flow
+        run: npm test
+      - name: Tier 2, pi with a fake model
+        run: npm run test:pi
+
+  kb:
+    name: Memory and tier 3
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      KB_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: memory/api/requirements.txt
+      - run: pip install -r memory/api/requirements.txt pytest pytest-asyncio
+      - name: memory pytest
+        working-directory: memory
+        run: pytest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: harness/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: harness
+      - name: Tier 3, the real kb
+        working-directory: harness
+        run: npm run test:kb
