@@ -257,12 +257,15 @@ Recalls, newest first. `q` is a substring of the query or the task. Each item ha
 
 ```json
 {"retrieval": {"id": "...", "kb_session": "...", "arm": "hybrid", "query": "...", "task": null,
-               "candidates": [...], "delivered": [...], "rejected": [], "latency_ms": 12, "degraded": null, "created_at": "..."},
+               "candidates": [...], "delivered": [...], "rejected": [], "latency_ms": 12, "degraded": null, "created_at": "...",
+               "packet": "Index lines that match. ..."},
  "client": "claude-code",
  "candidates": [{"rank": 1, "id": "tea-oolong-temp", "score": 0.09, "title": "...", "authority": "approved",
                  "superseded_by": [], "current": true, "delivered": true, "exists": true}],
  "feedback": [{"id": 1, "source": "wen", "verdict": "helpful", "entry_id": null, "note": null, "created_at": "..."}]}
 ```
+
+`packet` is the exact text the agent read under the retrieval id. Recalls made before it was stored have null.
 
 `exists` is false for an entry deleted since the recall. `superseded_by` and `current` are the entry's state now. The store keeps no history of it, so an entry superseded after the recall shows as superseded here.
 

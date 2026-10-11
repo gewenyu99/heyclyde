@@ -37,14 +37,14 @@ async def recall(conn, kb_session, query, task="", client=None):
     started = time.monotonic()
     arm = await session_arm(conn, kb_session, client)
     ranked, degraded, delivered, chunks, lines = await rank_and_pack(conn, arm, query, task)
-    rid = uuid.uuid4()
+    rid, text = uuid.uuid4(), packet_text(chunks, lines)
     await conn.execute(
-        "insert into retrieval (id, kb_session, arm, query, task, candidates, delivered, latency_ms, degraded) "
-        "values (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+        "insert into retrieval (id, kb_session, arm, query, task, candidates, delivered, latency_ms, degraded, packet) "
+        "values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
         (rid, kb_session, arm, query, task or None, json.dumps([{"id": e, "score": s} for e, s, _ in ranked]),
-         json.dumps(delivered), int((time.monotonic() - started) * 1000), degraded))
+         json.dumps(delivered), int((time.monotonic() - started) * 1000), degraded, text))
     await conn.commit()
-    return f"retrieval {rid}\n\n{packet_text(chunks, lines)}"
+    return f"retrieval {rid}\n\n{text}"
 
 
 def packet_text(chunks, lines):
@@ -93,6 +93,7 @@ async def feedback(conn, retrieval_id, verdict, entry_id=None, note=None, source
 async def hook(conn, event, payload, agent=None):
     """Store a lifecycle hook payload, with the agent kb-hook names. A recall's PostToolUse also ties the MCP session to
     the client's session id."""
+    event, payload, agent = no_nul(event), no_nul(payload), no_nul(agent)
     session_id = payload.get("session_id")
     await conn.execute(
         "insert into event (session_id, event, payload, agent) values (%s, %s, %s, %s)",
@@ -104,6 +105,17 @@ async def hook(conn, event, payload, agent=None):
                 "update kb_session set claude_session_id = %s where id = (select kb_session from retrieval where id = %s)",
                 (session_id, uuid.UUID(m.group(1))))
     await conn.commit()
+
+
+def no_nul(value):
+    """Postgres text and jsonb refuse NUL, and one in a prompt or tool output would lose the whole event. Drop them."""
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, dict):
+        return {no_nul(k): no_nul(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [no_nul(v) for v in value]
+    return value
 
 
 def agent_name(client):

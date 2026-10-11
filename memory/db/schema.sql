@@ -101,6 +101,8 @@ create table if not exists event (
 create index if not exists event_session on event (session_id, received_at);
 -- The agent kb-hook names, claude or codex, so their hooks can be told apart. Older rows and get_entry rows have none.
 alter table event add column if not exists agent text;
+-- The packet text the agent read under the retrieval id, so the console shows exactly that. Older rows have none.
+alter table retrieval add column if not exists packet text;
 
 create table if not exists feedback (
   id bigserial primary key,

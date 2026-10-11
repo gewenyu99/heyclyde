@@ -51,6 +51,22 @@ async def test_recall_logs_and_hides_private_text(conn):
     assert "secret co" not in await service.get_entry(conn, sid, "tea-supplier")
 
 
+async def test_recall_stores_the_packet_the_agent_read(conn):
+    sid = f"t-{uuid.uuid4()}"
+    text = await service.recall(conn, sid, "oolong temperature")
+    rid, packet = text.split("\n\n", 1)
+    cur = await conn.execute("select packet from retrieval where id = %s", (uuid.UUID(rid.split()[1]),))
+    assert (await cur.fetchone())["packet"] == packet
+
+
+async def test_hook_drops_nul_instead_of_losing_the_event(conn):
+    sid = f"nul-{uuid.uuid4()}"
+    await service.hook(conn, "UserPromptSubmit\x00", {"session_id": sid, "prompt": "a\x00b", "k\x00": ["x\x00"]}, "claude")
+    cur = await conn.execute("select event, payload from event where session_id = %s", (sid,))
+    row = await cur.fetchone()
+    assert row["event"] == "UserPromptSubmit" and row["payload"]["prompt"] == "ab" and row["payload"]["k"] == ["x"]
+
+
 async def test_hook_ties_mcp_session_to_client_session(conn):
     sid = f"t-{uuid.uuid4()}"
     text = await service.recall(conn, sid, "oolong")

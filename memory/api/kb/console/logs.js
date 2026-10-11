@@ -228,6 +228,9 @@ export async function recallView(root, id, message = '') {
         ['Filter cut', ids(r.rejected)],
       ])),
       card('Feedback', feedbackTable(d.feedback || []), h('h3', null, 'Add feedback'), feedbackForm(r.id ?? id, cands, refresh))),
+    card('Packet the agent read', r.packet
+      ? h('div', { class: 'json-wrap' }, h('pre', { class: 'json' }, r.packet))
+      : note('Recalls before this column existed did not store their packet.', 'empty')),
     card(`Ranked candidates (${num(cands.length)})`,
       cands.some((c) => c.superseded_by?.length)
         && h('p', { class: 'muted small' }, 'Superseded marks show each entry as it stands now, not as it stood at this recall.'),
