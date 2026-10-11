@@ -24,34 +24,51 @@ def estimate_tokens(text):
     return cjk + (len(text) - cjk) // 4
 
 
+# ---------------------------------------------------------------- scope: a run's entries reach only that run's recalls
+def scope_filter(alias=""):
+    """Leave out run: entries unless they're in the asked-for scope. Every arm's SQL takes this, with %(scope)s bound."""
+    return f"({alias}scope not like 'run:%%' or {alias}scope = %(scope)s)"
+
+
+def boost(scored, ids):
+    """Multiply the scores of entries in the asked-for scope by KB_SCOPE_BOOST and re-sort, so a run's notes lead."""
+    out = [(eid, s * config.scope_boost if eid in ids else s, line) for eid, s, line in scored]
+    return sorted(out, key=lambda x: (-x[1], x[0]))
+
+
 # ---------------------------------------------------------------- index: grep the index map
-async def index_lines(conn):
+async def index_lines(conn, scope=None):
     """The INDEX.md map, one line per entry, superseded entries struck through, as build.py writes it."""
     cur = await conn.execute(
         "select e.id, e.title, e.authority, e.scope, e.sensitivity, e.pattern, p.title as project_title, "
         "(select string_agg(l.src, ', ' order by l.src) from link l where l.dst = e.id and l.type = 'supersedes') as superseded_by "
-        "from entry e left join entry p on p.id = e.project where e.pattern <> 'projects' order by e.project, e.pattern, e.id")
+        f"from entry e left join entry p on p.id = e.project where e.pattern <> 'projects' and {scope_filter('e.')} "
+        "order by e.project, e.pattern, e.id", {"scope": scope})
     lines = []
     for r in await cur.fetchall():
         title = f"~~{r['title']}~~ → {r['superseded_by']}" if r["superseded_by"] else r["title"]
         lock = " 🔒" if r["sensitivity"] == "private" else ""
         lines.append((r["id"], f"- `{r['id']}` {title} [{r['authority']}, {r['scope']}]{lock} ({r['project_title']})",
-                      r["authority"]))
+                      r["authority"], r["scope"], bool(r["superseded_by"])))
     return lines
 
 
-async def index_search(conn, query):
+async def index_search(conn, query, scope=None):
     """grep over the index map. Drafts rank at half weight, so a confirmed decision beats a suggestion on a tie.
+
+    A superseded line stays, struck through, but gets no scope boost. Its line names its replacement, so it matches
+    every word the replacement does and would otherwise outrank it.
 
     Stemming and IDF weighting were tried on the train split. Stemming cost two hits, IDF changed nothing."""
     q = tokens(query)
-    scored = []
-    for eid, line, authority in await index_lines(conn):
+    scored, scoped = [], set()
+    for eid, line, authority, entry_scope, superseded in await index_lines(conn, scope):
         hit = len(q & tokens(line + " " + eid.replace("-", " ")))
         if hit:
             scored.append((eid, hit * (config.index_draft_factor if authority == "draft" else 1.0), line))
-    scored.sort(key=lambda s: (-s[1], s[0]))
-    return scored[:config.candidates], None
+            if scope and entry_scope == scope and not superseded:
+                scoped.add(eid)
+    return boost(scored, scoped)[:config.candidates], None
 
 
 # ---------------------------------------------------------------- hybrid: keyword plus vector search
@@ -60,11 +77,11 @@ def or_query(cfg):
     return f"nullif(replace(plainto_tsquery('{cfg}', %(q)s)::text, ' & ', ' | '), '')::tsquery"
 
 
-async def keyword_ranks(conn, query, cfg, column):
+async def keyword_ranks(conn, query, cfg, column, scope=None):
     cur = await conn.execute(
         f"select id, ts_rank_cd({column}, t.q) as score from entry_current cross join (select {or_query(cfg)} as q) t "
-        f"where t.q is not null and {column} @@ t.q order by score desc, id limit %(k)s",
-        {"q": query, "k": config.candidates})
+        f"where t.q is not null and {column} @@ t.q and {scope_filter()} order by score desc, id limit %(k)s",
+        {"q": query, "k": config.candidates, "scope": scope})
     return [r["id"] for r in await cur.fetchall()]
 
 
@@ -81,16 +98,19 @@ async def query_vector(query):
     return _query_vectors[key]
 
 
-async def vector_ranks(conn, query):
+async def vector_ranks(conn, query, scope=None):
     if not await has_vector(conn):
         return [], "no-vector"
     try:
         vec = await query_vector(query)
     except Exception as exc:  # Ollama down or model missing: keyword ranks still answer.
         return [], f"embed-failed: {type(exc).__name__}"
+    # The HNSW scan stops at hnsw.ef_search (40) candidates, and the scope and superseded filters run after it. When run
+    # notes crowd those 40, few or none survive. An iterative scan keeps going until the limit is met. pgvector 0.8+.
+    await conn.execute("set local hnsw.iterative_scan = strict_order")
     cur = await conn.execute(
-        "select x.entry_id as id from entry_embedding x join entry_current e on e.id = x.entry_id "
-        "order by x.embedding <=> %s::vector limit %s", (to_pgvector(vec), config.candidates))
+        f"select x.entry_id as id from entry_embedding x join entry_current e on e.id = x.entry_id where {scope_filter('e.')} "
+        "order by x.embedding <=> %(v)s::vector limit %(k)s", {"v": to_pgvector(vec), "k": config.candidates, "scope": scope})
     return [r["id"] for r in await cur.fetchall()], None
 
 
@@ -103,25 +123,28 @@ def rrf(*rankings, weights=None, k=None):
     return sorted(score.items(), key=lambda kv: (-kv[1], kv[0]))
 
 
-async def hybrid_components(conn, query):
+async def hybrid_components(conn, query, scope=None):
     """Each ranker's list on its own, so an eval can tell which one lost an entry.
 
     jieba also segments English, so the 中文 ranker only runs on queries with 中文 in them. Running it on English
     queries counted the same keyword evidence twice and buried entries both keyword and vector search ranked first."""
-    vec, degraded = await vector_ranks(conn, query)
-    en = await keyword_ranks(conn, query, "english", "tsv_en")
+    vec, degraded = await vector_ranks(conn, query, scope)
+    en = await keyword_ranks(conn, query, "english", "tsv_en", scope)
     if CJK.search(query):
-        zh = await keyword_ranks(conn, query, "kb_zh", "tsv_zh")
+        zh = await keyword_ranks(conn, query, "kb_zh", "tsv_zh", scope)
         keyword = [eid for eid, _ in rrf(en, zh)]
     else:
         zh, keyword = [], en
     return {"en": en, "zh": zh, "keyword": keyword, "vec": vec}, degraded
 
 
-async def hybrid_search(conn, query):
-    parts, degraded = await hybrid_components(conn, query)
-    fused = rrf(parts["keyword"], parts["vec"], weights=[1.0, config.vec_weight])
-    return [(eid, s, None) for eid, s in fused[:config.candidates]], degraded
+async def hybrid_search(conn, query, scope=None):
+    parts, degraded = await hybrid_components(conn, query, scope)
+    fused = [(eid, s, None) for eid, s in rrf(parts["keyword"], parts["vec"], weights=[1.0, config.vec_weight])]
+    if scope and fused:
+        cur = await conn.execute("select id from entry where id = any(%s) and scope = %s", ([e for e, _, _ in fused], scope))
+        fused = boost(fused, {r["id"] for r in await cur.fetchall()})
+    return fused[:config.candidates], degraded
 
 
 ARMS = {"index": index_search, "hybrid": hybrid_search}
@@ -157,16 +180,33 @@ def render_item(n, row):
     return "\n".join(parts)
 
 
+CLIPPED = "\n    [Cut to fit the packet. get_entry has the rest.]"
+
+
+def clip(text, budget):
+    """The longest start of text that fits budget tokens with the cut marked."""
+    lo, hi = 0, len(text)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        lo, hi = (mid, hi) if estimate_tokens(text[:mid] + CLIPPED) <= budget else (lo, mid - 1)
+    return text[:lo] + CLIPPED
+
+
 def pack(ranked, rows, lines=None):
-    """Fill the packet in rank order up to the item and token budgets. Returns (delivered ids, text)."""
+    """Fill the packet in rank order up to the item and token budgets. Returns (delivered ids, text).
+
+    The first item always goes in, cut to the budget when it's bigger, so one huge entry can't fill an agent's context."""
     delivered, chunks, used = [], [], 0
     for eid, _, line in ranked:
         if eid not in rows and line is None:
             continue
         chunk = line if line is not None else render_item(len(delivered) + 1, rows[eid])
         cost = estimate_tokens(chunk)
-        if used + cost > config.packet_tokens and delivered:
-            break
+        if used + cost > config.packet_tokens:
+            if delivered:
+                break
+            chunk = clip(chunk, config.packet_tokens)
+            cost = estimate_tokens(chunk)
         delivered.append(eid)
         chunks.append(chunk)
         used += cost
@@ -175,7 +215,7 @@ def pack(ranked, rows, lines=None):
     return delivered, chunks
 
 
-def render_entry(row, links):
+def render_entry(row, links, blobs=()):
     row = redact(row)
     out = [f"{row['id']}: {row['title']}",
            f"pattern {row['pattern']} · {row['authority']} · {row['scope']} · valid from {row['valid_from']} · project {row['project']}",
@@ -188,4 +228,10 @@ def render_entry(row, links):
         out.append(f"Replaced by: {row['superseded_by']}")
     if links:
         out += ["", "Links:"] + [f"- {l['dir']} {l['type']} {l['other']}: {l['title']}" for l in links]
+    if blobs and row["sensitivity"] == "private":
+        # A name or sha256 can give away a private blob, since its content may be short enough to guess and hash.
+        out += ["", f"Blobs: {len(blobs)}, private. Ask Wen."]
+    elif blobs:
+        out += ["", "Blobs. Open one with get_blob(sha256):"] + [
+            f"- {b['name']}: {b['sha256']} · {b['media_type']} · {b['size']} bytes" for b in blobs]
     return "\n".join(out)

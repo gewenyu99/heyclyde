@@ -17,7 +17,7 @@ python memory/deploy/provision.py
 
 It creates a `s-2vcpu-4gb` Ubuntu 24.04 Droplet tagged `kb`, an SSH key at `~/.ssh/kb_ed25519`, and a cloud firewall that admits 22 and 443 only. Cloud-init installs Docker, restic and ufw and adds 2 GB of swap.
 
-It then writes `memory/deploy/.env` with a fresh `KB_TOKEN`, Postgres password and restic password. The domain is `kb.<ip-with-dashes>.sslip.io`, so Caddy gets a real certificate without a domain purchase. It tries to mint a Spaces key for backups. If the account refuses, fill `SPACES_KEY` and `SPACES_SECRET` by hand.
+It then writes `memory/deploy/.env` with a fresh `KB_TOKEN`, `KB_RUNTIME_TOKEN`, Postgres password and restic password. A `.env` from before `KB_RUNTIME_TOKEN` existed needs one added by hand. Any `secrets.token_urlsafe(32)` works. The domain is `kb.<ip-with-dashes>.sslip.io`, so Caddy gets a real certificate without a domain purchase. It tries to mint a Spaces key for backups. If the account refuses, fill `SPACES_KEY` and `SPACES_SECRET` by hand.
 
 `.env` is gitignored. Never commit it.
 
@@ -28,7 +28,7 @@ cd /path/to/pkg-seed && PKG_SEED_DIR=$PWD python /path/to/like-vincent/memory/se
 /path/to/like-vincent/memory/deploy/deploy.sh /path/to/pkg-seed/out
 ```
 
-`deploy.sh` copies the code and the compiled seed to `/opt/kb`, builds and starts the stack, loads `seed.sql`, applies `db/schema.sql`, restarts the API and installs the nightly backup cron. On start the API pulls bge-m3 into Ollama and embeds every entry. That takes about a minute on CPU, and the hybrid arm answers keyword-only until it finishes.
+`deploy.sh` copies the code and the compiled seed to `/opt/kb`, builds and starts the stack, loads `seed.sql`, applies `db/schema.sql`, restarts the API and installs the nightly backup cron. On start the API pulls bge-m3 into Ollama and embeds every entry. That takes about a minute on CPU, and the hybrid arm answers keyword-only until it finishes. After that it looks for entries without an embedding every 5 minutes, set by `KB_EMBED_SYNC_SECONDS`, so a write whose embedding failed gets one.
 
 Check it:
 
@@ -48,6 +48,8 @@ cp memory/hooks/kb-hook ~/.claude/kb-hook
 Then merge `memory/hooks/claude-settings.json` into `~/.claude/settings.json` with the real `KB_URL` and `KB_TOKEN`.
 
 Codex: append `memory/hooks/codex-config.toml` to `~/.codex/config.toml` and export `KB_TOKEN`.
+
+lv-flow alone gets `KB_RUNTIME_TOKEN`. It writes observed and approved entries, so it never goes in an agent's settings, shell or worker environment. With `KB_TOKEN`, a write to `POST /entries` is held to what `remember` allows.
 
 ## Run the decider run-off
 

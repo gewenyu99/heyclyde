@@ -6,6 +6,9 @@ import httpx
 from .config import config
 
 DIM = 1024
+UPSERT = ("insert into entry_embedding (entry_id, model, content_sha256, embedding) values (%s, %s, %s, %s::vector) "
+          "on conflict (entry_id) do update set model = excluded.model, content_sha256 = excluded.content_sha256, "
+          "embedding = excluded.embedding, updated_at = now()")
 
 
 def entry_text(row):
@@ -41,27 +44,44 @@ async def has_vector(conn):
     return (await cur.fetchone())["ok"]
 
 
-async def sync_embeddings(conn, batch=16):
-    """Embed every entry whose text changed since its last embedding. Returns the count embedded."""
-    if not await has_vector(conn):
-        return 0
-    cur = await conn.execute(
-        "select e.id, e.title, e.body, e.evidence, e.search_text, x.content_sha256 from entry e "
-        "left join entry_embedding x on x.entry_id = e.id")
-    stale = [(r, entry_text(r)) for r in await cur.fetchall()]
+async def sync_embeddings(pool, batch=16):
+    """Embed every entry whose text changed since its last embedding. Returns the count embedded.
+
+    It checks out a connection to read and one per batch to store, never one while Ollama works. The pool holds 4."""
+    async with pool.connection() as conn:
+        if not await has_vector(conn):
+            return 0
+        cur = await conn.execute(
+            "select e.id, e.title, e.body, e.evidence, e.search_text, x.content_sha256 from entry e "
+            "left join entry_embedding x on x.entry_id = e.id")
+        rows = await cur.fetchall()
+    stale = [(r, entry_text(r)) for r in rows]
     stale = [(r, t) for r, t in stale if r["content_sha256"] != content_sha(t)]
     async with httpx.AsyncClient(timeout=300) as client:
         for i in range(0, len(stale), batch):
             chunk = stale[i:i + batch]
             vecs = await embed([t for _, t in chunk], client)
-            for (r, t), v in zip(chunk, vecs):
-                await conn.execute(
-                    "insert into entry_embedding (entry_id, model, content_sha256, embedding) values (%s, %s, %s, %s::vector) "
-                    "on conflict (entry_id) do update set model = excluded.model, content_sha256 = excluded.content_sha256, "
-                    "embedding = excluded.embedding, updated_at = now()",
-                    (r["id"], config.embed_model, content_sha(t), to_pgvector(v)))
-            await conn.commit()
+            async with pool.connection() as conn:
+                for (r, t), v in zip(chunk, vecs):
+                    await conn.execute(UPSERT, (r["id"], config.embed_model, content_sha(t), to_pgvector(v)))
     return len(stale)
+
+
+async def embed_entry(pool, entry_id):
+    """Embed one fresh entry now, so vector search sees it before the next sync. False when there's no vector table.
+
+    Like sync_embeddings, it holds no connection while Ollama works, so a slow embedding never starves recall."""
+    async with pool.connection() as conn:
+        if not await has_vector(conn):
+            return False
+        cur = await conn.execute("select title, body, evidence, search_text from entry where id = %s", (entry_id,))
+        text = entry_text(await cur.fetchone())
+    # A write waits on this, so give up sooner than the bulk sync does.
+    async with httpx.AsyncClient(timeout=30) as client:
+        [vec] = await embed([text], client)
+    async with pool.connection() as conn:
+        await conn.execute(UPSERT, (entry_id, config.embed_model, content_sha(text), to_pgvector(vec)))
+    return True
 
 
 async def pull_model():

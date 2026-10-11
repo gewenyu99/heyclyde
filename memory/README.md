@@ -1,6 +1,6 @@
 # memory
 
-Wen's personal knowledge graph, served to Claude Code and Codex through one MCP endpoint. It runs the PKG v1 experiment: several retrieval arms read the same store, and the arm your agents follow most consistently wins.
+Wen's personal knowledge graph, served to Claude Code and Codex through one MCP endpoint. It runs the PKG v1 experiment: several retrieval arms read the same store, and the arm your agents follow most consistently wins. lv-flow hands work between stages through it, over HTTP.
 
 Phase 0 is built. The index and hybrid arms serve live, hooks log every session, and the decider run-off has its keyword baseline. The spreading and hindsight arms and the idle audit come in Phase 1.
 
@@ -11,7 +11,7 @@ Phase 0 is built. The index and hybrid arms serve live, hooks log every session,
 | `seed/build.py` | Validates a Markdown vault and compiles it to `seed.sql` and `INDEX.md` |
 | `seed/import_chats.py` | Turns Grok, Codex and claude.ai exports into inbox lines |
 | `db/` | Postgres 17 image with pgvector and pg_jieba, plus the runtime schema |
-| `api/kb/` | The server: MCP tools, hook endpoint, arms, embeddings, decider |
+| `api/kb/` | The server: MCP tools, hook endpoint, HTTP routes, write path, arms, embeddings, decider |
 | `hooks/` | `kb-hook` and the Claude Code and Codex config snippets |
 | `deploy/` | Droplet provisioning, compose stack, Caddy, restic backups |
 | `eval/` | Retrieval eval on the practice queries, decider run-off on the reactions |
@@ -48,9 +48,35 @@ The first pass found an implementation bug, not a design limit. Hybrid's fusion 
 
 ## The tools
 
-- **`recall(query, task)`.** Searches memory. The packet starts with a retrieval id.
-- **`get_entry(id)`.** Opens one entry with its evidence, source and links.
+- **`recall(query, task, scope)`.** Searches memory. The packet starts with a retrieval id. A `run:<id>` scope adds that run's entries.
+- **`get_entry(id)`.** Opens one entry with its evidence, source, links and blobs.
+- **`get_blob(sha256, offset, limit)`.** Reads a blob as text, 20,000 characters a page. Each page says how to get the next.
+- **`remember(...)`.** Writes one note in a `run:<id>` scope. An agent's writes are always drafts, under its own session as the source, with an id kb generates.
 - **`feedback(retrieval_id, verdict)`.** The agent's own report. Logged, never moves weights alone.
+
+## Runs and blobs
+
+Each lv-flow run gets its own scope, `run:<id>`. Its stages leave notes there, and the next stage recalls them.
+
+- **Runs stay out of normal recalls.** A recall without a scope never sees `run:` entries. With `scope="run:abc"`, that run's entries join the candidates and their scores are multiplied by `KB_SCOPE_BOOST`, default 3. Other runs stay hidden. Both arms filter and boost the same way.
+- **A run's project comes first.** Write a `projects` entry in scope `run:<id>`, then point every note at it with `project`.
+- **Writes keep the seed's rules.** `remember` checks each entry against the `seed/build.py` invariants and writes it in one transaction. Title, body and evidence stop at 300, 4,000 and 20,000 characters.
+- **A replacement reaches every recall the old entry did.** An entry supersedes only entries at or below its own authority, and a `run:` entry only entries in its run. Hybrid stops serving a superseded entry. The index arm lists it struck through and never boosts it.
+- **A resend lands on its entry.** The same payload sent again returns the entry it made, with or without an `id`. A different payload under a taken id is refused.
+- **Blobs hold long evidence.** Attach them as `{name, media_type, text}`, or `base64` for binary content. An entry takes 16 blobs at most, 4 MiB each and 8 MiB in all. kb stores each one once per sha256, however many entries attach it. A blob only private entries reach comes back as `[private blob: ask Wen]`, and a private entry lists its blobs by count only.
+
+The payload is in the [memory contract](../harness/PLAN.md#memory-contract).
+
+## The HTTP routes
+
+Each route takes one of two bearer tokens. Every agent session holds `KB_TOKEN`. Only lv-flow holds `KB_RUNTIME_TOKEN`, so keep it out of every agent's environment. Bad input gets a 400 with the reason, and a body over 12 MiB gets a 413.
+
+| Route | Body | Returns |
+|---|---|---|
+| `POST /entries` | One entry, as `remember` takes it | `{id, blobs, embedded}`. With `KB_RUNTIME_TOKEN` it may write up to `approved`. With `KB_TOKEN` it writes as `remember` does |
+| `GET /entries/{id}` | | The rendered entry, or a 404 |
+| `GET /blobs/{sha}` | | The raw bytes with their media type. A private blob gets a 403 |
+| `POST /recall` | `{query, task, scope}` | The packet text |
 
 ## Run the tests
 

@@ -9,9 +9,13 @@ def _list(name, default):
 @dataclass(frozen=True)
 class Config:
     database_url: str = field(default_factory=lambda: os.environ.get("DATABASE_URL", "postgresql://kb:kb@localhost:5432/kb"))
+    # Every agent session holds KB_TOKEN. Only lv-flow holds KB_RUNTIME_TOKEN, the one that writes above draft.
     token: str = field(default_factory=lambda: os.environ.get("KB_TOKEN", ""))
+    runtime_token: str = field(default_factory=lambda: os.environ.get("KB_RUNTIME_TOKEN", ""))
     ollama_url: str = field(default_factory=lambda: os.environ.get("OLLAMA_URL", "http://localhost:11434"))
     embed_model: str = field(default_factory=lambda: os.environ.get("EMBED_MODEL", "bge-m3"))
+    # How often the background sync looks for entries without an embedding, like a write whose embedding failed.
+    embed_sync_seconds: float = field(default_factory=lambda: float(os.environ.get("KB_EMBED_SYNC_SECONDS", "300")))
     # Arms a new session can draw. Phase 0 serves index and hybrid. spreading and hindsight join in Phase 1.
     arms: list = field(default_factory=lambda: _list("KB_ARMS", "index,hybrid"))
     packet_items: int = 8
@@ -22,6 +26,8 @@ class Config:
     rrf_k: float = field(default_factory=lambda: float(os.environ.get("KB_RRF_K", "10")))
     vec_weight: float = field(default_factory=lambda: float(os.environ.get("KB_VEC_WEIGHT", "1.5")))
     index_draft_factor: float = field(default_factory=lambda: float(os.environ.get("KB_INDEX_DRAFT_FACTOR", "0.5")))
+    # A scoped recall multiplies its own scope's scores by this, so a run's handoff notes lead the packet.
+    scope_boost: float = field(default_factory=lambda: float(os.environ.get("KB_SCOPE_BOOST", "3.0")))
 
 
 config = Config()

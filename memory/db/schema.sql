@@ -50,6 +50,18 @@ alter table entry add column if not exists tsv_zh tsvector generated always as (
 create index if not exists entry_tsv_en on entry using gin (tsv_en);
 create index if not exists entry_tsv_zh on entry using gin (tsv_zh);
 
+-- Runtime writes (kb/write.py). origin tells a remembered entry from a seeded one. A blob is stored once per sha256 of
+-- its bytes, however many entries attach it.
+alter table entry add column if not exists origin text not null default 'seed';   -- 'seed' or 'runtime'
+alter table entry add column if not exists created_at timestamptz not null default now();
+-- sha256 of the payload remember was sent, so a resend finds its own entry and a different payload under that id is refused.
+alter table entry add column if not exists payload_sha256 text;
+create table if not exists blob (sha256 text primary key, media_type text not null, size integer not null,
+  content bytea not null, created_at timestamptz not null default now());
+create table if not exists entry_blob (entry_id text references entry(id) on delete cascade,
+  name text not null, sha256 text not null references blob(sha256), primary key (entry_id, name));
+create index if not exists entry_blob_sha256 on entry_blob (sha256);
+
 -- entry_current was created before the tsv columns existed, so recreate it to carry them.
 drop view if exists entry_current;
 create view entry_current as select e.* from entry e
@@ -90,6 +102,8 @@ create table if not exists retrieval (
   created_at timestamptz not null default now()
 );
 create index if not exists retrieval_session on retrieval (kb_session, created_at);
+-- A scoped recall sees a run's entries too, so the eval has to tell it from a plain one.
+alter table retrieval add column if not exists scope text;
 
 create table if not exists event (
   id bigserial primary key,
