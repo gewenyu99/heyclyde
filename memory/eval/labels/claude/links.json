@@ -1,0 +1,639 @@
+[
+ {
+  "src": "pkg-core-mechanisms",
+  "dst": "rx-core-design",
+  "type": "derived_from",
+  "confidence": 0.95,
+  "why": "Same quote. The decision is Wen's pushback written as a rule."
+ },
+ {
+  "src": "pkg-judging-agent-and-wen",
+  "dst": "rx-no-llm-judge",
+  "type": "derived_from",
+  "confidence": 0.95,
+  "why": "Same quote. The no-jury decision came from this reaction."
+ },
+ {
+  "src": "pkg-negative-signal-wen-reaction",
+  "dst": "rx-react-to-failures",
+  "type": "derived_from",
+  "confidence": 0.95,
+  "why": "Same quote. The negative-signal rule came from this reaction."
+ },
+ {
+  "src": "pkg-fade-on-failed-retrieval",
+  "dst": "rx-why-days",
+  "type": "derived_from",
+  "confidence": 0.95,
+  "why": "Same quote. The no-calendar-decay rule came from this reaction."
+ },
+ {
+  "src": "pkg-recall-subagent-variant",
+  "dst": "pkg-filter-prune",
+  "type": "refines",
+  "confidence": 0.75,
+  "why": "The subagent is one of the two filter variants for the prune step."
+ },
+ {
+  "src": "pkg-no-freeze-check",
+  "dst": "pkg-draft-pin-approved",
+  "type": "contradicts",
+  "confidence": 0.55,
+  "why": "The draft gates training on probes staying 95% stable and exempts approved entries from learning. Wen rejected a learning freeze."
+ },
+ {
+  "src": "pkg-hooks-lifecycle",
+  "dst": "pkg-draft-pin-approved",
+  "type": "relates",
+  "confidence": 0.6,
+  "why": "The approved SessionStart hook injects pinned decisions, so pinning is partly in use."
+ },
+ {
+  "src": "pkg-audit-on-idle",
+  "dst": "pkg-hooks-lifecycle",
+  "type": "refines",
+  "confidence": 0.7,
+  "why": "The Stop hook that queues the audit is what makes the audit run on idle."
+ },
+ {
+  "src": "pkg-auditor-agent",
+  "dst": "pkg-negative-signal-wen-reaction",
+  "type": "relates",
+  "confidence": 0.65,
+  "why": "The auditor labels Wen's reactions, which are the negative signal."
+ },
+ {
+  "src": "pkg-decider-slot",
+  "dst": "pkg-negative-signal-wen-reaction",
+  "type": "relates",
+  "confidence": 0.7,
+  "why": "The decider does the pushback detection that turns Wen's reaction into a signal."
+ },
+ {
+  "src": "pkg-ollama-sub",
+  "dst": "pkg-decider-slot",
+  "type": "relates",
+  "confidence": 0.65,
+  "why": "A small Ollama Cloud model is one of the decider candidates."
+ },
+ {
+  "src": "pkg-filter-prune",
+  "dst": "pkg-fade-on-failed-retrieval",
+  "type": "relates",
+  "confidence": 0.6,
+  "why": "Both set weight updates. Filter rejections add a negative path signal beside Wen's reaction."
+ },
+ {
+  "src": "pkg-fade-on-failed-retrieval",
+  "dst": "ref-mnemion-prime",
+  "type": "exception_of",
+  "confidence": 0.6,
+  "why": "The reference has per-pattern half-life decay. Wen's arm drops time decay."
+ },
+ {
+  "src": "pkg-draft-four-arms",
+  "dst": "ref-mnemion-prime",
+  "type": "relates",
+  "confidence": 0.6,
+  "why": "The spreading arm is the Mnemion-faithful rebuild."
+ },
+ {
+  "src": "pref-arm-names",
+  "dst": "pkg-draft-four-arms",
+  "type": "refines",
+  "confidence": 0.75,
+  "why": "Renames the draft's A0 to A3 and adds no-memory as a named arm."
+ },
+ {
+  "src": "pkg-hindsight-arm",
+  "dst": "pkg-draft-four-arms",
+  "type": "supports",
+  "confidence": 0.8,
+  "why": "Approves the draft's fourth arm."
+ },
+ {
+  "src": "pkg-live-3-arms",
+  "dst": "pkg-draft-four-arms",
+  "type": "refines",
+  "confidence": 0.6,
+  "why": "Sets how many of the drafted arms go live."
+ },
+ {
+  "src": "pkg-phase0-retrieval-results",
+  "dst": "pkg-draft-four-arms",
+  "type": "relates",
+  "confidence": 0.6,
+  "why": "Results for the index and hybrid arms."
+ },
+ {
+  "src": "pkg-benefit-in-days",
+  "dst": "pkg-live-3-arms",
+  "type": "relates",
+  "confidence": 0.6,
+  "why": "Both set how the live test runs and when it stops."
+ },
+ {
+  "src": "pkg-clients",
+  "dst": "pkg-hooks-lifecycle",
+  "type": "relates",
+  "confidence": 0.65,
+  "why": "The hooks exist per client, Claude Code and Codex."
+ },
+ {
+  "src": "pkg-retrieval-carries-memory",
+  "dst": "pkg-scope-life",
+  "type": "relates",
+  "confidence": 0.6,
+  "why": "Memory is too big for context because it covers Wen's whole life."
+ },
+ {
+  "src": "pref-plans-are-inspiration",
+  "dst": "pkg-core-mechanisms",
+  "type": "relates",
+  "confidence": 0.7,
+  "why": "The arm kept close to Wen's work is the one with his core mechanisms."
+ },
+ {
+  "src": "pkg-deploy-cloud-init",
+  "dst": "pkg-server-where",
+  "type": "relates",
+  "confidence": 0.8,
+  "why": "How the server is deployed and where it ends up. --recreate changes the URL."
+ },
+ {
+  "src": "pkg-backups",
+  "dst": "pkg-deploy-cloud-init",
+  "type": "relates",
+  "confidence": 0.7,
+  "why": "Redeploys restore from the restic backups."
+ },
+ {
+  "src": "pkg-budget-cad50",
+  "dst": "pkg-server-where",
+  "type": "relates",
+  "confidence": 0.6,
+  "why": "The Droplet's monthly cost counts against the infra budget."
+ },
+ {
+  "src": "pkg-server-where",
+  "dst": "pkg-draft-multilingual-embed",
+  "type": "supports",
+  "confidence": 0.75,
+  "why": "bge-m3 runs in production, so the draft is implemented."
+ },
+ {
+  "src": "docs-draft-markdown-pattern",
+  "dst": "pref-evidence-over-hype",
+  "type": "derived_from",
+  "confidence": 0.6,
+  "why": "Adopt the durable pattern, defer new specs. Written right after Wen's unproven pushback."
+ },
+ {
+  "src": "vid-t140-research-scoped-strictly-to-recent-windo",
+  "dst": "pref-evidence-over-hype",
+  "type": "exception_of",
+  "confidence": 0.6,
+  "why": "For video model research Wen wants the last weeks only, which bends the prefer-proven-prior-art rule."
+ },
+ {
+  "src": "vid-t274-corrected-claude-segmind-does-have-wan-3",
+  "dst": "pref-live-pages",
+  "type": "supports",
+  "confidence": 0.85,
+  "why": "Stale catalog page beaten by the live model page."
+ },
+ {
+  "src": "vid-t216-research-flawed-krea-claimed-not-to-run",
+  "dst": "pref-live-pages",
+  "type": "supports",
+  "confidence": 0.85,
+  "why": "A stale page made Claude say Krea lacked Seedance 2.5."
+ },
+ {
+  "src": "vid-t200-called-pricing-research-garbage",
+  "dst": "pref-live-pages",
+  "type": "supports",
+  "confidence": 0.75,
+  "why": "Wen demanded browser verification of prices."
+ },
+ {
+  "src": "vid-t200-prices-in-cad-per-second-at-480p-verifie",
+  "dst": "vid-t200-called-pricing-research-garbage",
+  "type": "derived_from",
+  "confidence": 0.8,
+  "why": "Same turn. The pricing format rule came out of the garbage reaction."
+ },
+ {
+  "src": "vid-t196-skeptical-of-unsourced-benchmark-claims",
+  "dst": "pref-evidence-over-hype",
+  "type": "supports",
+  "confidence": 0.75,
+  "why": "Pushback on claims with no source."
+ },
+ {
+  "src": "vid-t196-skeptical-of-unsourced-benchmark-claims",
+  "dst": "vid-reviews-unreliable",
+  "type": "supports",
+  "confidence": 0.6,
+  "why": "Benchmarks without a source are the unreliable reviews in action."
+ },
+ {
+  "src": "vid-minimax-dropped",
+  "dst": "pref-evidence-over-hype",
+  "type": "supports",
+  "confidence": 0.6,
+  "why": "Wen called H3 overhyped after testing."
+ },
+ {
+  "src": "vid-kling3-poor",
+  "dst": "pref-evidence-over-hype",
+  "type": "supports",
+  "confidence": 0.6,
+  "why": "Poor in Wen's tests despite vendor praise."
+ },
+ {
+  "src": "vid-t090-wants-concise-sourced-model-specific-adv",
+  "dst": "pref-version-scoped-sources",
+  "type": "supports",
+  "confidence": 0.75,
+  "why": "Asked for advice specific to Seedance 2.5 only."
+ },
+ {
+  "src": "vid-t090-wants-concise-sourced-model-specific-adv",
+  "dst": "pref-terse-precise",
+  "type": "supports",
+  "confidence": 0.6,
+  "why": "Asked for concise, sourced advice."
+ },
+ {
+  "src": "vid-t140-research-scoped-strictly-to-recent-windo",
+  "dst": "pref-version-scoped-sources",
+  "type": "relates",
+  "confidence": 0.6,
+  "why": "Both narrow research scope, one by date, one by version."
+ },
+ {
+  "src": "vid-t280-told-claude-to-stop-surfacing-old-news",
+  "dst": "vid-t140-research-scoped-strictly-to-recent-windo",
+  "type": "supports",
+  "confidence": 0.65,
+  "why": "Old news annoyed Wen, the recency rule prevents it."
+ },
+ {
+  "src": "vid-t034-wants-claude-to-fetch-content-itself-not",
+  "dst": "vid-t282-do-the-searches-instead-of-asking-him",
+  "type": "relates",
+  "confidence": 0.7,
+  "why": "Both say do the legwork instead of handing it back to Wen."
+ },
+ {
+  "src": "vid-krea-removed-seedance",
+  "dst": "rx-krea-removed",
+  "type": "derived_from",
+  "confidence": 0.85,
+  "why": "Same quote. The observation is what the reaction reported."
+ },
+ {
+  "src": "vid-wan3-callable",
+  "dst": "rx-wan-ga",
+  "type": "derived_from",
+  "confidence": 0.85,
+  "why": "Same quote. The observation is what the reaction reported."
+ },
+ {
+  "src": "vid-t264-insisted-wan-3-0-is-ga-search-from-the-2",
+  "dst": "vid-draft-wan-ga-unannounced",
+  "type": "corrects",
+  "confidence": 0.85,
+  "why": "Wen corrected the unannounced claim."
+ },
+ {
+  "src": "vid-t274-corrected-claude-segmind-does-have-wan-3",
+  "dst": "vid-wan3-callable",
+  "type": "supports",
+  "confidence": 0.8,
+  "why": "Segmind serves Wan 3.0."
+ },
+ {
+  "src": "vid-krea-removed-seedance",
+  "dst": "vid-t212-krea-works-incredibly-well-for-seedance",
+  "type": "contradicts",
+  "confidence": 0.6,
+  "why": "Later in the same chat Krea no longer offered Seedance 2.5. Nothing marks the older one stale."
+ },
+ {
+  "src": "vid-t216-generated-hundreds-of-seedance-2-5-clips",
+  "dst": "vid-t212-krea-works-incredibly-well-for-seedance",
+  "type": "supports",
+  "confidence": 0.8,
+  "why": "Hundreds of clips on Krea back the claim."
+ },
+ {
+  "src": "vid-t216-research-flawed-krea-claimed-not-to-run",
+  "dst": "vid-t216-generated-hundreds-of-seedance-2-5-clips",
+  "type": "relates",
+  "confidence": 0.8,
+  "why": "Same turn. The clip count was Wen's evidence against the stale claim."
+ },
+ {
+  "src": "vid-t288-mobile-options-exclude-dreamina-and-krea",
+  "dst": "vid-krea-removed-seedance",
+  "type": "relates",
+  "confidence": 0.6,
+  "why": "Krea is out for mobile."
+ },
+ {
+  "src": "vid-t288-mobile-options-exclude-dreamina-and-krea",
+  "dst": "vid-t248-wants-mobile-ios-access-to-wan-3-0-seeda",
+  "type": "relates",
+  "confidence": 0.75,
+  "why": "The exclusion answers the mobile need."
+ },
+ {
+  "src": "vid-t058-called-dreamina-pricing-a-scam",
+  "dst": "vid-t288-mobile-options-exclude-dreamina-and-krea",
+  "type": "supports",
+  "confidence": 0.6,
+  "why": "Dreamina's pricing is why it is ruled out."
+ },
+ {
+  "src": "vid-t128-pushed-back-on-overspecced-gpu",
+  "dst": "vid-draft-blackwell",
+  "type": "corrects",
+  "confidence": 0.6,
+  "why": "Wen called the RTX PRO 6000 excessive. The draft keeps it as a future option."
+ },
+ {
+  "src": "vid-t254-gpt-image-2-is-the-best-image-model-for",
+  "dst": "vid-draft-seedream-asian",
+  "type": "contradicts",
+  "confidence": 0.65,
+  "why": "Wen tested and GPT Image 2 won. The draft guessed Seedream 5 would."
+ },
+ {
+  "src": "vid-t210-byteplus-modelark-not-working-well",
+  "dst": "vid-draft-byteplus-not-canada",
+  "type": "relates",
+  "confidence": 0.6,
+  "why": "Wen tried ModelArk, which the draft says is not sold in Canada."
+ },
+ {
+  "src": "vid-t152-h3-via-wavespeed-hosted-api-also-very-ba",
+  "dst": "vid-minimax-dropped",
+  "type": "supports",
+  "confidence": 0.85,
+  "why": "Bad on a hosted API too, not just his build."
+ },
+ {
+  "src": "vid-t160-h3-dialog-mangled-and-stills-bad",
+  "dst": "vid-minimax-dropped",
+  "type": "supports",
+  "confidence": 0.85,
+  "why": "Dialog and stills fail too."
+ },
+ {
+  "src": "vid-t168-h3-breaks-when-demo-prompt-is-slightly-a",
+  "dst": "vid-minimax-dropped",
+  "type": "supports",
+  "confidence": 0.85,
+  "why": "Only demo prompts work, the drop reason."
+ },
+ {
+  "src": "vid-t154-clarified-h3-failure-is-total-collapse-n",
+  "dst": "vid-minimax-dropped",
+  "type": "supports",
+  "confidence": 0.75,
+  "why": "Total collapse, not mediocrity."
+ },
+ {
+  "src": "vid-t286-minimax-h3-quality-inconsistent-across-h",
+  "dst": "vid-minimax-dropped",
+  "type": "relates",
+  "confidence": 0.6,
+  "why": "Host variance is part of the H3 story."
+ },
+ {
+  "src": "vid-t160-told-claude-to-stop-fixating-on-motion",
+  "dst": "vid-t154-clarified-h3-failure-is-total-collapse-n",
+  "type": "relates",
+  "confidence": 0.75,
+  "why": "Both corrected Claude's motion framing of H3."
+ },
+ {
+  "src": "vid-t158-told-claude-to-stop-arguing-and-answer-t",
+  "dst": "vid-t160-told-claude-to-stop-fixating-on-motion",
+  "type": "relates",
+  "confidence": 0.6,
+  "why": "Same thread. Claude kept arguing instead of answering."
+ },
+ {
+  "src": "vid-t158-told-claude-to-stop-arguing-and-answer-t",
+  "dst": "vid-t156-seedance-handles-text-prompted-fight-sce",
+  "type": "relates",
+  "confidence": 0.7,
+  "why": "Consecutive turns. Claude doubted Wen's own results and kept pushing."
+ },
+ {
+  "src": "vid-t188-linkedin-h3-compute-ratio-explained-his",
+  "dst": "vid-t100-h3-15s-clip-took-30-min-on-runcomfy-x-la",
+  "type": "relates",
+  "confidence": 0.75,
+  "why": "The compute ratio explained the 30-minute render."
+ },
+ {
+  "src": "vid-t108-runcomfy-judged-terrible-for-h3-wants-ma",
+  "dst": "vid-runcomfy-rejected",
+  "type": "supports",
+  "confidence": 0.8,
+  "why": "Wen's verdict on RunComfy."
+ },
+ {
+  "src": "vid-t016-rejected-runcomfy-pro-subscription-29-99",
+  "dst": "pref-payg",
+  "type": "supports",
+  "confidence": 0.85,
+  "why": "Refused a monthly plan, stayed pay as you go."
+ },
+ {
+  "src": "vid-t002-gpu-cloud-budget-under-100-month",
+  "dst": "pref-payg",
+  "type": "supports",
+  "confidence": 0.7,
+  "why": "Budget set with pay per use preferred."
+ },
+ {
+  "src": "vid-t006-wants-comfyui-on-per-second-gpu-or-cloud",
+  "dst": "vid-t002-gpu-cloud-budget-under-100-month",
+  "type": "relates",
+  "confidence": 0.75,
+  "why": "Same $100 cap restated with the tool choice."
+ },
+ {
+  "src": "vid-t144-test-via-api-first-runpod-later",
+  "dst": "vid-t006-wants-comfyui-on-per-second-gpu-or-cloud",
+  "type": "exception_of",
+  "confidence": 0.55,
+  "why": "For trying new models, APIs come before a ComfyUI pod."
+ },
+ {
+  "src": "vid-t142-open-video-models-feel-years-behind-seed",
+  "dst": "vid-production-models",
+  "type": "supports",
+  "confidence": 0.7,
+  "why": "Open models lost to Seedance 2.5."
+ },
+ {
+  "src": "vid-t170-skip-wan-2-2-already-on-wan-3-0",
+  "dst": "vid-production-models",
+  "type": "supports",
+  "confidence": 0.6,
+  "why": "Wen moved past Wan 2.2 to Wan 3.0."
+ },
+ {
+  "src": "vid-t172-krea-tests-done-dropped-from-list",
+  "dst": "vid-draft-try-list",
+  "type": "relates",
+  "confidence": 0.6,
+  "why": "The Krea items on the try list were tested and dropped."
+ },
+ {
+  "src": "vid-t220-segmind-is-good-for-seedance-2-5",
+  "dst": "vid-segmind-cheapest",
+  "type": "supports",
+  "confidence": 0.7,
+  "why": "Segmind works for him as well as being cheap."
+ },
+ {
+  "src": "vid-t072-runcomfy-sells-seedance-2-5-r2v-480p-at",
+  "dst": "vid-segmind-cheapest",
+  "type": "supports",
+  "confidence": 0.6,
+  "why": "RunComfy's $0.20/s is above Segmind's invoice rate."
+ },
+ {
+  "src": "vid-t072-runcomfy-sells-seedance-2-5-r2v-480p-at",
+  "dst": "vid-t070-told-claude-it-was-wrong-about-runcomfy",
+  "type": "derived_from",
+  "confidence": 0.7,
+  "why": "The price came from the endpoint Wen pasted when correcting Claude."
+ },
+ {
+  "src": "vid-t236-doubted-video-reference-is-cheaper-claim",
+  "dst": "vid-segmind-invoice-rate",
+  "type": "relates",
+  "confidence": 0.7,
+  "why": "Both about what Segmind actually charges."
+ },
+ {
+  "src": "vid-t232-challenged-claude-s-chained-cost-math",
+  "dst": "vid-segmind-invoice-rate",
+  "type": "relates",
+  "confidence": 0.7,
+  "why": "Both cite Wen's real bill for a 30s clip. The amounts differ, see issues."
+ },
+ {
+  "src": "vid-t244-desktop-trim-folder-that-tails-clips-to",
+  "dst": "vid-script-seedance-cost",
+  "type": "relates",
+  "confidence": 0.8,
+  "why": "The working trim watcher implements the trim folder."
+ },
+ {
+  "src": "vid-t150-fewer-accounts-to-manage",
+  "dst": "vid-accounts",
+  "type": "relates",
+  "confidence": 0.7,
+  "why": "Fewer new accounts means preferring the ones he has."
+ },
+ {
+  "src": "vid-t004-privacy-relaxed-ok-to-rent-remote-gpu-cl",
+  "dst": "vid-macbook-limit",
+  "type": "relates",
+  "confidence": 0.6,
+  "why": "The laptop can't run big models, so renting is the path."
+ },
+ {
+  "src": "vid-t252-nano-banana-is-bad-at-faces",
+  "dst": "vid-t254-gpt-image-2-is-the-best-image-model-for",
+  "type": "supports",
+  "confidence": 0.65,
+  "why": "The rival failed on faces in Wen's tests."
+ },
+ {
+  "src": "vid-t250-image-model-criteria-faces-fine-detail-n",
+  "dst": "vid-t254-gpt-image-2-is-the-best-image-model-for",
+  "type": "relates",
+  "confidence": 0.6,
+  "why": "The criteria the winner was judged on."
+ },
+ {
+  "src": "vid-t292-seedance-characters-have-near-identical",
+  "dst": "vid-needs",
+  "type": "supports",
+  "confidence": 0.7,
+  "why": "Body-type sameness is the East Asian physique need failing."
+ },
+ {
+  "src": "vid-t294-models-don-t-grasp-small-asian-frames",
+  "dst": "vid-needs",
+  "type": "supports",
+  "confidence": 0.7,
+  "why": "Same physique need."
+ },
+ {
+  "src": "vid-t060-character-consistency-across-videos-is-a",
+  "dst": "vid-needs",
+  "type": "supports",
+  "confidence": 0.75,
+  "why": "Restates the character consistency need as a requirement."
+ },
+ {
+  "src": "vid-t088-seedance-rejects-its-own-generated-refer",
+  "dst": "vid-t060-seedance-2-5-api-treats-every-face-as-re",
+  "type": "refines",
+  "confidence": 0.75,
+  "why": "The face filter even rejects Seedance's own outputs."
+ },
+ {
+  "src": "vid-t060-seedance-2-5-api-treats-every-face-as-re",
+  "dst": "vid-draft-character-refs",
+  "type": "relates",
+  "confidence": 0.6,
+  "why": "The face filter can block the carried character image the draft relies on."
+ },
+ {
+  "src": "vid-t302-clarified-novels-are-text-only",
+  "dst": "vid-t300-exploring-long-novel-writing-workflow-wi",
+  "type": "refines",
+  "confidence": 0.8,
+  "why": "Narrows the novel workflow to text only."
+ },
+ {
+  "src": "rx-recipe-from-scratch",
+  "dst": "cof-water-recipe",
+  "type": "relates",
+  "confidence": 0.85,
+  "why": "The misread task was the drops added to Eska."
+ },
+ {
+  "src": "cof-draft-p80-microns",
+  "dst": "cof-p80-setting",
+  "type": "relates",
+  "confidence": 0.8,
+  "why": "Micron conversion for the dial setting."
+ },
+ {
+  "src": "app-draft-individual-locks-name",
+  "dst": "app-incorporation-undecided",
+  "type": "relates",
+  "confidence": 0.75,
+  "why": "The seller-name lock is why incorporation is on the table."
+ },
+ {
+  "src": "app-pre-revenue",
+  "dst": "app-incorporation-undecided",
+  "type": "relates",
+  "confidence": 0.65,
+  "why": "No entity formed yet."
+ }
+]

@@ -1,0 +1,163 @@
+[
+  {
+    "id": "i-1",
+    "entries": [
+      "vid-krea-removed-seedance",
+      "vid-t212-krea-works-incredibly-well-for-seedance",
+      "vid-t216-generated-hundreds-of-seedance-2-5-clips"
+    ],
+    "type": "temporal_or_context_conflict",
+    "why": "Successful Krea use and removal coexist without timestamps or surface qualifiers sufficient to resolve present availability.",
+    "clarification": "Did removal affect only mobile, all surfaces, or a later date? Record date and surface."
+  },
+  {
+    "id": "i-2",
+    "entries": [
+      "pkg-filter-prune",
+      "pkg-fade-on-failed-retrieval",
+      "pkg-negative-signal-wen-reaction"
+    ],
+    "type": "signal_contract",
+    "why": "Filter rejection adjusts weights before delivery, while the other rules define negative signals through Wen’s reaction.",
+    "clarification": "Are filter-rejected paths an additional independent negative signal? Specify its multiplier and attribution."
+  },
+  {
+    "id": "i-3",
+    "entries": [
+      "pkg-draft-pin-approved",
+      "pkg-no-freeze-check",
+      "pkg-retrieval-carries-memory"
+    ],
+    "type": "draft_design_tension",
+    "why": "Pinned approved decisions bypass learning and always surface, whereas retrieval and filtering carry the life-wide memory and freezing is rejected.",
+    "clarification": "Confirm whether selective in-scope decision pins remain intended; distinguish pinning from freezing learning."
+  },
+  {
+    "id": "i-4",
+    "entries": [
+      "vid-t188-linkedin-h3-compute-ratio-explained-his"
+    ],
+    "type": "polarity_label",
+    "why": "Evidence “this explains a lot” appears appreciative of the explanation, yet polarity is negative and cause research.",
+    "clarification": "Relabel assistant reaction separately from dissatisfaction with H3; inspect preceding turn."
+  },
+  {
+    "id": "i-5",
+    "entries": [
+      "vid-t058-called-dreamina-pricing-a-scam"
+    ],
+    "type": "target_attribution",
+    "why": "Negative reaction targets Dreamina pricing, not necessarily the assistant’s research.",
+    "clarification": "Mark target as provider unless transcript shows assistant error."
+  },
+  {
+    "id": "i-6",
+    "entries": [
+      "vid-t300-exploring-long-novel-writing-workflow-wi",
+      "vid-t302-clarified-novels-are-text-only"
+    ],
+    "type": "scope",
+    "why": "Text-only novel workflow is stored under film and proj-video.",
+    "clarification": "Should these live in a writing domain/project, with cross-links to film only if relevant?"
+  },
+  {
+    "id": "i-7",
+    "entries": [
+      "docs-draft-markdown-pattern",
+      "docs-draft-measure-yourself"
+    ],
+    "type": "scope",
+    "why": "Project-specific draft recommendations are global and could be retrieved as universal accepted instructions.",
+    "clarification": "Constrain to agent-docs/pkg research scope and preserve draft status."
+  },
+  {
+    "id": "i-8",
+    "entries": [
+      "vid-segmind-invoice-rate",
+      "vid-t232-challenged-claude-s-chained-cost-math"
+    ],
+    "type": "currency_and_time",
+    "why": "Invoice entry uses an unlabeled dollar currency and a different amount from the approximate $2/30s correction.",
+    "clarification": "Record invoice date, currency, tax/FX and reference-input conditions before treating rates as comparable."
+  },
+  {
+    "id": "i-9",
+    "entries": [
+      "vid-minimax-dropped"
+    ],
+    "type": "unsupported_causal_certainty",
+    "why": "The entry mixes Wen’s observed failure with a categorical technical explanation about missing pipeline modules.",
+    "clarification": "Separate measured result from sourced or inferred module explanation."
+  },
+  {
+    "id": "i-10",
+    "entries": [
+      "app-draft-obca"
+    ],
+    "type": "potential_stale_legal_claim",
+    "why": "A draft recommendation contains a specific resident-director legal claim; private body prevents inspecting its support.",
+    "clarification": "Verify the dated primary legal source before using this recommendation; no external verification was performed in this labeling task."
+  },
+  {
+    "id": "i-11",
+    "entries": [
+      "vid-t192-uses-wavespeed-for-wan-3-0",
+      "vid-wan3-via-wavespeed"
+    ],
+    "type": "duplicate_summary",
+    "why": "Turn-level and summary entries largely repeat the same fact.",
+    "clarification": "Keep provenance links or consolidate so retrieval does not count repeated evidence independently."
+  },
+  {
+    "id": "i-12",
+    "entries": [
+      "vid-t134-deployed-runpod-a6000-at-0-56-hr",
+      "vid-runpod-a6000"
+    ],
+    "type": "duplicate_summary",
+    "why": "Turn-level and summary entries largely repeat the same fact.",
+    "clarification": "Keep provenance links or consolidate so retrieval does not count repeated evidence independently."
+  },
+  {
+    "id": "i-13",
+    "entries": [
+      "vid-t172-kling-3-0-is-bad",
+      "vid-kling3-poor"
+    ],
+    "type": "duplicate_summary",
+    "why": "Turn-level and summary entries largely repeat the same fact.",
+    "clarification": "Keep provenance links or consolidate so retrieval does not count repeated evidence independently."
+  },
+  {
+    "id": "i-14",
+    "entries": [
+      "vid-t156-seedance-handles-text-prompted-fight-sce",
+      "vid-seedance-fight-choreo"
+    ],
+    "type": "duplicate_summary",
+    "why": "Turn-level and summary entries largely repeat the same fact.",
+    "clarification": "Keep provenance links or consolidate so retrieval does not count repeated evidence independently."
+  },
+  {
+    "id": "i-15",
+    "entries": [
+      "pref-arm-names",
+      "pkg-draft-four-arms",
+      "pkg-hindsight-arm",
+      "pkg-recall-subagent-variant"
+    ],
+    "type": "terminology",
+    "why": "Active entries still use A0–A3 despite the naming preference.",
+    "clarification": "Update active titles/bodies to named arms while preserving historical aliases as metadata."
+  },
+  {
+    "id": "i-16",
+    "entries": [
+      "rx-app-useless",
+      "app-brand-name-goal"
+    ],
+    "type": "redacted_evidence",
+    "why": "Private bodies and empty evidence limit independent verification of the goal-specific probe.",
+    "clarification": "Probe relies only on visible titles and existing link; validate against private source before gold labeling."
+  }
+]

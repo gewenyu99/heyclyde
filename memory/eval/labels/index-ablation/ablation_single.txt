@@ -1,0 +1,76 @@
+base (to both, 0 re-embedded)
+  index: gold hit 81% of 21, misses: not-retrieved 2, ranked-out 2, leaks in 1/21, MRR 0.613
+    q03 ranked-out rank 9 leaks []
+    q09 ranked-out rank 15 leaks []
+    q10 not-retrieved rank None leaks []
+    q12 hit rank 2 leaks ['vid-draft-byteplus-canada']
+    q22 not-retrieved rank None leaks []
+  hybrid: gold hit 90% of 21, misses: ranked-out 2, leaks in 1/21, MRR 0.628 (en 0.546, vec 0.678)
+    q15 hit rank 1 rankers {'en': 1, 'zh': None, 'keyword': 1, 'vec': 1} leaks ['app-draft-obca']
+    q24 ranked-out rank 33 rankers {'en': 38, 'zh': None, 'keyword': 38, 'vec': 29} leaks []
+    q27 ranked-out rank 22 rankers {'en': 7, 'zh': None, 'keyword': 7, 'vec': None} leaks []
+pattern (to both, 187 re-embedded)
+  index: gold hit 81% of 21, misses: not-retrieved 2, ranked-out 2, leaks in 1/21, MRR 0.613
+    q03 ranked-out rank 9 leaks []
+    q09 ranked-out rank 15 leaks []
+    q10 not-retrieved rank None leaks []
+    q12 hit rank 2 leaks ['vid-draft-byteplus-canada']
+    q22 not-retrieved rank None leaks []
+  hybrid: gold hit 90% of 21, misses: ranked-out 2, leaks in 1/21, MRR 0.615 (en 0.545, vec 0.669)
+    q15 hit rank 1 rankers {'en': 1, 'zh': None, 'keyword': 1, 'vec': 1} leaks ['app-draft-obca']
+    q24 ranked-out rank 34 rankers {'en': 48, 'zh': None, 'keyword': 48, 'vec': 24} leaks []
+    q27 ranked-out rank 16 rankers {'en': 7, 'zh': None, 'keyword': 7, 'vec': 49} leaks []
+scope (to both, 187 re-embedded)
+  index: gold hit 81% of 21, misses: not-retrieved 2, ranked-out 2, leaks in 1/21, MRR 0.613
+    q03 ranked-out rank 9 leaks []
+    q09 ranked-out rank 15 leaks []
+    q10 not-retrieved rank None leaks []
+    q12 hit rank 2 leaks ['vid-draft-byteplus-canada']
+    q22 not-retrieved rank None leaks []
+  hybrid: gold hit 95% of 21, misses: ranked-out 1, leaks in 1/21, MRR 0.644 (en 0.563, vec 0.688)
+    q15 hit rank 1 rankers {'en': 1, 'zh': None, 'keyword': 1, 'vec': 1} leaks ['app-draft-obca']
+    q24 ranked-out rank 31 rankers {'en': 38, 'zh': None, 'keyword': 38, 'vec': 32} leaks []
+authority (to both, 187 re-embedded)
+  index: gold hit 81% of 21, misses: not-retrieved 2, ranked-out 2, leaks in 1/21, MRR 0.613
+    q03 ranked-out rank 9 leaks []
+    q09 ranked-out rank 15 leaks []
+    q10 not-retrieved rank None leaks []
+    q12 hit rank 2 leaks ['vid-draft-byteplus-canada']
+    q22 not-retrieved rank None leaks []
+  hybrid: gold hit 90% of 21, misses: ranked-out 2, leaks in 1/21, MRR 0.632 (en 0.546, vec 0.682)
+    q15 hit rank 1 rankers {'en': 1, 'zh': None, 'keyword': 1, 'vec': 1} leaks ['app-draft-obca']
+    q24 ranked-out rank 31 rankers {'en': 38, 'zh': None, 'keyword': 38, 'vec': 30} leaks []
+    q27 ranked-out rank 13 rankers {'en': 7, 'zh': None, 'keyword': 7, 'vec': 39} leaks []
+link_words (to both, 187 re-embedded)
+  index: gold hit 81% of 21, misses: not-retrieved 2, ranked-out 2, leaks in 1/21, MRR 0.613
+    q03 ranked-out rank 9 leaks []
+    q09 ranked-out rank 15 leaks []
+    q10 not-retrieved rank None leaks []
+    q12 hit rank 2 leaks ['vid-draft-byteplus-canada']
+    q22 not-retrieved rank None leaks []
+  hybrid: gold hit 90% of 21, misses: ranked-out 2, leaks in 1/21, MRR 0.624 (en 0.597, vec 0.700)
+    q15 hit rank 1 rankers {'en': 1, 'zh': None, 'keyword': 1, 'vec': 1} leaks ['app-draft-obca']
+    q24 ranked-out rank 32 rankers {'en': 39, 'zh': None, 'keyword': 39, 'vec': 36} leaks []
+    q27 ranked-out rank 21 rankers {'en': 7, 'zh': None, 'keyword': 7, 'vec': None} leaks []
+link_titles (to both, 80 re-embedded)
+  index: gold hit 81% of 21, misses: not-retrieved 2, ranked-out 2, leaks in 1/21, MRR 0.613
+    q03 ranked-out rank 9 leaks []
+    q09 ranked-out rank 15 leaks []
+    q10 not-retrieved rank None leaks []
+    q12 hit rank 2 leaks ['vid-draft-byteplus-canada']
+    q22 not-retrieved rank None leaks []
+  hybrid: gold hit 90% of 21, misses: ranked-out 2, leaks in 1/21, MRR 0.619 (en 0.529, vec 0.687)
+    q15 hit rank 1 rankers {'en': 2, 'zh': None, 'keyword': 2, 'vec': 1} leaks ['app-draft-obca']
+    q24 ranked-out rank 26 rankers {'en': 16, 'zh': None, 'keyword': 16, 'vec': 28} leaks []
+    q27 ranked-out rank 21 rankers {'en': 7, 'zh': None, 'keyword': 7, 'vec': None} leaks []
+links (to both, 80 re-embedded)
+  index: gold hit 81% of 21, misses: not-retrieved 2, ranked-out 2, leaks in 1/21, MRR 0.613
+    q03 ranked-out rank 9 leaks []
+    q09 ranked-out rank 15 leaks []
+    q10 not-retrieved rank None leaks []
+    q12 hit rank 2 leaks ['vid-draft-byteplus-canada']
+    q22 not-retrieved rank None leaks []
+  hybrid: gold hit 90% of 21, misses: ranked-out 2, leaks in 1/21, MRR 0.621 (en 0.555, vec 0.688)
+    q15 hit rank 1 rankers {'en': 2, 'zh': None, 'keyword': 2, 'vec': 1} leaks ['app-draft-obca']
+    q24 ranked-out rank 24 rankers {'en': 17, 'zh': None, 'keyword': 17, 'vec': 19} leaks []
+    q27 ranked-out rank 21 rankers {'en': 7, 'zh': None, 'keyword': 7, 'vec': None} leaks []
