@@ -10,7 +10,7 @@ from conftest import compile_seed
 from kb import search
 from kb.config import config
 from kb.decider import Keywords, OpenAIDecisions
-from kb.server import BearerAuth
+from kb.server import BearerAuth, Credential, Throttle, client_key, console_off
 
 
 def test_seed_compiles_and_refuses_edited_evidence(seed_dir):
@@ -60,25 +60,107 @@ def test_keywords_spot_pushback():
     assert not asyncio.run(k.pushback("Gimme a few reasonable plans"))["pushback"]
 
 
+ADMIN = "a" * 32
+EVERYWHERE = Starlette(routes=[Route("/{path:path}", lambda r: PlainTextResponse("ok"))])
+
+
+def bearer(token):
+    return {"Authorization": f"Bearer {token}"}
+
+
 def test_bearer_auth_fails_closed():
-    inner = Starlette(routes=[Route("/x", lambda r: PlainTextResponse("ok")), Route("/healthz", lambda r: PlainTextResponse("ok"))])
-    assert TestClient(BearerAuth(inner, "")).get("/x").status_code == 401
-    c = TestClient(BearerAuth(inner, "tok"))
-    assert c.get("/x").status_code == 401
-    assert c.get("/x", headers={"Authorization": "Bearer nope"}).status_code == 401
-    assert c.get("/x", headers={"Authorization": "Bearer tok"}).status_code == 200
+    assert TestClient(BearerAuth(EVERYWHERE, Credential())).get("/mcp").status_code == 401
+    c = TestClient(BearerAuth(EVERYWHERE, Credential("tok")))
+    assert c.get("/mcp").status_code == 401
+    assert c.get("/mcp", headers=bearer("nope")).status_code == 401
+    assert c.get("/mcp", headers=bearer("tok")).status_code == 200
     assert c.get("/healthz").status_code == 200
 
 
 def test_bearer_auth_checks_the_token_hash():
     import hashlib
-    inner = Starlette(routes=[Route("/x", lambda r: PlainTextResponse("ok"))])
-    c = TestClient(BearerAuth(inner, "old", hashlib.sha256(b"pw").hexdigest()))
-    assert c.get("/x", headers={"Authorization": "Bearer pw"}).status_code == 200
-    assert c.get("/x", headers={"Authorization": "Bearer old"}).status_code == 401
-    assert c.get("/x", headers={"Authorization": "pw"}).status_code == 401
-    empty = TestClient(BearerAuth(inner, "", hashlib.sha256(b"").hexdigest()))
-    assert empty.get("/x", headers={"Authorization": "Bearer "}).status_code == 401
+    c = TestClient(BearerAuth(EVERYWHERE, Credential("old", hashlib.sha256(b"pw").hexdigest())))
+    assert c.get("/mcp", headers=bearer("pw")).status_code == 200
+    assert c.get("/mcp", headers=bearer("old")).status_code == 401
+    assert c.get("/mcp", headers={"Authorization": "pw"}).status_code == 401
+    empty = TestClient(BearerAuth(EVERYWHERE, Credential("", hashlib.sha256(b"").hexdigest())))
+    assert empty.get("/mcp", headers={"Authorization": "Bearer "}).status_code == 401
+
+
+def test_each_path_takes_its_own_token():
+    c = TestClient(BearerAuth(EVERYWHERE, Credential("tok"), Credential(ADMIN)))
+    for path in ("/healthz", "/console", "/console/", "/console/app.js"):
+        assert c.get(path).status_code == 200, path
+    agent, admin = ("/mcp", "/hooks/Stop", "/messages/claude"), ("/", "/api/v1", "/api/v1/overview")
+    for path in agent:
+        assert c.get(path, headers=bearer("tok")).status_code == 200, path
+        assert c.get(path, headers=bearer(ADMIN)).status_code == 401, path
+    for path in admin:
+        assert c.get(path, headers=bearer(ADMIN)).status_code == 200, path
+        assert c.get(path, headers=bearer("tok")).status_code == 401, path
+    for path in ("/consolex", "/healthz/x", "/api/v1x", "/hooks", "/.well-known/oauth-protected-resource"):
+        for token in ("tok", ADMIN):
+            assert c.get(path, headers=bearer(token)).status_code == 401, path
+
+
+def test_the_console_stays_off_without_a_strong_admin_token():
+    import hashlib
+    agent = Credential("tok")
+    assert "Set KB_ADMIN_TOKEN" in console_off(agent, Credential())
+    assert "shorter than 32" in console_off(agent, Credential("a" * 31))
+    assert "not a SHA-256" in console_off(agent, Credential("", "beef"))
+    assert "agents' token" in console_off(Credential("t" * 40), Credential("t" * 40))
+    assert "agents' token" in console_off(Credential("t" * 40), Credential("", hashlib.sha256(b"t" * 40).hexdigest()))
+    assert console_off(agent, Credential(ADMIN)) is None
+    assert console_off(agent, Credential("", hashlib.sha256(b"short").hexdigest())) is None  # a hash can't show length
+    c = TestClient(BearerAuth(EVERYWHERE, agent, Credential("a" * 31)))
+    r = c.get("/api/v1/overview", headers=bearer("a" * 31))
+    assert r.status_code == 503 and "shorter than 32" in r.json()["error"]
+    assert c.get("/mcp", headers=bearer("tok")).status_code == 200
+
+
+def test_wrong_tokens_lock_the_address_out():
+    now = [0.0]
+    c = TestClient(BearerAuth(EVERYWHERE, Credential("tok"), Credential(ADMIN), Throttle(free=3, clock=lambda: now[0])))
+    assert [c.get("/mcp", headers=bearer("nope")).status_code for _ in range(3)] == [401, 401, 401]
+    assert c.get("/mcp", headers=bearer("tok")).status_code == 200  # three misses are free
+    assert c.get("/mcp", headers=bearer("nope")).status_code == 401  # the fourth locks for 1 s
+    r = c.get("/mcp", headers=bearer("tok"))  # locked: even the right token waits, so guessing can't go on
+    assert r.status_code == 429 and r.headers["retry-after"] == "1" and "1 second." in r.json()["error"]
+    assert c.get("/api/v1/overview", headers=bearer(ADMIN)).status_code == 200  # the admin side counts on its own
+    assert c.get("/mcp").status_code == 429
+    now[0] += 1.01
+    assert c.get("/mcp", headers=bearer("tok")).status_code == 200
+    assert c.get("/mcp", headers=bearer("nope")).status_code == 401  # the fifth locks for 2 s
+    now[0] += 1.5
+    assert c.get("/mcp", headers=bearer("tok")).status_code == 429
+    now[0] += 0.6
+    assert c.get("/mcp", headers=bearer("tok")).status_code == 200
+    for _ in range(5):
+        c.get("/mcp")  # no token is no guess
+    assert c.get("/mcp", headers=bearer("tok")).status_code == 200
+    now[0] += 3601  # an hour without a miss forgets them
+    assert c.get("/mcp", headers=bearer("nope")).status_code == 401
+    assert c.get("/mcp", headers=bearer("tok")).status_code == 200
+
+
+def test_throttle_caps_its_lockout_and_its_memory():
+    now = [0.0]
+    t = Throttle(free=1, cap=900, size=4, clock=lambda: now[0])
+    for _ in range(30):
+        t.miss(("admin", "1.2.3.4"))
+    assert t.wait(("admin", "1.2.3.4")) == 900
+    for i in range(10):
+        now[0] += 1
+        t.miss(("agent", f"10.0.0.{i}"))
+    assert len(t.seen) <= 4 and ("agent", "10.0.0.9") in t.seen
+
+
+def test_client_key_counts_ipv6_by_its_64():
+    assert client_key({"client": ("203.0.113.7", 5)}) == "203.0.113.7"
+    assert client_key({"client": ("2001:db8:1:2:aaaa::1", 5)}) == client_key({"client": ("2001:db8:1:2:bbbb::9", 5)})
+    assert client_key({"client": ("2001:db8:1:2::1", 5)}) != client_key({"client": ("2001:db8:1:3::1", 5)})
+    assert client_key({}) == ""
 
 
 class FakeDecisions:

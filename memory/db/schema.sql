@@ -99,6 +99,8 @@ create table if not exists event (
   received_at timestamptz not null default now()
 );
 create index if not exists event_session on event (session_id, received_at);
+-- The agent kb-hook names, claude or codex, so their hooks can be told apart. Older rows and get_entry rows have none.
+alter table event add column if not exists agent text;
 
 create table if not exists feedback (
   id bigserial primary key,
@@ -120,6 +122,18 @@ create table if not exists message (
   created_at timestamptz not null default now()
 );
 create index if not exists message_recipient on message (recipient, created_at);
+
+-- Every write made through the management API (/api/v1), with what it changed. target is entry:<id>, message:<id>,
+-- retrieval:<id> or embeddings.
+create table if not exists admin_audit (
+  id bigserial primary key,
+  at timestamptz not null default now(),
+  action text not null,
+  target text not null,
+  before jsonb,
+  after jsonb
+);
+create index if not exists admin_audit_target on admin_audit (target, at);
 
 -- The spreading arm's learnable parameters, one per (source pattern, link type, target pattern), starting at 1.0.
 create table if not exists link_type_weight (

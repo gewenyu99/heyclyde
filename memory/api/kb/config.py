@@ -12,6 +12,9 @@ class Config:
     token: str = field(default_factory=lambda: os.environ.get("KB_TOKEN", ""))
     # SHA-256 hex of the token. When set it replaces KB_TOKEN, so the server never stores the token itself.
     token_sha256: str = field(default_factory=lambda: os.environ.get("KB_TOKEN_SHA256", "").strip().lower())
+    # The console's own token, never the agents'. /api/v1 takes it and nothing else. Unset, the console is off.
+    admin_token: str = field(default_factory=lambda: os.environ.get("KB_ADMIN_TOKEN", ""))
+    admin_token_sha256: str = field(default_factory=lambda: os.environ.get("KB_ADMIN_TOKEN_SHA256", "").strip().lower())
     ollama_url: str = field(default_factory=lambda: os.environ.get("OLLAMA_URL", "http://localhost:11434"))
     embed_model: str = field(default_factory=lambda: os.environ.get("EMBED_MODEL", "bge-m3"))
     # Arms a new session can draw. Phase 0 serves index and hybrid. spreading and hindsight join in Phase 1.

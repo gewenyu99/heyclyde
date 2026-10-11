@@ -32,6 +32,8 @@ services:
       DATABASE_URL: postgresql://kb:${PG_PASSWORD}@db:5432/kb
       KB_TOKEN: ${KB_TOKEN:-}
       KB_TOKEN_SHA256: ${KB_TOKEN_SHA256:-}
+      KB_ADMIN_TOKEN: ${KB_ADMIN_TOKEN:-}
+      KB_ADMIN_TOKEN_SHA256: ${KB_ADMIN_TOKEN_SHA256:-}
       KB_ARMS: ${KB_ARMS:-index,hybrid}
       OLLAMA_URL: http://ollama:11434
       EMBED_MODEL: bge-m3

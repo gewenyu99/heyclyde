@@ -11,8 +11,9 @@ Phase 0 is built. The index and hybrid arms serve live, hooks log every session,
 | `seed/build.py` | Validates a Markdown vault and compiles it to `seed.sql` and `INDEX.md` |
 | `seed/import_chats.py` | Turns Grok, Codex and claude.ai exports into inbox lines |
 | `db/` | Postgres 17 image with pgvector and pg_jieba, plus the runtime schema |
-| `api/kb/` | The server: MCP tools, hook endpoint, arms, embeddings, decider |
-| `hooks/` | `kb-hook` and the Claude Code and Codex config snippets |
+| `api/kb/` | The server: MCP tools, hook endpoint, the console's API, arms, embeddings, decider |
+| `api/kb/console/` | Wen's console at `/console/`. It reads and edits the store through the API in [api/API.md](api/API.md), behind an admin token the agents never hold |
+| `hooks/` | `install.sh`, which connects Claude Code and Codex, plus `kb-hook` and both clients' config snippets |
 | `deploy/` | Droplet provisioning, compose stack, Caddy, restic backups |
 | `eval/` | Retrieval eval on the practice queries, decider run-off on the reactions |
 | `tests/` | Unit and database tests on a made-up vault |

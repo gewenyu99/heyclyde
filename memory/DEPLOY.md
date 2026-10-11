@@ -17,9 +17,20 @@ python memory/deploy/provision.py
 
 It creates a `s-2vcpu-4gb` Ubuntu 24.04 Droplet tagged `kb`, an SSH key at `~/.ssh/kb_ed25519`, and a cloud firewall that admits 22 and 443 only. Cloud-init installs Docker, restic and ufw and adds 2 GB of swap.
 
-It then writes `memory/deploy/.env` with a fresh `KB_TOKEN`, Postgres password and restic password. The domain is `kb.<ip-with-dashes>.sslip.io`, so Caddy gets a real certificate without a domain purchase. It tries to mint a Spaces key for backups. If the account refuses, fill `SPACES_KEY` and `SPACES_SECRET` by hand.
+It then writes `memory/deploy/.env` with a fresh `KB_TOKEN`, `KB_ADMIN_TOKEN`, Postgres password and restic password. The domain is `kb.<ip-with-dashes>.sslip.io`, so Caddy gets a real certificate without a domain purchase. It tries to mint a Spaces key for backups. If the account refuses, fill `SPACES_KEY` and `SPACES_SECRET` by hand.
 
-`.env` is gitignored. Never commit it. Set `KB_TOKEN_SHA256` to the SHA-256 hex of a password you pick, and the server checks that instead of `KB_TOKEN`. Then you install clients with your own password and never read it off the box.
+`.env` is gitignored. Never commit it. It holds two tokens, and they must differ.
+
+- **`KB_TOKEN` is the agents'.** MCP, the hooks and the inbox take it. Every agent can read it, so it opens nothing that writes as you.
+- **`KB_ADMIN_TOKEN` is the console's.** Only `/api/v1` takes it. That keeps an agent with Bash from editing your memory, approving its own drafts or reading private entries in full.
+
+Both are 43 random characters from `secrets.token_urlsafe(32)`. Keep them random, never a password you'd remember. The server refuses an admin token under 32 characters, and after 10 wrong tokens from one address it locks that address out, twice as long with each miss.
+
+To keep a token off the box, set `KB_TOKEN_SHA256` or `KB_ADMIN_TOKEN_SHA256` to its SHA-256 hex instead, and the server checks that. This prints a fresh token and its hash:
+
+```bash
+python3 -c 'import hashlib, secrets; t = secrets.token_urlsafe(32); print(t); print(hashlib.sha256(t.encode()).hexdigest())'
+```
 
 ## Ship
 
@@ -28,7 +39,9 @@ cd /path/to/pkg-seed && PKG_SEED_DIR=$PWD python /path/to/like-vincent/memory/se
 /path/to/like-vincent/memory/deploy/deploy.sh /path/to/pkg-seed/out
 ```
 
-`deploy.sh` copies the code and the compiled seed to `/opt/kb`, builds and starts the stack, loads `seed.sql`, applies `db/schema.sql`, restarts the API and installs the nightly backup cron. On start the API pulls bge-m3 into Ollama and embeds every entry. That takes about a minute on CPU, and the hybrid arm answers keyword-only until it finishes.
+`deploy.sh` copies the code and the compiled seed to `/opt/kb`, builds and starts the stack, loads `seed.sql` into an empty store, applies `db/schema.sql`, restarts the API and installs the nightly backup cron. On start the API pulls bge-m3 into Ollama and embeds every entry. That takes about a minute on CPU, and the hybrid arm answers keyword-only until it finishes.
+
+The database is the store of record, so a redeploy skips the seed once the store has entries. Loading it again would bring back every seed entry and link the console deleted. To import new vault entries anyway, run `KB_SEED=1 deploy.sh`. That also brings back the seed rows you deleted.
 
 Check it:
 
@@ -50,18 +63,25 @@ It encrypts the code, `.env` and the seed with a one-off key and uploads them to
 
 ## Connect the clients
 
-Claude Code, user scope so it fires in every repo:
+One command connects this machine's Claude Code and Codex. Rerun it after a redeploy or a token change.
 
 ```bash
-claude mcp add --transport http kb https://$KB_DOMAIN/mcp --header "Authorization: Bearer $KB_TOKEN" --scope user
-cp memory/hooks/kb-hook ~/.claude/kb-hook
+mem_pass=<the agents' token> memory/hooks/install.sh <droplet-ip>
 ```
 
-Then merge `memory/hooks/claude-settings.json` into `~/.claude/settings.json` with the real `KB_URL` and `KB_TOKEN`.
+The token is `KB_TOKEN`, never the admin token. It comes from `KB_INSTALL_TOKEN` or `mem_pass`. With neither set, it reads `KB_TOKEN` off the Droplet over SSH. The script checks the token against the server and never prints it.
+
+- **Claude Code.** It adds the MCP server at user scope, so it fires in every repo, and merges `claude-settings.json` into `~/.claude/settings.json`. It runs `claude` from PATH, else the newest CLI the Claude desktop app bundles. With neither, it skips Claude Code.
+- **Codex.** It writes the MCP server into `~/.codex/config.toml` and merges `codex-hooks.json` under `hooks` in `~/.codex/hooks.json`. Codex runs the hooks once you trust them with `/hooks` in the Codex CLI.
+- **Your own hooks stay.** A rerun replaces earlier kb entries only. That covers kb groups an older installer left at the top level of `hooks.json`, where Codex never looks, and hand-written curls to `/messages/codex`.
 
 `KB_TOKEN` lives in `/opt/kb/deploy/.env` on the Droplet. Without SSH, open the Droplet in the DigitalOcean dashboard, pick Access, then Launch Droplet Console, and run `grep KB_TOKEN /opt/kb/deploy/.env`. To SSH from your own machine, add your public key in that console with `echo '<your key>' >> /root/.ssh/authorized_keys`. Also register it with `doctl compute ssh-key import mac --public-key-file ~/.ssh/id_ed25519.pub` so you can find it again later.
 
-Codex: append `memory/hooks/codex-config.toml` to `~/.codex/config.toml` and export `KB_TOKEN`.
+## Open the console
+
+The console lives at `https://$KB_DOMAIN/console/`. Sign in with `KB_ADMIN_TOKEN`. The agents' token gets 401 there. Its API is in [api/API.md](api/API.md).
+
+A box provisioned before the console has no admin token, so the console says it is off and the log says why. MCP and the hooks keep serving. Add `KB_ADMIN_TOKEN=<43 random characters>` to `memory/deploy/.env` and deploy again. `deploy.sh` copies that file over the box's own, so an edit made only on the box is lost on the next deploy.
 
 ## Message your other agents
 
@@ -69,9 +89,9 @@ The server has a small message board, so your Claude Code and Codex agents can l
 
 - **`post_message(to, body)`.** MCP tool. `to` is `claude`, `codex` or `all`.
 - **`check_messages()`.** MCP tool. Returns unread messages and marks them read for that agent only.
-- **`kb-hook`.** On session start and on every prompt, it prints Claude's unread messages, so Claude Code sees them without asking.
+- **`kb-hook`.** On session start and on every prompt, it prints the agent's unread messages into its context. Claude Code and Codex both run it, so neither has to ask.
 
-Codex has no hooks, so the server's MCP instructions tell it to call `check_messages` when it starts a task.
+The server's MCP instructions also tell every agent to call `check_messages` when it starts a task. An agent without the hooks still sees its messages.
 
 ## Run the decider run-off
 

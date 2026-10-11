@@ -24,13 +24,19 @@ async def session_arm(conn, kb_session, client=None):
     return row["arm"]
 
 
-async def recall(conn, kb_session, query, task="", client=None):
-    started = time.monotonic()
-    arm = await session_arm(conn, kb_session, client)
+async def rank_and_pack(conn, arm, query, task=""):
+    """One arm's ranking and the packet recall delivers from it. Writes nothing, so the console can preview an arm."""
     ranked, degraded = await ARMS[arm](conn, f"{task}\n{query}".strip() if task else query)
     lines = all(line is not None for _, _, line in ranked)
     rows = {} if lines else await fetch_entries(conn, [eid for eid, _, _ in ranked[:config.packet_items * 2]])
     delivered, chunks = pack(ranked, rows)
+    return ranked, degraded, delivered, chunks, lines
+
+
+async def recall(conn, kb_session, query, task="", client=None):
+    started = time.monotonic()
+    arm = await session_arm(conn, kb_session, client)
+    ranked, degraded, delivered, chunks, lines = await rank_and_pack(conn, arm, query, task)
     rid = uuid.uuid4()
     await conn.execute(
         "insert into retrieval (id, kb_session, arm, query, task, candidates, delivered, latency_ms, degraded) "
@@ -38,13 +44,16 @@ async def recall(conn, kb_session, query, task="", client=None):
         (rid, kb_session, arm, query, task or None, json.dumps([{"id": e, "score": s} for e, s, _ in ranked]),
          json.dumps(delivered), int((time.monotonic() - started) * 1000), degraded))
     await conn.commit()
+    return f"retrieval {rid}\n\n{packet_text(chunks, lines)}"
+
+
+def packet_text(chunks, lines):
+    """What the agent reads under the retrieval id. The console's preview shows the same text."""
     if not chunks:
-        body = "Nothing in memory matches. Ask Wen rather than guessing."
-    elif lines:
-        body = "Index lines that match. Open any with get_entry(id).\n" + "\n".join(chunks)
-    else:
-        body = "\n\n".join(chunks)
-    return f"retrieval {rid}\n\n{body}"
+        return "Nothing in memory matches. Ask Wen rather than guessing."
+    if lines:
+        return "Index lines that match. Open any with get_entry(id).\n" + "\n".join(chunks)
+    return "\n\n".join(chunks)
 
 
 async def get_entry(conn, kb_session, entry_id):
@@ -81,12 +90,13 @@ async def feedback(conn, retrieval_id, verdict, entry_id=None, note=None, source
     return "Logged."
 
 
-async def hook(conn, event, payload):
-    """Store a lifecycle hook payload. A recall's PostToolUse also ties the MCP session to the client's session id."""
+async def hook(conn, event, payload, agent=None):
+    """Store a lifecycle hook payload, with the agent kb-hook names. A recall's PostToolUse also ties the MCP session to
+    the client's session id."""
     session_id = payload.get("session_id")
     await conn.execute(
-        "insert into event (session_id, event, payload) values (%s, %s, %s)",
-        (session_id, event, json.dumps(payload)))
+        "insert into event (session_id, event, payload, agent) values (%s, %s, %s, %s)",
+        (session_id, event, json.dumps(payload), agent))
     if event == "PostToolUse" and str(payload.get("tool_name", "")).endswith("recall") and session_id:
         m = RID.search(json.dumps(payload.get("tool_response", "")))
         if m:

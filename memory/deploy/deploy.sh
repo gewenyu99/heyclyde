@@ -1,6 +1,6 @@
 #!/bin/sh
 # Ship memory/ to the Droplet over SSH, then run deploy/install.sh there.
-#   deploy/deploy.sh [path/to/pkg-seed/out]
+#   [KB_SEED=1] deploy/deploy.sh [path/to/pkg-seed/out]
 # The seed directory is optional and private. It is copied straight to the Droplet and never into git.
 set -eu
 cd "$(dirname "$0")/.."
@@ -16,5 +16,6 @@ if [ -n "$SEED_OUT" ]; then
   tar czf - -C "$SEED_OUT" . | $SSH 'tar xzf - -C /opt/kb/seed-out'
 fi
 
-$SSH 'sh /opt/kb/deploy/install.sh'
+# KB_SEED=1 loads seed.sql into a store that already has entries. See install.sh.
+$SSH "${KB_SEED:+KB_SEED=1 }sh /opt/kb/deploy/install.sh"
 echo "https://$KB_DOMAIN/healthz"
