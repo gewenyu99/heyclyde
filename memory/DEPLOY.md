@@ -42,6 +42,8 @@ cd /path/to/pkg-seed && PKG_SEED_DIR=$PWD python /path/to/like-vincent/memory/se
 
 `deploy.sh` copies the code and the compiled seed to `/opt/kb`, builds and starts the stack, loads `seed.sql` into an empty store, applies `db/schema.sql`, restarts the API and installs the nightly backup cron. On start the API pulls bge-m3 into Ollama and embeds every entry. That takes about a minute on CPU, and the hybrid arm answers keyword-only until it finishes. After that it looks for entries without an embedding every 5 minutes, set by `KB_EMBED_SYNC_SECONDS`, so a write whose embedding failed gets one.
 
+New writes answer as soon as the database commits. Keyword search sees them immediately; the periodic pass adds vectors afterward. A database stall returns a retryable 503 before the write reaches two seconds.
+
 The database is the store of record, so a redeploy skips the seed once the store has entries. Loading it again would bring back every seed entry and link the console deleted. To import new vault entries anyway, run `KB_SEED=1 deploy.sh`. That also brings back the seed rows you deleted.
 
 Check it:

@@ -67,23 +67,6 @@ async def sync_embeddings(pool, batch=16):
     return len(stale)
 
 
-async def embed_entry(pool, entry_id):
-    """Embed one fresh entry now, so vector search sees it before the next sync. False when there's no vector table.
-
-    Like sync_embeddings, it holds no connection while Ollama works, so a slow embedding never starves recall."""
-    async with pool.connection() as conn:
-        if not await has_vector(conn):
-            return False
-        cur = await conn.execute("select title, body, evidence, search_text from entry where id = %s", (entry_id,))
-        text = entry_text(await cur.fetchone())
-    # A write waits on this, so give up sooner than the bulk sync does.
-    async with httpx.AsyncClient(timeout=30) as client:
-        [vec] = await embed([text], client)
-    async with pool.connection() as conn:
-        await conn.execute(UPSERT, (entry_id, config.embed_model, content_sha(text), to_pgvector(vec)))
-    return True
-
-
 async def pull_model():
     """Ask Ollama to pull the embedding model. A no-op when it is already present."""
     async with httpx.AsyncClient(timeout=None) as client:

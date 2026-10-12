@@ -32,6 +32,7 @@ from .search import ARMS
 log = logging.getLogger("kb")
 # 8 MiB of blobs, base64-encoded, plus the rest of the entry. A bigger body gets a 413 before anything parses it.
 MAX_REQUEST_BYTES = 12 * 1024 * 1024
+WRITE_DEADLINE_SECONDS = 1.5
 CONSOLE = Path(__file__).parent / "console"
 pool = AsyncConnectionPool(config.database_url, open=False, kwargs={"row_factory": dict_row})
 
@@ -172,7 +173,11 @@ async def http_remember(request: Request):
     if payload is None:
         return JSONResponse({"error": "body must be a JSON object"}, status_code=400)
     try:
-        return JSONResponse(await write.remember(pool, payload, request.scope.get("kb_role", "agent")))
+        result = await asyncio.wait_for(write.remember(pool, payload, request.scope.get("kb_role", "agent")),
+                                        timeout=WRITE_DEADLINE_SECONDS)
+        return JSONResponse(result)
+    except TimeoutError:
+        return JSONResponse({"error": "write temporarily unavailable; retry the same entry"}, status_code=503)
     except write.Refused as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
 

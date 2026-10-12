@@ -7,13 +7,9 @@ tests/test_units.py fails when the two drift.
 import base64
 import hashlib
 import json
-import logging
 import re
 from datetime import date
 
-from .embed import embed_entry
-
-log = logging.getLogger("kb")
 
 AUTHORITY = {"approved", "observed", "draft"}
 LINK_TYPES = {"supersedes", "supports", "contradicts", "derived_from", "relates", "part_of", "corrects"}
@@ -322,7 +318,7 @@ async def remember(pool, payload, caller):
     """Write one entry as `caller`, agent or runtime. Returns {id, blobs: [{name, sha256}], embedded}. Raises Refused,
     having written nothing, when the payload breaks an invariant. Sending the same payload again returns its entry.
 
-    It takes the pool rather than a connection, so the write holds one only while it writes, never while Ollama embeds."""
+    The periodic embedding pass processes committed entries after the response."""
     e = validate(payload, caller)
     async with pool.connection() as conn:  # commits when the block ends, rolls back on any error
         if not await _landed(conn, e):
@@ -332,13 +328,4 @@ async def remember(pool, payload, caller):
                 await conn.rollback()
                 await _landed(conn, e)
     return {"id": e["id"], "blobs": [{"name": b["name"], "sha256": b["sha256"]} for b in e["blobs"]],
-            "embedded": await _embed(pool, e["id"])}
-
-
-async def _embed(pool, entry_id):
-    """A failed embedding never fails the write. The entry stays keyword-searchable and the next sync embeds it."""
-    try:
-        return await embed_entry(pool, entry_id)
-    except Exception:
-        log.warning("couldn't embed %s, so the next sync will", entry_id, exc_info=True)
-        return False
+            "embedded": False}

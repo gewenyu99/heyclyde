@@ -305,46 +305,29 @@ async def test_an_agent_write_is_recorded_as_an_agent_session(conn, pool):
     assert await cur.fetchone() == write.AGENT_SOURCE
 
 
-async def test_an_embedding_failure_never_fails_the_write(conn, pool, monkeypatch):
+async def test_a_write_never_calls_the_embedding_service(conn, pool, monkeypatch):
     run = await new_run(pool)
-    if not await embed.has_vector(conn):
-        calls = []
+    async def forbidden(*args, **kwargs):
+        raise AssertionError("embedding started during a write")
 
-        async def fake_embed(texts, client=None):
-            calls.append(texts)
-            raise AssertionError("no vector table, so nothing to embed")
-        monkeypatch.setattr(embed, "embed", fake_embed)
-        assert (await write.remember(pool, note(run), "agent"))["embedded"] is False
-        assert calls == []
-        monkeypatch.undo()
-
-    async def has_vector(conn):
-        return True
-    monkeypatch.setattr(embed, "has_vector", has_vector)  # Ollama sits on a dead port, so embed() raises
+    monkeypatch.setattr(embed, "embed", forbidden)
     r = await write.remember(pool, note(run, title="Second note"), "agent")
     assert r["embedded"] is False
     cur = await conn.execute("select 1 from entry where id = %s", (r["id"],))
     assert await cur.fetchone()
 
 
-async def test_a_slow_embedding_holds_no_connection(db_url, monkeypatch):
-    """With one connection in the pool, a recall still gets it while Ollama works on the write's embedding."""
+async def test_a_write_releases_its_connection_before_recall(db_url):
+    """With one connection in the pool, recall can immediately follow a committed write."""
     one = AsyncConnectionPool(db_url, open=False, min_size=1, max_size=1, kwargs={"row_factory": dict_row})
     await one.open(wait=True)
     try:
         run = await new_run(one)
         recalled = []
 
-        async def has_vector(conn):
-            return True
-
-        async def slow_embed(texts, client=None):
-            async with one.connection(timeout=2) as conn:
-                recalled.append(await service.recall(conn, f"t-{uuid.uuid4()}", QUERY))
-            raise httpx.ConnectError("Ollama gave up")
-        monkeypatch.setattr(embed, "has_vector", has_vector)
-        monkeypatch.setattr(embed, "embed", slow_embed)
         assert (await write.remember(one, note(run), "agent"))["embedded"] is False
+        async with one.connection(timeout=2) as conn:
+            recalled.append(await service.recall(conn, f"t-{uuid.uuid4()}", QUERY))
         assert recalled and recalled[0].startswith("retrieval ")
     finally:
         await one.close()

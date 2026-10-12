@@ -2,6 +2,8 @@ import asyncio
 import hashlib
 import importlib.util
 import re
+import time
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import date
 
@@ -10,12 +12,54 @@ from starlette.applications import Starlette
 from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
+import httpx
 
 from conftest import MEMORY, compile_seed
 from kb import search, server, write
 from kb.config import config
 from kb.decider import Keywords, OpenAIDecisions
 from kb.server import BearerAuth, Credential, Throttle, client_key, console_off
+
+
+async def test_a_committed_write_answers_without_waiting_for_embedding(monkeypatch):
+    calls = []
+
+    class Pool:
+        @asynccontextmanager
+        async def connection(self):
+            yield object()
+
+    async def landed(conn, entry):
+        return True
+
+    async def slow_embedding(pool, entry_id):
+        calls.append(entry_id)
+        await asyncio.sleep(0.25)
+        return True
+
+    monkeypatch.setattr(write, "validate", lambda payload, caller: {"id": "probe", "blobs": []})
+    monkeypatch.setattr(write, "_landed", landed)
+    monkeypatch.setattr(write, "_embed", slow_embedding, raising=False)
+    started = time.monotonic()
+    result = await write.remember(Pool(), {}, "agent")
+    assert time.monotonic() - started < 0.1
+    assert result == {"id": "probe", "blobs": [], "embedded": False}
+    assert calls == []
+
+
+async def test_http_write_returns_retryable_error_before_a_database_stall(monkeypatch):
+    async def blocked(*args):
+        await asyncio.sleep(0.25)
+        return {"id": "late", "blobs": [], "embedded": False}
+
+    monkeypatch.setattr(write, "remember", blocked)
+    monkeypatch.setattr(server, "WRITE_DEADLINE_SECONDS", 0.05, raising=False)
+    app = Starlette(routes=[Route("/entries", server.http_remember, methods=["POST"])])
+    started = time.monotonic()
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/entries", json={"title": "test"})
+    assert time.monotonic() - started < 0.15
+    assert response.status_code == 503
 
 
 def test_seed_compiles_and_refuses_edited_evidence(seed_dir):
