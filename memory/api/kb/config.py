@@ -9,7 +9,7 @@ def _list(name, default):
 @dataclass(frozen=True)
 class Config:
     database_url: str = field(default_factory=lambda: os.environ.get("DATABASE_URL", "postgresql://kb:kb@localhost:5432/kb"))
-    # Every agent session holds KB_TOKEN. Only lv-flow holds KB_RUNTIME_TOKEN, the one that writes above draft.
+    # Every agent session holds KB_TOKEN. Only clyde-flow holds KB_RUNTIME_TOKEN, the one that writes above draft.
     token: str = field(default_factory=lambda: os.environ.get("KB_TOKEN", ""))
     # SHA-256 hex of the token. When set it replaces KB_TOKEN, so the server never stores the token itself.
     token_sha256: str = field(default_factory=lambda: os.environ.get("KB_TOKEN_SHA256", "").strip().lower())

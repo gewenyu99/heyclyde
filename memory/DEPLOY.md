@@ -21,8 +21,8 @@ It then writes `memory/deploy/.env` with a fresh `KB_TOKEN`, `KB_RUNTIME_TOKEN`,
 
 `.env` is gitignored. Never commit it. It holds three tokens, and they must all differ.
 
-- **`KB_TOKEN` is the agents'.** MCP, the hooks, the inbox and lv-flow's HTTP routes take it. Every agent can read it, so it opens nothing that writes as you: its writes are drafts in a run scope.
-- **`KB_RUNTIME_TOKEN` is the lv daemon's.** It opens the same paths as `KB_TOKEN`, and alone writes above draft. No worker ever gets it, and it never opens the console.
+- **`KB_TOKEN` is the agents'.** MCP, the hooks, the inbox and clyde-flow's HTTP routes take it. Every agent can read it, so it opens nothing that writes as you: its writes are drafts in a run scope.
+- **`KB_RUNTIME_TOKEN` is the clyde daemon's.** It opens the same paths as `KB_TOKEN`, and alone writes above draft. No worker ever gets it, and it never opens the console.
 - **`KB_ADMIN_TOKEN` is the console's.** Only `/api/v1` takes it. That keeps an agent with Bash from editing your memory, approving its own drafts or reading private entries in full.
 
 Both are 43 random characters from `secrets.token_urlsafe(32)`. Keep them random, never a password you'd remember. The server refuses an admin token under 32 characters, and after 10 wrong tokens from one address it locks that address out, twice as long with each miss.
@@ -94,7 +94,7 @@ The server has a small message board, so your Claude Code and Codex agents can l
 
 The server's MCP instructions also tell every agent to call `check_messages` when it starts a task. An agent without the hooks still sees its messages.
 
-lv-flow alone gets `KB_RUNTIME_TOKEN`. It writes observed and approved entries, so it never goes in an agent's settings, shell or worker environment. With `KB_TOKEN`, a write to `POST /entries` is held to what `remember` allows.
+clyde-flow alone gets `KB_RUNTIME_TOKEN`. It writes observed and approved entries, so it never goes in an agent's settings, shell or worker environment. With `KB_TOKEN`, a write to `POST /entries` is held to what `remember` allows.
 
 ## Run the decider run-off
 

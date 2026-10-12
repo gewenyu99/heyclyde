@@ -1,6 +1,6 @@
 # memory
 
-Wen's personal knowledge graph, served to Claude Code and Codex through one MCP endpoint. It runs the PKG v1 experiment: several retrieval arms read the same store, and the arm your agents follow most consistently wins. lv-flow hands work between stages through it, over HTTP.
+Wen's personal knowledge graph, served to Claude Code and Codex through one MCP endpoint. It runs the PKG v1 experiment: several retrieval arms read the same store, and the arm your agents follow most consistently wins. clyde-flow hands work between stages through it, over HTTP.
 
 Phase 0 is built. The index and hybrid arms serve live, hooks log every session, and the decider run-off has its keyword baseline. The spreading and hindsight arms and the idle audit come in Phase 1.
 
@@ -11,7 +11,7 @@ Phase 0 is built. The index and hybrid arms serve live, hooks log every session,
 | `seed/build.py` | Validates a Markdown vault and compiles it to `seed.sql` and `INDEX.md` |
 | `seed/import_chats.py` | Turns Grok, Codex and claude.ai exports into inbox lines |
 | `db/` | Postgres 17 image with pgvector and pg_jieba, plus the runtime schema |
-| `api/kb/` | The server: MCP tools, hook endpoint, HTTP routes for lv-flow, write path, the console's API, arms, embeddings, decider |
+| `api/kb/` | The server: MCP tools, hook endpoint, HTTP routes for clyde-flow, write path, the console's API, arms, embeddings, decider |
 | `api/kb/console/` | Wen's console at `/console/`. It reads and edits the store through the API in [api/API.md](api/API.md), behind an admin token the agents never hold |
 | `hooks/` | `install.sh`, which connects Claude Code and Codex, plus `kb-hook` and both clients' config snippets |
 | `deploy/` | Droplet provisioning, compose stack, Caddy, restic backups |
@@ -57,7 +57,7 @@ The first pass found an implementation bug, not a design limit. Hybrid's fusion 
 
 ## Runs and blobs
 
-Each lv-flow run gets its own scope, `run:<id>`. Its stages leave notes there, and the next stage recalls them.
+Each clyde-flow run gets its own scope, `run:<id>`. Its stages leave notes there, and the next stage recalls them.
 
 - **Runs stay out of normal recalls.** A recall without a scope never sees `run:` entries. With `scope="run:abc"`, that run's entries join the candidates and their scores are multiplied by `KB_SCOPE_BOOST`, default 3. Other runs stay hidden. Both arms filter and boost the same way.
 - **A run's project comes first.** Write a `projects` entry in scope `run:<id>`, then point every note at it with `project`.
@@ -70,7 +70,7 @@ The payload is in the [memory contract](../harness/PLAN.md#memory-contract).
 
 ## The HTTP routes
 
-Each route takes one of two bearer tokens. Every agent session holds `KB_TOKEN`. Only lv-flow holds `KB_RUNTIME_TOKEN`, so keep it out of every agent's environment. Bad input gets a 400 with the reason, and a body over 12 MiB gets a 413.
+Each route takes one of two bearer tokens. Every agent session holds `KB_TOKEN`. Only clyde-flow holds `KB_RUNTIME_TOKEN`, so keep it out of every agent's environment. Bad input gets a 400 with the reason, and a body over 12 MiB gets a 413.
 
 | Route | Body | Returns |
 |---|---|---|

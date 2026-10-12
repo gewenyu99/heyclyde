@@ -1,4 +1,4 @@
-"""The write path against a real Postgres: remember, run scopes, supersession, blobs, the MCP tool and lv-flow's routes.
+"""The write path against a real Postgres: remember, run scopes, supersession, blobs, the MCP tool and clyde-flow's routes.
 
 Each test writes into a fresh run scope, and a fixture deletes every runtime entry afterwards, so test_db.py's counts
 hold whatever order the files run in."""
@@ -50,12 +50,12 @@ async def pool(db_url):
 
 
 def run_source(run):
-    return {"kind": "run", "title": f"lv {run}"}
+    return {"kind": "run", "title": f"clyde {run}"}
 
 
 def run_project(run):
-    return {"id": run.replace(":", "-"), "pattern": "projects", "title": f"lv {run}", "body": "A test run.",
-            "authority": "observed", "scope": run, "evidence_kind": "summary", "evidence": "lv started the run",
+    return {"id": run.replace(":", "-"), "pattern": "projects", "title": f"clyde {run}", "body": "A test run.",
+            "authority": "observed", "scope": run, "evidence_kind": "summary", "evidence": "clyde started the run",
             "source": run_source(run)}
 
 
@@ -67,7 +67,7 @@ def note(run, **change):
 
 
 def verdict(run, **change):
-    """The runtime's observed verdict in the run, under the source lv-flow names."""
+    """The runtime's observed verdict in the run, under the source clyde-flow names."""
     return note(run, title="Oolong gate verdict", authority="observed", source=run_source(run)) | change
 
 
@@ -190,7 +190,7 @@ async def test_supersession_never_hides_an_entry_from_a_recall_that_could_see_it
     ]:
         with pytest.raises(write.Refused, match=re.escape(message)):
             await write.remember(pool, payload, caller)
-    # A retry's verdict replaces the failed one, and lv-flow can promote a run's note out of the run.
+    # A retry's verdict replaces the failed one, and clyde-flow can promote a run's note out of the run.
     passed = await write.remember(pool, verdict(mine, title="Oolong gate passed", supersedes=[failed]), "runtime")
     promoted = await write.remember(pool, verdict(mine, scope="domain:tea", project="proj-tea", supersedes=[their_note]),
                                     "runtime")
@@ -217,7 +217,7 @@ async def test_a_resend_with_an_explicit_id_returns_its_entry(conn, pool):
 
 
 async def test_a_different_payload_under_a_taken_id_is_refused(pool, monkeypatch):
-    """Ids are 8 hex digits of a hash, so an agent can grind out a payload whose id collides with lv-flow's next write."""
+    """Ids are 8 hex digits of a hash, so an agent can grind out a payload whose id collides with clyde-flow's next write."""
     run = await new_run(pool)
     monkeypatch.setattr(write, "make_id", lambda payload, d: f"{run.replace(':', '-')}-plan")
     await write.remember(pool, note(run, title="Plan", body="Skip the tests."), "agent")
@@ -292,7 +292,7 @@ async def test_a_new_entry_is_marked_runtime_and_searchable_by_its_project(conn,
     cur = await conn.execute("select origin, project, search_text, created_at from entry where id = %s", (eid,))
     r = await cur.fetchone()
     assert r["origin"] == "runtime" and r["project"] == run.replace(":", "-") and r["created_at"]
-    assert f"lv {run}" in r["search_text"]
+    assert f"clyde {run}" in r["search_text"]
     cur = await conn.execute("select origin from entry where id = 'tea-oolong-temp'")
     assert (await cur.fetchone())["origin"] == "seed"
 
@@ -395,7 +395,7 @@ async def test_an_existing_source_is_reused_and_a_new_one_is_stored(conn, pool):
     await write.remember(pool, note(run, source={"id": "src-a"}), "runtime")
     cur = await conn.execute("select title from source where id = 'src-a'")
     assert (await cur.fetchone())["title"] == "Test chat"
-    cur = await conn.execute("select kind, uri from source where title = %s", (f"lv {run}",))
+    cur = await conn.execute("select kind, uri from source where title = %s", (f"clyde {run}",))
     assert await cur.fetchall() == [{"kind": "run", "uri": None}]
 
 
@@ -491,7 +491,7 @@ async def test_mcp_remember_writes_drafts_only_in_a_run(conn, served):
     assert not {"source", "id"} & set(remember.inputSchema["properties"])
 
 
-# ---------------------------------------------------------------- lv-flow's HTTP routes
+# ---------------------------------------------------------------- clyde-flow's HTTP routes
 @pytest.fixture
 async def http(served):
     app = BearerAuth(server.app.app, Credential("tok"), runtime=Credential("rt"), max_body=server.MAX_REQUEST_BYTES)

@@ -38,7 +38,7 @@ MAX_CHARS = {"title": 300, "body": 4000, "evidence": 20000}
 MAX_BLOBS, MAX_BLOB_BYTES, MAX_BLOBS_BYTES = 16, 4 * 1024 * 1024, 8 * 1024 * 1024
 
 # The most each caller may write. Every agent session holds KB_TOKEN, so an agent writes drafts in a run scope, under
-# AGENT_SOURCE, with an id kb generates. Only lv-flow holds KB_RUNTIME_TOKEN. It records plans, verdicts and Wen's answers.
+# AGENT_SOURCE, with an id kb generates. Only clyde-flow holds KB_RUNTIME_TOKEN. It records plans, verdicts and Wen's answers.
 CALLERS = {"agent": "draft", "runtime": "approved"}
 AGENT_SOURCE = {"kind": "session", "title": "An agent session, through remember"}
 
@@ -120,7 +120,7 @@ def validate(payload, caller):
     if not (isinstance(e["scope"], str) and SCOPE_RE.fullmatch(e["scope"])):
         errs.append(f"scope {e['scope']!r} must be global, domain:<x>, repo:<x> or run:<id>.")
     elif agent and not e["scope"].startswith("run:"):
-        errs.append(f"An agent writes only in a run scope, run:<id>, not {e['scope']}. Wen or lv-flow promotes notes wider.")
+        errs.append(f"An agent writes only in a run scope, run:<id>, not {e['scope']}. Wen or clyde-flow promotes notes wider.")
     if not _one_of(e["sensitivity"], SENSITIVITY): errs.append("sensitivity must be normal or private.")
     if not e["lang"]: errs.append("lang must be a language code like en.")
     if not _one_of(e["evidence_kind"], EVIDENCE_KINDS):

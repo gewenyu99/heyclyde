@@ -1,4 +1,4 @@
-# The lv harness tiers 1 to 3, and memory's own tests. Tier 4 calls real models, so it never runs here.
+# The clyde harness tiers 1 to 3, and memory's own tests. Tier 4 calls real models, so it never runs here.
 name: harness
 
 on:

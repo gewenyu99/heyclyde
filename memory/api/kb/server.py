@@ -1,5 +1,5 @@
-"""kb: the memory server. One MCP endpoint for recall, one hook endpoint, HTTP routes for lv-flow, the console's API,
-bearer auth on all of them. The agents' token opens MCP, the hooks and the HTTP routes. lv-flow's runtime token opens the
+"""kb: the memory server. One MCP endpoint for recall, one hook endpoint, HTTP routes for clyde-flow, the console's API,
+bearer auth on all of them. The agents' token opens MCP, the hooks and the HTTP routes. clyde-flow's runtime token opens the
 same, and alone writes above draft. The console's API takes its own admin token.
 
   uvicorn kb.server:app --host 0.0.0.0 --port 8000
@@ -87,7 +87,7 @@ async def remember(pattern: str, title: str, body: str, scope: str, evidence: st
                    evidence_kind: str = "summary", authority: str = "draft", sensitivity: str = "normal",
                    lang: str = "en", valid_from: str = "", links: list[dict] | None = None,
                    supersedes: list[str] | None = None, blobs: list[dict] | None = None) -> str:
-    """Write one note to Wen's memory. It's a draft in a run scope until Wen or lv-flow promotes it.
+    """Write one note to Wen's memory. It's a draft in a run scope until Wen or clyde-flow promotes it.
 
     pattern: projects, decisions, observations, preferences, recommendations, references or reactions.
     title, body: a one-line title, and the summary recall ranks on.
@@ -167,7 +167,7 @@ async def _json_object(request):
 
 @mcp.custom_route("/entries", methods=["POST"])
 async def http_remember(request: Request):
-    """lv-flow's write, with the runtime token, up to approved. The agent token writes as remember does."""
+    """clyde-flow's write, with the runtime token, up to approved. The agent token writes as remember does."""
     payload = await _json_object(request)
     if payload is None:
         return JSONResponse({"error": "body must be a JSON object"}, status_code=400)
@@ -248,7 +248,7 @@ def build_app():
         raise SystemExit(f"KB_ARMS names unknown arms {sorted(unknown)}. Known: {sorted(ARMS)}")
     agent, runtime = Credential(config.token, config.token_sha256), Credential(config.runtime_token, config.runtime_token_sha256)
     if runtime and agent and runtime.digest == agent.digest:
-        raise SystemExit("KB_RUNTIME_TOKEN must differ from KB_TOKEN, or every agent could write as lv-flow")
+        raise SystemExit("KB_RUNTIME_TOKEN must differ from KB_TOKEN, or every agent could write as clyde-flow")
     inner = mcp.streamable_http_app()
     # One guard for the startup sync and the console's, so the two never run at once.
     sync = inner.state.sync = EmbeddingSync(pool)
@@ -318,7 +318,7 @@ def console_off(agent, admin):
 
 def credential_for(path):
     """Which credential a path takes. /healthz and the console's files take none. The console's API and / take the
-    admin token. MCP, the hooks, the inbox and lv-flow's HTTP routes take the agents' token, or the runtime token. Any
+    admin token. MCP, the hooks, the inbox and clyde-flow's HTTP routes take the agents' token, or the runtime token. Any
     other path takes neither and gets 401."""
     if path in ("/healthz", "/console") or path.startswith("/console/"):
         return "open"
@@ -381,7 +381,7 @@ class BearerAuth:
         # mcp caps /mcp bodies at 4 MiB, but not the custom routes, so max_body caps them all. self.app stays the inner app.
         self.limited = RequestBodyLimitMiddleware(app, max_body) if max_body else app
         self.runtime = runtime or Credential()
-        # The admin token must differ from the runtime token too, since lv-flow's daemon holds that one.
+        # The admin token must differ from the runtime token too, since clyde-flow's daemon holds that one.
         self.off = console_off(agent, self.creds["admin"]) or (console_off(self.runtime, self.creds["admin"]) if self.runtime else None)
         self.throttle = throttle or Throttle()
 

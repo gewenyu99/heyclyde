@@ -233,10 +233,10 @@ def test_write_constants_match_build():
 
 
 def payload(**change):
-    """An entry as lv-flow sends it. agent_payload drops the source, since an agent can't name one."""
+    """An entry as clyde-flow sends it. agent_payload drops the source, since an agent can't name one."""
     return {"pattern": "observations", "title": "Gate evidence", "body": "pytest passed.", "authority": "draft",
             "scope": "run:abc", "evidence_kind": "summary", "evidence": "30 passed", "project": "run-abc",
-            "source": {"kind": "run", "title": "lv run abc"}} | change
+            "source": {"kind": "run", "title": "clyde run abc"}} | change
 
 
 def agent_payload(**change):
@@ -284,7 +284,7 @@ def refusal(p, caller="runtime"):
     ({"id": "x\n"}, "id must be letters, digits"),
     ({"supersede": ["old-id"]}, "Unknown field supersede."),
     ({"title": "captured \x00 output"}, "title has a NUL character, which kb can't store."),
-    ({"source": {"kind": "run", "title": "lv\x00"}}, "source.title has a NUL character"),
+    ({"source": {"kind": "run", "title": "clyde\x00"}}, "source.title has a NUL character"),
     ({"links": [{"type": "relates", "to": "x\x00"}]}, "links[0].to has a NUL character"),
     ({"evidence": "half an emoji \ud83d"}, "evidence has a lone surrogate, half of a character. Send valid UTF-8."),
     ({"blobs": [{"name": "log", "text": "\ud83d"}]}, "blobs[0].text has a lone surrogate"),
@@ -311,7 +311,7 @@ def test_validate_refuses_a_non_object_and_lists_every_problem():
 
 
 def test_validate_holds_an_agent_to_drafts_in_a_run():
-    """Every agent session holds KB_TOKEN, so an agent's write can't outrank, outlast or impersonate lv-flow's."""
+    """Every agent session holds KB_TOKEN, so an agent's write can't outrank, outlast or impersonate clyde-flow's."""
     for change, message in [({"authority": "observed"}, "authority observed is above draft, the most this caller may write."),
                             ({"scope": "global"}, "An agent writes only in a run scope, run:<id>, not global."),
                             ({"source": {"kind": "chat", "title": "Wen, claude.ai chat"}}, "An agent can't name a source."),
