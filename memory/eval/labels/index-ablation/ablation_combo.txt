@@ -1,0 +1,31 @@
+scope+authority (to both, 187 re-embedded)
+  hybrid: gold hit 95% of 21, misses: ranked-out 1, leaks in 1/21, MRR 0.668 (en 0.563, vec 0.748)
+    q15 hit rank 1 rankers {'en': 1, 'zh': None, 'keyword': 1, 'vec': 1} leaks ['app-draft-obca']
+    q24 ranked-out rank 31 rankers {'en': 38, 'zh': None, 'keyword': 38, 'vec': 30} leaks []
+scope+link_words (to both, 187 re-embedded)
+  hybrid: gold hit 95% of 21, misses: ranked-out 1, leaks in 1/21, MRR 0.648 (en 0.614, vec 0.688)
+    q15 hit rank 1 rankers {'en': 1, 'zh': None, 'keyword': 1, 'vec': 1} leaks ['app-draft-obca']
+    q24 ranked-out rank 28 rankers {'en': 39, 'zh': None, 'keyword': 39, 'vec': 35} leaks []
+scope+link_titles (to both, 80 re-embedded)
+  hybrid: gold hit 86% of 21, misses: ranked-out 3, leaks in 1/21, MRR 0.632 (en 0.546, vec 0.694)
+    q10 ranked-out rank 11 rankers {'en': 21, 'zh': None, 'keyword': 21, 'vec': 5} leaks []
+    q15 hit rank 1 rankers {'en': 2, 'zh': None, 'keyword': 2, 'vec': 1} leaks ['app-draft-obca']
+    q24 ranked-out rank 25 rankers {'en': 16, 'zh': None, 'keyword': 16, 'vec': 31} leaks []
+    q27 ranked-out rank 10 rankers {'en': 6, 'zh': None, 'keyword': 6, 'vec': 25} leaks []
+scope+links (to both, 80 re-embedded)
+  hybrid: gold hit 86% of 21, misses: ranked-out 3, leaks in 1/21, MRR 0.631 (en 0.572, vec 0.699)
+    q10 ranked-out rank 9 rankers {'en': 21, 'zh': None, 'keyword': 21, 'vec': 4} leaks []
+    q15 hit rank 1 rankers {'en': 2, 'zh': None, 'keyword': 2, 'vec': 1} leaks ['app-draft-obca']
+    q24 ranked-out rank 24 rankers {'en': 17, 'zh': None, 'keyword': 17, 'vec': 18} leaks []
+    q27 ranked-out rank 10 rankers {'en': 6, 'zh': None, 'keyword': 6, 'vec': 25} leaks []
+scope+authority+links (to both, 187 re-embedded)
+  hybrid: gold hit 90% of 21, misses: ranked-out 2, leaks in 1/21, MRR 0.656 (en 0.572, vec 0.756)
+    q10 ranked-out rank 10 rankers {'en': 21, 'zh': None, 'keyword': 21, 'vec': 5} leaks []
+    q15 hit rank 1 rankers {'en': 2, 'zh': None, 'keyword': 2, 'vec': 1} leaks ['app-draft-obca']
+    q24 ranked-out rank 24 rankers {'en': 17, 'zh': None, 'keyword': 17, 'vec': 21} leaks []
+pattern+scope+authority+links (to both, 187 re-embedded)
+  hybrid: gold hit 86% of 21, misses: ranked-out 3, leaks in 1/21, MRR 0.658 (en 0.571, vec 0.701)
+    q10 ranked-out rank 11 rankers {'en': 21, 'zh': None, 'keyword': 21, 'vec': 5} leaks []
+    q15 hit rank 1 rankers {'en': 2, 'zh': None, 'keyword': 2, 'vec': 1} leaks ['app-draft-obca']
+    q24 ranked-out rank 23 rankers {'en': 20, 'zh': None, 'keyword': 20, 'vec': 24} leaks []
+    q27 ranked-out rank 10 rankers {'en': 6, 'zh': None, 'keyword': 6, 'vec': 22} leaks []

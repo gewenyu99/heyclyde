@@ -1,14 +1,10 @@
 {
-  "env": {
-    "KB_URL": "https://kb.example.com",
-    "KB_TOKEN": "replace-with-KB_TOKEN-from-the-droplet"
-  },
   "hooks": {
-    "SessionStart": [{ "hooks": [{ "type": "command", "command": "~/.claude/kb-hook SessionStart" }] }],
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "~/.claude/kb-hook UserPromptSubmit" }] }],
-    "PostToolUse": [{ "matcher": "mcp__kb__.*", "hooks": [{ "type": "command", "command": "~/.claude/kb-hook PostToolUse" }] }],
-    "Stop": [{ "hooks": [{ "type": "command", "command": "~/.claude/kb-hook Stop" }] }],
-    "PreCompact": [{ "hooks": [{ "type": "command", "command": "~/.claude/kb-hook PreCompact" }] }],
-    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "~/.claude/kb-hook SessionEnd" }] }]
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "~/.config/kb/kb-hook SessionStart" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "~/.config/kb/kb-hook UserPromptSubmit" }] }],
+    "PostToolUse": [{ "matcher": "mcp__kb__.*", "hooks": [{ "type": "command", "command": "~/.config/kb/kb-hook PostToolUse" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "~/.config/kb/kb-hook Stop" }] }],
+    "PreCompact": [{ "hooks": [{ "type": "command", "command": "~/.config/kb/kb-hook PreCompact" }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "~/.config/kb/kb-hook SessionEnd" }] }]
   }
 }

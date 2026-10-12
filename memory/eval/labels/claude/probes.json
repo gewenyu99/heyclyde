@@ -1,0 +1,1106 @@
+[
+ {
+  "id": "c-1",
+  "query": "do I need to check with Wen before doing this, or just go ahead",
+  "task": "Replace personalized PageRank with a different spreading algorithm in the spreading arm.",
+  "context": {
+   "client": "claude-code",
+   "repo": "like-vincent",
+   "project": "proj-pkg",
+   "kind": "design"
+  },
+  "must": [
+   "pref-ask-dont-assert",
+   "rx-listed-pushback",
+   "pkg-core-mechanisms"
+  ],
+  "must_not": [
+   "vid-t282-do-the-searches-instead-of-asking-him"
+  ],
+  "why": "Changing Wen's design is a question for Wen, asked, never written into his plan as settled.",
+  "pair": "c-2"
+ },
+ {
+  "id": "c-2",
+  "query": "do I need to check with Wen before doing this, or just go ahead",
+  "task": "Make a dev copy of the database and rerun the local test suite on Wen's laptop.",
+  "context": {
+   "client": "claude-code",
+   "repo": "like-vincent",
+   "project": "proj-pkg",
+   "kind": "execution"
+  },
+  "must": [
+   "vid-t282-do-the-searches-instead-of-asking-him"
+  ],
+  "must_not": [
+   "pref-ask-dont-assert",
+   "rx-listed-pushback"
+  ],
+  "why": "Reversible execution on Wen's own machine gets done without asking. The ask rule covers design disagreement. No entry states this yet, vid-t282 is the closest.",
+  "pair": "c-1"
+ },
+ {
+  "id": "c-3",
+  "query": "is ant-colony training worth keeping when one user gives so little reward signal",
+  "task": "Decide which mechanisms the spreading arm keeps for Phase 1.",
+  "context": {
+   "client": "claude-code",
+   "repo": "like-vincent",
+   "project": "proj-pkg",
+   "kind": "design"
+  },
+  "must": [
+   "pkg-core-mechanisms",
+   "rx-core-design"
+  ],
+  "must_not": [
+   "pkg-draft-cut-ant-colony"
+  ],
+  "why": "Wen called ant colony core to his design. The cut proposal is superseded."
+ },
+ {
+  "id": "c-4",
+  "query": "what half-life should link weights decay with between sessions",
+  "task": "Implement online weight updates for the spreading arm.",
+  "context": {
+   "client": "claude-code",
+   "repo": "like-vincent",
+   "project": "proj-pkg",
+   "kind": "design"
+  },
+  "must": [
+   "pkg-fade-on-failed-retrieval",
+   "rx-why-days"
+  ],
+  "must_not": [
+   "pkg-draft-day-decay"
+  ],
+  "why": "Weights move on failed retrievals only. Calendar decay was rejected."
+ },
+ {
+  "id": "c-5",
+  "query": "does the Mnemion-faithful arm keep Mnemion's per-pattern half-life decay",
+  "task": "Port Mnemion's recall semantics into the spreading arm.",
+  "context": {
+   "client": "claude-code",
+   "repo": "like-vincent",
+   "project": "proj-pkg",
+   "kind": "design"
+  },
+  "must": [
+   "ref-mnemion-prime",
+   "pkg-fade-on-failed-retrieval"
+  ],
+  "must_not": [
+   "pkg-draft-day-decay"
+  ],
+  "why": "The reference has time decay. Wen's arm drops it, so the port bends the reference here."
+ },
+ {
+  "id": "c-6",
+  "query": "should items that were delivered but never used lower the weights of their links",
+  "task": "Write the weight update for recall packets the agent ignored.",
+  "context": {
+   "client": "claude-code",
+   "repo": "like-vincent",
+   "project": "proj-pkg",
+   "kind": "design"
+  },
+  "must": [
+   "pkg-negative-signal-wen-reaction",
+   "rx-react-to-failures"
+  ],
+  "must_not": [
+   "pkg-draft-unused-penalty"
+  ],
+  "why": "Unused is neutral. Only Wen's bad reaction fades a link."
+ },
+ {
+  "id": "c-7",
+  "query": "how do we score whether a recall packet helped, a panel of judge models?",
+  "task": "Design the success signal for the live arm comparison.",
+  "context": {
+   "client": "claude-code",
+   "repo": "like-vincent",
+   "project": "proj-pkg",
+   "kind": "design"
+  },
+  "must": [
+   "pkg-judging-agent-and-wen",
+   "rx-no-llm-judge"
+  ],
+  "must_not": [
+   "pkg-draft-llm-jury"
+  ],
+  "why": "The working agent and Wen's reaction are the judges. The LLM jury is superseded."
+ },
+ {
+  "id": "c-8",
+  "query": "can we load all approved decisions into context at session start and skip retrieval",
+  "task": "Simplify the memory design to a pinned file injected by the SessionStart hook.",
+  "context": {
+   "client": "claude-code",
+   "repo": "like-vincent",
+   "project": "proj-pkg",
+   "kind": "design"
+  },
+  "must": [
+   "pkg-retrieval-carries-memory",
+   "rx-context-limited"
+  ],
+  "must_not": [],
+  "why": "Wen's memory outgrows any context window. Retrieval has to carry it."
+ },
+ {
+  "id": "c-9",
+  "query": "should training pause weight updates when behavior probes start drifting",
+  "task": "Add a safety check to ant training.",
+  "context": {
+   "client": "claude-code",
+   "repo": "like-vincent",
+   "project": "proj-pkg",
+   "kind": "design"
+  },
+  "must": [
+   "pkg-no-freeze-check",
+   "pkg-filter-prune"
+  ],
+  "must_not": [],
+  "why": "Wen rejected a learning freeze. Spreading, pruning and negative weights keep things consistent."
+ },
+ {
+  "id": "c-10",
+  "query": "when should the transcript audit run, nightly batch or on idle",
+  "task": "Schedule the auditor agent.",
+  "context": {
+   "client": "claude-code",
+   "repo": "like-vincent",
+   "project": "proj-pkg",
+   "kind": "design"
+  },
+  "must": [
+   "pkg-audit-on-idle"
+  ],
+  "must_not": [
+   "pkg-draft-nightly-audit"
+  ],
+  "why": "The audit runs when the session goes idle. The nightly batch is superseded."
+ },
+ {
+  "id": "c-11",
+  "query": "write up the results table comparing the experiment arms",
+  "task": "Report train-split numbers for every arm in the README.",
+  "context": {
+   "client": "claude-code",
+   "repo": "like-vincent",
+   "project": "proj-pkg",
+   "kind": "other"
+  },
+  "must": [
+   "pref-arm-names",
+   "pref-terse-precise"
+  ],
+  "must_not": [],
+  "why": "Arms go by name, never A0 to A3, with precise numbers."
+ },
+ {
+  "id": "c-12",
+  "query": "what does A2 refer to in the experiment",
+  "task": "Read an old planning note that uses arm numbers.",
+  "context": {
+   "client": "codex",
+   "repo": "like-vincent",
+   "project": "proj-pkg",
+   "kind": "research"
+  },
+  "must": [
+   "pref-arm-names",
+   "pkg-draft-four-arms"
+  ],
+  "must_not": [],
+  "why": "A2 is the spreading arm. The numbers are banned in chat, code and docs."
+ },
+ {
+  "id": "c-13",
+  "query": "the research memo specifies the system, should I implement it exactly as written",
+  "task": "Turn Wen's research memo into the Phase 1 build.",
+  "context": {
+   "client": "claude-code",
+   "repo": "like-vincent",
+   "project": "proj-pkg",
+   "kind": "design"
+  },
+  "must": [
+   "pref-plans-are-inspiration",
+   "pref-ask-dont-assert",
+   "pkg-core-mechanisms"
+  ],
+  "must_not": [],
+  "why": "Wen's plans are inspiration. Challenge them by asking, and keep one arm close to his design."
+ },
+ {
+  "id": "c-14",
+  "query": "pick a hosted Postgres or vector database for the memory server",
+  "task": "Choose managed infrastructure for the memory service.",
+  "context": {
+   "client": "claude-code",
+   "repo": "like-vincent",
+   "project": "proj-pkg",
+   "kind": "money"
+  },
+  "must": [
+   "pref-payg",
+   "pkg-budget-cad50"
+  ],
+  "must_not": [
+   "vid-t002-gpu-cloud-budget-under-100-month"
+  ],
+  "why": "Pay as you go, inside the CAD $50 infra budget. The film GPU budget is a different cap."
+ },
+ {
+  "id": "c-15",
+  "query": "what is the monthly spending cap for this cloud setup",
+  "task": "Size the Droplet and storage for the memory server.",
+  "context": {
+   "client": "claude-code",
+   "repo": "like-vincent",
+   "project": "proj-pkg",
+   "kind": "money"
+  },
+  "must": [
+   "pkg-budget-cad50"
+  ],
+  "must_not": [
+   "vid-t002-gpu-cloud-budget-under-100-month"
+  ],
+  "why": "The memory server has its own CAD $50 budget.",
+  "pair": "c-16"
+ },
+ {
+  "id": "c-16",
+  "query": "what is the monthly spending cap for this cloud setup",
+  "task": "Size a rented GPU for ComfyUI video generation.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "money"
+  },
+  "must": [
+   "vid-t002-gpu-cloud-budget-under-100-month",
+   "vid-t006-wants-comfyui-on-per-second-gpu-or-cloud"
+  ],
+  "must_not": [
+   "pkg-budget-cad50"
+  ],
+  "why": "Film GPU rental caps near $100 a month, pay per use.",
+  "pair": "c-15"
+ },
+ {
+  "id": "c-17",
+  "query": "recommend a standard for packaging docs so agents can maintain and read them",
+  "task": "Survey agent documentation specs and pick one.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-agent-docs",
+   "kind": "research"
+  },
+  "must": [
+   "pref-evidence-over-hype",
+   "rx-unproven",
+   "docs-draft-markdown-pattern"
+  ],
+  "must_not": [],
+  "why": "Wen wants outcome data, not announcements. Durable prior art beats new specs."
+ },
+ {
+  "id": "c-18",
+  "query": "should I limit the research to only the newest releases",
+  "task": "Survey ways to serve docs to agents over MCP and registries.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-agent-docs",
+   "kind": "research"
+  },
+  "must": [
+   "pref-evidence-over-hype",
+   "rx-too-new"
+  ],
+  "must_not": [
+   "vid-t140-research-scoped-strictly-to-recent-windo"
+  ],
+  "why": "For agent docs, new means unproven. Wen pushed back on things too new to judge.",
+  "pair": "c-19"
+ },
+ {
+  "id": "c-19",
+  "query": "should I limit the research to only the newest releases",
+  "task": "Survey open video models to compare against Seedance 2.5.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "research"
+  },
+  "must": [
+   "vid-t140-research-scoped-strictly-to-recent-windo",
+   "pref-version-scoped-sources"
+  ],
+  "must_not": [
+   "rx-too-new"
+  ],
+  "why": "For video models Wen wants the last few weeks only, compared against what he runs.",
+  "pair": "c-18"
+ },
+ {
+  "id": "c-20",
+  "query": "which sources should I trust for this comparison",
+  "task": "Compare two hand grinders for espresso.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-coffee",
+   "kind": "research"
+  },
+  "must": [
+   "cof-pref-expert-sources",
+   "pref-evidence-over-hype"
+  ],
+  "must_not": [
+   "vid-t140-research-scoped-strictly-to-recent-windo"
+  ],
+  "why": "Coffee comparisons come from experts and particle-size data.",
+  "pair": "c-21"
+ },
+ {
+  "id": "c-21",
+  "query": "which sources should I trust for this comparison",
+  "task": "Compare output quality of two hosted video models.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "research"
+  },
+  "must": [
+   "pref-live-pages",
+   "vid-reviews-unreliable"
+  ],
+  "must_not": [
+   "cof-pref-expert-sources"
+  ],
+  "why": "Video tool reviews are mostly resellers. Read live vendor pages and trust Wen's tests.",
+  "pair": "c-20"
+ },
+ {
+  "id": "c-22",
+  "query": "which providers serve Wan 3.0 right now",
+  "task": "Recommend where Wen can call Wan 3.0.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "research"
+  },
+  "must": [
+   "vid-wan3-callable",
+   "vid-t274-corrected-claude-segmind-does-have-wan-3",
+   "rx-wan-ga",
+   "pref-live-pages"
+  ],
+  "must_not": [
+   "vid-draft-wan-ga-unannounced"
+  ],
+  "why": "Wan 3.0 is callable on several providers. Stale catalog pages said otherwise twice."
+ },
+ {
+  "id": "c-23",
+  "query": "search support announcements to see when providers started serving Wan 3.0",
+  "task": "Wen says Wan 3.0 is out and asks for announcements from Aug 23 on.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "research"
+  },
+  "must": [
+   "vid-t264-insisted-wan-3-0-is-ga-search-from-the-2",
+   "vid-wan3-callable"
+  ],
+  "must_not": [
+   "vid-draft-wan-ga-unannounced"
+  ],
+  "why": "Wen corrected the unannounced claim. Search from his date forward and trust live provider pages."
+ },
+ {
+  "id": "c-24",
+  "query": "compare Seedance 2.5 per-second prices across providers",
+  "task": "Build a price table for Seedance 2.5 providers.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "money"
+  },
+  "must": [
+   "vid-t200-prices-in-cad-per-second-at-480p-verifie",
+   "vid-t200-called-pricing-research-garbage",
+   "pref-live-pages",
+   "vid-segmind-invoice-rate"
+  ],
+  "must_not": [],
+  "why": "Prices in CAD per second at 480p, verified in a browser. Wen's own invoice is the anchor."
+ },
+ {
+  "id": "c-25",
+  "query": "check whether Krea still offers Seedance 2.5 before recommending it",
+  "task": "Recommend a UI for generating Seedance 2.5 clips.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "research"
+  },
+  "must": [
+   "vid-krea-removed-seedance",
+   "rx-krea-removed",
+   "vid-t216-research-flawed-krea-claimed-not-to-run",
+   "pref-live-pages"
+  ],
+  "must_not": [
+   "vid-draft-krea-mobile"
+  ],
+  "why": "Krea's Seedance status flipped and stale pages misled Claude both ways. Verify it live."
+ },
+ {
+  "id": "c-26",
+  "query": "find prompting advice for Seedance 2.5 when most guides are about 2.0",
+  "task": "Collect reference-to-video prompting tips for Seedance 2.5.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "research"
+  },
+  "must": [
+   "pref-version-scoped-sources",
+   "rx-filter-2-0",
+   "vid-t090-wants-concise-sourced-model-specific-adv"
+  ],
+  "must_not": [],
+  "why": "Only sources about the exact version asked, kept short and sourced."
+ },
+ {
+  "id": "c-27",
+  "query": "gather image-to-video tips for Wan 3.0",
+  "task": "Research Wan 3.0 prompting for action shots.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "research"
+  },
+  "must": [
+   "pref-version-scoped-sources",
+   "vid-t170-skip-wan-2-2-already-on-wan-3-0"
+  ],
+  "must_not": [],
+  "why": "Wen is on Wan 3.0. Wan 2.x advice is noise."
+ },
+ {
+  "id": "c-28",
+  "query": "which other creators got usable results from this model, and how",
+  "task": "Wen asks how others get good Seedance 2.5 results after a long thread about MiniMax H3.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "research"
+  },
+  "must": [
+   "vid-t066-corrected-claude-asked-about-seedance-2",
+   "pref-version-scoped-sources"
+  ],
+  "must_not": [],
+  "why": "Answer about the model Wen named, not the one the thread was about."
+ },
+ {
+  "id": "c-29",
+  "query": "cite a benchmark showing which video model handles fast motion best",
+  "task": "Back up a model recommendation with numbers.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "research"
+  },
+  "must": [
+   "vid-t196-skeptical-of-unsourced-benchmark-claims",
+   "vid-reviews-unreliable",
+   "pref-evidence-over-hype"
+  ],
+  "must_not": [],
+  "why": "Unsourced benchmarks get called out. Cite where the numbers live or say there are none."
+ },
+ {
+  "id": "c-30",
+  "query": "which image model keeps a character's face consistent across stills",
+  "task": "Recommend an image model for character reference sheets.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "research"
+  },
+  "must": [
+   "vid-t254-gpt-image-2-is-the-best-image-model-for",
+   "vid-t252-nano-banana-is-bad-at-faces",
+   "vid-t252-called-claude-s-nano-banana-claim-false"
+  ],
+  "must_not": [],
+  "why": "GPT Image 2 won Wen's tests. Nano Banana can barely do faces, and claiming otherwise got called false."
+ },
+ {
+  "id": "c-31",
+  "query": "what does Wen need an image model to handle for costume and hair detail",
+  "task": "Shortlist image models for detailed character stills.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "research"
+  },
+  "must": [
+   "vid-t250-image-model-criteria-faces-fine-detail-n",
+   "vid-t254-gpt-image-2-is-the-best-image-model-for"
+  ],
+  "must_not": [],
+  "why": "Faces, fine costume and hair control, and good language understanding. GPT Image 2 meets them so far."
+ },
+ {
+  "id": "c-32",
+  "query": "can a video model do fight choreography from a text prompt alone or does it need a pose reference",
+  "task": "Plan how to generate a fight scene.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "research"
+  },
+  "must": [
+   "vid-seedance-fight-choreo"
+  ],
+  "must_not": [],
+  "why": "Seedance 2.5 does text-prompted fights well in Wen's own tests."
+ },
+ {
+  "id": "c-33",
+  "query": "Wen's claim contradicts what I found, should I push back",
+  "task": "Wen says Seedance handles text-prompted fights fine. The agent's sources say every model fails at it.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "research"
+  },
+  "must": [
+   "vid-t158-told-claude-to-stop-arguing-and-answer-t",
+   "vid-t156-seedance-handles-text-prompted-fight-sce"
+  ],
+  "must_not": [
+   "pref-plans-are-inspiration"
+  ],
+  "why": "Wen's hands-on results are facts. Answer his question instead of arguing.",
+  "pair": "c-34"
+ },
+ {
+  "id": "c-34",
+  "query": "Wen's claim contradicts what I found, should I push back",
+  "task": "Wen's plan keeps ant-colony training. The agent thinks one user gives too little signal.",
+  "context": {
+   "client": "claude-code",
+   "repo": "like-vincent",
+   "project": "proj-pkg",
+   "kind": "design"
+  },
+  "must": [
+   "pref-plans-are-inspiration",
+   "pref-ask-dont-assert",
+   "pkg-core-mechanisms"
+  ],
+  "must_not": [],
+  "why": "Challenge Wen's plans, as a question, while his core mechanisms stay.",
+  "pair": "c-33"
+ },
+ {
+  "id": "c-35",
+  "query": "why does MiniMax H3 output look so bad, is fast motion the problem",
+  "task": "Diagnose poor H3 generations.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "research"
+  },
+  "must": [
+   "vid-minimax-dropped",
+   "vid-t160-told-claude-to-stop-fixating-on-motion",
+   "vid-t154-clarified-h3-failure-is-total-collapse-n",
+   "vid-t160-h3-dialog-mangled-and-stills-bad"
+  ],
+  "must_not": [],
+  "why": "H3 collapsed everywhere, stills and dialog too. Motion was never the cause."
+ },
+ {
+  "id": "c-36",
+  "query": "why did a 15-second H3 clip take half an hour to render",
+  "task": "Explain slow H3 renders on a rented A6000.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "research"
+  },
+  "must": [
+   "vid-t100-h3-15s-clip-took-30-min-on-runcomfy-x-la",
+   "vid-t188-linkedin-h3-compute-ratio-explained-his"
+  ],
+  "must_not": [],
+  "why": "H3 needs huge compute per output minute, which explained Wen's numbers."
+ },
+ {
+  "id": "c-37",
+  "query": "can RunComfy credits pay for Seedance 2.5",
+  "task": "Check whether Wen's RunComfy balance covers Seedance.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "money"
+  },
+  "must": [
+   "vid-t072-runcomfy-sells-seedance-2-5-r2v-480p-at",
+   "vid-t070-told-claude-it-was-wrong-about-runcomfy"
+  ],
+  "must_not": [],
+  "why": "RunComfy has a first-party Seedance endpoint. Claude said it didn't and was wrong."
+ },
+ {
+  "id": "c-38",
+  "query": "is buying Dreamina credits a good way to run Seedance 2.5",
+  "task": "Find the cheapest way to generate Seedance clips.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "money"
+  },
+  "must": [
+   "vid-t058-called-dreamina-pricing-a-scam",
+   "vid-segmind-cheapest"
+  ],
+  "must_not": [],
+  "why": "Dreamina credits cost far more than API per-second rates. Segmind is the cheap route."
+ },
+ {
+  "id": "c-39",
+  "query": "does adding a reference video make Seedance cheaper on Segmind",
+  "task": "Optimize clip cost on Segmind.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "money"
+  },
+  "must": [
+   "vid-t236-doubted-video-reference-is-cheaper-claim",
+   "vid-segmind-invoice-rate"
+  ],
+  "must_not": [],
+  "why": "Wen doubted that claim and Segmind's pricing is unclear. Check before saying it."
+ },
+ {
+  "id": "c-40",
+  "query": "estimate the cost of chaining four 15-second Seedance clips at 480p",
+  "task": "Budget a chained scene.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "money"
+  },
+  "must": [
+   "vid-segmind-invoice-rate",
+   "vid-script-seedance-cost",
+   "vid-t232-challenged-claude-s-chained-cost-math"
+  ],
+  "must_not": [],
+  "why": "Use Wen's invoice and his calculator. A made-up estimate already missed his real bill."
+ },
+ {
+  "id": "c-41",
+  "query": "which GPU should I rent to run Wan 2.2 in ComfyUI",
+  "task": "Pick a RunPod GPU for a ComfyUI workflow.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "money"
+  },
+  "must": [
+   "vid-runpod-a6000",
+   "vid-t128-pushed-back-on-overspecced-gpu"
+  ],
+  "must_not": [],
+  "why": "The A6000 at about $0.56 an hour is the pick. A $1.89 card was called excessive."
+ },
+ {
+  "id": "c-42",
+  "query": "set up a RunPod pod to try the newest open video model",
+  "task": "Test a just-released open video model.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "execution"
+  },
+  "must": [
+   "vid-t144-test-via-api-first-runpod-later",
+   "vid-t142-open-video-models-feel-years-behind-seed"
+  ],
+  "must_not": [],
+  "why": "Try models through an API first. RunPod setups cost Wen time."
+ },
+ {
+  "id": "c-43",
+  "query": "set up the ComfyUI GPU pod and the clip trim watcher",
+  "task": "Wen wants the pod and the desktop trim script running.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "execution"
+  },
+  "must": [
+   "vid-t136-hand-off-hands-on-infra-work-to-claude-c",
+   "vid-runpod-a6000"
+  ],
+  "must_not": [],
+  "why": "From a chat, hands-on infra work goes to Claude Code as a handoff prompt.",
+  "pair": "c-44"
+ },
+ {
+  "id": "c-44",
+  "query": "set up the ComfyUI GPU pod and the clip trim watcher",
+  "task": "Wen wants the pod and the desktop trim script running.",
+  "context": {
+   "client": "claude-code",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "execution"
+  },
+  "must": [
+   "vid-runpod-a6000",
+   "vid-t244-desktop-trim-folder-that-tails-clips-to"
+  ],
+  "must_not": [
+   "vid-t136-hand-off-hands-on-infra-work-to-claude-c"
+  ],
+  "why": "Already in Claude Code, so do the work. A handoff prompt to itself is noise.",
+  "pair": "c-43"
+ },
+ {
+  "id": "c-45",
+  "query": "Wen wants install steps from a vendor docs page, should I just send the link",
+  "task": "Answer a how-do-I-set-this-up question.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "research"
+  },
+  "must": [
+   "vid-t034-wants-claude-to-fetch-content-itself-not"
+  ],
+  "must_not": [],
+  "why": "Open the page and give copy-paste output, not links."
+ },
+ {
+  "id": "c-46",
+  "query": "I don't know which providers carry this model, should I ask Wen",
+  "task": "Find hosting options for a video model.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "research"
+  },
+  "must": [
+   "vid-t282-do-the-searches-instead-of-asking-him"
+  ],
+  "must_not": [
+   "pref-ask-dont-assert"
+  ],
+  "why": "Facts an agent can look up get searched, not asked."
+ },
+ {
+  "id": "c-47",
+  "query": "condense a long research report into what matters for Wen",
+  "task": "Summarize a provider comparison.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "research"
+  },
+  "must": [
+   "vid-t096-wants-summaries-filtered-to-what-applies",
+   "pref-terse-precise"
+  ],
+  "must_not": [],
+  "why": "Short bullets, only what applies to Wen, precise numbers."
+ },
+ {
+  "id": "c-48",
+  "query": "should Wen open an organization account for this",
+  "task": "Sign up for a new video API provider.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "money"
+  },
+  "must": [
+   "vid-t148-individual-accounts-only-no-org-accounts",
+   "vid-t150-fewer-accounts-to-manage"
+  ],
+  "must_not": [
+   "app-incorporation-undecided"
+  ],
+  "why": "For film tools Wen wants individual accounts and as few of them as possible.",
+  "pair": "c-49"
+ },
+ {
+  "id": "c-49",
+  "query": "should Wen open an organization account for this",
+  "task": "Enroll in the Apple Developer Program to publish the iOS app.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-app",
+   "kind": "money"
+  },
+  "must": [
+   "app-draft-individual-locks-name",
+   "app-brand-name-goal",
+   "app-incorporation-undecided"
+  ],
+  "must_not": [
+   "vid-t148-individual-accounts-only-no-org-accounts"
+  ],
+  "why": "The app needs a non-legal seller name, which an individual Apple account can't give.",
+  "pair": "c-48"
+ },
+ {
+  "id": "c-50",
+  "query": "recommend one provider that covers both Wan 3.0 and Seedance 2.5",
+  "task": "Simplify Wen's video provider setup.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "money"
+  },
+  "must": [
+   "vid-t150-fewer-accounts-to-manage",
+   "vid-accounts",
+   "pref-payg"
+  ],
+  "must_not": [
+   "vid-t078-prefer-bytedance-first-party-api"
+  ],
+  "why": "Prefer accounts Wen already has, pay as you go, fewest new signups."
+ },
+ {
+  "id": "c-51",
+  "query": "iOS app options for generating Seedance 2.5 or Wan 3.0 clips on the go",
+  "task": "Recommend a mobile route for video generation.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "research"
+  },
+  "must": [
+   "vid-t248-wants-mobile-ios-access-to-wan-3-0-seeda",
+   "vid-t288-mobile-options-exclude-dreamina-and-krea",
+   "vid-krea-removed-seedance"
+  ],
+  "must_not": [
+   "vid-draft-krea-mobile"
+  ],
+  "why": "Dreamina and Krea are out for mobile. The Krea suggestion is superseded."
+ },
+ {
+  "id": "c-52",
+  "query": "what's the latest news on open video models this month",
+  "task": "Brief Wen on recent open video model releases.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "research"
+  },
+  "must": [
+   "vid-t140-research-scoped-strictly-to-recent-windo",
+   "vid-t280-told-claude-to-stop-surfacing-old-news",
+   "vid-t142-open-video-models-feel-years-behind-seed"
+  ],
+  "must_not": [],
+  "why": "Recent window only, no old news, judged against Seedance 2.5."
+ },
+ {
+  "id": "c-53",
+  "query": "find a workflow for writing a long novel with continuity tracking and reviewer agents",
+  "task": "Recommend a long-form fiction writing setup.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "any",
+   "kind": "research"
+  },
+  "must": [
+   "vid-t302-clarified-novels-are-text-only",
+   "vid-t300-exploring-long-novel-writing-workflow-wi"
+  ],
+  "must_not": [],
+  "why": "Wen means text novels. Visual novel-to-video workflows missed the point."
+ },
+ {
+  "id": "c-54",
+  "query": "sources disagree on how many reference images keep a character consistent",
+  "task": "Write a character consistency recipe for chained clips.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "research"
+  },
+  "must": [
+   "vid-draft-character-refs",
+   "rx-conflicting-advice"
+  ],
+  "must_not": [],
+  "why": "Say where sources conflict instead of blending them into one answer."
+ },
+ {
+  "id": "c-55",
+  "query": "add magnesium to Wen's bottled water, how many drops per gallon",
+  "task": "Adjust Wen's espresso water.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-coffee",
+   "kind": "other"
+  },
+  "must": [
+   "cof-water-recipe",
+   "rx-recipe-from-scratch",
+   "cof-pref-ppm"
+  ],
+  "must_not": [],
+  "why": "The task is drops added to Eska, not a recipe from scratch. Report in ppm."
+ },
+ {
+  "id": "c-56",
+  "query": "what units should I use when I report these numbers",
+  "task": "Report the mineral content of a new bottled water.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-coffee",
+   "kind": "research"
+  },
+  "must": [
+   "cof-pref-ppm",
+   "rx-mgl"
+  ],
+  "must_not": [
+   "vid-t200-prices-in-cad-per-second-at-480p-verifie"
+  ],
+  "why": "Water values go in ppm with GH and KH as CaCO3. mg/L labels annoyed Wen.",
+  "pair": "c-57"
+ },
+ {
+  "id": "c-57",
+  "query": "what units should I use when I report these numbers",
+  "task": "Report per-clip costs for Seedance providers.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-video",
+   "kind": "money"
+  },
+  "must": [
+   "vid-t200-prices-in-cad-per-second-at-480p-verifie"
+  ],
+  "must_not": [
+   "cof-pref-ppm"
+  ],
+  "why": "Prices go in CAD per second at 480p.",
+  "pair": "c-56"
+ },
+ {
+  "id": "c-58",
+  "query": "give an overview of how to release an iOS app",
+  "task": "Wen asks what releasing the app involves.",
+  "context": {
+   "client": "claude.ai",
+   "repo": "any",
+   "project": "proj-app",
+   "kind": "other"
+  },
+  "must": [
+   "app-brand-name-goal",
+   "rx-app-useless"
+  ],
+  "must_not": [],
+  "why": "A generic overview missed his goal of a studio name. Lead with that."
+ },
+ {
+  "id": "c-59",
+  "query": "redeploy the memory server from this cloud session",
+  "task": "Ship the new API build to the Droplet.",
+  "context": {
+   "client": "claude-code",
+   "repo": "like-vincent",
+   "project": "proj-pkg",
+   "kind": "execution"
+  },
+  "must": [
+   "pkg-deploy-cloud-init",
+   "pkg-backups"
+  ],
+  "must_not": [],
+  "why": "--recreate wipes the database and changes KB_URL. That is irreversible, so it needs a yes even though it is execution."
+ },
+ {
+  "id": "c-60",
+  "query": "where do I get the memory server token to configure Codex",
+  "task": "Connect a new Codex install to the memory server.",
+  "context": {
+   "client": "codex",
+   "repo": "like-vincent",
+   "project": "proj-pkg",
+   "kind": "execution"
+  },
+  "must": [
+   "pkg-server-where"
+  ],
+  "must_not": [],
+  "why": "The token lives in the Droplet's .env. Never paste it into chat or git."
+ }
+]

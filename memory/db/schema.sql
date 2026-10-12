@@ -113,6 +113,10 @@ create table if not exists event (
   received_at timestamptz not null default now()
 );
 create index if not exists event_session on event (session_id, received_at);
+-- The agent kb-hook names, claude or codex, so their hooks can be told apart. Older rows and get_entry rows have none.
+alter table event add column if not exists agent text;
+-- The packet text the agent read under the retrieval id, so the console shows exactly that. Older rows have none.
+alter table retrieval add column if not exists packet text;
 
 create table if not exists feedback (
   id bigserial primary key,
@@ -123,6 +127,29 @@ create table if not exists feedback (
   note text,
   created_at timestamptz not null default now()
 );
+
+-- The message board. Agents leave each other notes by name: claude, codex, or all.
+create table if not exists message (
+  id bigserial primary key,
+  sender text not null,
+  recipient text not null,
+  body text not null,
+  read_by text[] not null default '{}',
+  created_at timestamptz not null default now()
+);
+create index if not exists message_recipient on message (recipient, created_at);
+
+-- Every write made through the management API (/api/v1), with what it changed. target is entry:<id>, message:<id>,
+-- retrieval:<id> or embeddings.
+create table if not exists admin_audit (
+  id bigserial primary key,
+  at timestamptz not null default now(),
+  action text not null,
+  target text not null,
+  before jsonb,
+  after jsonb
+);
+create index if not exists admin_audit_target on admin_audit (target, at);
 
 -- The spreading arm's learnable parameters, one per (source pattern, link type, target pattern), starting at 1.0.
 create table if not exists link_type_weight (
@@ -143,3 +170,26 @@ on conflict (src_pattern, link_type, dst_pattern) do update set n_links = exclud
 -- The arms were called A0 and A1 before they had names.
 update kb_session set arm = case arm when 'A0' then 'index' else 'hybrid' end where arm in ('A0', 'A1');
 update retrieval set arm = case arm when 'A0' then 'index' else 'hybrid' end where arm in ('A0', 'A1');
+
+-- ---------------------------------------------------------------- context capture: where each session runs
+-- The client's MCP headers say it: X-KB-Cwd, X-KB-Repo and X-KB-Machine (hooks/install.sh sets them). A session whose
+-- headers name no directory takes the cwd of the hook that ties it to its client session. cwd_from says which, headers
+-- or hook. repo is the client's own reading of git, else kb_repo_of(cwd).
+alter table kb_session add column if not exists cwd text, add column if not exists repo text,
+  add column if not exists machine text, add column if not exists cwd_from text;
+create index if not exists kb_session_repo on kb_session (repo, created_at);
+-- The context the arm was handed at this recall, so an eval can replay it. Older rows have none.
+alter table retrieval add column if not exists context jsonb;
+
+-- A repo name from a path alone, for a client that sent none: a .claude or .codex worktree counts as the checkout it
+-- hangs off, anything else is its folder's own name.
+create or replace function kb_repo_of(cwd text) returns text language sql immutable as $$
+  select nullif(regexp_replace(regexp_replace(rtrim(cwd, '/\'), '/\.(claude|codex)/worktrees/[^/]+(/.*)?$', ''),
+                               '^.*[/\\]', ''), '')
+$$;
+
+-- Sessions from before this block take the cwd of their client session's latest hook. Only empty fields fill.
+update kb_session s set cwd = v.cwd, cwd_from = 'hook', repo = coalesce(s.repo, kb_repo_of(v.cwd))
+from (select distinct on (session_id) session_id, payload->>'cwd' as cwd from event
+      where payload->>'cwd' like '/%%' and payload->>'cwd' <> '/' order by session_id, received_at desc, id desc) v
+where s.cwd is null and v.session_id = s.claude_session_id;

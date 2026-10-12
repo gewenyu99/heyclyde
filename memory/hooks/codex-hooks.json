@@ -1,0 +1,6 @@
+{
+  "hooks": {
+    "SessionStart": [{ "matcher": "startup|resume", "hooks": [{ "type": "command", "command": "KB_AGENT=codex ~/.config/kb/kb-hook SessionStart" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "KB_AGENT=codex ~/.config/kb/kb-hook UserPromptSubmit" }] }]
+  }
+}

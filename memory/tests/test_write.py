@@ -20,7 +20,7 @@ from psycopg_pool import AsyncConnectionPool
 
 from kb import embed, search, server, service, write
 from kb.config import config
-from kb.server import BearerAuth
+from kb.server import BearerAuth, Credential
 
 pytestmark = pytest.mark.asyncio
 QUERY = "what temperature for oolong?"
@@ -494,7 +494,7 @@ async def test_mcp_remember_writes_drafts_only_in_a_run(conn, served):
 # ---------------------------------------------------------------- lv-flow's HTTP routes
 @pytest.fixture
 async def http(served):
-    app = BearerAuth(server.app.app, "tok", "rt")
+    app = BearerAuth(server.app.app, Credential("tok"), runtime=Credential("rt"), max_body=server.MAX_REQUEST_BYTES)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://kb") as client:
         yield client
 

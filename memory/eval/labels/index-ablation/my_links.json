@@ -1,0 +1,22 @@
+[
+ {"src": "vid-t156-seedance-handles-text-prompted-fight-sce", "dst": "vid-seedance-fight-choreo", "type": "supports"},
+ {"src": "vid-t220-segmind-is-good-for-seedance-2-5", "dst": "vid-segmind-cheapest", "type": "supports"},
+ {"src": "vid-t192-uses-wavespeed-for-wan-3-0", "dst": "vid-wan3-via-wavespeed", "type": "supports"},
+ {"src": "vid-t180-slow-wan-3-0-run-was-30s-at-480p", "dst": "vid-wan3-slow", "type": "supports"},
+ {"src": "vid-t264-insisted-wan-3-0-is-ga-search-from-the-2", "dst": "vid-draft-wan-ga-unannounced", "type": "corrects"},
+ {"src": "vid-t216-research-flawed-krea-claimed-not-to-run", "dst": "pref-live-pages", "type": "supports"},
+ {"src": "vid-t274-corrected-claude-segmind-does-have-wan-3", "dst": "pref-live-pages", "type": "supports"},
+ {"src": "vid-t134-deployed-runpod-a6000-at-0-56-hr", "dst": "vid-runpod-a6000", "type": "supports"},
+ {"src": "vid-t128-pushed-back-on-overspecced-gpu", "dst": "vid-draft-blackwell", "type": "corrects"},
+ {"src": "vid-t016-rejected-runcomfy-pro-subscription-29-99", "dst": "pref-payg", "type": "supports"},
+ {"src": "vid-t254-gpt-image-2-is-the-best-image-model-for", "dst": "vid-gpt-image2-character-sheets", "type": "supports"},
+ {"src": "vid-t172-kling-3-0-is-bad", "dst": "vid-kling3-poor", "type": "supports"},
+ {"src": "vid-t060-character-consistency-across-videos-is-a", "dst": "vid-needs", "type": "supports"},
+ {"src": "vid-t294-models-don-t-grasp-small-asian-frames", "dst": "vid-needs", "type": "supports"},
+ {"src": "vid-t108-runcomfy-judged-terrible-for-h3-wants-ma", "dst": "vid-runcomfy-rejected", "type": "supports"},
+ {"src": "vid-t002-laptop-is-a-16gb-m4-macbook-air", "dst": "vid-macbook-limit", "type": "supports"},
+ {"src": "vid-t142-open-video-models-feel-years-behind-seed", "dst": "vid-production-models", "type": "supports"},
+ {"src": "vid-minimax-dropped", "dst": "vid-t152-h3-via-wavespeed-hosted-api-also-very-ba", "type": "derived_from"},
+ {"src": "vid-t196-skeptical-of-unsourced-benchmark-claims", "dst": "pref-evidence-over-hype", "type": "supports"},
+ {"src": "pkg-hooks-lifecycle", "dst": "pkg-audit-on-idle", "type": "relates"}
+]
