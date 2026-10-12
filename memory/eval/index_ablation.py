@@ -12,6 +12,7 @@ It writes, so it refuses a database named kb or with prod in its name. Run it on
 createdb -T kb_prod_copy kb_dev_<you>. The test split is never read here (README, Fair arms).
 """
 import argparse
+from contextlib import asynccontextmanager
 import asyncio
 import sys
 from pathlib import Path
@@ -140,7 +141,19 @@ async def main(variants, to, arms):
             await conn.rollback()
             await conn.execute("update entry set title = title")
             await conn.commit()
-            await sync_embeddings(conn)
+            await sync_embeddings(OnePool(conn))
+            await conn.commit()
+
+
+class OnePool:
+    """sync_embeddings takes a pool. This script holds one connection, so every checkout is that connection."""
+
+    def __init__(self, conn):
+        self.conn = conn
+
+    @asynccontextmanager
+    async def connection(self):
+        yield self.conn
 
 
 if __name__ == "__main__":
