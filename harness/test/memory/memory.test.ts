@@ -1,10 +1,11 @@
-/** Tier 3: the harness against the real memory server server on Postgres. Runtime writes, the agent tools, the token split, and a task run's handoff. */
+/** Tier 3: the harness against the real memory Edge Function on Supabase's Postgres. Runtime writes, the agent tools, the token split, and a task run's handoff. */
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { chmodSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 import { DaemonClient } from '../../src/client.ts'
+import { flushPending } from '../../src/memory-flush.ts'
 import { startDaemon } from '../../src/daemon.ts'
 import { workListEntry } from '../../src/flow/memory.ts'
 import type { Run } from '../../src/flow/types.ts'
@@ -40,8 +41,13 @@ function clyde(args: string[], extra: Record<string, string>): Promise<Ran> {
 function project(run: string): Record<string, unknown> {
   return {
     id: `run-${run}`, pattern: 'projects', title: `Run ${run}`, body: `The clyde test run ${run}.`, authority: 'observed', scope: `run:${run}`,
-    evidence_kind: 'summary', evidence: 'The memory tier made it.', source: { kind: 'run', title: `clyde run ${run}`, uri: `clyde://runs/${run}` },
+    evidence_kind: 'summary', evidence: 'Tier 3 made it.', source: { kind: 'run', title: `clyde run ${run}`, uri: `clyde://runs/${run}` },
   }
+}
+
+/** Sends what clyde remember and the daemon left in the spool, as the daemon's flush would. */
+async function flush(): Promise<void> {
+  await flushPending({ url: memory.url, agentToken: memory.token, runtimeToken: memory.runtimeToken, timeoutMs: 10_000 })
 }
 
 /** True when id shows up in the packet before every seeded entry it holds. */
@@ -94,6 +100,7 @@ test('clyde remember and clyde recall as an agent: a draft in the run that only 
   assert.equal(r.code, 0, r.stderr)
   const id = /^Remembered (\S+) as a draft in run:k3\.$/m.exec(r.stdout)?.[1] as string
   assert.ok(id, r.stdout)
+  await flush()
   const text = await new Memory(memory.url, memory.token).entry(id)
   assert.match(text ?? '', /draft/)
   assert.match(text ?? '', /evidence\.txt/)
@@ -104,9 +111,9 @@ test('clyde remember and clyde recall as an agent: a draft in the run that only 
   assert.ok(!unscoped.stdout.includes(id), `an unscoped recall leaves run entries out:\n${unscoped.stdout}`)
   const other = await clyde(['recall', 'oolong temperature', '--scope', 'run:k9'], env)
   assert.ok(!other.stdout.includes(id), 'another run never sees it')
-  const refused = await clyde(['remember', '--title', 'x', '--pattern', 'observations', '--scope', 'run:no-project'], env)
-  assert.equal(refused.code, 1)
-  assert.match(refused.stderr, /memory refused the entry \(400\)/)
+  // clyde remember spools a note and memory judges it on delivery, so a run with no project is refused there.
+  const orphan = { pattern: 'observations', title: 'x', body: 'x', authority: 'draft', scope: 'run:no-project', evidence_kind: 'assistant', evidence: 'x', project: 'run-no-project' }
+  await assert.rejects(new Memory(memory.url, memory.token).remember(orphan), /memory refused the entry \(400\): Project run-no-project doesn't exist/)
 })
 
 test('a task run with fake backends hands off through the real memory server, and a scoped recall serves its entries first', { skip: SKIP }, async () => {
@@ -135,6 +142,10 @@ test('a task run with fake backends hands off through the real memory server, an
       return ['done', 'failed', 'stopped'].includes(r.status) ? r : null
     }, 30_000, 'the run to finish')
     assert.equal(run.status, 'done', JSON.stringify(run.stages))
+    // The worker's work list went to memory at the end of its turn, as a draft in the run.
+    const handoff = join(s.home, 'lists', 'handoff', `${run.id}.json`)
+    const list = await waitFor(() => { try { return JSON.parse(readFileSync(handoff, 'utf8')).task } catch { return null } }, 5000, 'the work list handoff')
+    await flush()
     const log = readFileSync(join(s.state, 'remember.log'), 'utf8')
     const note = /^Remembered (\S+) as a draft in run:(\S+)\.$/m.exec(log)
     assert.ok(note, log)
@@ -150,9 +161,6 @@ test('a task run with fake backends hands off through the real memory server, an
     assert.ok(leads(recalled.stdout, note[1]), `the worker's note leads:\n${recalled.stdout}`)
     const verdicts = await clyde(['recall', 'verdict stage task passed'], env)
     assert.ok(leads(verdicts.stdout, verdict), `the verdict leads:\n${verdicts.stdout}`)
-    // The worker's work list went to memory at the end of its turn, as a draft in the run.
-    const handoff = join(s.home, 'lists', 'handoff', `${run.id}.json`)
-    const list = await waitFor(() => { try { return JSON.parse(readFileSync(handoff, 'utf8')).task } catch { return null } }, 5000, 'the work list handoff')
     assert.match(await rt.entry(list.entry) ?? '', /: Work list, task\npattern observations · draft · run:[\s\S]*\[x\] 1 A hello file\./)
   } finally {
     await d.close()

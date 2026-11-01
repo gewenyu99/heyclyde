@@ -11,7 +11,7 @@ Moves memory off the DigitalOcean Droplet onto one Supabase project: Postgres fo
 - **`memory` MCP server.** Was `kb`. Tools become `mcp__memory__recall` and so on.
 - **`https://<ref>.supabase.co/functions/v1/memory`.** The one URL. It never changes when the database moves or grows.
 - **Per-computer tokens.** `POST /api/v1/devices` mints one, shown once. Revoke one without touching the rest.
-- **`memory/hooks/install.sh`.** Takes no IP and needs no SSH. Asks for the computer's token with input hidden.
+- **`memory/supabase/functions/memory/client/install.sh`.** Takes no IP and needs no SSH. Asks for the computer's token with input hidden.
 - **`memory/console/serve.ts`.** Runs the console on localhost, since Supabase won't serve HTML without a custom domain.
 - **Schema `memory`.** Every table, out of PostgREST's reach.
 - **Removed `memory/deploy/`.** Droplet provisioning, compose, Caddy, Ollama and restic go.
@@ -128,7 +128,7 @@ Not started. It waits for the hardware.
 Built for one person, with each step to many users a change in one place.
 
 1. **Many computers, one person (now).** A `device` table holds a token hash, a name, `last_seen` and `revoked_at`. Every agent request resolves to a device. This table is the seed of a principal.
-2. **A few trusted people.** Add `owner` to `device`, then `owner_id` to `entry`, `kb_session`, `retrieval`, `event`, `message` and `feedback`. The function adds `owner_id = $principal` to every query. The arm experiment runs per owner. Auth stays in `auth.ts`, so it's one module and one migration.
+2. **A few trusted people.** Add `owner` to `device`, then `owner_id` to `entry`, `mcp_session`, `retrieval`, `event`, `message` and `feedback`. The function adds `owner_id = $principal` to every query. The arm experiment runs per owner. Auth stays in `auth.ts`, so it's one module and one migration.
 3. **Strangers.** Swap device tokens for Supabase Auth's OAuth 2.1 server, so MCP clients sign in with dynamic client registration. Turn on RLS keyed on the token's `user_id` as a second wall behind the function's filter. Move the console to a static host with Supabase Auth login. Per-user OpenAI cost needs a rate limit per owner.
 4. **Load.** Move embedding to a pgmq queue drained by cron. Partition `event` by month, since hooks write the most rows. Raise compute from Micro when P95 recall passes 300 ms. Add HNSW partial indexes per owner only when one owner's recalls slow another's.
 

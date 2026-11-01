@@ -1,29 +1,31 @@
-# kb management API
+# memory management API
 
-The console's API. It shows everything kb holds and changes entries, links and the message board, over JSON at `/api/v1`.
+The console's API. It shows everything memory holds and changes entries, links and the message board, over JSON at `/api/v1`.
 
 It is Wen's own console behind its own admin token, so private entries show in full here. The MCP tools still redact them.
 
 ```bash
-curl -H "Authorization: Bearer $KB_ADMIN_TOKEN" https://$KB_DOMAIN/api/v1/overview
+curl -H "Authorization: Bearer $(cat ~/.config/memory/admin-token)" https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory/api/v1/overview
 ```
 
 ## Auth
 
-Every `/api/v1` path needs `Authorization: Bearer <admin token>`. That is `KB_ADMIN_TOKEN`, or the token whose SHA-256 hex is `KB_ADMIN_TOKEN_SHA256`. A missing or wrong token gets 401 `{"error": "unauthorized"}`.
+Every `/api/v1` path needs `Authorization: Bearer <admin token>`. The function stores only its SHA-256, as `admin_token_sha256` in `memory.setting`, and answers 503 while none is set. A missing or wrong token gets 401 `{"error": "unauthorized"}`, and ten wrong tokens from one address start a lockout.
 
-The agents' token never opens it. Every agent holds that one, for MCP, the hooks and its inbox, and an agent with Bash could otherwise read private entries in full and write as Wen. Each token works on its own paths only.
+A device token never opens it. Every agent holds its computer's device token, for MCP, the hooks and its inbox, and an agent with Bash could otherwise read private entries in full and write as Wen. Each token works on its own paths only.
 
 | Path | Takes |
 |---|---|
 | `/api/v1`, `/api/v1/*`, `/` | The admin token |
-| `/mcp`, `/hooks/*`, `/messages/*` | The agents' token, `KB_TOKEN` |
-| `/healthz`, `/console`, `/console/*` | Nothing |
+| `/mcp`, `/hooks/*`, `/messages/*`, `/entries`, `/entries/*`, `/blobs/*`, `/recall` | A device token, or clyde's runtime token |
+| `/export` | The backup token, or the admin token |
+| `/embeddings/sync` | pg_cron's secret from Vault |
+| `/healthz` | Nothing |
 | Anything else | Nothing works. 401 |
 
-The console is static files with no data in them. It asks for the admin token and sends it to `/api/v1`. `GET /` redirects to `/console/`, but it takes the admin token too. Open `/console/` in a browser.
+The console, in [console/](console/), is static files with no data in them. It asks for the admin token and sends it to `/api/v1`. Supabase serves HTML only on a custom domain, so it isn't hosted yet.
 
-- **The console can be off.** With no admin token set, one under 32 characters, a hash that isn't 64 hex digits, or the agents' own token, every `/api/v1` path answers 503 with the reason. MCP and the hooks keep serving.
+- **The console can be off.** With no admin token set, every `/api/v1` path answers 503 with the reason. MCP and the hooks keep serving.
 - **Wrong tokens lock an address out.** The first 10 wrong tokens from one address cost nothing. Each one after that locks the address out of that credential's paths for twice as long as the last, up to 15 minutes. A locked address gets 429 with `Retry-After`, and its token isn't checked. A request with no token isn't a guess and never counts. Misses are forgotten after an hour without one. The admin and agent tokens count apart, so a stale agent token never locks Wen out of the console.
 
 ## Conventions
@@ -86,7 +88,7 @@ The console is static files with no data in them. It asks for the admin token an
 
 `events_by_type`, `clients` and `agents` cover the same window. A client counts when a session started in the window or recalled in it. A session with no client name shows as `unknown`.
 
-`agents` counts hook events by the agent kb-hook named, `claude` or `codex`, so it says whether each one's hooks are firing. `get_entry` opens aren't hooks and stay out. Events from a kb-hook older than this field show as `unknown`.
+`agents` counts hook events by the agent memory-hook named, `claude` or `codex`, so it says whether each one's hooks are firing. `get_entry` opens aren't hooks and stay out. Events from a memory-hook older than this field show as `unknown`.
 
 ### `GET /meta`
 
@@ -239,7 +241,7 @@ MCP sessions, newest first. Each item has `id`, `arm`, `client`, `claude_session
 
 Hook events and `get_entry` opens, newest first. Each item has `id`, `event`, `session_id`, `agent`, `received_at`, `cwd`, `tool_name` and `summary`. `summary` is the first 160 characters of the prompt for `UserPromptSubmit`, the tool name for `PostToolUse`, and empty otherwise.
 
-`agent` is the agent kb-hook named with `?agent=`, `claude` or `codex`. It is null for `get_entry` opens and for events from an older kb-hook. `?agent=codex` lists one agent's events.
+`agent` is the agent memory-hook named with `?agent=`, `claude` or `codex`. It is null for `get_entry` opens and for events from an older memory-hook. `?agent=codex` lists one agent's events.
 
 `since` is ISO 8601. A time without an offset is UTC.
 
@@ -251,12 +253,12 @@ Hook events and `get_entry` opens, newest first. Each item has `id`, `event`, `s
 
 ### `GET /retrievals?arm=&client=&q=`
 
-Recalls, newest first. `q` is a substring of the query or the task. Each item has `id`, `created_at`, `arm`, `client`, `kb_session`, `query`, `task`, `delivered_count`, `latency_ms`, `degraded` and `feedback`, the count of verdicts on it.
+Recalls, newest first. `q` is a substring of the query or the task. Each item has `id`, `created_at`, `arm`, `client`, `mcp_session`, `query`, `task`, `delivered_count`, `latency_ms`, `degraded` and `feedback`, the count of verdicts on it.
 
 ### `GET /retrievals/{id}`
 
 ```json
-{"retrieval": {"id": "...", "kb_session": "...", "arm": "hybrid", "query": "...", "task": null,
+{"retrieval": {"id": "...", "mcp_session": "...", "arm": "hybrid", "query": "...", "task": null,
                "candidates": [...], "delivered": [...], "rejected": [], "latency_ms": 12, "degraded": null, "created_at": "...",
                "packet": "Index lines that match. ..."},
  "client": "claude-code",
@@ -328,10 +330,6 @@ Newest first. Each item has `id`, `at`, `action`, `target`, `before` and `after`
 | `message.create` | `message:<id>` | null | `to` and `body` as sent |
 | `embeddings.sync` | `embeddings` | null | `embedded` or `error` |
 
-## Code and tests
+## Code
 
-`kb/api.py` holds the routes and input parsing. `kb/admin_service.py` holds the SQL, one function per endpoint, so tests can call it without HTTP. `tests/test_api.py` drives the real app against a test database.
-
-```bash
-KB_TEST_DATABASE_URL=postgresql://... pytest tests/test_api.py
-```
+[supabase/functions/memory/admin.ts](supabase/functions/memory/admin.ts) holds the routes, the input parsing and the SQL, one function per endpoint. The function type-checks with `deno check supabase/functions/memory/index.ts`.

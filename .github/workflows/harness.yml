@@ -1,4 +1,5 @@
-# The clyde harness tiers 1 to 3, and memory's own tests. Tier 4 calls real models, so it never runs here.
+# The clyde harness tiers 1 to 3. Tier 3 runs the memory Edge Function against Supabase's Postgres. Tier 4 calls real
+# models, so it never runs here.
 name: harness
 
 on:
@@ -31,34 +32,31 @@ jobs:
       - name: Tier 2, pi with a fake model
         run: npm run test:pi
 
-  kb:
+  memory:
     name: Memory and tier 3
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:16
+        # Supabase's own image, for the extensions the migrations need: pgvector, pgroonga, pg_cron and pg_net.
+        image: supabase/postgres:17.6.1.011
         env:
           POSTGRES_PASSWORD: postgres
         ports: ['5432:5432']
         options: >-
-          --health-cmd "pg_isready -U postgres"
+          --health-cmd "pg_isready -U postgres -h localhost"
           --health-interval 5s
           --health-timeout 5s
-          --health-retries 10
+          --health-retries 20
     env:
-      KB_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      MEMORY_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: denoland/setup-deno@v2
         with:
-          python-version: '3.13'
-          cache: pip
-          cache-dependency-path: memory/api/requirements.txt
-      - run: pip install -r memory/api/requirements.txt pytest pytest-asyncio
-      - name: memory pytest
-        working-directory: memory
-        run: pytest
+          deno-version: v2.x
+      - name: Cache the function's imports
+        run: deno cache memory/supabase/functions/memory/index.ts harness/test/memory/database.ts
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -66,6 +64,6 @@ jobs:
           cache-dependency-path: harness/package-lock.json
       - run: npm ci --ignore-scripts
         working-directory: harness
-      - name: Tier 3, the real kb
+      - name: Tier 3, the memory function
         working-directory: harness
-        run: npm run test:kb
+        run: npm run test:memory

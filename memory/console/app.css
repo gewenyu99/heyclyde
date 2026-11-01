@@ -1,4 +1,4 @@
-/* kb console. Color tokens on :root, redefined for dark mode. Series slots follow the validated categorical order. */
+/* memory console. Color tokens on :root, redefined for dark mode. Series slots follow the validated categorical order. */
 :root {
   color-scheme: light;
   --bg: #f6f6f3;

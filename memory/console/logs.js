@@ -113,7 +113,7 @@ export function eventsView(root) {
       { name: 'agent', label: 'Agent', type: 'select', blank: 'Any', options: AGENTS },
       { name: 'since', label: 'Since', type: 'date' },
     ],
-    empty: 'No hook events yet. kb-hook sends them from Claude Code and Codex.',
+    empty: 'No hook events yet. memory-hook sends them from Claude Code and Codex.',
     expand: (r) => payloadView(r.id),
     cols: [
       { label: 'ID', class: 'num', render: (r) => r.id },
@@ -221,7 +221,7 @@ export async function recallView(root, id, message = '') {
     h('div', { class: 'grid-2' },
       card('Details', dl([
         ['ID', mono(r.id ?? id)], ['When', when(r.created_at)], ['Arm', arm(r.arm)], ['Client', d.client],
-        ['MCP session', r.kb_session && h('a', { href: href('session', r.kb_session), class: 'mono trunc', title: r.kb_session }, r.kb_session)],
+        ['MCP session', r.mcp_session && h('a', { href: href('session', r.mcp_session), class: 'mono trunc', title: r.mcp_session }, r.mcp_session)],
         ['Latency', r.latency_ms == null ? null : `${num(r.latency_ms)} ms`],
         ['Degraded', r.degraded && badge(r.degraded, 'warn')],
         ['Delivered', `${num(cands.filter((c) => c.delivered).length)} of ${num(cands.length)} candidates`],

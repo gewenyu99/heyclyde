@@ -201,7 +201,7 @@ function renderEntry(root, d, meta, message = '') {
   const panel = h('div', { class: 'panel-slot' });
   const top = flash();
   if (message) { top.show(message); window.scrollTo(0, 0); }
-  document.title = `${e.title || id} · kb`;
+  document.title = `${e.title || id} · memory`;
 
   const open = (make) => {
     top.clear();
@@ -353,7 +353,7 @@ function deletePanel(root, d, meta, close) {
     const res = await submit(button, out, () => api(`/entries/${enc(id)}`, { method: 'DELETE' }));
     if (!res) return;
     forgetMeta();
-    document.title = 'Deleted · kb';
+    document.title = 'Deleted · memory';
     root.replaceChildren(pageHead('Deleted'), note(`Deleted ${res.deleted || id}.`, 'empty'),
       h('p', null, h('a', { href: href('entries') }, 'Back to entries')));
   });

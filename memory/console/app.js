@@ -1,4 +1,4 @@
-// The kb console: login, shell, router and the overview. Other views live in entries.js, logs.js and charts.js.
+// The memory console: login, shell, router and the overview. Other views live in entries.js, logs.js and charts.js.
 import {
   api, auth, onUnauthorized, forgetMeta, readHash, href, leave, onLeave, h, note, loading, failed, pageHead, card,
   num, when, toDate, ago, dl, table, flash, plural, ApiError, armsRevealed, revealArms,
@@ -43,7 +43,7 @@ function showLogin(message = '') {
   const msg = h('p', { class: 'flash error', role: 'alert' }, message);
   const button = h('button', { type: 'submit', class: 'primary' }, 'Sign in');
   const form = h('form', { class: 'login-card' },
-    h('h1', null, 'kb'),
+    h('h1', null, 'memory'),
     h('p', { class: 'muted' }, "Wen's memory console."),
     h('label', { class: 'field' }, h('span', { class: 'label' }, 'Admin token'), input,
       h('span', { class: 'hint' }, "KB_ADMIN_TOKEN. The agents' token won't open it.")),
@@ -69,7 +69,7 @@ function showLogin(message = '') {
     }
   });
   app.replaceChildren(h('main', { class: 'login' }, form));
-  document.title = 'Sign in · kb';
+  document.title = 'Sign in · memory';
   input.focus();
 }
 
@@ -80,7 +80,7 @@ function buildShell() {
   const links = NAV.map(([key, label]) => h('li', null, h('a', { href: href(key), 'data-key': key }, label)));
   const menu = h('button', { type: 'button', class: 'menu', 'aria-expanded': 'false', 'aria-controls': 'nav-list' }, 'Menu');
   const nav = h('nav', { class: 'side', 'aria-label': 'Sections' },
-    h('div', { class: 'brand' }, h('a', { href: href('overview') }, h('strong', null, 'kb'), h('span', null, 'console')), menu),
+    h('div', { class: 'brand' }, h('a', { href: href('overview') }, h('strong', null, 'memory'), h('span', null, 'console')), menu),
     h('div', { class: 'nav-body', id: 'nav-list' },
       h('ul', null, links),
       h('button', { type: 'button', class: 'link logout', onclick: () => { revealArms(!armsRevealed()); location.reload(); } },
@@ -108,7 +108,7 @@ function route() {
   }
   shell.nav.classList.remove('open');
   shell.menu.setAttribute('aria-expanded', 'false');
-  document.title = `${NAV.find(([k]) => k === key)?.[1] || 'Not found'} · kb`;
+  document.title = `${NAV.find(([k]) => k === key)?.[1] || 'Not found'} · memory`;
   // Each route renders into a fresh node. A slow response for an old route lands in a detached node and is never seen.
   const root = h('div', { class: 'view' });
   shell.main.replaceChildren(root);
@@ -255,7 +255,7 @@ function activitySection(promise) {
   return [
     card('Last 14 days', chart),
     h('div', { class: 'grid-2' },
-      card('Hooks by agent', agents, h('p', { class: 'muted small' }, 'Agents name themselves through kb-hook. Older hooks sent no name.')),
+      card('Hooks by agent', agents, h('p', { class: 'muted small' }, 'Agents name themselves through memory-hook. Older hooks sent no name.')),
       card('Events by type', byType)),
     card('MCP clients', clients),
   ];

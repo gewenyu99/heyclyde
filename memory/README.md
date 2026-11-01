@@ -14,10 +14,8 @@ Phase 0 is built. The index and hybrid arms serve live, hooks log every session,
 | `supabase/migrations/` | The schema, in Postgres schema `memory`, and the 5-minute embed sync |
 | `hooks/` | `install.sh`, which connects a computer's Claude Code and Codex, plus `memory-hook`, both clients' config snippets and `set-openai-key.sh` |
 | `backup/` | `export.py` and `restore.py` for the nightly backup |
-| `api/`, `db/`, `tests/` | The old Python server and its tests. Legacy: kept until harness tier 3 runs against the function |
-| `api/kb/console/` | Wen's console. It reads and edits the store through the API in [api/API.md](api/API.md), behind an admin token the agents never hold. Not hosted yet |
+| `console/` | Wen's console. It reads and edits the store through the API in [API.md](API.md), behind an admin token the agents never hold. Not hosted yet |
 | `eval/` | Retrieval eval on the practice queries, decider run-off on the reactions |
-| `tests/` | Unit and database tests on a made-up vault |
 
 ## Where the data lives
 
@@ -60,7 +58,7 @@ The first pass found an implementation bug, not a design limit. Hybrid's fusion 
 
 Each clyde-flow run gets its own scope, `run:<id>`. Its stages leave notes there, and the next stage recalls them.
 
-- **Runs stay out of normal recalls.** A recall without a scope never sees `run:` entries. With `scope="run:abc"`, that run's entries join the candidates and their scores are multiplied by `KB_SCOPE_BOOST`, default 3. Other runs stay hidden. Both arms filter and boost the same way.
+- **Runs stay out of normal recalls.** A recall without a scope never sees `run:` entries. With `scope="run:abc"`, that run's entries join the candidates and their scores are multiplied by `MEMORY_SCOPE_BOOST`, default 3. Other runs stay hidden. Both arms filter and boost the same way.
 - **A run's project comes first.** Write a `projects` entry in scope `run:<id>`, then point every note at it with `project`.
 - **Writes keep the seed's rules.** `remember` checks each entry against the `seed/build.py` invariants and writes it in one transaction. Title, body and evidence stop at 300, 4,000 and 20,000 characters.
 - **A replacement reaches every recall the old entry did.** An entry supersedes only entries at or below its own authority, and a `run:` entry only entries in its run. Hybrid stops serving a superseded entry. The index arm lists it struck through and never boosts it.
@@ -82,7 +80,7 @@ Each route takes a computer's device token or clyde-flow's runtime token. Only c
 
 ## Run the tests
 
-The function type-checks with `deno check supabase/functions/memory/index.ts`. The pytest suite under `tests/` still covers the legacy Python server, which harness tier 3 boots.
+The function type-checks with `deno check supabase/functions/memory/index.ts`. Harness tier 3 boots it under deno against a `supabase/postgres` database with the migrations applied, and drives it through clyde. CI runs it in the harness workflow. See [harness/README.md](../harness/README.md#run-the-tests).
 
 ## Run the evals
 

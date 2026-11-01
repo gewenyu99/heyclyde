@@ -1,7 +1,7 @@
 // Helpers every view shares. Server strings reach the page through h() as text nodes, never as HTML.
 
 // ---------------------------------------------------------------- token and API
-const KEY = 'kb-token';
+const KEY = 'memory-token';
 
 function stored() {
   try { return localStorage.getItem(KEY) || ''; } catch { return ''; }
@@ -215,7 +215,7 @@ export const authority = (a) => (a ? badge(a, AUTH[a] || '') : '');
 export const verdict = (v) => (v ? badge(v, VERDICT[v] || '') : '');
 
 // The experiment keeps Wen blind to the arm each session drew, so his reactions stay fair. Arms show only once revealed.
-const ARMS_KEY = 'kb-reveal-arms';
+const ARMS_KEY = 'memory-reveal-arms';
 export function armsRevealed() {
   try { return localStorage.getItem(ARMS_KEY) === '1'; } catch { return false; }
 }

@@ -18,8 +18,7 @@ from pathlib import Path
 
 import yaml
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "api"))
-from kb.decider import CANDIDATES  # noqa: E402
+from decider import CANDIDATES
 
 
 def load(seed_dir):

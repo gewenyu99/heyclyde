@@ -120,4 +120,4 @@ The Supabase dashboard is the console: [Table Editor, schema `memory`](https://s
 | `recalls_recent` | Recalls, newest first, with the titles each one delivered |
 | `events_recent` | Hook events, newest first, with the prompt or tool name |
 
-Supabase serves no HTML on its own domains, so the old console page isn't hosted. Its API still runs at `/api/v1` behind the admin token. See [api/API.md](api/API.md).
+Supabase serves no HTML on its own domains, so the old console page isn't hosted. Its API still runs at `/api/v1` behind the admin token. See [API.md](API.md).
