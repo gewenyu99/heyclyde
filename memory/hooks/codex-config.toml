@@ -1,5 +1,0 @@
-# install.sh writes this into ~/.codex/config.toml with the real URL and token, and sets the file to mode 600.
-# The header sits in the file rather than an env var, since the Codex desktop and IDE apps don't read your shell profile.
-[mcp_servers.kb]
-url = "https://kb.example.com/mcp"
-http_headers = { Authorization = "Bearer <token>" }

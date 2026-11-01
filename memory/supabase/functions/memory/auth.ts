@@ -1,0 +1,101 @@
+// Who a request is. Each computer holds its own device token, clyde-flow holds the runtime token, the console holds the
+// admin token, the nightly backup holds the backup token and pg_cron holds the cron secret. Only SHA-256 hashes are
+// stored, so a database read never yields a token.
+import { secret, setting, sql } from "./db.ts";
+import { sha256 } from "./embed.ts";
+
+export type Kind = "open" | "agent" | "admin" | "backup" | "cron";
+export type Principal = { role: "anyone" | "device" | "runtime" | "admin" | "backup" | "cron"; device?: string };
+
+/** Which credential a path takes. /healthz and the console's files take none. Any path not named takes none of them
+ * and gets 401. */
+export function credentialFor(path: string): Kind | null {
+  if (path === "/healthz") return "open";
+  if (path === "/" || path === "/api/v1" || path.startsWith("/api/v1/")) return "admin";
+  if (["/mcp", "/mcp/", "/entries", "/recall"].includes(path)) return "agent";
+  if (["/hooks/", "/messages/", "/entries/", "/blobs/"].some((p) => path.startsWith(p))) return "agent";
+  if (path === "/export") return "backup";
+  if (path === "/embeddings/sync") return "cron";
+  return null;
+}
+
+/** The client's address from the platform's X-Forwarded-For. IPv6 counts by /64, the block one host usually holds,
+ * so rotating through it buys no extra guesses. */
+export function clientKey(req: Request) {
+  const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
+  return ip.includes(":") ? ip.split(":").slice(0, 4).join(":") + "::/64" : ip;
+}
+
+function same(a: string, b: string) {
+  if (!a || !b || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+const FREE_MISSES = 10, CAP_SECONDS = 900, FORGET_SECONDS = 3600;
+
+/** Seconds this address stays locked out for this credential, or 0. */
+async function lockedFor(kind: Kind, client: string): Promise<number> {
+  const [row] = await sql`select ceil(extract(epoch from locked_until - now()))::int as wait from memory.auth_miss
+    where kind = ${kind} and client = ${client} and locked_until > now()`;
+  return row?.wait ?? 0;
+}
+
+/** Count a wrong token. The first ten cost nothing. Each miss after that locks the address out twice as long as the
+ * last, up to 15 minutes. Misses are forgotten after an hour without one. */
+async function miss(kind: Kind, client: string) {
+  await sql`insert into memory.auth_miss (kind, client, misses, last_miss) values (${kind}, ${client}, 1, now())
+    on conflict (kind, client) do update set
+      misses = case when memory.auth_miss.last_miss < now() - make_interval(secs => ${FORGET_SECONDS}) then 1
+                    else memory.auth_miss.misses + 1 end,
+      last_miss = now()`;
+  await sql`update memory.auth_miss set locked_until = case when misses > ${FREE_MISSES}
+      then now() + make_interval(secs => least(${CAP_SECONDS}, power(2, misses - ${FREE_MISSES} - 1))) end
+    where kind = ${kind} and client = ${client}`;
+}
+
+async function resolve(kind: Kind, token: string): Promise<Principal | null> {
+  const hash = await sha256(token);
+  if (kind === "agent") {
+    if (same(hash, await setting("runtime_token_sha256"))) return { role: "runtime" };
+    const [d] = await sql`update memory.device set last_seen = now()
+      where token_sha256 = ${hash} and revoked_at is null returning name`;
+    return d ? { role: "device", device: d.name } : null;
+  }
+  if (kind === "admin") return same(hash, await setting("admin_token_sha256")) ? { role: "admin" } : null;
+  if (kind === "backup") {
+    if (same(hash, await setting("backup_token_sha256"))) return { role: "backup" };
+    return same(hash, await setting("admin_token_sha256")) ? { role: "admin" } : null;
+  }
+  if (kind === "cron") return same(token, await secret("cron_secret")) ? { role: "cron" } : null;
+  return null;
+}
+
+const json = (body: unknown, status: number, headers: Record<string, string> = {}) =>
+  Response.json(body, { status, headers });
+
+/** The principal, or the response that refuses it: 401 for a wrong or missing token, 429 while the address is locked
+ * out, 503 while the console has no admin token. */
+export async function authenticate(req: Request, path: string): Promise<Principal | Response> {
+  const kind = credentialFor(path);
+  if (kind === "open") return { role: "anyone" };
+  if (kind === null) return json({ error: "unauthorized" }, 401);
+  if (kind === "admin" && !(await setting("admin_token_sha256"))) {
+    return json({ error: "The console is off. No admin token is set." }, 503);
+  }
+  const client = clientKey(req);
+  const wait = await lockedFor(kind, client);
+  if (wait) {
+    return json({ error: `Too many wrong tokens from your address. Try again in ${wait} second${wait === 1 ? "" : "s"}.` },
+      429, { "retry-after": String(wait) });
+  }
+  const header = req.headers.get("authorization") ?? "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+  const who = token ? await resolve(kind, token) : null;
+  if (!who) {
+    if (token) await miss(kind, client);
+    return json({ error: "unauthorized" }, 401);
+  }
+  return who;
+}

@@ -1,0 +1,35 @@
+# Nightly copy of Wen's memory, off Supabase. memory/backup/export.py pages through the memory function's /export and
+# fails when a table comes back short. This job compresses and encrypts the result, and keeps it as an artifact for 30
+# days. Restore with memory/backup/restore.py.
+name: memory-backup
+
+on:
+  schedule:
+    - cron: '17 8 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: memory/backup
+      - name: Export, compress and encrypt
+        env:
+          MEMORY_BACKUP_TOKEN: ${{ secrets.MEMORY_BACKUP_TOKEN }}
+          KEY: ${{ secrets.MEMORY_BACKUP_KEY }}
+        run: |
+          set -euo pipefail
+          python3 memory/backup/export.py | gzip -9 > memory.ndjson.gz
+          openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:KEY -in memory.ndjson.gz -out memory.ndjson.gz.enc
+          rm memory.ndjson.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: memory-${{ github.run_id }}
+          path: memory.ndjson.gz.enc
+          retention-days: 30

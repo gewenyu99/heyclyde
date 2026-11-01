@@ -1,6 +1,6 @@
 .pytest_cache/
 __pycache__/
-deploy/.env
 seed/bootstrap/
 seed/out/
 seed/vault/
+supabase/.temp/

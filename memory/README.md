@@ -10,19 +10,20 @@ Phase 0 is built. The index and hybrid arms serve live, hooks log every session,
 |---|---|
 | `seed/build.py` | Validates a Markdown vault and compiles it to `seed.sql` and `INDEX.md` |
 | `seed/import_chats.py` | Turns Grok, Codex and claude.ai exports into inbox lines |
-| `db/` | Postgres 17 image with pgvector and pg_jieba, plus the runtime schema |
-| `api/kb/` | The server: MCP tools, hook endpoint, HTTP routes for clyde-flow, write path, the console's API, arms, embeddings, decider |
-| `api/kb/console/` | Wen's console at `/console/`. It reads and edits the store through the API in [api/API.md](api/API.md), behind an admin token the agents never hold |
-| `hooks/` | `install.sh`, which connects Claude Code and Codex, plus `kb-hook` and both clients' config snippets |
-| `deploy/` | Droplet provisioning, compose stack, Caddy, restic backups |
+| `supabase/functions/memory/` | The server, one Supabase Edge Function: MCP tools, hook endpoint, HTTP routes for clyde-flow, write path, the console's API, arms, embeddings, export and import |
+| `supabase/migrations/` | The schema, in Postgres schema `memory`, and the 5-minute embed sync |
+| `hooks/` | `install.sh`, which connects a computer's Claude Code and Codex, plus `memory-hook`, both clients' config snippets and `set-openai-key.sh` |
+| `backup/` | `export.py` and `restore.py` for the nightly backup |
+| `api/`, `db/`, `tests/` | The old Python server and its tests. Legacy: kept until harness tier 3 runs against the function |
+| `api/kb/console/` | Wen's console. It reads and edits the store through the API in [api/API.md](api/API.md), behind an admin token the agents never hold. Not hosted yet |
 | `eval/` | Retrieval eval on the practice queries, decider run-off on the reactions |
 | `tests/` | Unit and database tests on a made-up vault |
 
 ## Where the data lives
 
-The Postgres database on the Droplet is the store of record. The vault is a seed and import format, and it never enters this repo. Point `PKG_SEED_DIR` at a private copy.
+The Postgres database on Supabase is the store of record. The vault is a seed and import format, and it never enters this repo. Point `PKG_SEED_DIR` at a private copy.
 
-Private entries never leave the Droplet unredacted. The agent and the decider see their title and id only.
+Private entries never reach an agent unredacted. The agent and the decider see their title and id only.
 
 ## The arms
 
@@ -30,7 +31,7 @@ Private entries never leave the Droplet unredacted. The agent and the decider se
 |---|---|---|
 | `no-memory` | offline only | Nothing. The floor that shows whether memory helps at all |
 | `index` | live | Index lines matching the query's words, replaced entries struck through. The agent opens them with `get_entry`. The CLAUDE.md-style status quo |
-| `hybrid` | live | English and 中文 keyword search plus bge-m3 vectors, merged by reciprocal rank. Current entries only |
+| `hybrid` | live | English and 中文 keyword search plus `text-embedding-3-large` vectors, merged by reciprocal rank. Current entries only |
 | `spreading` | Phase 1 | Wen's design. Hybrid's top 50, spreading recall over typed links, a filter that prunes irrelevant items, learned link-type weights |
 | `hindsight` | Phase 1 | Hindsight, the off-the-shelf memory system, loaded from the same store |
 
@@ -52,7 +53,7 @@ The first pass found an implementation bug, not a design limit. Hybrid's fusion 
 - **`recall(query, task, scope)`.** Searches memory. The packet starts with a retrieval id. A `run:<id>` scope adds that run's entries.
 - **`get_entry(id)`.** Opens one entry with its evidence, source, links and blobs.
 - **`get_blob(sha256, offset, limit)`.** Reads a blob as text, 20,000 characters a page. Each page says how to get the next.
-- **`remember(...)`.** Writes one note in a `run:<id>` scope. An agent's writes are always drafts, under its own session as the source, with an id kb generates.
+- **`remember(...)`.** Writes one note in a `run:<id>` scope. An agent's writes are always drafts, under its own session as the source, with an id memory generates.
 - **`feedback(retrieval_id, verdict)`.** The agent's own report. Logged, never moves weights alone.
 
 ## Runs and blobs
@@ -64,33 +65,29 @@ Each clyde-flow run gets its own scope, `run:<id>`. Its stages leave notes there
 - **Writes keep the seed's rules.** `remember` checks each entry against the `seed/build.py` invariants and writes it in one transaction. Title, body and evidence stop at 300, 4,000 and 20,000 characters.
 - **A replacement reaches every recall the old entry did.** An entry supersedes only entries at or below its own authority, and a `run:` entry only entries in its run. Hybrid stops serving a superseded entry. The index arm lists it struck through and never boosts it.
 - **A resend lands on its entry.** The same payload sent again returns the entry it made, with or without an `id`. A different payload under a taken id is refused.
-- **Blobs hold long evidence.** Attach them as `{name, media_type, text}`, or `base64` for binary content. An entry takes 16 blobs at most, 4 MiB each and 8 MiB in all. kb stores each one once per sha256, however many entries attach it. A blob only private entries reach comes back as `[private blob: ask Wen]`, and a private entry lists its blobs by count only.
+- **Blobs hold long evidence.** Attach them as `{name, media_type, text}`, or `base64` for binary content. An entry takes 16 blobs at most, 4 MiB each and 8 MiB in all. memory stores each one once per sha256, however many entries attach it. A blob only private entries reach comes back as `[private blob: ask Wen]`, and a private entry lists its blobs by count only.
 
 The payload is in the [memory contract](../harness/PLAN.md#memory-contract).
 
 ## The HTTP routes
 
-Each route takes one of two bearer tokens. Every agent session holds `KB_TOKEN`. Only clyde-flow holds `KB_RUNTIME_TOKEN`, so keep it out of every agent's environment. Bad input gets a 400 with the reason, and a body over 12 MiB gets a 413.
+Each route takes a computer's device token or clyde-flow's runtime token. Only clyde-flow holds the runtime token, so keep it out of every agent's environment. Bad input gets a 400 with the reason, and a body over 12 MiB gets a 413.
 
 | Route | Body | Returns |
 |---|---|---|
-| `POST /entries` | One entry, as `remember` takes it | `{id, blobs, embedded}`. With `KB_RUNTIME_TOKEN` it may write up to `approved`. With `KB_TOKEN` it writes as `remember` does |
+| `POST /entries` | One entry, as `remember` takes it | `{id, blobs, embedded}`. With the runtime token it may write up to `approved`. With a device token it writes as `remember` does |
 | `GET /entries/{id}` | | The rendered entry, or a 404 |
 | `GET /blobs/{sha}` | | The raw bytes with their media type. A private blob gets a 403 |
 | `POST /recall` | `{query, task, scope}` | The packet text |
 
 ## Run the tests
 
-```bash
-pip install -r api/requirements.txt pytest pytest-asyncio
-pytest                                               # unit tests, database tests skip
-KB_TEST_DATABASE_URL=postgresql://... pytest         # adds the database tests on a scratch kb_pytest database
-```
+The function type-checks with `deno check supabase/functions/memory/index.ts`. The pytest suite under `tests/` still covers the legacy Python server, which harness tier 3 boots.
 
 ## Run the evals
 
 ```bash
-DATABASE_URL=postgresql://... python eval/retrieval_eval.py --split test
+python eval/retrieval_eval.py --split train --misses   # against the live function, with your admin token
 PKG_SEED_DIR=~/pkg-seed OPEN_AI=... python eval/decider_eval.py --out /tmp/decider.json
 ```
 

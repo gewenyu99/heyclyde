@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-"""Run each arm on the practice queries in the database and score the packets against their known answers.
+"""Run each arm on the practice queries and score the packets against their known answers, through the live memory
+function's admin eval routes.
 
-  DATABASE_URL=... python eval/retrieval_eval.py [--arms index,hybrid] [--split all|train|test] [--misses] [--json]
+  python eval/retrieval_eval.py [--arms index,hybrid] [--split train|test|all] [--misses] [--json]
+
+The admin token comes from MEMORY_ADMIN_TOKEN or ~/.config/memory/admin-token. Tune on train. Read test once, after
+the knobs are frozen.
 
 Gold hit: a gold entry was delivered in the packet. must_not leak: a replaced or draft item the query names was delivered.
 
@@ -10,21 +14,28 @@ Every miss is placed in the funnel, so a loss points at a stage rather than at t
   ranked-out      a gold entry was a candidate but ranked below the packet's item cap
   budget-cut      a gold entry ranked inside the item cap but the token budget cut it
 For hybrid the gold entry's rank in each ranker (en, zh, vec) shows which ranker found it and which didn't.
-No session is written: this reads the arms directly.
+No session is written: the eval routes read the arms directly.
 """
 import argparse
-import asyncio
 import json
-import sys
+import os
+import urllib.request
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "api"))
+URL = os.environ.get("MEMORY_URL", "https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory")
+PACKET_ITEMS = 8
 
-import psycopg  # noqa: E402
-from psycopg.rows import dict_row  # noqa: E402
 
-from kb.config import config  # noqa: E402
-from kb.search import ARMS, hybrid_components, fetch_entries, pack  # noqa: E402
+def token():
+    return os.environ.get("MEMORY_ADMIN_TOKEN") or (Path.home() / ".config/memory/admin-token").read_text().strip()
+
+
+def call(path, body=None):
+    req = urllib.request.Request(f"{URL}/api/v1{path}", data=None if body is None else json.dumps(body).encode(),
+                                 method="GET" if body is None else "POST",
+                                 headers={"Authorization": f"Bearer {token()}", "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return json.load(r)
 
 
 def rank_of(ids, wanted):
@@ -38,53 +49,45 @@ def stage(gold, candidates, delivered):
     r = rank_of(candidates, gold)
     if r is None:
         return "not-retrieved"
-    return "ranked-out" if r > config.packet_items else "budget-cut"
+    return "ranked-out" if r > PACKET_ITEMS else "budget-cut"
 
 
-async def run(arms, split):
-    async with await psycopg.AsyncConnection.connect(config.database_url, row_factory=dict_row) as conn:
-        cur = await conn.execute(
-            "select q.id, q.text, q.qtype, q.split, coalesce(array_agg(r.entry_id) filter (where r.grade = 2), '{}') as gold, "
-            "coalesce(array_agg(r.entry_id) filter (where r.grade = -1), '{}') as must_not "
-            "from question q left join qrel r on r.question_id = q.id where %(s)s = 'all' or q.split = %(s)s "
-            "group by q.id order by q.id", {"s": split})
-        questions = await cur.fetchall()
-        report = {}
-        for arm in arms:
-            per_q = []
-            for q in questions:
-                ranked, degraded = await ARMS[arm](conn, q["text"])
-                candidates = [e for e, _, _ in ranked]
-                rows = await fetch_entries(conn, [e for e, _, line in ranked[:config.packet_items * 2] if line is None])
-                delivered, _ = pack(ranked, rows)
-                p = {"id": q["id"], "text": q["text"], "qtype": q["qtype"], "gold": q["gold"],
-                     "gold_hit": bool(set(q["gold"]) & set(delivered)) if q["gold"] else None,
-                     "gold_rank": rank_of(candidates, q["gold"]), "stage": stage(q["gold"], candidates, delivered),
-                     "leaks": sorted(set(q["must_not"]) & set(delivered)), "delivered": delivered, "degraded": degraded}
-                if arm == "hybrid" and q["gold"]:
-                    parts, _ = await hybrid_components(conn, q["text"])
-                    p["ranker_ranks"] = {k: rank_of(v, q["gold"]) for k, v in parts.items()}
-                per_q.append(p)
-            answerable = [p for p in per_q if p["gold_hit"] is not None]
-            stages = {}
-            for p in per_q:
-                if p["stage"]:
-                    stages[p["stage"]] = stages.get(p["stage"], 0) + 1
-            report[arm] = {"gold_hit_rate": round(sum(p["gold_hit"] for p in answerable) / max(len(answerable), 1), 3),
-                           "answerable": len(answerable), "misses_by_stage": stages,
-                           "queries_with_leaks": sum(bool(p["leaks"]) for p in per_q), "n": len(per_q),
-                           "degraded": sorted({p["degraded"] for p in per_q if p["degraded"]}), "per_query": per_q}
-        return report
+def run(arms, split, probes=None):
+    questions = json.loads(Path(probes).read_text()) if probes else call(f"/eval/questions?split={split}")
+    report = {}
+    for arm in arms:
+        per_q = []
+        for q in questions:
+            r = call("/eval/rank", {"query": q["text"], "arm": arm})
+            candidates, delivered = r["candidates"], r["delivered"]
+            p = {"id": q["id"], "text": q["text"], "qtype": q["qtype"], "gold": q["gold"],
+                 "gold_hit": bool(set(q["gold"]) & set(delivered)) if q["gold"] else None,
+                 "gold_rank": rank_of(candidates, q["gold"]), "stage": stage(q["gold"], candidates, delivered),
+                 "leaks": sorted(set(q["must_not"]) & set(delivered)), "delivered": delivered, "degraded": r["degraded"]}
+            if r["parts"] and q["gold"]:
+                p["ranker_ranks"] = {k: rank_of(v, q["gold"]) for k, v in r["parts"].items()}
+            per_q.append(p)
+        answerable = [p for p in per_q if p["gold_hit"] is not None]
+        stages = {}
+        for p in per_q:
+            if p["stage"]:
+                stages[p["stage"]] = stages.get(p["stage"], 0) + 1
+        report[arm] = {"gold_hit_rate": round(sum(p["gold_hit"] for p in answerable) / max(len(answerable), 1), 3),
+                       "answerable": len(answerable), "misses_by_stage": stages,
+                       "queries_with_leaks": sum(bool(p["leaks"]) for p in per_q), "n": len(per_q),
+                       "degraded": sorted({p["degraded"] for p in per_q if p["degraded"]}), "per_query": per_q}
+    return report
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--arms", default=",".join(ARMS))
-    ap.add_argument("--split", default="all", choices=["all", "train", "test"])
+    ap.add_argument("--arms", default="index,hybrid")
+    ap.add_argument("--split", default="train", choices=["all", "train", "test"])
     ap.add_argument("--misses", action="store_true", help="list every miss and leak with its stage")
     ap.add_argument("--json", action="store_true", help="print per-query detail")
+    ap.add_argument("--probes", help="a JSON file of {id, qtype, text, gold, must_not} to run instead, like labels/zh-probes.json")
     a = ap.parse_args()
-    report = asyncio.run(run(a.arms.split(","), a.split))
+    report = run(a.arms.split(","), a.split, a.probes)
     if a.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return

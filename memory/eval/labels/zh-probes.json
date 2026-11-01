@@ -1,0 +1,14 @@
+[
+  {"id": "zh01", "qtype": "cross_lingual", "text": "我更喜欢按量付费还是订阅？", "gold": ["pref-payg"], "must_not": []},
+  {"id": "zh02", "qtype": "cross_lingual", "text": "租 GPU 每个月的预算是多少", "gold": ["vid-t002-gpu-cloud-budget-under-100-month"], "must_not": []},
+  {"id": "zh03", "qtype": "cross_lingual", "text": "正式制作用哪个视频模型", "gold": ["vid-production-models"], "must_not": []},
+  {"id": "zh04", "qtype": "cross_lingual", "text": "冲咖啡用什么水，怎么配", "gold": ["cof-water-recipe"], "must_not": []},
+  {"id": "zh05", "qtype": "cross_lingual", "text": "为什么不用 MiniMax 了", "gold": ["vid-minimax-dropped"], "must_not": []},
+  {"id": "zh06", "qtype": "zh_entry", "text": "手机上能用哪些工具，Dreamina 和 Krea 可以吗", "gold": ["vid-t288-mobile-options-exclude-dreamina-and-krea"], "must_not": []},
+  {"id": "zh07", "qtype": "cross_lingual", "text": "Seedance 生成的角色体型是不是都一样", "gold": ["vid-t292-seedance-characters-have-near-identical"], "must_not": []},
+  {"id": "zh08", "qtype": "zh_entry", "text": "模型能画出亚洲人瘦小的骨架吗", "gold": ["vid-t294-models-don-t-grasp-small-asian-frames"], "must_not": []},
+  {"id": "zh09", "qtype": "mixed_entry", "text": "大语言模型通识课一共有几个模块", "gold": ["crs-structure", "proj-course"], "must_not": []},
+  {"id": "zh10", "qtype": "cross_lingual", "text": "回答我的时候应该用什么风格", "gold": ["pref-terse-precise"], "must_not": []},
+  {"id": "zh11", "qtype": "cross_lingual", "text": "查资料要看厂商官网的实时页面吗", "gold": ["pref-live-pages"], "must_not": []},
+  {"id": "zh12", "qtype": "cross_lingual", "text": "做角色设定图用什么模型", "gold": ["vid-gpt-image2-character-sheets"], "must_not": []}
+]

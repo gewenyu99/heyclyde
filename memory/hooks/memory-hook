@@ -1,0 +1,17 @@
+#!/bin/sh
+# memory-hook <event>: forward a Claude Code or Codex hook payload (stdin) to Wen's memory server.
+# On SessionStart and UserPromptSubmit it also prints unread messages from Wen's other agents, which both clients add
+# to the agent's context. MEMORY_AGENT names the agent (claude by default, codex for Codex) for its events and its inbox.
+# The URL and token come from MEMORY_URL and MEMORY_TOKEN, else from ~/.config/memory.
+# It never blocks the agent: no config, a slow server or an error all exit 0 and print nothing.
+dir=$HOME/.config/memory
+url=${MEMORY_URL:-$(cat "$dir/url" 2>/dev/null)}
+token=${MEMORY_TOKEN:-$(cat "$dir/token" 2>/dev/null)}
+[ -n "$1" ] && [ -n "$url" ] && [ -n "$token" ] || exit 0
+curl -fsS -m 3 -o /dev/null -X POST "$url/hooks/$1?agent=${MEMORY_AGENT:-claude}" \
+  -H "Authorization: Bearer $token" -H "Content-Type: application/json" --data-binary @- 2>/dev/null
+case $1 in
+  SessionStart|UserPromptSubmit)
+    curl -fsS -m 3 -H "Authorization: Bearer $token" "$url/messages/${MEMORY_AGENT:-claude}" 2>/dev/null ;;
+esac
+exit 0

@@ -1,8 +1,0 @@
-# Port 80 is closed, so certificates come through the TLS-ALPN challenge on 443.
-{$KB_DOMAIN} {
-	# The api caps its own bodies too. This stops an oversized one before it reaches the api's 384 MB.
-	request_body {
-		max_size 2MB
-	}
-	reverse_proxy api:8000
-}

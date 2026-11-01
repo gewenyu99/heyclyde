@@ -1,0 +1,6 @@
+# The Supabase CLI's view of memory. Only the function's settings matter here: the project lives in the cloud.
+project_id = "memory"
+
+[functions.memory]
+# The function checks its own bearer tokens (auth.ts), so Supabase's JWT gate stays off.
+verify_jwt = false
