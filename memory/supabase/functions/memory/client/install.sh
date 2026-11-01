@@ -1,19 +1,28 @@
 #!/bin/sh
-# Connect this computer's Claude Code and Codex to Wen's memory server. Rerun it any time: it replaces only its own
-# entries, including the old kb ones.
-#   memory/hooks/install.sh [--device <name>]
-# A computer with no token yet gets its own: paste the admin token when asked, and the script mints a device token named
-# after this computer (or --device). The admin token is used for that one request and never saved. The device token
-# lands in ~/.config/memory/token, ~/.claude.json and ~/.codex/config.toml, all readable by you only.
+# Connect this computer's Claude Code and Codex to Wen's memory server. No checkout needed:
+#   curl -fsSL https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory/install | sh
+# A computer with no token signs in with a link to Wen's email, clicked from any device, and gets a token of its own
+# named after this computer (or MEMORY_DEVICE). Rerun it any time: it replaces only its own entries, the old kb ones too.
+# The token lands in ~/.config/memory/token, ~/.claude.json and ~/.codex/config.toml, all readable by you only.
 set -eu
 URL=${MEMORY_URL:-https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory}
-HERE=$(cd "$(dirname "$0")" && pwd)
 DIR=$HOME/.config/memory
-DEVICE=$(hostname -s 2>/dev/null | tr 'A-Z' 'a-z' | tr -c 'a-z0-9._-\n' '-')
-[ "${1:-}" = "--device" ] && DEVICE=${2:?usage: install.sh [--device <name>]}
+DEVICE=${MEMORY_DEVICE:-$(hostname -s 2>/dev/null | tr 'A-Z' 'a-z' | tr -c 'a-z0-9._-\n' '-')}
 
 umask 077
 mkdir -p "$DIR" "$HOME/.claude" "$HOME/.codex"
+
+# The files next to this script when run from a checkout, else fetched from the function.
+HERE=$(cd "$(dirname "$0")" 2>/dev/null && pwd || echo /nonexistent)
+if [ ! -f "$HERE/memory-hook" ]; then
+  HERE=$(mktemp -d)
+  trap 'rm -rf "$HERE"' EXIT
+  for f in memory-hook claude-settings.json codex-hooks.json; do
+    curl -fsS -m 15 "$URL/install/files/$f" -o "$HERE/$f"
+  done
+fi
+
+field() { python3 -c 'import json, sys; print(json.load(sys.stdin).get(sys.argv[1]) or "")' "$1"; }
 
 # The HTTP status of an MCP initialize with this token: 200 when it's a live device token.
 probe() {
@@ -23,13 +32,39 @@ probe() {
     || echo 000
 }
 
+# Sign in with a link to Wen's email and trade it for this computer's token. The link lands its PKCE code on the
+# function. Only this script holds the verifier, so the code alone signs nobody in.
+sign_in() {
+  conf=$(curl -fsS -m 15 "$URL/install/config")
+  auth=$(printf '%s' "$conf" | field auth); key=$(printf '%s' "$conf" | field key)
+  printf 'Your email: ' >/dev/tty; read -r email </dev/tty
+  set -- $(python3 -c 'import base64, hashlib, secrets
+v = secrets.token_urlsafe(48)
+print(v, base64.urlsafe_b64encode(hashlib.sha256(v.encode()).digest()).rstrip(b"=").decode(), secrets.token_urlsafe(24))')
+  verifier=$1 challenge=$2 claim=$3
+  redirect=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$URL/install/approve?claim=$claim")
+  python3 -c 'import json, sys; print(json.dumps({"email": sys.argv[1], "create_user": True, "code_challenge": sys.argv[2], "code_challenge_method": "s256"}))' \
+    "$email" "$challenge" | curl -fsS -m 15 -o /dev/null -X POST "$auth/otp?redirect_to=$redirect" \
+    -H "apikey: $key" -H "Content-Type: application/json" --data-binary @-
+  echo "Check $email and click the sign-in link, from any device. Waiting..." >/dev/tty
+  code=
+  for _ in $(seq 1 300); do
+    got=$(curl -sS -m 10 "$URL/install/claim/$claim" || true)
+    code=$(printf '%s' "$got" | field auth_code 2>/dev/null || true)
+    [ -n "$code" ] && break
+    sleep 3
+  done
+  [ -n "$code" ] || { echo "No click within 15 minutes. Run it again." >&2; exit 1; }
+  jwt=$(python3 -c 'import json, sys; print(json.dumps({"auth_code": sys.argv[1], "code_verifier": sys.argv[2]}))' "$code" "$verifier" |
+    curl -fsS -m 15 -X POST "$auth/token?grant_type=pkce" -H "apikey: $key" -H "Content-Type: application/json" --data-binary @- |
+    field access_token)
+  curl -sS -m 15 -X POST "$URL/devices/claim" -H "Authorization: Bearer $jwt" -H "Content-Type: application/json" \
+    --data "{\"name\": \"$DEVICE\"}" | python3 -c 'import json, sys; d = json.load(sys.stdin); print(d.get("token") or ""); sys.exit(0 if d.get("token") else d.get("error") or "that email can'"'"'t connect a computer")'
+}
+
 TOKEN=${MEMORY_TOKEN:-$(cat "$DIR/token" 2>/dev/null || true)}
 if [ -z "$TOKEN" ] || [ "$(probe "$TOKEN")" != 200 ]; then
-  printf 'Admin token, to mint a token for %s (input hidden, never saved): ' "$DEVICE" >/dev/tty
-  stty -echo </dev/tty; read -r ADMIN </dev/tty; stty echo </dev/tty; printf '\n' >/dev/tty
-  TOKEN=$(curl -sS -m 15 -X POST "$URL/api/v1/devices" -H "Authorization: Bearer $ADMIN" -H "Content-Type: application/json" \
-    --data "{\"name\": \"$DEVICE\"}" | python3 -c 'import json, sys; d = json.load(sys.stdin); print(d.get("token") or ""); sys.exit(0 if d.get("token") else d.get("error") or 1)')
-  unset ADMIN
+  TOKEN=$(sign_in)
 fi
 case $(probe "$TOKEN") in
   200) ;;

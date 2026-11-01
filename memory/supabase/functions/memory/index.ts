@@ -9,6 +9,7 @@ import * as mcp from "./mcp.ts";
 import * as service from "./service.ts";
 import { Refused, remember } from "./write.ts";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
+import { FILES } from "./client/files.ts";
 
 // The Supabase runtime's global for work that outlives the response.
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
@@ -119,6 +120,41 @@ async function exportPage(url: URL) {
   return new Response(body, { headers: { "content-type": "application/x-ndjson", "x-rows": String(rows.length) } });
 }
 
+// The files a new computer's installer fetches. memory/deploy.sh bakes ./client into ./client/files.ts.
+const CLIENT_FILES = ["install.sh", "memory-hook", "claude-settings.json", "codex-hooks.json"];
+const CLAIM = /^[A-Za-z0-9_-]{20,100}$/;
+
+function clientFile(name: string) {
+  return FILES[name];
+}
+
+/** The installer, its files, and the sign-in hand-off. All open: nothing here reveals data or mints a token without the
+ * PKCE verifier and the owner's sign-in. */
+async function install(req: Request, path: string, url: URL) {
+  if (path === "/install") return text(clientFile("install.sh"));
+  if (path === "/install/config") {
+    return json({ auth: `${Deno.env.get("SUPABASE_URL")}/auth/v1`, key: Deno.env.get("SUPABASE_ANON_KEY") });
+  }
+  let m;
+  if ((m = /^\/install\/files\/([^/]+)$/.exec(path)) && CLIENT_FILES.includes(m[1])) return text(clientFile(m[1]));
+  if (path === "/install/approve") {
+    const claim = url.searchParams.get("claim") ?? "", code = url.searchParams.get("code") ?? "";
+    if (!CLAIM.test(claim) || !code) {
+      return text(`memory: that sign-in link didn't work. ${url.searchParams.get("error_description") ?? ""}`.trim(), 400);
+    }
+    await sql`insert into memory.install_claim (id, auth_code) values (${claim}, ${code})
+      on conflict (id) do update set auth_code = excluded.auth_code, created_at = now()`;
+    return text("memory: signed in. Go back to your terminal, it finishes on its own.\n");
+  }
+  if ((m = /^\/install\/claim\/([^/]+)$/.exec(path)) && CLAIM.test(m[1])) {
+    // Once only, and only within 15 minutes of the click.
+    const [row] = await sql`delete from memory.install_claim where id = ${m[1]} returning auth_code, created_at > now() - interval '15 minutes' as fresh`;
+    if (!row) return new Response(null, { status: 204 });
+    return row.fresh ? json({ auth_code: row.auth_code }) : json({ error: "That sign-in expired. Run the installer again." }, 410);
+  }
+  return json({ error: "No such endpoint." }, 404);
+}
+
 async function route(req: Request): Promise<Response> {
   const url = new URL(req.url), path = routeOf(url), m = req.method;
   const who = await authenticate(req, path);
@@ -129,6 +165,8 @@ async function route(req: Request): Promise<Response> {
     return json({ ok: true, arms: config.arms });
   }
   if (path === "/mcp" || path === "/mcp/") return mcp.handle(req);
+  if (path === "/install" || path.startsWith("/install/")) return install(req, path, url);
+  if (m === "POST" && path === "/devices/claim") return admin.claimDevice(await admin.readJson(req));
   if (path.startsWith("/api/v1") || path === "/") return path === "/" ? json({ ok: true }) : admin.handle(req, path);
 
   let match;

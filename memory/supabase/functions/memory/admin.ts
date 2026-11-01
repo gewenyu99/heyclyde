@@ -648,6 +648,22 @@ async function addDevice(data: Row) {
   });
 }
 
+/** The owner's sign-in from the installer: a token for this computer, shown once. A name already taken gets a fresh
+ * token, so reinstalling a computer rotates its token rather than failing. */
+export async function claimDevice(data: Row) {
+  const name = data?.name;
+  if (typeof name !== "string" || !DEVICE.test(name)) {
+    return Response.json({ error: "name must be up to 64 lowercase letters, digits, '.', '_' or '-'." }, { status: 422 });
+  }
+  const token = newToken();
+  await sql.begin(async (tx) => {
+    await tx`insert into memory.device (name, token_sha256) values (${name}, ${await sha256(token)})
+      on conflict (name) do update set token_sha256 = excluded.token_sha256, revoked_at = null, created_at = now()`;
+    await audit(tx, "device.claim", `device:${name}`, null, { name });
+  });
+  return Response.json({ name, token });
+}
+
 async function revokeDevice(name: string) {
   return await sql.begin(async (tx) => {
     const [d] = await tx`update memory.device set revoked_at = now() where name = ${name} and revoked_at is null returning name`;

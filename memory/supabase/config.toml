@@ -4,3 +4,11 @@ project_id = "memory"
 [functions.memory]
 # The function checks its own bearer tokens (auth.ts), so Supabase's JWT gate stays off.
 verify_jwt = false
+
+
+# The installer signs a new computer in through Supabase's default sign-in email. The link lands on the function's
+# /install/approve, and the installer finishes the PKCE exchange itself, so the link alone signs nobody in. The function
+# mints a device token only for the owner_email in memory.setting.
+[auth]
+site_url = "https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory/install/approve"
+additional_redirect_urls = ["https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory/install/approve**"]

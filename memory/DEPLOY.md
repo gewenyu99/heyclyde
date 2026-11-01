@@ -8,19 +8,21 @@ https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory
 
 ## Connect a computer
 
-Run this from a checkout of this repo. It connects Claude Code and Codex, and it's safe to rerun.
+Run this on the computer. No checkout and no token to copy:
 
 ```bash
-memory/hooks/install.sh
+curl -fsSL https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory/install | sh
 ```
 
-A computer with no token asks for the admin token once, mints a token of its own named after the computer, and saves only that. The admin token is never written to disk. Pass `--device <name>` to pick the name.
+It asks for your email and sends a sign-in link there. Click it from any device, your phone included, and the installer finishes on its own. The function mints this computer a token of its own, named after its hostname or `MEMORY_DEVICE`, and only for the `owner_email` in `memory.setting`. The link alone signs nobody in, since the installer holds the PKCE verifier. Rerunning on a computer that's already connected reuses its token. Reinstalling one that lost it rotates the token.
 
 - **Claude Code.** The MCP server `memory` at user scope, and the hooks merged into `~/.claude/settings.json`.
 - **Codex.** `[mcp_servers.memory]` in `~/.codex/config.toml` and the hooks in `~/.codex/hooks.json`. Run `/hooks` in the Codex CLI once to trust them.
 - **Old entries go.** A rerun replaces earlier `memory` and `kb` entries. Your own hooks stay.
 
-Cloud sessions on this repo read `.mcp.json` and `.claude/settings.json`. Give the cloud environment a `MEMORY_TOKEN`, minted the same way as a computer's.
+It needs `curl`, `python3` and Claude Code, on macOS or Linux. Supabase's built-in email only sends to members of the Supabase organization, and about two an hour.
+
+Cloud sessions on this repo read `.mcp.json` and `.claude/settings.json`. Give the cloud environment a `MEMORY_TOKEN`.
 
 ## The tokens
 
@@ -28,7 +30,7 @@ Supabase stores every token as SHA-256 only, so a database read never yields one
 
 | Token | Held by | Opens |
 |---|---|---|
-| Device token | One computer, in `~/.config/memory/token` | MCP, the hooks, the inbox, clyde-flow's routes. Writes are drafts in a run scope |
+| Device token | One computer, in `~/.config/memory/token`. Minted by the installer after your email sign-in | MCP, the hooks, the inbox, clyde-flow's routes. Writes are drafts in a run scope |
 | Runtime token | clyde-flow's daemon only | The same paths, and alone writes above draft |
 | Admin token | You, in `~/.config/memory/admin-token` on the first Mac | `/api/v1`, the console's API |
 | Backup token | The nightly GitHub Action | `/export` only |
@@ -38,10 +40,10 @@ Revoke a lost computer with `DELETE /api/v1/devices/<name>`. After 10 wrong toke
 ## Ship a change
 
 ```bash
-cd memory && supabase functions deploy memory --project-ref wlhlncmgjqyidosunugv --no-verify-jwt --use-api
+memory/deploy.sh
 ```
 
-The CLI needs one `supabase login` per computer. `--no-verify-jwt` is right: the function checks its own tokens in [auth.ts](supabase/functions/memory/auth.ts).
+It bakes the installer's files from `supabase/functions/memory/client/` into `client/files.ts`, then deploys with the Supabase CLI, which needs one `supabase login` per computer. `--no-verify-jwt` is right: the function checks its own tokens in [auth.ts](supabase/functions/memory/auth.ts).
 
 Schema changes go in [supabase/migrations](supabase/migrations) and apply with `supabase db push`. Every migration so far is safe to rerun.
 

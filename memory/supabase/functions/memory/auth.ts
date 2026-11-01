@@ -4,13 +4,14 @@
 import { secret, setting, sql } from "./db.ts";
 import { sha256 } from "./embed.ts";
 
-export type Kind = "open" | "agent" | "admin" | "backup" | "cron";
-export type Principal = { role: "anyone" | "device" | "runtime" | "admin" | "backup" | "cron"; device?: string };
+export type Kind = "open" | "agent" | "admin" | "backup" | "cron" | "owner";
+export type Principal = { role: "anyone" | "device" | "runtime" | "admin" | "backup" | "cron" | "owner"; device?: string };
 
 /** Which credential a path takes. /healthz and the console's files take none. Any path not named takes none of them
  * and gets 401. */
 export function credentialFor(path: string): Kind | null {
-  if (path === "/healthz") return "open";
+  if (path === "/healthz" || path === "/install" || path.startsWith("/install/")) return "open";
+  if (path === "/devices/claim") return "owner";
   if (path === "/" || path === "/api/v1" || path.startsWith("/api/v1/")) return "admin";
   if (["/mcp", "/mcp/", "/entries", "/recall"].includes(path)) return "agent";
   if (["/hooks/", "/messages/", "/entries/", "/blobs/"].some((p) => path.startsWith(p))) return "agent";
@@ -69,7 +70,22 @@ async function resolve(kind: Kind, token: string): Promise<Principal | null> {
     return same(hash, await setting("admin_token_sha256")) ? { role: "admin" } : null;
   }
   if (kind === "cron") return same(token, await secret("cron_secret")) ? { role: "cron" } : null;
+  if (kind === "owner") return (await ownerOf(token)) ? { role: "owner" } : null;
   return null;
+}
+
+/** True when a Supabase Auth access token belongs to owner_email, with the email confirmed. Supabase Auth checks the
+ * token, so a forged or expired one comes back 401. */
+async function ownerOf(jwt: string) {
+  const owner = (await setting("owner_email")).toLowerCase();
+  if (!owner) return false;
+  const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/auth/v1/user`, {
+    headers: { apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "", Authorization: `Bearer ${jwt}` },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!r.ok) return false;
+  const user = await r.json();
+  return String(user.email ?? "").toLowerCase() === owner && Boolean(user.email_confirmed_at);
 }
 
 const json = (body: unknown, status: number, headers: Record<string, string> = {}) =>
