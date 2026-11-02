@@ -36,7 +36,7 @@ The plan's one checkpoint. Each row is a recommendation until Wen rules.
 |---|---|---|---|
 | D1 | Where strangers' data lives | A new Supabase project, `memory-cloud`, in its own Pro organization. Same code as Wen's | One project with an owner column. $25 a month cheaper, but a single bad policy or a leaked service key exposes Wen's work and personal entries to strangers |
 | D2 | How tenants split inside it | `owner_id` on every table plus RLS, enforced by the function dropping to a non-bypass role per request | Schema per tenant. Stronger walls, but every migration runs N times, pg_cron needs N jobs, and `supabase db push` can't create schemas on demand |
-| D3 | The public URL and consent page | A Supabase custom domain on `memory-cloud`, so the MCP URL never changes and the function itself may serve HTML | Cloudflare Pages for the consent page, free, but the MCP URL stays `*.supabase.co`. Moving it later breaks every user's connector, since connectors store the URL |
+| D3 | The public URL and consent page | A domain on Cloudflare, about $10 a year. Static pages and the consent page on Cloudflare, `/mcp` proxied to the function. See The domain | A Supabase custom domain, $10 a month. No proxy in the path, but Auth's issuer stays on `supabase.co` anyway, and Supabase says custom domains aren't for hosting frontends |
 | D4 | Pricing | Free beta behind the waitlist with hard caps. A paid tier at about $6 a month only once 30 people use it weekly | Charge from day one. Needs a merchant of record, tax handling and refunds before anyone has proven they want it |
 | D5 | The directory | Email mcp-review@anthropic.com about rule 1.G before any directory-only work. Ship by URL either way | Submit and see. A rejection costs nothing, but the review asks for neutral tool text and annotations that the connector should have anyway |
 
@@ -51,7 +51,7 @@ D3 is the one-way door. The first stranger who connects pins the URL, so it's se
 - **For: RLS on a shared schema is the common default.** Practitioner guides from [MakerKit](https://makerkit.dev/blog/tutorials/multi-tenant-saas-architecture) and [GuardLayer](https://www.guardlayer.io/blog/supabase-multi-tenant-rls) recommend it, and warn that one policy bug leaks everything. None is official Supabase guidance.
 - **Against: RLS does nothing today.** The function connects as `postgres`, which has `rolbypassrls = true`, checked on the live project. RLS only becomes a second wall once the function switches to a role without it on every request.
 - **For: the consent page is meant to be ours.** Supabase's [OAuth 2.1 server guide](https://supabase.com/docs/guides/auth/oauth-server/getting-started) sends users to your own page with an `authorization_id`, and supabase-js gives it `getAuthorizationDetails`, `approveAuthorization` and `denyAuthorization`. The feature is still beta.
-- **For: a custom domain unlocks HTML.** Supabase's [limits page](https://supabase.com/docs/guides/functions/limits) says HTML is served only on custom domains, and rewritten to `text/plain` otherwise. That's why `oauth.ts` answers in plain text today.
+- **Against: a Supabase custom domain doesn't buy much.** The [limits page](https://supabase.com/docs/guides/functions/limits) serves function HTML only on custom domains, but the [custom domains guide](https://supabase.com/docs/guides/platform/custom-domains) says they "are not intended to enable hosting of frontend applications through Edge Functions." The [MCP guide](https://supabase.com/docs/guides/ai-tools/byo-mcp) says Auth "keeps its issuer on the project domain" even with one active.
 - **For: filtered vector search works on this pgvector.** The live project runs pgvector 0.8.2, which has `hnsw.iterative_scan`, so a `where owner_id = …` filter keeps returning 50 candidates ([pgEdge docs](https://docs.pgedge.com/pgvector/v0-8-5/iterative-index-scans/)). Without it, a selective filter returns far fewer rows than the limit ([Crunchy Data](https://www.crunchydata.com/blog/hybrid-vector-search)).
 - **For: plugins bundle hooks and MCP.** A Claude Code plugin carries `.mcp.json` and `hooks/hooks.json` at its root ([plugins reference](https://docs.claude.com/en/docs/claude-code/plugins-reference)).
 
@@ -63,8 +63,11 @@ flowchart LR
     Chat["claude.ai, Cowork, desktop, phone"]
     CC["Claude Code + plugin (later)"]
   end
+  subgraph CF["Cloudflare, on the domain (new)"]
+    Consent["/oauth/consent and static pages"]
+    Proxy["Worker: /mcp and the function's paths"]
+  end
   subgraph Cloud["memory-cloud project (new)"]
-    Consent["/oauth/consent page (new HTML)"]
     Auth["Supabase Auth: sign-up, OAuth 2.1"]
     Fn["Edge Function memory (shared code)"]
     DB[("schema memory, owner_id + RLS")]
@@ -73,21 +76,23 @@ flowchart LR
   subgraph Wen["Wen's project (unchanged)"]
     WenFn["same function, one owner"]
   end
-  Chat -- "OAuth, then MCP with JWT" --> Fn
-  CC -- "MCP + hooks" --> Fn
+  Chat -- "OAuth, then MCP with JWT" --> Proxy
+  CC -- "MCP + hooks" --> Proxy
+  Proxy -- "same path, client IP header" --> Fn
   Chat -- "sign in, approve" --> Consent
   Consent --> Auth
   Fn -- "owner from JWT, per-owner caps" --> DB
   Fn -- "metered per owner" --> OpenAI
 ```
 
-The new parts are the second project, the consent page, sign-up with a waitlist, the owner column with RLS, and per-owner metering. The function, its tools, redaction and the judge are the code Wen runs today. Wen's project takes the same function and migration, with every row owned by him.
+The new parts are the second project, the domain with its proxy and consent page, sign-up with a waitlist, the owner column with RLS, and per-owner metering. The function, its tools, redaction and the judge are the code Wen runs today. Wen's project takes the same function and migration, with every row owned by him.
 
 ## Build now
 
 - **Tenancy.** `owner_id uuid` on every per-user table, a composite key where ids were global, RLS on every table, and the function running each request as role `memory_tenant` with the owner set.
 - **Accounts.** Sign-ups on, `memory.account` with a status, a waitlist, and an admin call to approve.
-- **The consent page.** HTML on the custom domain: sign in or sign up, then a page naming the client and where it sends you, with Approve and Deny.
+- **The domain.** The connector URL, the consent page, the legal pages and sign-in email, all on one domain Wen owns.
+- **The consent page.** A static page on the domain: sign in or sign up, then a page naming the client and where it sends you, with Approve and Deny.
 - **Per-owner metering.** OpenAI spend in dollars per owner per month, a cap per owner, and a project-wide ceiling.
 - **Abuse limits.** Per-owner quotas on entries, recalls, writes and bytes, CAPTCHA on sign-up, and lockouts that already exist.
 - **Account controls.** Export everything and delete everything, by the user, from MCP or the account page.
@@ -96,10 +101,10 @@ The new parts are the second project, the consent page, sign-up with a waitlist,
 
 ## Shed
 
-- **The email-link consent flow for strangers.** `oauth.ts`'s emailed link, `/oauth/wait` polling and its 3-emails cap go in `memory-cloud`. Wen's project keeps them until the custom domain is his too.
+- **The email-link consent flow for strangers.** `oauth.ts`'s emailed link, `/oauth/wait` polling and its 3-emails cap go in `memory-cloud`. Wen's project keeps them until he moves it onto the domain too.
 - **`memory.allowed_email` in `memory-cloud`.** `account.status` replaces it. Wen's project keeps its allowlist.
 - **The arm experiment for strangers.** `memory-cloud` serves one arm, set by `MEMORY_ARMS`. Random arms per session confuse support and nobody's labeling strangers' recalls.
-- **The device-token installer for strangers in v1.** Connector users need no token. The plugin brings it back in slice 7.
+- **The device-token installer for strangers in v1.** Connector users need no token. The plugin brings it back in slice 9.
 
 ## Defer
 
@@ -143,11 +148,50 @@ The new parts are the second project, the consent page, sign-up with a waitlist,
 
 **Account.** `memory.account (owner_id, status, plan, created_at, approved_at)`. A trigger on `auth.users` insert adds the row as `waitlisted`. `status` is `waitlisted`, `active` or `suspended`, as a check constraint. `auth.ts` resolves a JWT to its owner and refuses anything not `active` with a 403 that says where the user stands in line.
 
-**Consent page.** `/oauth/consent` on the custom domain serves one HTML page with supabase-js. Signed out, it shows email sign-in. Signed in, it calls `getAuthorizationDetails` and shows the client's name and its callback host. Approve is offered only when the callback is `https://claude.ai/api/mcp/auth_callback` or a loopback `/callback`, the exact callbacks Anthropic's [authentication docs](https://claude.com/docs/connectors/building/authentication) name. Anything else shows Deny only.
+**Consent page.** `https://<domain>/oauth/consent` is one static HTML page with supabase-js, served by Cloudflare. Signed out, it shows email sign-in. Signed in, it calls `getAuthorizationDetails` and shows the client's name and its callback host. Approve is offered only when the callback is `https://claude.ai/api/mcp/auth_callback` or a loopback `/callback`, the exact callbacks Anthropic's [authentication docs](https://claude.com/docs/connectors/building/authentication) name. Anything else shows Deny only.
 
 **The server-side wall.** A page check alone isn't enough, since someone could approve through the API. `auth.ts` also refuses a JWT whose `client_id` has a callback outside that list, read from Supabase Auth's client record. Which table or admin call holds the record is unverified, and slice 3 settles it.
 
 **Approving the waitlist.** `POST /api/v1/accounts/<id>/approve` with `memory-cloud`'s admin token flips the status and emails the user. A board message tells Wen each new sign-up.
+
+## L2: the domain
+
+Wen will buy one domain for the product. It does four jobs:
+
+- **A stable connector URL.** Users paste `https://<domain>/mcp` once. Moving off Supabase later changes where the proxy points, not what anyone pasted.
+- **Real HTML.** The consent page, sign-up, the landing page, privacy policy and terms. `supabase.co` rewrites function HTML to `text/plain`.
+- **Sign-in email.** Custom SMTP sending from the domain. Supabase's built-in email reaches only organization members, about two an hour.
+- **Trust.** The directory listing asks for a privacy policy URL, a documentation URL and a support contact. A domain's pages and `support@<domain>` read better than a `supabase.co` link and Gmail.
+
+The two ways to wire it compare like this.
+
+| | (a) Supabase custom domain | (b) Domain on Cloudflare |
+|---|---|---|
+| Cost | $10 a month add-on on a paid plan, plus the domain | About $10 a year at cost. Worker and static pages on free tiers |
+| Connector URL | `https://api.<domain>/functions/v1/memory/mcp` | `https://<domain>/mcp` |
+| OAuth issuer | Stays `https://<ref>.supabase.co/auth/v1`. Supabase's MCP guide says so, and the resource metadata must name that issuer or clients stop at discovery | The same |
+| Consent page | Function HTML works, but Supabase says custom domains "are not intended" for frontends. A static host is still the right home | Static, on Cloudflare |
+| In the request path | Nothing new | A Worker on every MCP call and hook. Its outbound fetch doesn't count against the 10 ms CPU limit |
+| Limits | One custom domain per project, subdomains only | 100,000 Worker requests a day free. Static asset requests are free |
+| Leaving Supabase | Repoint the CNAME, and the new host must answer on `/functions/v1/memory/...` | Change the Worker's upstream |
+| Client IP for lockouts | `x-forwarded-for` as today | The Worker passes `cf-connecting-ip` in a header the function trusts only with a shared secret |
+
+The brief assumed (a) moves the OAuth issuer onto the domain. Supabase's [MCP guide](https://supabase.com/docs/guides/ai-tools/byo-mcp) says it doesn't, so both options leave the issuer on `supabase.co` and leaving Supabase Auth means users sign in again either way. With that difference gone, (a) buys a path without a proxy for $120 a year, and still needs a static host for the pages.
+
+**Recommendation: (b).** One Cloudflare Worker with static assets serves the site and the consent page and proxies the function's paths. The 100,000-request free cap holds until about 1,000 users running hooks. Past that, Workers Paid is $5 a month.
+
+Once Wen has bought the domain, in this order:
+
+1. **Register on Cloudflare.** Its registrar charges cost and puts DNS on Cloudflare in the same step.
+2. **Inbound mail.** Cloudflare Email Routing forwards `support@<domain>` to Wen's Gmail, free.
+3. **Outbound mail.** Add `send.<domain>` in Resend and copy its SPF and DKIM records into Cloudflare DNS. A subdomain keeps Resend's MX record apart from Email Routing's. Add a `_dmarc` TXT record with `p=none` to start. Resend's free plan sends 3,000 a month, 100 a day.
+4. **SMTP in Supabase.** In `memory-cloud`'s Auth settings: host `smtp.resend.com`, port 465, user `resend`, the Resend API key as password, sender `memory@send.<domain>`. Then raise Auth's email rate limit, which custom SMTP unlocks.
+5. **The Worker.** Static files for `/`, `/privacy`, `/terms` and `/oauth/consent`. Every other path, `/mcp`, `/.well-known/*`, `/install*`, `/hooks/*` and the rest, goes to `https://<ref>.supabase.co/functions/v1/memory` plus the same path, body streamed, with the client IP and the shared secret in headers. Attach it to `<domain>`.
+6. **`config.toml` for `memory-cloud`.** `site_url = "https://<domain>"`, so Supabase sends consent to `https://<domain>/oauth/consent`. `additional_redirect_urls` gains `https://<domain>/**`. `enable_signup = true`. Today's `config.toml` is Wen's project's, so `memory-cloud` gets its own.
+7. **The function.** A new secret, `MEMORY_PUBLIC_URL=https://<domain>`. `BASE()` in `oauth.ts` reads it, so `resourceMetadata()` names `https://<domain>/mcp` as the resource. `AUTH()` keeps `SUPABASE_URL`, which is the issuer. `clientKey()` in `auth.ts` takes the Worker's IP header only when the secret matches.
+8. **Check discovery.** `authorization_servers` from `https://<domain>/.well-known/oauth-protected-resource` has to equal `issuer` from `https://<ref>.supabase.co/auth/v1/.well-known/oauth-authorization-server`. Then add `https://<domain>/mcp` as a connector in claude.ai and recall.
+
+Wen's project stays on its `supabase.co` URL. Moving it onto the domain later means re-adding his connector once.
 
 ## L2: cost caps and screening
 
@@ -188,7 +232,7 @@ Each slice starts with a failing test against `memory-test`, the test project, a
 | 1 | Owner column, composite keys, `memory_tenant` role and RLS, migration only | none | Two owners write `proj-pkg` and both rows exist. A query as owner A in `memory_tenant` returns zero of B's rows. Fails today on the primary key |
 | 2 | Function sets role and owner per request, recall's iterative scan | 1 | Every MCP tool called as owner A never returns B's entries, blobs, retrievals or messages. Hybrid holds 90% on train in Wen's data |
 | 3 | `account` table, waitlist trigger, `auth.ts` gate, the client callback wall | 2 | A waitlisted user's JWT gets 403. A JWT from a client with an off-list callback gets 401 |
-| 4 | `memory-cloud` project, custom domain, custom SMTP, Turnstile | D1, D3 | `https://<domain>/healthz` answers. A sign-up email arrives at an address outside the organization |
+| 4 | `memory-cloud` project, the domain, the Worker proxy, custom SMTP, Turnstile, steps 1 to 8 of L2: the domain | D1, D3 | `https://<domain>/healthz` answers through the Worker. The resource metadata's issuer matches Auth's. A sign-up email arrives at an address outside the organization. Ten wrong tokens from one address lock out that address, not the Worker's |
 | 5 | The consent page | 3, 4 | Adding the connector in claude.ai shows the page, sign-up waitlists, approval connects, and recall answers |
 | 6 | Per-owner metering, caps and quotas | 2 | Owner A at their cap gets the limit message on `remember` while owner B's write succeeds |
 | 7 | Generic text, tool annotations, export and delete | 2 | `tools/list` names no person and every tool has a `title` and a read-only or destructive hint. Delete leaves zero rows for the owner |
@@ -215,7 +259,7 @@ No feature flag. `account.status` already gates every request, and setting `sign
 - **Failure.** A missing owner setting fails closed, since RLS returns nothing. A judge outage refuses writes and leaves recall unfiltered, as today.
 - **States.** `account.status` and `usage.kind` are check constraints, so a new value is a migration.
 - **One rule, one place.** Allowed callbacks live in one list shared by the page and `auth.ts`. Limits live in `memory.plan_limit`.
-- **Compatibility.** Wen's connectors keep the old URL on his project. Strangers only ever see the custom domain.
+- **Compatibility.** Wen's connectors keep the old URL on his project. Strangers only ever see the domain.
 
 ## Open
 
@@ -223,7 +267,7 @@ No feature flag. `account.status` already gates every request, and setting `sign
 - **OpenAI as a processor.** The directory's data step asks whose APIs a server calls. Rule 3.F wants endpoints you own or legitimately proxy. Unclear for an LLM provider. The local-model path in `SUPABASE-PLAN.md` removes the question.
 - **Where users live.** `memory-cloud` sits in Canada like Wen's. EU users bring GDPR duties the privacy policy has to meet before stage 3.
 - **Supabase's OAuth server is beta.** A breaking change would stop sign-ins until fixed. Free during beta, pricing unannounced.
-- **Purchases.** The Pro organization, the custom domain add-on, the domain and SMTP are Wen's to buy.
+- **Purchases.** The Pro organization and the domain are Wen's to buy. Resend, Cloudflare's Worker and Email Routing start free.
 
 ## Sources
 
@@ -234,6 +278,9 @@ No feature flag. `account.status` already gates every request, and setting `sign
 - [Custom connectors on claude.ai](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-MCP)
 - [Supabase OAuth 2.1 server](https://supabase.com/docs/guides/auth/oauth-server/getting-started)
 - [Supabase Edge Function limits](https://supabase.com/docs/guides/functions/limits)
+- [Supabase custom domains](https://supabase.com/docs/guides/platform/custom-domains)
+- [Supabase MCP servers, custom domain section](https://supabase.com/docs/guides/ai-tools/byo-mcp)
+- [Cloudflare Workers limits](https://developers.cloudflare.com/workers/platform/limits)
 - [Supabase pricing](https://supabase.com/pricing)
 - [pgvector iterative scans](https://docs.pgedge.com/pgvector/v0-8-5/iterative-index-scans/)
 - [Claude Code plugins reference](https://docs.claude.com/en/docs/claude-code/plugins-reference)
