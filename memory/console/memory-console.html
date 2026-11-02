@@ -1,0 +1,277 @@
+<title>Memory Console</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a header with live counts, tabs, then one working panel. Ids in mono, titles in sans, bindings as typed chips. */
+:root {
+  --bg: #f6f7f8; --panel: #ffffff; --fg: #1d2329; --muted: #5d6873; --line: #dde2e7;
+  --accent: #23656b; --accent-soft: #e2f0f0; --warn: #9a5b00; --bad: #a32d2d;
+  --sans: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --t-supersedes: #8a4b14; --t-relates: #3e5c8a; --t-supports: #2d6b3c; --t-contradicts: #a32d2d; --t-other: #5d6873;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15191d; --panel: #1d2227; --fg: #e4e8ec; --muted: #9aa5b0; --line: #2f363d;
+  --accent: #6fbcc2; --accent-soft: #1f3335; --warn: #e0a54a; --bad: #f09595;
+  --t-supersedes: #e3a568; --t-relates: #8fb0e3; --t-supports: #8ccf98; --t-contradicts: #f09595; --t-other: #9aa5b0; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #15191d; --panel: #1d2227; --fg: #e4e8ec; --muted: #9aa5b0; --line: #2f363d;
+  --accent: #6fbcc2; --accent-soft: #1f3335; --warn: #e0a54a; --bad: #f09595;
+  --t-supersedes: #e3a568; --t-relates: #8fb0e3; --t-supports: #8ccf98; --t-contradicts: #f09595; --t-other: #9aa5b0; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--sans); }
+.wrap { max-width: 1100px; margin: 0 auto; padding-block: 20px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+h1 { font-size: 22px; margin: 0; text-wrap: balance; }
+h1 small { font: 400 12px var(--mono); color: var(--muted); margin-left: 8px; }
+.status { font-size: 13px; color: var(--muted); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.stat b { display: block; font: 600 20px var(--mono); font-variant-numeric: tabular-nums; }
+.stat span { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+nav { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+nav button { font: inherit; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); padding: 8px 12px; cursor: pointer; }
+nav button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); font-weight: 700; }
+nav button:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; }
+input, select { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; min-width: 0; }
+input[type="search"] { flex: 1 1 220px; }
+.btn { font: inherit; background: var(--accent); color: var(--panel); border: 0; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 700; position: sticky; top: 0; background: var(--panel); }
+tr.click { cursor: pointer; } tr.click:hover td { background: var(--accent-soft); }
+.id { font: 12px var(--mono); color: var(--muted); word-break: break-all; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+.chip { display: inline-block; font: 600 11px var(--mono); padding: 1px 6px; border-radius: 4px; border: 1px solid currentColor; white-space: nowrap; }
+.t-supersedes { color: var(--t-supersedes); } .t-relates { color: var(--t-relates); } .t-supports { color: var(--t-supports); }
+.t-contradicts { color: var(--t-contradicts); } .t-other { color: var(--t-other); }
+.auth-approved { color: var(--accent); } .auth-observed { color: var(--t-relates); } .auth-draft { color: var(--warn); }
+.detail { display: grid; gap: 12px; padding: 16px; }
+.detail h2 { margin: 0; font-size: 18px; text-wrap: balance; }
+.detail p { margin: 0; max-width: 70ch; white-space: pre-wrap; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 13px; color: var(--muted); }
+.links { display: grid; gap: 6px; }
+.link { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.link a { color: var(--fg); cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); }
+.empty, .msg { padding: 24px 16px; color: var(--muted); }
+.msg.err { color: var(--bad); }
+.chart { padding: 16px; }
+.chart svg { width: 100%; height: auto; display: block; }
+.back { font: inherit; background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; justify-self: start; }
+@media (prefers-reduced-motion: no-preference) { tr.click td { transition: background .12s; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Memory Console <small>supabase · memory</small></h1>
+    <div class="status" id="status">Connecting to Supabase…</div>
+  </header>
+  <div class="stats" id="stats" aria-live="polite"></div>
+  <nav role="tablist" id="tabs">
+    <button role="tab" data-tab="entries" aria-selected="true">Entries</button>
+    <button role="tab" data-tab="bindings" aria-selected="false">Bindings</button>
+    <button role="tab" data-tab="recalls" aria-selected="false">Recalls</button>
+    <button role="tab" data-tab="activity" aria-selected="false">Activity</button>
+  </nav>
+  <div id="view"></div>
+</div>
+
+<script>
+const PROJECT = "wlhlncmgjqyidosunugv";
+const SERVER = "Supabase";
+const $ = (s) => document.querySelector(s);
+const esc = (v) => String(v ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const lit = (v) => "'" + String(v).replace(/'/g, "''") + "'";
+let mcp = null;
+
+const FIX = {
+  server_not_connected: "Add the Supabase connector in claude.ai Settings → Connectors, then reload.",
+  needs_reauth: "Reconnect Supabase in claude.ai Settings → Connectors, then reload.",
+  selection_required: "Pick which Supabase connector this page uses when claude.ai asks, then reload.",
+  not_in_manifest: "This page isn't allowed to use Supabase. Turn it on in the page's Permissions menu.",
+  blocked_by_policy: "Your organization's policy blocks this Supabase tool.",
+  approval_required: "Allow this page to use Supabase to see your memory.",
+};
+
+// One read through the viewer's Supabase connector. execute_sql wraps rows in an untrusted-data block, so the rows are
+// the JSON array between its tags.
+async function q(sql, retried = false) {
+  try {
+    const res = await mcp.callTool(SERVER, "execute_sql", { project_id: PROJECT, query: sql });
+    const p = res.payload;
+    const text = typeof p === "string" ? p : (p && typeof p.result === "string" ? p.result : JSON.stringify(p));
+    const m = text.match(/<untrusted-data-[^>]*>\s*([\s\S]*?)\s*<\/untrusted-data-/);
+    return JSON.parse(m ? m[1] : text);
+  } catch (e) {
+    if (e && e.retryable && !retried) {
+      await new Promise((r) => setTimeout(r, (e.retryAfterMs || 800) + Math.random() * 400));
+      return q(sql, true);
+    }
+    throw e;
+  }
+}
+
+function problem(e) {
+  const code = e && e.code;
+  if (FIX[code]) return FIX[code];
+  if (code === "tool_error") return "Supabase refused the query: " + (e.message || "no reason given");
+  if (code === "server_unavailable") return "Supabase didn't answer. Reload in a moment.";
+  return "Couldn't read memory" + (code ? " (" + code + ")" : "") + ". Reload to try again.";
+}
+
+function showError(where, e) {
+  const approval = e && e.code === "approval_required";
+  where.innerHTML = `<div class="msg err">${esc(problem(e))}</div>` + (approval ? `<div class="msg"><button class="btn" id="allow">Allow and load</button></div>` : "");
+  if (approval) $("#allow").onclick = () => boot();
+}
+
+async function loadStats() {
+  const [s] = await q(`select (select count(*) from memory.entry_current) entries, (select count(*) from memory.link) links,
+    (select count(*) from memory.retrieval) recalls, (select count(*) from memory.event) events,
+    (select count(*) from memory.device where revoked_at is null) computers,
+    (select count(*) from memory.entry_embedding) embedded,
+    (select coalesce(sum(tokens),0) from memory.embed_usage where month = date_trunc('month', now())::date) tokens,
+    (select max(received_at) from memory.event where event <> 'get_entry') last_hook,
+    (select max(created_at) from memory.retrieval) last_recall`);
+  const ago = (t) => { if (!t) return "never"; const m = Math.round((Date.now() - Date.parse(t)) / 60000);
+    return m < 60 ? m + " min ago" : m < 2880 ? Math.round(m / 60) + " h ago" : Math.round(m / 1440) + " d ago"; };
+  const tiles = [["Entries", s.entries], ["Bindings", s.links], ["Recalls", s.recalls], ["Hook events", s.events],
+    ["Computers", s.computers], ["Embedded", s.embedded + " / " + s.entries], ["Embed spend", "$" + (s.tokens * 0.13 / 1e6).toFixed(2)]];
+  $("#stats").innerHTML = tiles.map(([k, v]) => `<div class="stat"><b>${esc(v)}</b><span>${k}</span></div>`).join("");
+  $("#status").textContent = `Last hook ${ago(s.last_hook)} · last recall ${ago(s.last_recall)}`;
+}
+
+const chip = (type) => `<span class="chip t-${["supersedes", "relates", "supports", "contradicts"].includes(type) ? type : "other"}">${esc(type)}</span>`;
+const auth = (a) => `<span class="chip auth-${esc(a)}">${esc(a)}</span>`;
+
+// ---------------------------------------------------------------- entries
+let entryFilter = { text: "", pattern: "" };
+async function entries() {
+  const v = $("#view");
+  v.innerHTML = `<div class="tools"><input type="search" id="eq" placeholder="Search titles and bodies" value="${esc(entryFilter.text)}">
+    <select id="ep"><option value="">All patterns</option>${["decisions", "preferences", "observations", "projects", "recommendations", "references", "reactions"]
+      .map((p) => `<option ${p === entryFilter.pattern ? "selected" : ""}>${p}</option>`).join("")}</select></div>
+    <div class="panel" id="elist"><div class="empty">Loading entries…</div></div>`;
+  const run = async () => {
+    entryFilter = { text: $("#eq").value.trim(), pattern: $("#ep").value };
+    const w = [];
+    if (entryFilter.text) w.push(`(title ilike ${lit("%" + entryFilter.text + "%")} or body ilike ${lit("%" + entryFilter.text + "%")} or id ilike ${lit("%" + entryFilter.text + "%")})`);
+    if (entryFilter.pattern) w.push(`pattern = ${lit(entryFilter.pattern)}`);
+    try {
+      const rows = await q(`select id, title, pattern, authority, project, links, times_delivered, replaced_by from memory.entries_overview
+        ${w.length ? "where " + w.join(" and ") : ""} order by times_delivered desc, links desc, id limit 200`);
+      $("#elist").innerHTML = rows.length ? `<table><thead><tr><th>Entry</th><th>Pattern</th><th>Authority</th><th>Project</th>
+        <th class="num">Bindings</th><th class="num">Served</th></tr></thead><tbody>${rows.map((r) => `<tr class="click" data-id="${esc(r.id)}">
+        <td>${r.replaced_by ? "<s>" + esc(r.title) + "</s>" : esc(r.title)}<div class="id">${esc(r.id)}</div></td><td>${esc(r.pattern)}</td>
+        <td>${auth(r.authority)}</td><td>${esc(r.project)}</td><td class="num">${r.links}</td><td class="num">${r.times_delivered}</td></tr>`).join("")}</tbody></table>`
+        : `<div class="empty">No entries match.</div>`;
+      $("#elist").querySelectorAll("tr.click").forEach((tr) => tr.onclick = () => entry(tr.dataset.id));
+    } catch (e) { showError($("#elist"), e); }
+  };
+  let t; $("#eq").oninput = () => { clearTimeout(t); t = setTimeout(run, 300); }; $("#ep").onchange = run;
+  run();
+}
+
+async function entry(id) {
+  const v = $("#view");
+  v.innerHTML = `<div class="panel"><div class="empty">Loading ${esc(id)}…</div></div>`;
+  try {
+    const [[e], links] = await Promise.all([
+      q(`select e.*, p.title as project_title from memory.entry e left join memory.entry p on p.id = e.project where e.id = ${lit(id)}`),
+      q(`select 'out' dir, type, dst other, dst_title title from memory.links_readable where src = ${lit(id)}
+         union all select 'in', type, src, src_title from memory.links_readable where dst = ${lit(id)} order by 1, 2`)]);
+    if (!e) { v.innerHTML = `<div class="panel"><div class="empty">No entry ${esc(id)}.</div></div>`; return; }
+    const group = (dir, label) => { const ls = links.filter((l) => l.dir === dir);
+      return `<div class="links"><b>${label}</b>${ls.length ? ls.map((l) => `<div class="link">${chip(l.type)} <a data-id="${esc(l.other)}">${esc(l.title)}</a> <span class="id">${esc(l.other)}</span></div>`).join("") : `<span class="status">None</span>`}</div>`; };
+    v.innerHTML = `<div class="panel detail"><button class="back" id="back">← All entries</button>
+      <h2>${esc(e.title)}</h2>
+      <div class="meta">${auth(e.authority)}<span>${esc(e.pattern)}</span><span>${esc(e.scope)}</span><span>valid from ${esc(e.valid_from)}</span>
+        <span>project ${esc(e.project_title || e.project)}</span>${e.sensitivity === "private" ? "<span>🔒 private</span>" : ""}<span class="id">${esc(e.id)}</span></div>
+      <p>${esc(e.body)}</p>${e.evidence ? `<div class="links"><b>Evidence (${esc(e.evidence_kind)})</b><p>${esc(e.evidence)}</p></div>` : ""}
+      ${group("out", "Binds to")}${group("in", "Bound from")}</div>`;
+    $("#back").onclick = entries;
+    v.querySelectorAll("a[data-id]").forEach((a) => a.onclick = () => entry(a.dataset.id));
+  } catch (err) { showError(v, err); }
+}
+
+// ---------------------------------------------------------------- bindings
+async function bindings() {
+  const v = $("#view");
+  v.innerHTML = `<div class="tools"><input type="search" id="bq" placeholder="Search either end">
+    <select id="bt"><option value="">All types except part_of</option><option>supersedes</option><option>relates</option><option>supports</option>
+    <option>contradicts</option><option>derived_from</option><option>corrects</option><option>part_of</option></select></div>
+    <div class="panel" id="blist"><div class="empty">Loading bindings…</div></div>`;
+  const run = async () => {
+    const text = $("#bq").value.trim(), type = $("#bt").value;
+    const w = [type ? `type = ${lit(type)}` : "type <> 'part_of'"];
+    if (text) w.push(`(src_title ilike ${lit("%" + text + "%")} or dst_title ilike ${lit("%" + text + "%")})`);
+    try {
+      const rows = await q(`select src, src_title, type, dst, dst_title from memory.links_readable where ${w.join(" and ")} order by type, src_title limit 300`);
+      $("#blist").innerHTML = rows.length ? `<table><thead><tr><th>From</th><th>Binding</th><th>To</th></tr></thead><tbody>${rows.map((r) =>
+        `<tr><td><a data-id="${esc(r.src)}" class="go">${esc(r.src_title)}</a></td><td>${chip(r.type)}</td><td><a data-id="${esc(r.dst)}" class="go">${esc(r.dst_title)}</a></td></tr>`).join("")}</tbody></table>`
+        : `<div class="empty">No bindings match.</div>`;
+      $("#blist").querySelectorAll("a.go").forEach((a) => { a.style.cursor = "pointer"; a.onclick = () => { select("entries", false); entry(a.dataset.id); }; });
+    } catch (e) { showError($("#blist"), e); }
+  };
+  let t; $("#bq").oninput = () => { clearTimeout(t); t = setTimeout(run, 300); }; $("#bt").onchange = run;
+  run();
+}
+
+// ---------------------------------------------------------------- recalls
+async function recalls() {
+  const v = $("#view");
+  v.innerHTML = `<div class="panel" id="rlist"><div class="empty">Loading recalls…</div></div>`;
+  try {
+    const rows = await q(`select created_at, arm, client, query, latency_ms, degraded, delivered from memory.recalls_recent limit 100`);
+    $("#rlist").innerHTML = rows.length ? `<table><thead><tr><th>When</th><th>Query</th><th>Arm</th><th>Delivered</th><th class="num">ms</th></tr></thead><tbody>${rows.map((r) =>
+      `<tr><td class="id">${esc(new Date(r.created_at).toLocaleString())}</td><td>${esc(r.query)}<div class="id">${esc(r.client || "")}</div></td>
+      <td>${esc(r.arm)}${r.degraded ? `<div class="id" style="color:var(--warn)">${esc(r.degraded)}</div>` : ""}</td>
+      <td>${esc((r.delivered || "nothing").split(" | ").slice(0, 4).join(" · "))}</td><td class="num">${r.latency_ms ?? ""}</td></tr>`).join("")}</tbody></table>`
+      : `<div class="empty">No recalls yet.</div>`;
+  } catch (e) { showError($("#rlist"), e); }
+}
+
+// ---------------------------------------------------------------- activity
+async function activity() {
+  const v = $("#view");
+  v.innerHTML = `<div class="panel chart" id="chart"><div class="empty">Loading activity…</div></div>`;
+  try {
+    const rows = await q(`select d::date::text as day,
+        (select count(*) from memory.event where received_at::date = d::date and event <> 'get_entry') as hooks,
+        (select count(*) from memory.retrieval where created_at::date = d::date) as recalls
+      from generate_series(current_date - 29, current_date, interval '1 day') d order by 1`);
+    const W = 720, H = 220, L = 40, B = 28, max = Math.max(1, ...rows.map((r) => r.hooks));
+    const ticks = [0, Math.round(max / 2), max], bw = (W - L - 8) / rows.length;
+    const y = (n) => H - B - (n / max) * (H - B - 12);
+    $("#chart").innerHTML = `<b>Hook events per day, last 30 days</b><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Hook events and recalls per day">
+      ${ticks.map((t) => `<line x1="${L}" x2="${W - 8}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)"/><text x="${L - 6}" y="${y(t) + 4}" text-anchor="end" font-size="11" fill="var(--muted)" font-family="var(--mono)">${t}</text>`).join("")}
+      ${rows.map((r, i) => `<rect x="${L + i * bw + 1}" y="${y(r.hooks)}" width="${Math.max(1, bw - 2)}" height="${H - B - y(r.hooks)}" fill="var(--accent)" opacity=".85"><title>${r.day}: ${r.hooks} hooks, ${r.recalls} recalls</title></rect>
+        ${r.recalls ? `<circle cx="${L + i * bw + bw / 2}" cy="${y(r.hooks) - 6}" r="3" fill="var(--warn)"><title>${r.recalls} recalls</title></circle>` : ""}`).join("")}
+      ${[0, 14, 29].map((i) => rows[i] ? `<text x="${L + i * bw + bw / 2}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--muted)" font-family="var(--mono)">${rows[i].day.slice(5)}</text>` : "").join("")}
+    </svg><div class="status">Bars are hook events. Dots mark days with recalls.</div>`;
+  } catch (e) { showError($("#chart"), e); }
+}
+
+const VIEWS = { entries, bindings, recalls, activity };
+function select(tab, render = true) {
+  document.querySelectorAll("#tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
+  if (render) VIEWS[tab]();
+}
+document.querySelectorAll("#tabs button").forEach((b) => b.onclick = () => select(b.dataset.tab));
+
+async function boot() {
+  mcp = await claude.use("mcp");
+  if (!mcp) {
+    $("#status").textContent = "This view can't reach Supabase.";
+    $("#view").innerHTML = `<div class="panel"><div class="msg">Open this page in Claude, signed in, with the Supabase connector added.</div></div>`;
+    return;
+  }
+  try { await loadStats(); } catch (e) { $("#status").textContent = problem(e); showError($("#view"), e); return; }
+  const start = location.hash.slice(1);
+  select(VIEWS[start] ? start : "entries");
+}
+boot();
+</script>
