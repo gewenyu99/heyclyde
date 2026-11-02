@@ -54,6 +54,7 @@ th { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spa
     <span><i style="background:var(--link)"></i>Reached only through links</span>
     <span><i style="background:var(--kept)"></i>Kept by the filter</span>
     <span><i style="background:var(--pruned)"></i>Pruned by the filter</span>
+    <span><i style="background:var(--dim)"></i>Not part of this stage</span>
   </div>
   <div class="panel graph" id="graph"></div>
   <div class="panel"><table id="fate"></table></div>
@@ -70,7 +71,7 @@ $("#q").textContent = "“" + DATA.query + "”";
 
 const STAGES = [
   { key: "seeds", title: "1 · Seeds", big: "50", sub: "hybrid candidates",
-    text: `Keyword search found ${DATA.keyword.length}+ matches and vector search ranked by meaning. Hybrid fuses the two lists into its top 50, which become the spreading arm's seeds. The 15 strongest are drawn here, sized by rank.` },
+    text: `Keyword search found ${DATA.keyword.length}+ matches and vector search ranked by meaning. Hybrid fuses the two lists into its top 50, which become the spreading arm's seeds. The 15 strongest are drawn here, sized by rank. The grey dots aren't seeds: keyword and vector search never found them, and they only join at the next stage, through links.` },
   { key: "spread", title: "2 · Spread", big: String(DATA.edges.length), sub: "links walked",
     text: `Activation flows from the seeds along typed links by personalized PageRank. ${movedUp.length} entries climbed because their neighbors were strong, like “${esc(movedUp[0]?.title ?? "")}” (hybrid ${movedUp[0]?.hybrid} → ${movedUp[0]?.spread}). ${linked.length} entries were reached only through links, but too faintly to make the top 12.` },
   { key: "judge", title: "3 · Filter", big: "12", sub: "judged by gpt-6-luna",
