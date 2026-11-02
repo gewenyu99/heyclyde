@@ -63,7 +63,9 @@ print(v, base64.urlsafe_b64encode(hashlib.sha256(v.encode()).digest()).rstrip(b"
 }
 
 TOKEN=${MEMORY_TOKEN:-$(cat "$DIR/token" 2>/dev/null || true)}
-if [ -z "$TOKEN" ] || [ "$(probe "$TOKEN")" != 200 ]; then
+if [ -n "$TOKEN" ] && [ "$(probe "$TOKEN")" = 200 ]; then
+  echo "This computer is already connected as $DEVICE, so no sign-in. Refreshing its Claude Code and Codex setup."
+else
   TOKEN=$(sign_in)
 fi
 case $(probe "$TOKEN") in
