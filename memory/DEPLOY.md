@@ -74,7 +74,7 @@ The daily groom drafts new entries from your own words. It's a Claude Code sched
 |---|---|---|---|
 | `index` | yes | Index lines matching the query's words | 81% |
 | `hybrid` | yes | English and 中文 keywords plus vectors, fused | 95% |
-| `spreading` | no, your call | Hybrid's top 50 as seeds, then personalized PageRank over typed links (`link_type_weight` × each link's learned weight), replaced entries ×0.3 | 95% |
+| `spreading` | yes, since 2026-11-02 | Hybrid's top 50 as seeds, then personalized PageRank over typed links (`link_type_weight` × each link's learned weight), replaced entries ×0.3 | 95% |
 
 Every arm passes the same relevance filter and confidence tilt. Turn an arm on with the function's `MEMORY_ARMS` secret, for example `supabase secrets set MEMORY_ARMS=index,hybrid,spreading`.
 
