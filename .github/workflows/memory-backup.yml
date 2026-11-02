@@ -1,6 +1,6 @@
 # Nightly copy of Wen's memory, off Supabase. memory/backup/export.py pages through the memory function's /export and
-# fails when a table comes back short. This job compresses and encrypts the result, and keeps it as an artifact for 30
-# days. Restore with memory/backup/restore.py.
+# fails when a table comes back short. This job compresses and encrypts the result, proves the encrypted copy restores
+# to the same rows, and keeps it as an artifact for 30 days. Restore with memory/backup/restore.py.
 name: memory-backup
 
 on:
@@ -27,6 +27,11 @@ jobs:
           set -euo pipefail
           python3 memory/backup/export.py | gzip -9 > memory.ndjson.gz
           openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:KEY -in memory.ndjson.gz -out memory.ndjson.gz.enc
+          # Restore drill: the encrypted copy must decrypt with the stored key back to the same rows, each one valid JSON
+          # naming a table, or the backup counts as failed.
+          want=$(gzip -dc memory.ndjson.gz | wc -l)
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass env:KEY -in memory.ndjson.gz.enc | gzip -dc |
+            python3 -c "import json, sys; n = sum(1 for l in sys.stdin if json.loads(l)['table']); print(n); sys.exit(n != $want)"
           rm memory.ndjson.gz
       - uses: actions/upload-artifact@v4
         with:

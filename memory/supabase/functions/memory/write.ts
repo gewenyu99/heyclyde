@@ -10,7 +10,9 @@ const LINK_TYPES = new Set(["supersedes", "supports", "contradicts", "derived_fr
 const PATTERNS = new Set(["projects", "decisions", "observations", "preferences", "recommendations", "references", "reactions"]);
 const EVIDENCE_KINDS = new Set(["quote", "assistant", "summary", "memory"]);
 export const SCOPE_RE = /^(global|domain:[a-z0-9-]+|repo:[A-Za-z0-9._/-]+|run:[A-Za-z0-9._-]+)$/;
-const SENSITIVITY = new Set(["normal", "private"]);
+// private: agents and third-party models see the title only. confidential: agents see it all, third-party models the
+// title only, for work material.
+const SENSITIVITY = new Set(["normal", "private", "confidential"]);
 
 const RANK: Record<string, number> = { draft: 0, observed: 1, approved: 2 };
 // part_of comes from `project` and supersedes from `supersedes`, so `links` takes the other types.
@@ -121,7 +123,7 @@ export async function validate(payload: unknown, caller: string): Promise<Row> {
   } else if (agent && !e.scope.startsWith("run:")) {
     errs.push(`An agent writes only in a run scope, run:<id>, not ${e.scope}. Wen or clyde-flow promotes notes wider.`);
   }
-  if (!oneOf(e.sensitivity, SENSITIVITY)) errs.push("sensitivity must be normal or private.");
+  if (!oneOf(e.sensitivity, SENSITIVITY)) errs.push("sensitivity must be normal, private or confidential.");
   if (!e.lang) errs.push("lang must be a language code like en.");
   if (!oneOf(e.evidence_kind, EVIDENCE_KINDS)) {
     errs.push(`evidence_kind must be one of ${[...EVIDENCE_KINDS].sort().join(", ")}.`);

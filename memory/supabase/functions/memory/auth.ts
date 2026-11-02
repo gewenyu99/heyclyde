@@ -5,7 +5,12 @@ import { secret, setting, sql } from "./db.ts";
 import { sha256 } from "./embed.ts";
 
 export type Kind = "open" | "agent" | "admin" | "backup" | "cron" | "owner";
-export type Principal = { role: "anyone" | "device" | "runtime" | "admin" | "backup" | "cron" | "owner"; device?: string };
+export type Principal = {
+  role: "anyone" | "device" | "runtime" | "admin" | "backup" | "cron" | "owner";
+  device?: string;
+  /** For a device: "full" keeps hook payloads, "metadata" keeps only the event, session, folder and tool name. */
+  hooks?: string;
+};
 
 /** Which credential a path takes. /healthz and the console's files take none. Any path not named takes none of them
  * and gets 401. */
@@ -60,9 +65,11 @@ async function resolve(kind: Kind, token: string): Promise<Principal | null> {
   const hash = await sha256(token);
   if (kind === "agent") {
     if (same(hash, await setting("runtime_token_sha256"))) return { role: "runtime" };
+    // A computer's token lapses after 90 days unused. Rerunning the installer signs it in again.
     const [d] = await sql`update memory.device set last_seen = now()
-      where token_sha256 = ${hash} and revoked_at is null returning name`;
-    return d ? { role: "device", device: d.name } : null;
+      where token_sha256 = ${hash} and revoked_at is null and coalesce(last_seen, created_at) > now() - interval '90 days'
+      returning name, hooks`;
+    return d ? { role: "device", device: d.name, hooks: d.hooks } : null;
   }
   if (kind === "admin") return same(hash, await setting("admin_token_sha256")) ? { role: "admin" } : null;
   if (kind === "backup") {

@@ -25,12 +25,12 @@ export async function sessionArm(db: Sql, session: string, client: string | null
 const FILTER_K = 12;
 const FILTER_THRESHOLD = Number(Deno.env.get("MEMORY_FILTER_THRESHOLD") ?? 0.5);
 
-/** What the filter shows the judge for one candidate. Private entries go by title alone, since their bodies never leave
- * the server. */
+/** What the filter shows the judge for one candidate. Private and confidential entries go by title alone, since their
+ * bodies never reach a third-party model. */
 function itemText(line: string | null, row: Row | undefined) {
   if (line !== null) return line;
   const r = redactPrivate(row!);
-  return `${r.title}. ${r.sensitivity === "private" ? "" : r.body}`.trim();
+  return `${r.title}. ${r.sensitivity === "normal" ? r.body : ""}`.trim();
 }
 
 /** One arm's ranking and the packet recall delivers from it. Writes nothing, so the console can preview an arm.
@@ -180,7 +180,7 @@ export async function postMessage(db: Sql, sender: string, to: string, body: str
   body = redactText(body)[0];
   // Messages land straight in another agent's context, so they pass the same judge as notes. Wen's own, from the
   // console, don't.
-  if (sender !== "wen") {
+  if (sender !== "wen" && sender !== "memory") {
     let why: string | null;
     try {
       why = await screen(body);

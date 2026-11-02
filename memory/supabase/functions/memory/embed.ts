@@ -1,5 +1,5 @@
-// Embeddings from OpenAI's text-embedding-3-large, cut to 1024 dimensions. Private entries never leave the server
-// unredacted, so OpenAI only ever sees their title.
+// Embeddings from OpenAI's text-embedding-3-large, cut to 1024 dimensions. Private and confidential entries never reach a
+// third-party model, so OpenAI only ever sees their title.
 import { config } from "./config.ts";
 import { type Row, secret, setting, type Sql, sql } from "./db.ts";
 
@@ -11,7 +11,7 @@ export async function sha256(data: string | Uint8Array): Promise<string> {
 
 /** The same text keyword search reads: the entry plus its project's title (see search_text in the migration). */
 export function entryText(row: Row): string {
-  if (row.sensitivity === "private") return row.title ?? "";
+  if (row.sensitivity === "private" || row.sensitivity === "confidential") return row.title ?? "";
   return row.search_text || [row.title, row.body, row.evidence].filter(Boolean).join("\n");
 }
 

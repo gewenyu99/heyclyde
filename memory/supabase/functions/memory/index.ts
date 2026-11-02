@@ -42,7 +42,10 @@ async function jsonObject(req: Request, cap: number) {
   }
 }
 
-async function hooks(req: Request, event: string, url: URL) {
+// What a "metadata" computer's hook payloads keep: enough to tie events to sessions and folders, never prompts or output.
+const HOOK_METADATA = ["session_id", "cwd", "hook_event_name", "tool_name", "matcher", "source", "reason"];
+
+async function hooks(req: Request, event: string, url: URL, who: Principal) {
   let payload;
   try {
     payload = await admin.readJson(req, MAX_HOOK_BODY);
@@ -50,8 +53,9 @@ async function hooks(req: Request, event: string, url: URL) {
     return json({ error: (e as admin.ApiError).error }, (e as admin.ApiError).status ?? 400);
   }
   const agent = (url.searchParams.get("agent") ?? "").toLowerCase();
-  await service.hook(event, payload && typeof payload === "object" && !Array.isArray(payload) ? payload : { body: payload },
-    AGENT.test(agent) ? agent : null);
+  let body = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : { body: payload };
+  if (who.hooks === "metadata") body = Object.fromEntries(HOOK_METADATA.filter((k) => k in body).map((k) => [k, body[k]]));
+  await service.hook(event, body, AGENT.test(agent) ? agent : null);
   return json({ ok: true });
 }
 
@@ -176,7 +180,7 @@ async function route(req: Request): Promise<Response> {
   if (path.startsWith("/api/v1") || path === "/") return path === "/" ? json({ ok: true }) : admin.handle(req, path);
 
   let match;
-  if (m === "POST" && (match = /^\/hooks\/([^/]+)$/.exec(path))) return hooks(req, decodeURIComponent(match[1]), url);
+  if (m === "POST" && (match = /^\/hooks\/([^/]+)$/.exec(path))) return hooks(req, decodeURIComponent(match[1]), url, who);
   if (m === "GET" && (match = /^\/messages\/([^/]+)$/.exec(path))) {
     return text(await service.readMessages(decodeURIComponent(match[1]).toLowerCase()));
   }

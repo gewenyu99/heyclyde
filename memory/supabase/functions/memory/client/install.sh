@@ -2,7 +2,9 @@
 # Connect this computer's Claude Code and Codex to Wen's memory server. No checkout needed:
 #   curl -fsSL https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory/install | sh
 # memory is allowlist only. A computer with no token signs in with a link to an allowlisted email, clicked from any
-# device, and gets a token of its own named after this computer (or MEMORY_DEVICE). Rerun it any time: it replaces only its own entries, the old kb ones too.
+# device, and gets a token of its own named after this computer (or MEMORY_DEVICE). On a work computer, set
+# MEMORY_HOOKS=metadata so memory keeps no prompts or tool output from its hooks. Rerun it any time: it replaces only
+# its own entries, the old kb ones too.
 # The token lands in ~/.config/memory/token, ~/.claude.json and ~/.codex/config.toml, all readable by you only.
 set -eu
 URL=${MEMORY_URL:-https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory}
@@ -63,7 +65,7 @@ print(v, base64.urlsafe_b64encode(hashlib.sha256(v.encode()).digest()).rstrip(b"
     curl -fsS -m 15 -X POST "$auth/token?grant_type=pkce" -H "apikey: $key" -H "Content-Type: application/json" --data-binary @- |
     field access_token)
   curl -sS -m 15 -X POST "$URL/devices/claim" -H "Authorization: Bearer $jwt" -H "Content-Type: application/json" \
-    --data "{\"name\": \"$DEVICE\"}" | python3 -c 'import json, sys; d = json.load(sys.stdin); print(d.get("token") or ""); sys.exit(0 if d.get("token") else d.get("error") or "that email can'"'"'t connect a computer")'
+    --data "{\"name\": \"$DEVICE\", \"hooks\": \"${MEMORY_HOOKS:-full}\"}" | python3 -c 'import json, sys; d = json.load(sys.stdin); print(d.get("token") or ""); sys.exit(0 if d.get("token") else d.get("error") or "that email can'"'"'t connect a computer")'
 }
 
 TOKEN=${MEMORY_TOKEN:-$(cat "$DIR/token" 2>/dev/null || true)}

@@ -24,7 +24,7 @@ const SCOPE = /^(global|domain:[a-z0-9-]+|repo:[A-Za-z0-9._/-]+)$/;
 const LANG = /^[A-Za-z]{2,8}([-_][A-Za-z0-9]{1,8})*$/;
 const DEVICE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 export const AUTHORITIES = ["approved", "observed", "draft"];
-export const SENSITIVITIES = ["normal", "private"];
+export const SENSITIVITIES = ["normal", "private", "confidential"];
 const EVIDENCE_KINDS = ["quote", "assistant", "summary", "memory"];
 const AGENTS = ["claude", "codex"];
 const FIELDS = ["title", "body", "pattern", "authority", "scope", "sensitivity", "lang", "valid_from", "source_id",
@@ -221,7 +221,7 @@ const VALID: Record<string, [(v: string) => boolean, string]> = {
   pattern: [(v) => PATTERN.test(v), "pattern must be a lowercase word like decisions."],
   authority: [(v) => AUTHORITIES.includes(v), "authority must be approved, observed or draft."],
   scope: [(v) => SCOPE.test(v), "scope must be global, domain:<name> or repo:<path>."],
-  sensitivity: [(v) => SENSITIVITIES.includes(v), "sensitivity must be normal or private."],
+  sensitivity: [(v) => SENSITIVITIES.includes(v), "sensitivity must be normal, private or confidential."],
   lang: [(v) => LANG.test(v), "lang must be a language code like en or zh."],
   valid_from: [isDate, "valid_from must be a date like 2026-10-10."],
   evidence_kind: [(v) => EVIDENCE_KINDS.includes(v), "evidence_kind must be quote, assistant, summary or memory."],
@@ -633,20 +633,44 @@ export async function runEmbeddingSync(trigger: string): Promise<Row | null> {
 }
 
 const devices = () =>
-  sql`select name, created_at, last_seen, revoked_at from memory.device order by revoked_at nulls first, name`;
+  sql`select name, hooks, created_at, last_seen, revoked_at,
+      coalesce(last_seen, created_at) + interval '90 days' as lapses_at from memory.device order by revoked_at nulls first, name`;
+
+/** Switch a computer between full and metadata-only hook payloads. */
+async function setDeviceHooks(name: string, data: Row) {
+  if (!HOOK_LEVELS.includes(data.hooks)) throw new ApiError(422, "hooks must be full or metadata.");
+  return await sql.begin(async (tx) => {
+    const [d] = await tx`update memory.device set hooks = ${data.hooks} where name = ${name} returning name, hooks`;
+    if (!d) throw new ApiError(404, `No device ${name}.`);
+    await audit(tx, "device.hooks", `device:${name}`, null, d);
+    return d;
+  });
+}
 
 /** A new computer's token, shown once. Only its SHA-256 is kept. */
+/** Tell every agent a computer was connected, so Wen hears it at his next prompt. A device he didn't add is the alarm. */
+async function announce(db: Sql, name: string, how: string) {
+  await service.postMessage(db, "memory", "all",
+    `A computer named ${name} was connected to memory ${how} at ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC. ` +
+    "Tell Wen. If he didn't do it, revoke it in the console API with DELETE /api/v1/devices/" + name + ".");
+}
+
+const HOOK_LEVELS = ["full", "metadata"];
+
 async function addDevice(data: Row) {
   const name = data.name;
+  const hooks = data.hooks ?? "full";
+  if (!HOOK_LEVELS.includes(hooks)) throw new ApiError(422, "hooks must be full or metadata.");
   if (typeof name !== "string" || !DEVICE.test(name)) {
     throw new ApiError(422, "name must be up to 64 lowercase letters, digits, '.', '_' or '-'.");
   }
   const token = newToken();
   return await sql.begin(async (tx) => {
     if ((await tx`select 1 from memory.device where name = ${name}`).length) throw new ApiError(409, `Device ${name} already exists.`);
-    await tx`insert into memory.device (name, token_sha256) values (${name}, ${await sha256(token)})`;
-    await audit(tx, "device.create", `device:${name}`, null, { name });
-    return { name, token };
+    await tx`insert into memory.device (name, token_sha256, hooks) values (${name}, ${await sha256(token)}, ${hooks})`;
+    await audit(tx, "device.create", `device:${name}`, null, { name, hooks });
+    await announce(tx, name, "from the console");
+    return { name, token, hooks };
   });
 }
 
@@ -654,14 +678,18 @@ async function addDevice(data: Row) {
  * token, so reinstalling a computer rotates its token rather than failing. */
 export async function claimDevice(data: Row) {
   const name = data?.name;
+  const hooks = data?.hooks ?? "full";
+  if (!HOOK_LEVELS.includes(hooks)) return Response.json({ error: "hooks must be full or metadata." }, { status: 422 });
   if (typeof name !== "string" || !DEVICE.test(name)) {
     return Response.json({ error: "name must be up to 64 lowercase letters, digits, '.', '_' or '-'." }, { status: 422 });
   }
   const token = newToken();
   await sql.begin(async (tx) => {
-    await tx`insert into memory.device (name, token_sha256) values (${name}, ${await sha256(token)})
-      on conflict (name) do update set token_sha256 = excluded.token_sha256, revoked_at = null, created_at = now()`;
-    await audit(tx, "device.claim", `device:${name}`, null, { name });
+    await tx`insert into memory.device (name, token_sha256, hooks) values (${name}, ${await sha256(token)}, ${hooks})
+      on conflict (name) do update set token_sha256 = excluded.token_sha256, hooks = excluded.hooks, revoked_at = null,
+        created_at = now(), last_seen = null`;
+    await audit(tx, "device.claim", `device:${name}`, null, { name, hooks });
+    await announce(tx, name, "through the installer's email sign-in");
   });
   return Response.json({ name, token });
 }
@@ -932,6 +960,7 @@ const ROUTES: Route[] = [
   ["GET", /^\/devices$/, 200, () => devices()],
   ["POST", /^\/devices$/, 201, async (r) => addDevice(await body(r))],
   ["DELETE", /^\/devices\/([^/]+)$/, 200, (_r, m) => revokeDevice(id(m[1], "name"))],
+  ["PATCH", /^\/devices\/([^/]+)$/, 200, async (r, m) => setDeviceHooks(id(m[1], "name"), await body(r))],
   ["PUT", /^\/secrets\/(openai_key)$/, 200, async (r, m) => putSecret(m[1], await body(r))],
   ["POST", /^\/import$/, 200, (r) => importRows(r)],
   ["POST", /^\/redact\/backfill$/, 200, async (r) => redactBackfill(await body(r))],

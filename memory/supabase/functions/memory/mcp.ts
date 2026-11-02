@@ -57,7 +57,7 @@ const TOOLS = [
       properties: {
         pattern: str("Entry pattern"), title: str("One-line title"), body: str("Summary recall ranks on"),
         scope: str("run:<id>"), evidence: str("What backs it"), project: str("The run's projects entry id"),
-        evidence_kind: str("summary, assistant or memory"), authority: str("draft"), sensitivity: str("normal or private"),
+        evidence_kind: str("summary, assistant or memory"), authority: str("draft"), sensitivity: str("normal, private (title only for everyone) or confidential (work: title only for outside models)"),
         lang: str("Language code, default en"), valid_from: str("YYYY-MM-DD"),
         links: { type: "array", items: { type: "object" } }, supersedes: { type: "array", items: { type: "string" } },
         blobs: { type: "array", items: { type: "object" } },
