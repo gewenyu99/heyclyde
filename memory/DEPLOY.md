@@ -68,6 +68,18 @@ The learner ([learn.ts](supabase/functions/memory/learn.ts)) runs every 5 minute
 
 The daily groom drafts new entries from your own words. It's a Claude Code scheduled task, "Groom memory daily", at 9 pm, following [skills/groom-memory](../skills/groom-memory/SKILL.md) through [groom/groom.py](groom/groom.py). Every draft names the hook event its quote came from, and memory refuses any quote that isn't in that prompt word for word. Scheduled tasks run while the Claude app is open, and a missed one runs at next launch.
 
+## The arms
+
+| Arm | Live | How it ranks | Train gold hit |
+|---|---|---|---|
+| `index` | yes | Index lines matching the query's words | 81% |
+| `hybrid` | yes | English and 中文 keywords plus vectors, fused | 95% |
+| `spreading` | no, your call | Hybrid's top 50 as seeds, then personalized PageRank over typed links (`link_type_weight` × each link's learned weight), replaced entries ×0.3 | 95% |
+
+Every arm passes the same relevance filter and confidence tilt. Turn an arm on with the function's `MEMORY_ARMS` secret, for example `supabase secrets set MEMORY_ARMS=index,hybrid,spreading`.
+
+[eval/ants.py](eval/ants.py) trains the per-link-type weights with an ant colony on the train questions. On today's 21 train questions it didn't beat neutral weights, so they're back at 1.0. Rerun it as the probe set grows.
+
 ## Ship a change
 
 ```bash

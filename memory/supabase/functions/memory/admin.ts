@@ -919,6 +919,28 @@ async function groomReinforce(data: Row) {
   return { id, confidence: after };
 }
 
+/** The spreading arm's per-link-type weights, as the ants left them. */
+const linkTypeWeights = () =>
+  sql`select src_pattern, link_type, dst_pattern, n_links, weight from memory.link_type_weight order by n_links desc`;
+
+/** Set per-link-type weights, clamped to 0.2 to 5. eval/ants.py writes them after training on train questions. */
+async function setLinkTypeWeights(data: Row) {
+  const rows = data.rows;
+  if (!Array.isArray(rows) || !rows.length) throw new ApiError(422, "rows must be a list of {src_pattern, link_type, dst_pattern, weight}.");
+  return await sql.begin(async (tx) => {
+    let n = 0;
+    for (const r of rows) {
+      const w = Math.min(5, Math.max(0.2, Number(r.weight)));
+      if (!Number.isFinite(w)) continue;
+      const done = await tx`update memory.link_type_weight set weight = ${w}
+        where src_pattern = ${r.src_pattern} and link_type = ${r.link_type} and dst_pattern = ${r.dst_pattern} returning 1`;
+      n += done.length;
+    }
+    await audit(tx, "link_type_weight.set", "link_type_weight", null, { rows: rows.length, updated: n, by: data.by ?? "ants" });
+    return { updated: n };
+  });
+}
+
 const auditList = (p: Row) =>
   page(sql, sql`select id, at, action, target, before, after from memory.admin_audit`, "id desc", p.limit, p.offset);
 
@@ -1051,6 +1073,8 @@ const ROUTES: Route[] = [
   ["PATCH", /^\/devices\/([^/]+)$/, 200, async (r, m) => setDeviceHooks(id(m[1], "name"), await body(r))],
   ["PUT", /^\/secrets\/(openai_key)$/, 200, async (r, m) => putSecret(m[1], await body(r))],
   ["POST", /^\/import$/, 200, (r) => importRows(r)],
+  ["GET", /^\/link-type-weights$/, 200, () => linkTypeWeights()],
+  ["PUT", /^\/link-type-weights$/, 200, async (r) => setLinkTypeWeights(await body(r))],
   ["GET", /^\/groom\/sessions$/, 200, () => groomSessions()],
   ["POST", /^\/groom\/checkpoint$/, 200, async (r) => groomCheckpoint(await body(r))],
   ["POST", /^\/groom\/draft$/, 201, async (r) => groomDraft(await body(r))],

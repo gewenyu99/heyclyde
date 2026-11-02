@@ -182,9 +182,77 @@ export async function hybridSearch(db: Sql, query: string, scope: string | null 
   return [fused.slice(0, config.candidates), degraded];
 }
 
+// ---------------------------------------------------------------- spreading: Wen's design
+// Seeds are hybrid's top 50. Activation spreads from them by personalized PageRank over typed links: each edge carries
+// its link type's weight (link_type_weight, set by the ants on train) times its own learned weight (link.weight, moved
+// by the learner). A supersedes link carries activation from the old entry to its replacement only, so a query that
+// matches an outdated note reaches what replaced it. Replaced entries keep ×0.3 of what they gather.
+const RESTART = 0.5, ITERATIONS = 20, SUPERSEDED_FACTOR = 0.3;
+
+type Graph = { out: Map<string, [string, number][]>; scope: Map<string, string>; superseded: Set<string>; at: number };
+let graphCache: Graph | null = null;
+
+/** The link graph with each edge's weight, cached per isolate for a minute. */
+async function graph(db: Sql): Promise<Graph> {
+  if (graphCache && Date.now() - graphCache.at < 60_000) return graphCache;
+  const [links, entries, types] = await Promise.all([
+    db`select l.src, l.dst, l.type, coalesce(l.weight, 1) as weight, s.pattern as sp, d.pattern as dp
+       from memory.link l join memory.entry s on s.id = l.src join memory.entry d on d.id = l.dst`,
+    db`select id, scope from memory.entry`,
+    db`select src_pattern, link_type, dst_pattern, weight from memory.link_type_weight`]);
+  const typeWeight = new Map(types.map((t) => [`${t.src_pattern}|${t.link_type}|${t.dst_pattern}`, t.weight as number]));
+  const out = new Map<string, [string, number][]>();
+  const add = (a: string, b: string, w: number) => { if (!out.has(a)) out.set(a, []); out.get(a)!.push([b, w]); };
+  const superseded = new Set<string>();
+  for (const l of links) {
+    const w = (typeWeight.get(`${l.sp}|${l.type}|${l.dp}`) ?? 1) * l.weight;
+    if (l.type === "supersedes") {
+      superseded.add(l.dst);
+      add(l.dst, l.src, w);  // old → new only
+    } else {
+      add(l.src, l.dst, w);
+      add(l.dst, l.src, w);
+    }
+  }
+  graphCache = { out, scope: new Map(entries.map((e) => [e.id, e.scope])), superseded, at: Date.now() };
+  return graphCache;
+}
+
+/** Personalized PageRank from the seeds. Returns each reached entry's activation. */
+export function spread(g: Graph, seeds: Map<string, number>) {
+  const total = [...seeds.values()].reduce((a, b) => a + b, 0) || 1;
+  const p = new Map([...seeds].map(([id, s]) => [id, s / total]));
+  let r = new Map(p);
+  for (let i = 0; i < ITERATIONS; i++) {
+    const next = new Map<string, number>();
+    for (const [id, v] of p) next.set(id, RESTART * v);
+    for (const [id, v] of r) {
+      const edges = g.out.get(id);
+      if (!edges?.length) { next.set(id, (next.get(id) ?? 0) + (1 - RESTART) * v); continue; }
+      const sum = edges.reduce((a, [, w]) => a + w, 0);
+      for (const [to, w] of edges) next.set(to, (next.get(to) ?? 0) + (1 - RESTART) * v * (w / sum));
+    }
+    r = next;
+  }
+  return r;
+}
+
+export async function spreadingSearch(db: Sql, query: string, scope: string | null = null): Promise<[Ranked[], string | null]> {
+  const [seedsRanked, degraded] = await hybridSearch(db, query, scope);
+  const g = await graph(db);
+  const activation = spread(g, new Map(seedsRanked.map(([id, s]) => [id, s])));
+  const visible = (id: string) => { const sc = g.scope.get(id) ?? ""; return !sc.startsWith("run:") || sc === scope; };
+  const ranked = [...activation]
+    .filter(([id]) => visible(id))
+    .map(([id, a]): Ranked => [id, g.superseded.has(id) ? a * SUPERSEDED_FACTOR : a, null])
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  return [ranked.slice(0, config.candidates), degraded];
+}
+
 export const ARMS: Record<string, (db: Sql, query: string, scope?: string | null) => Promise<[Ranked[], string | null]>> = {
   index: indexSearch,
   hybrid: hybridSearch,
+  spreading: spreadingSearch,
 };
 
 // ---------------------------------------------------------------- packing
