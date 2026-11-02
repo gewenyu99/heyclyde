@@ -30,6 +30,16 @@ Cloud sessions on this repo read `.mcp.json` and `.claude/settings.json`. Give t
 
 Supabase stores every token as SHA-256 only, so a database read never yields one.
 
+## What gets in
+
+Every write is screened before it's stored:
+
+- **Redaction.** API keys, tokens, private keys, password values, credentials inside URLs, card numbers, SSNs and SINs become `[redacted:<kind>]` in hook payloads, entries, blobs, messages, recall queries, console edits and imports.
+- **The judge.** `gpt-6-luna`, through OpenAI's Decisions API, refuses a note or message that holds sensitive personal information, tries to steer the assistants that read it, or carries harmful code, links or commands. If the judge can't answer, nothing is written.
+- **Sensitivity.** `private` entries reach agents and OpenAI by title only. `confidential` entries, for work material, reach your agents in full and OpenAI by title only.
+
+Every recall's top 12 candidates also go through the judge, and only the ones it calls relevant reach the agent. It costs about $2 per 10,000 recalls.
+
 | Token | Held by | Opens |
 |---|---|---|
 | Device token | One computer, in `~/.config/memory/token`. Minted by the installer after your email sign-in | MCP, the hooks, the inbox, clyde-flow's routes. Writes are drafts in a run scope |
@@ -37,7 +47,9 @@ Supabase stores every token as SHA-256 only, so a database read never yields one
 | Admin token | You, in `~/.config/memory/admin-token` on the first Mac | `/api/v1`, the console's API |
 | Backup token | The nightly GitHub Action | `/export` only |
 
-Revoke a lost computer with `DELETE /api/v1/devices/<name>`. After 10 wrong tokens from one address, it's locked out, twice as long with each further miss, up to 15 minutes.
+Revoke a lost computer with `DELETE /api/v1/devices/<name>`. A computer's token stops working after 90 days unused, and rerunning the installer signs it in again. Every new computer posts a board message that your agents relay at your next prompt, so one you didn't add shows up fast.
+
+On a work computer, install with `MEMORY_HOOKS=metadata` in front of `sh`. memory then keeps only the event, session, folder and tool name from its hooks, never prompts or tool output. Switch an existing computer with `PATCH /api/v1/devices/<name>` and `{"hooks": "metadata"}`. After 10 wrong tokens from one address, it's locked out, twice as long with each further miss, up to 15 minutes.
 
 ## Ship a change
 
