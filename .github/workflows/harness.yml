@@ -56,7 +56,7 @@ jobs:
         with:
           deno-version: v2.x
       - name: Cache the function's imports
-        run: deno cache memory/supabase/functions/memory/index.ts harness/test/memory/database.ts
+        run: deno cache --node-modules-dir=none memory/supabase/functions/memory/index.ts harness/test/memory/database.ts
       - uses: actions/setup-node@v4
         with:
           node-version: '22'

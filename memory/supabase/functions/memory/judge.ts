@@ -2,8 +2,8 @@
 // message an agent or clyde-flow writes is asked three typed questions before it's stored. Any yes refuses the write,
 // and so does a judge that can't answer: memory fails closed. Hook events are too many and too time-bound for it, so
 // they get redact.ts alone.
-import { secret, sql } from "./db.ts";
-import { budget, OverBudget } from "./embed.ts";
+import { sql } from "./db.ts";
+import { budget, openai, OverBudget } from "./embed.ts";
 
 const MODEL = "gpt-6-luna";
 
@@ -41,9 +41,8 @@ const REASONS: Record<string, string> = {
 export async function screen(text: string): Promise<string | null> {
   const { used, cap } = await budget();
   if (used >= cap) throw new OverBudget("the month's OpenAI budget is spent");
-  const key = await secret("openai_key");
-  if (!key) throw new Error("no openai_key in Vault");
-  const r = await fetch("https://api.openai.com/v1/decisions", {
+  const { url, key } = await openai();
+  const r = await fetch(`${url}/decisions`, {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({ model: MODEL, input: text.slice(0, 24000), questions: QUESTIONS }),
@@ -73,11 +72,10 @@ const RELEVANT = "Is memory item {n} relevant to the request? Relevant means an 
 export async function relevance(request: string, items: string[]): Promise<number[]> {
   const { used, cap } = await budget();
   if (used >= cap) throw new OverBudget("the month's OpenAI budget is spent");
-  const key = await secret("openai_key");
-  if (!key) throw new Error("no openai_key in Vault");
+  const { url, key } = await openai();
   const input = `Request:\n${request.slice(0, 2000)}\n\nMemory items:\n` +
     items.map((t, i) => `[${i + 1}] ${t.slice(0, 700)}`).join("\n");
-  const r = await fetch("https://api.openai.com/v1/decisions", {
+  const r = await fetch(`${url}/decisions`, {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({

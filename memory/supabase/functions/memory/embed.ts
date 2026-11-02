@@ -34,12 +34,21 @@ export async function budget() {
   return { used: row.used as number, cap };
 }
 
+/** Where OpenAI calls go, and with which key. Tier 3 sets MEMORY_OPENAI_URL to a local fake, which takes no real key,
+ * so CI never reaches OpenAI. */
+export async function openai(): Promise<{ url: string; key: string }> {
+  const fake = Deno.env.get("MEMORY_OPENAI_URL");
+  if (fake) return { url: fake, key: "fake" };
+  const key = await secret("openai_key");
+  if (!key) throw new Error("no openai_key in Vault");
+  return { url: "https://api.openai.com/v1", key };
+}
+
 export async function embed(texts: string[]): Promise<number[][]> {
   const { used, cap } = await budget();
   if (used >= cap) throw new OverBudget(`${used} of ${cap} embedding tokens spent this month`);
-  const key = await secret("openai_key");
-  if (!key) throw new Error("no openai_key in Vault");
-  const r = await fetch("https://api.openai.com/v1/embeddings", {
+  const { url, key } = await openai();
+  const r = await fetch(`${url}/embeddings`, {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({ model: config.embedModel, input: texts, dimensions: config.embedDim }),

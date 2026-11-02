@@ -5,6 +5,7 @@ import net from 'node:net'
 import { join } from 'node:path'
 import { repoRoot } from '../../src/config.ts'
 import { request } from '../../src/request.ts'
+import { type FakeOpenAI, startFakeOpenAI } from './openai.ts'
 
 export const DATABASE_URL = process.env.MEMORY_TEST_DATABASE_URL ?? ''
 export const SKIP = DATABASE_URL ? false : 'set MEMORY_TEST_DATABASE_URL to the postgres database of a supabase/postgres container to run the memory tests'
@@ -12,11 +13,13 @@ export const SKIP = DATABASE_URL ? false : 'set MEMORY_TEST_DATABASE_URL to the 
 const DENO = process.env.MEMORY_TEST_DENO || 'deno'
 const FUNCTION = join(repoRoot(), 'memory', 'supabase', 'functions', 'memory', 'index.ts')
 const DATABASE = join(import.meta.dirname, 'database.ts')
+// Without it, the harness's package.json puts deno in manual mode, where npm: imports have to be in harness/node_modules.
+const NO_NODE_MODULES = '--node-modules-dir=none'
 
-export type RealMemory = { url: string; token: string; runtimeToken: string; close: () => Promise<void> }
+export type RealMemory = { url: string; token: string; runtimeToken: string; openai: FakeOpenAI; close: () => Promise<void> }
 
 function database(command: 'reset' | 'drop', tokens: Record<string, string> = {}): void {
-  const r = spawnSync(DENO, ['run', '-A', DATABASE, command], {
+  const r = spawnSync(DENO, ['run', '-A', NO_NODE_MODULES, DATABASE, command], {
     encoding: 'utf8', timeout: 120_000, env: { ...process.env, SUPABASE_DB_URL: DATABASE_URL, ...tokens },
   })
   if (r.status !== 0) throw new Error(`database.ts ${command} failed (${r.status}): ${r.stderr || r.stdout || r.error?.message}`)
@@ -54,12 +57,13 @@ export async function startRealMemory(): Promise<RealMemory> {
   const runtimeToken = `runtime-${randomBytes(8).toString('hex')}`
   database('reset', { MEMORY_TEST_TOKEN: token, MEMORY_TEST_RUNTIME_TOKEN: runtimeToken })
   const port = await freePort()
-  // No openai_key in Vault, so hybrid ranks by keyword alone and nothing leaves the machine.
+  // Embeddings, the write judge and the recall filter all go to the fake, so nothing leaves the machine.
+  const openai = await startFakeOpenAI()
   const env = {
-    ...process.env, SUPABASE_DB_URL: DATABASE_URL, DENO_SERVE_ADDRESS: `tcp:127.0.0.1:${port}`,
+    ...process.env, SUPABASE_DB_URL: DATABASE_URL, DENO_SERVE_ADDRESS: `tcp:127.0.0.1:${port}`, MEMORY_OPENAI_URL: openai.url,
     NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost',
   }
-  const child = spawn(DENO, ['run', '-A', FUNCTION], { env, stdio: ['ignore', 'pipe', 'pipe'] })
+  const child = spawn(DENO, ['run', '-A', NO_NODE_MODULES, FUNCTION], { env, stdio: ['ignore', 'pipe', 'pipe'] })
   let output = ''
   child.stdout?.on('data', (c) => (output += c))
   child.stderr?.on('data', (c) => (output += c))
@@ -70,6 +74,7 @@ export async function startRealMemory(): Promise<RealMemory> {
       child.kill('SIGTERM')
       await new Promise((r) => child.once('exit', r))
     }
+    await openai.close()
     database('drop')
   }
   try {
@@ -78,5 +83,5 @@ export async function startRealMemory(): Promise<RealMemory> {
     await close()
     throw err
   }
-  return { url, token, runtimeToken, close }
+  return { url, token, runtimeToken, openai, close }
 }

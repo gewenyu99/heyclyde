@@ -12,6 +12,7 @@ import type { Run } from '../../src/flow/types.ts'
 import { Memory } from '../../src/memory.ts'
 import { formatList, type WorkList } from '../../src/lists.ts'
 import { FAKE_BIN, HARNESS, LV, setup, tempDir, waitFor } from '../helpers.ts'
+import { FAKE_REFUSE } from './openai.ts'
 import { SKIP, startRealMemory, type RealMemory } from './server.ts'
 
 let memory: RealMemory
@@ -88,6 +89,9 @@ test('the agent token writes only drafts in a run scope, with no id or source, a
   await assert.rejects(agent.remember({ ...note, authority: 'draft', source: { kind: 'run', title: 'x' } }), /\(400\)/)
   await assert.rejects(new Memory(memory.url, 'not-a-token').remember({ ...note, authority: 'draft' }), /\(401\)/)
   assert.match((await agent.remember({ ...note, authority: 'draft' })).id, /^run-k2-a-note-/)
+  // Every note passes the judge, here the fake OpenAI, before it's stored.
+  await assert.rejects(agent.remember({ ...note, authority: 'draft', body: `A body. ${FAKE_REFUSE}` }), /steer the assistants/)
+  assert.ok(memory.openai.calls.some((c) => c.path === '/decisions'))
 })
 
 test('clyde remember and clyde recall as an agent: a draft in the run that only a scoped recall serves, first', { skip: SKIP }, async () => {
