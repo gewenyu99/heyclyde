@@ -80,6 +80,15 @@ Embeddings aren't backed up. The next sync rebuilds them, for about $0.03.
 - **No platform backups.** The nightly export covers that.
 - **Pauses after a week idle.** Hooks write every session, so it won't idle while you work.
 
-## Open the console
+## See your memory
 
-Supabase serves HTML only on a custom domain, so the console isn't hosted yet. Its API is live at `/api/v1` behind the admin token. See [api/API.md](api/API.md).
+The Supabase dashboard is the console: [Table Editor, schema `memory`](https://supabase.com/dashboard/project/wlhlncmgjqyidosunugv/editor?schema=memory). Four views read like the old console:
+
+| View | Shows |
+|---|---|
+| `entries_overview` | Every entry with its project, link count, how often recall delivered it, and what replaced it |
+| `links_readable` | Every binding, with the titles on both ends |
+| `recalls_recent` | Recalls, newest first, with the titles each one delivered |
+| `events_recent` | Hook events, newest first, with the prompt or tool name |
+
+Supabase serves no HTML on its own domains, so the old console page isn't hosted. Its API still runs at `/api/v1` behind the admin token. See [api/API.md](api/API.md).
