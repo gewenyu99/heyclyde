@@ -7,6 +7,7 @@ import { config } from "./config.ts";
 import { sql } from "./db.ts";
 import { learn } from "./learn.ts";
 import * as mcp from "./mcp.ts";
+import * as oauth from "./oauth.ts";
 import * as service from "./service.ts";
 import { Refused, remember } from "./write.ts";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
@@ -176,6 +177,8 @@ async function route(req: Request): Promise<Response> {
     return json({ ok: true, arms: config.arms });
   }
   if (path === "/mcp" || path === "/mcp/") return mcp.handle(req);
+  if (path.startsWith("/.well-known/oauth-protected-resource")) return oauth.resourceMetadata();
+  if (path.startsWith("/oauth/")) return oauth.handle(path, url);
   if (path === "/install" || path.startsWith("/install/")) return install(req, path, url);
   if (m === "POST" && path === "/devices/claim") return admin.claimDevice(await admin.readJson(req));
   if (path.startsWith("/api/v1") || path === "/") return path === "/" ? json({ ok: true }) : admin.handle(req, path);
@@ -212,7 +215,7 @@ const CORS = {
   "access-control-allow-origin": "*",
   "access-control-allow-headers": "authorization, content-type, mcp-session-id, mcp-protocol-version",
   "access-control-allow-methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  "access-control-expose-headers": "mcp-session-id, retry-after, x-rows",
+  "access-control-expose-headers": "mcp-session-id, retry-after, x-rows, www-authenticate",
 };
 
 Deno.serve(async (req) => {

@@ -3,6 +3,7 @@
 // stored, so a database read never yields a token.
 import { secret, setting, sql } from "./db.ts";
 import { sha256 } from "./embed.ts";
+import { RESOURCE_METADATA_URL } from "./oauth.ts";
 
 export type Kind = "open" | "agent" | "admin" | "backup" | "cron" | "owner";
 export type Principal = {
@@ -16,6 +17,7 @@ export type Principal = {
  * and gets 401. */
 export function credentialFor(path: string): Kind | null {
   if (path === "/healthz" || path === "/install" || path.startsWith("/install/")) return "open";
+  if (path.startsWith("/oauth/") || path.startsWith("/.well-known/")) return "open";
   if (path === "/devices/claim") return "owner";
   if (path === "/" || path === "/api/v1" || path.startsWith("/api/v1/")) return "admin";
   if (["/mcp", "/mcp/", "/entries", "/recall"].includes(path)) return "agent";
@@ -65,6 +67,11 @@ async function resolve(kind: Kind, token: string): Promise<Principal | null> {
   const hash = await sha256(token);
   if (kind === "agent") {
     if (same(hash, await setting("runtime_token_sha256"))) return { role: "runtime" };
+    // An OAuth client, like claude.ai, holds a Supabase Auth access token for the owner. No hooks run there.
+    if (isJwt(token)) {
+      const claims = await ownerOf(token);
+      return claims?.client_id ? { role: "device", device: `oauth:${claims.client_id}`, hooks: "metadata" } : null;
+    }
     // A computer's token lapses after 90 days unused. Rerunning the installer signs it in again.
     const [d] = await sql`update memory.device set last_seen = now()
       where token_sha256 = ${hash} and revoked_at is null and coalesce(last_seen, created_at) > now() - interval '90 days'
@@ -77,7 +84,11 @@ async function resolve(kind: Kind, token: string): Promise<Principal | null> {
     return same(hash, await setting("admin_token_sha256")) ? { role: "admin" } : null;
   }
   if (kind === "cron") return same(token, await secret("cron_secret")) ? { role: "cron" } : null;
-  if (kind === "owner") return (await ownerOf(token)) ? { role: "owner" } : null;
+  // Only a sign-in of the owner's own mints a device token, never a token an OAuth client was given.
+  if (kind === "owner") {
+    const claims = await ownerOf(token);
+    return claims && !claims.client_id ? { role: "owner" } : null;
+  }
   return null;
 }
 
@@ -86,16 +97,34 @@ export async function allowed(email: string) {
   return (await sql`select 1 from memory.allowed_email where email = ${email.trim().toLowerCase()}`).length > 0;
 }
 
-/** True when a Supabase Auth access token belongs to an allowlisted email, confirmed. Supabase Auth checks the token,
- * so a forged or expired one comes back 401. */
+const isJwt = (token: string) => /^eyJ[\w-]*\.[\w-]+\.[\w-]+$/.test(token);
+
+function claimsOf(jwt: string): Record<string, unknown> {
+  try {
+    return JSON.parse(atob(jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+  } catch {
+    return {};
+  }
+}
+
+// Answers for a minute, so an MCP client's burst of calls asks Supabase Auth once.
+const owners = new Map<string, { until: number; claims: Record<string, unknown> | null }>();
+
+/** The token's claims when a Supabase Auth access token belongs to an allowlisted email, confirmed, else null.
+ * Supabase Auth checks the token, so a forged, expired or revoked one comes back 401. */
 async function ownerOf(jwt: string) {
+  const key = await sha256(jwt), hit = owners.get(key);
+  if (hit && hit.until > Date.now()) return hit.claims;
   const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/auth/v1/user`, {
     headers: { apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "", Authorization: `Bearer ${jwt}` },
     signal: AbortSignal.timeout(10_000),
   });
-  if (!r.ok) return false;
-  const user = await r.json();
-  return Boolean(user.email && user.email_confirmed_at) && await allowed(user.email);
+  const user = r.ok ? await r.json() : null;
+  const ok = Boolean(user?.email && user.email_confirmed_at) && await allowed(user.email);
+  const claims = ok ? claimsOf(jwt) : null;
+  if (owners.size > 100) owners.clear();
+  owners.set(key, { until: Date.now() + 60_000, claims });
+  return claims;
 }
 
 const json = (body: unknown, status: number, headers: Record<string, string> = {}) =>
@@ -120,8 +149,12 @@ export async function authenticate(req: Request, path: string): Promise<Principa
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
   const who = token ? await resolve(kind, token) : null;
   if (!who) {
-    if (token) await miss(kind, client);
-    return json({ error: "unauthorized" }, 401);
+    // A JWT can't be guessed, and an expired one is how an OAuth client learns to refresh, so it costs no miss.
+    if (token && !isJwt(token)) await miss(kind, client);
+    // The header that points an MCP client at how to sign in (RFC 9728).
+    const challenge: Record<string, string> = path.startsWith("/mcp")
+      ? { "www-authenticate": `Bearer resource_metadata="${RESOURCE_METADATA_URL()}"` } : {};
+    return json({ error: "unauthorized" }, 401, challenge);
   }
   return who;
 }

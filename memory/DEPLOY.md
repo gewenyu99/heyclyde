@@ -26,6 +26,18 @@ It needs `curl`, `python3` and Claude Code, on macOS or Linux. Supabase's built-
 
 Cloud sessions on this repo read `.mcp.json` and `.claude/settings.json`. Give the cloud environment a `MEMORY_TOKEN`.
 
+## Connect Claude chats, Cowork and the phone
+
+claude.ai takes memory as a custom connector. Add it once and it's in every chat, in Cowork, in the desktop app and on the phone, since connectors follow the account:
+
+1. In claude.ai, open Settings, then Connectors, then **Add custom connector**.
+2. Name it `memory` and give it `https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory/mcp`. Leave the OAuth fields empty.
+3. Click **Connect**. The window that opens says it emailed you a sign-in link. Click the link from any device, and the window moves on to claude.ai by itself.
+
+Chats get recall, remember, feedback and messages. They have no hooks, so nothing logs a chat's events or puts the inbox in front of it unasked.
+
+How it works: Supabase Auth's OAuth 2.1 server runs the protocol, and claude.ai registers itself there. Supabase sends the sign-in to `/oauth/consent` on the function, which stands in for the consent page because Supabase serves no HTML on its own domain. It emails the one allowlisted address and keeps the PKCE verifier. The window reloads `/oauth/wait` every few seconds. The click lands on `/oauth/approve`, which signs the owner in on the server and approves the request, but only when its callback is on claude.ai, claude.com or this computer. Anything else is refused and logged to `admin_audit`. `/mcp` takes the access token the client gets for an allowlisted email and treats it as a device with metadata-only hooks. Such a token can't mint device tokens. At most three sign-in emails go out in 15 minutes. If a link arrives that you didn't ask for, don't click it: the click is what grants access.
+
 ## The tokens
 
 Supabase stores every token as SHA-256 only, so a database read never yields one.

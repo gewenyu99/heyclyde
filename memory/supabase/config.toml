@@ -12,5 +12,16 @@ verify_jwt = false
 # accounts that exist were added on purpose.
 [auth]
 enable_signup = false
-site_url = "https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory/install/approve"
-additional_redirect_urls = ["https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory/install/approve**"]
+site_url = "https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory"
+additional_redirect_urls = [
+  "https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory/install/approve**",
+  "https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory/oauth/approve**",
+]
+
+# claude.ai and other MCP clients sign in through Supabase Auth's OAuth 2.1 server. Clients register themselves, so
+# adding memory as a connector takes only its URL. Supabase sends the owner to site_url + /oauth/consent, where the
+# function emails the sign-in link and approves only clients whose callback is Claude's or on this computer (oauth.ts).
+[auth.oauth_server]
+enabled = true
+authorization_url_path = "/oauth/consent"
+allow_dynamic_registration = true
