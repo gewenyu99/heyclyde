@@ -3,15 +3,17 @@
 Memory runs on one Supabase project, `memory` (ref `wlhlncmgjqyidosunugv`, Canada, Free plan). Postgres holds the store in schema `memory`, which Supabase's public API can't reach. One Edge Function, also named `memory`, serves everything at:
 
 ```
-https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory
+https://memory.heyclyde.me
 ```
+
+That's a Cloudflare Worker (`memory/proxy`) in front of the function's own address, `https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory`, which keeps working. The Worker sends a shared secret (its SHA-256 is the setting `proxy_secret_sha256`), so the function trusts the caller's IP for lockouts and answers with the domain in its URLs. Deploy it with `npx wrangler@4 deploy` from `memory/proxy`.
 
 ## Connect a computer
 
 Run this on the computer. No checkout and no token to copy:
 
 ```bash
-curl -fsSL https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory/install | sh
+curl -fsSL https://memory.heyclyde.me/install | sh
 ```
 
 It asks for your email and sends a sign-in link there. Click it from any device, your phone included, and the installer finishes on its own. The function mints this computer a token of its own, named after its hostname or `MEMORY_DEVICE`.
@@ -31,7 +33,7 @@ Cloud sessions on this repo read `.mcp.json` and `.claude/settings.json`. Give t
 claude.ai takes memory as a custom connector. Add it once and it's in every chat, in Cowork, in the desktop app and on the phone, since connectors follow the account:
 
 1. In claude.ai, open Settings, then Connectors, then **Add custom connector**.
-2. Name it `memory` and give it `https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory/mcp`. Leave the OAuth fields empty.
+2. Name it `memory` and give it `https://memory.heyclyde.me/mcp`. Leave the OAuth fields empty.
 3. Click **Connect**. The window that opens says it emailed you a sign-in link. Click the link from any device, and the window moves on to claude.ai by itself.
 
 Chats get recall, remember, feedback and messages. They have no hooks, so nothing logs a chat's events or puts the inbox in front of it unasked.

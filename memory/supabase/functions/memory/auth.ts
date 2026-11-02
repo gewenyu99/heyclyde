@@ -46,7 +46,7 @@ export async function baseOf(req: Request) {
  * X-Forwarded-For. IPv6 counts by /64, the block one host usually holds, so rotating through it buys no extra guesses. */
 export async function clientKey(req: Request) {
   const ip = (await viaProxy(req) ? req.headers.get("x-memory-client") : null)
-    ?? (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
+    || (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
   return ip.includes(":") ? ip.split(":").slice(0, 4).join(":") + "::/64" : ip;
 }
 

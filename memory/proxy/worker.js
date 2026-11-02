@@ -9,7 +9,9 @@ export default {
     const headers = new Headers(req.headers);
     headers.delete("host");
     headers.set("x-memory-proxy", env.PROXY_SECRET);
-    headers.set("x-memory-client", req.headers.get("cf-connecting-ip") ?? "");
+    headers.delete("x-memory-client");
+    const ip = req.headers.get("cf-connecting-ip");
+    if (ip) headers.set("x-memory-client", ip);
     const hasBody = !["GET", "HEAD"].includes(req.method);
     return fetch(ORIGIN + (url.pathname === "/" ? "" : url.pathname) + url.search, {
       method: req.method, headers, body: hasBody ? req.body : undefined, redirect: "manual",

@@ -7,7 +7,7 @@
 # its own entries, the old kb ones too.
 # The token lands in ~/.config/memory/token, ~/.claude.json and ~/.codex/config.toml, all readable by you only.
 set -eu
-URL=${MEMORY_URL:-https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory}
+URL=${MEMORY_URL:-https://memory.heyclyde.me}
 DIR=$HOME/.config/memory
 DEVICE=${MEMORY_DEVICE:-$(hostname -s 2>/dev/null | tr 'A-Z' 'a-z' | tr -c 'a-z0-9._-\n' '-')}
 
