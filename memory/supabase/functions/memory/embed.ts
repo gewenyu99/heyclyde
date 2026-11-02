@@ -1,5 +1,5 @@
-// Embeddings from OpenAI's text-embedding-3-large, cut to 1024 dimensions. Private entries are embedded too, since
-// OpenAI's API doesn't train on what it's sent, but they never reach an agent unredacted.
+// Embeddings from OpenAI's text-embedding-3-large, cut to 1024 dimensions. Private entries never leave the server
+// unredacted, so OpenAI only ever sees their title.
 import { config } from "./config.ts";
 import { type Row, secret, setting, type Sql, sql } from "./db.ts";
 
@@ -11,6 +11,7 @@ export async function sha256(data: string | Uint8Array): Promise<string> {
 
 /** The same text keyword search reads: the entry plus its project's title (see search_text in the migration). */
 export function entryText(row: Row): string {
+  if (row.sensitivity === "private") return row.title ?? "";
   return row.search_text || [row.title, row.body, row.evidence].filter(Boolean).join("\n");
 }
 
@@ -61,7 +62,7 @@ export function toPgvector(vec: number[]) {
 
 /** Embed every entry whose text changed since its last embedding. Returns the count embedded. */
 export async function syncEmbeddings(db: Sql = sql, batch = 64): Promise<number> {
-  const rows = await db`select e.id, e.title, e.body, e.evidence, e.search_text, x.content_sha256 from memory.entry e
+  const rows = await db`select e.id, e.title, e.body, e.evidence, e.search_text, e.sensitivity, x.content_sha256 from memory.entry e
     left join memory.entry_embedding x on x.entry_id = e.id`;
   const stale: [Row, string, string][] = [];
   for (const r of rows) {

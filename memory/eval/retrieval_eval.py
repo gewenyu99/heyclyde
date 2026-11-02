@@ -52,13 +52,13 @@ def stage(gold, candidates, delivered):
     return "ranked-out" if r > PACKET_ITEMS else "budget-cut"
 
 
-def run(arms, split, probes=None):
+def run(arms, split, probes=None, filter=True):
     questions = json.loads(Path(probes).read_text()) if probes else call(f"/eval/questions?split={split}")
     report = {}
     for arm in arms:
         per_q = []
         for q in questions:
-            r = call("/eval/rank", {"query": q["text"], "arm": arm})
+            r = call("/eval/rank", {"query": q["text"], "arm": arm, "filter": filter})
             candidates, delivered = r["candidates"], r["delivered"]
             p = {"id": q["id"], "text": q["text"], "qtype": q["qtype"], "gold": q["gold"],
                  "gold_hit": bool(set(q["gold"]) & set(delivered)) if q["gold"] else None,
@@ -85,9 +85,10 @@ def main():
     ap.add_argument("--split", default="train", choices=["all", "train", "test"])
     ap.add_argument("--misses", action="store_true", help="list every miss and leak with its stage")
     ap.add_argument("--json", action="store_true", help="print per-query detail")
+    ap.add_argument("--no-filter", action="store_true", help="skip the relevance filter, to compare against it")
     ap.add_argument("--probes", help="a JSON file of {id, qtype, text, gold, must_not} to run instead, like labels/zh-probes.json")
     a = ap.parse_args()
-    report = run(a.arms.split(","), a.split, a.probes)
+    report = run(a.arms.split(","), a.split, a.probes, not a.no_filter)
     if a.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return

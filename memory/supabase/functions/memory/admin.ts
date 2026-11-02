@@ -70,7 +70,7 @@ async function audit(db: Sql, action: string, target: string, before: unknown = 
 // ---------------------------------------------------------------- dashboard
 /** Current entries whose stored embedding matches their text now, by the same hash the sync checks. */
 async function embeddingCounts(db: Sql) {
-  const rows = await db`select e.id, e.title, e.body, e.evidence, e.search_text, x.content_sha256
+  const rows = await db`select e.id, e.title, e.body, e.evidence, e.search_text, e.sensitivity, x.content_sha256
     from memory.entry_current e left join memory.entry_embedding x on x.entry_id = e.id`;
   let fresh = 0;
   for (const r of rows) if (r.content_sha256 === await contentSha(entryText(r))) fresh++;
@@ -758,9 +758,9 @@ const evalQuestions = (split: string) =>
 async function evalRank(data: Row) {
   const [query] = optionalText(data, "query");
   if (!query || !(data.arm in ARMS)) throw new ApiError(422, "Need a query and an arm.");
-  const r = await service.rankAndPack(sql, data.arm, query);
+  const r = await service.rankAndPack(sql, data.arm, query, "", null, data.filter !== false);
   const parts = data.arm === "hybrid" ? (await hybridComponents(sql, query)).parts : null;
-  return { candidates: r.ranked.map(([id]) => id), delivered: r.delivered, degraded: r.degraded, parts };
+  return { candidates: r.ranked.map(([id]) => id), delivered: r.delivered, rejected: r.rejected, degraded: r.degraded, parts };
 }
 
 // The text each table holds, for the redaction backfill: its key column and the columns to redact.

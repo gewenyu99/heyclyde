@@ -93,6 +93,36 @@ Every caller reaches one Edge Function, and it alone touches the database. The f
 | Point-in-time recovery | A day of lost writes would hurt | Paid add-on, enable any time |
 | Embed queue on pgmq | Embed sync takes over 60 s | None at 461 entries |
 
+## Direction
+
+memory is the first piece of an agent version of Wen: one memory holding both his personal and his work life, connected,
+so the agent knows him whole. Work and personal stay in one store on purpose. Safety comes from locking the store down,
+not from splitting it.
+
+## Lock-down
+
+What guards the store today, and what comes next.
+
+| Layer | Today | Next |
+|---|---|---|
+| Who connects | Allowlist of one email, Supabase sign-ups off, a per-computer token minted only after an email sign-in | Email Wen whenever a computer is added; expire tokens unused for 90 days |
+| Accounts | Supabase, GitHub and OpenAI logins hold everything | 2FA on all three, and on the Google account the sign-in emails reach |
+| What gets in | Secrets, card numbers, SSNs and SINs redacted on every write. gpt-6-luna refuses notes and messages with sensitive personal data, attempts to steer the assistants, or harmful content, and fails closed | Hooks on work machines keep metadata only. A sensitivity label per entry, with work-confidential entries going to third-party models by title only, as private entries already do |
+| What gets out | Private entries reach agents and OpenAI by title only. Recall filters out irrelevant items before an agent sees them | Recall logs which computer asked, so a leak traces to a device |
+| Backups | Nightly encrypted export to GitHub, 30 days | A restore drill each month in CI |
+
+## Later: the always-on box
+
+A Mac mini or Mac Studio that runs memory full time, reachable only over Tailscale, so nothing leaves Wen's own
+machines. A local model replaces OpenAI for embeddings and the judge. The move stays cheap if two things hold:
+
+- **OpenAI touches memory in two files only.** `embed.ts` and `judge.ts` are the only places that call it, so a local
+  model behind the same functions swaps in without touching the rest.
+- **Supabase can run anywhere.** The stack is open source and self-hostable, and the function is plain Deno, so the
+  same schema and function can run on the box.
+
+Not started. It waits for the hardware.
+
 ## Scale path
 
 Built for one person, with each step to many users a change in one place.

@@ -1,10 +1,10 @@
 // What the MCP tools and hook endpoints do, independent of transport, so tests can call it directly.
 import { config } from "./config.ts";
 import { type Row, type Sql, sql } from "./db.ts";
-import { ARMS, fetchEntries, pack, type Ranked, renderEntry } from "./search.ts";
+import { ARMS, fetchEntries, pack, type Ranked, redact as redactPrivate, renderEntry } from "./search.ts";
 import { Refused, SCOPE_RE } from "./write.ts";
 import { redact, redactText } from "./redact.ts";
-import { screen } from "./judge.ts";
+import { relevance, screen } from "./judge.ts";
 
 const RID = /retrieval ([0-9a-f-]{36})/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -21,14 +21,44 @@ export async function sessionArm(db: Sql, session: string, client: string | null
   return existing.arm;
 }
 
+// The filter reads this many of an arm's top candidates and keeps the ones the judge calls relevant. Tuned on train only.
+const FILTER_K = 12;
+const FILTER_THRESHOLD = Number(Deno.env.get("MEMORY_FILTER_THRESHOLD") ?? 0.5);
+
+/** What the filter shows the judge for one candidate. Private entries go by title alone, since their bodies never leave
+ * the server. */
+function itemText(line: string | null, row: Row | undefined) {
+  if (line !== null) return line;
+  const r = redactPrivate(row!);
+  return `${r.title}. ${r.sensitivity === "private" ? "" : r.body}`.trim();
+}
+
 /** One arm's ranking and the packet recall delivers from it. Writes nothing, so the console can preview an arm.
- * With a scope like run:abc, that run's entries are candidates too and rank first. */
-export async function rankAndPack(db: Sql, arm: string, query: string, task = "", scope: string | null = null) {
-  const [ranked, degraded] = await ARMS[arm](db, task ? `${task}\n${query}`.trim() : query, scope || null);
+ * With a scope like run:abc, that run's entries are candidates too and rank first.
+ *
+ * Every arm's candidates pass the same relevance filter before packing, so the arms stay comparable. The judge reads the
+ * top FILTER_K and drops what it calls irrelevant. When it drops them all, recall says nothing matches rather than
+ * serving noise. When it can't answer, the ranking goes out unfiltered and `degraded` says so. */
+export async function rankAndPack(db: Sql, arm: string, query: string, task = "", scope: string | null = null,
+  filter = true) {
+  const request = task ? `${task}\n${query}`.trim() : query;
+  const [ranked, armDegraded] = await ARMS[arm](db, request, scope || null);
   const lines = ranked.every(([, , line]) => line !== null);
-  const rows = lines ? {} : await fetchEntries(db, ranked.slice(0, config.packetItems * 2).map(([id]) => id));
-  const [delivered, chunks] = pack(ranked, rows);
-  return { ranked, degraded, delivered, chunks, lines };
+  const rows = lines ? {} : await fetchEntries(db, ranked.slice(0, FILTER_K * 2).map(([id]) => id));
+  let candidates = ranked, rejected: string[] = [], filterDegraded: string | null = null;
+  if (filter && ranked.length) {
+    const top = ranked.filter(([id, , line]) => line !== null || id in rows).slice(0, FILTER_K);
+    try {
+      const p = await relevance(request, top.map(([id, , line]) => itemText(line, rows[id])));
+      candidates = top.filter((_, i) => p[i] >= FILTER_THRESHOLD);
+      rejected = top.filter((_, i) => p[i] < FILTER_THRESHOLD).map(([id]) => id);
+    } catch (e) {
+      filterDegraded = `filter-failed: ${(e as Error).name}`;
+    }
+  }
+  const [delivered, chunks] = pack(candidates, rows);
+  const degraded = [armDegraded, filterDegraded].filter(Boolean).join("; ") || null;
+  return { ranked, degraded, delivered, chunks, lines, rejected };
 }
 
 /** What the agent reads under the retrieval id. The console's preview shows the same text. */
@@ -46,12 +76,12 @@ export async function recall(session: string, query: string, task = "", client: 
   task = redactText(task)[0];
   const started = performance.now();
   const arm = await sessionArm(sql, session, client);
-  const { ranked, degraded, delivered, chunks, lines } = await rankAndPack(sql, arm, query, task, scope);
+  const { ranked, degraded, delivered, chunks, lines, rejected } = await rankAndPack(sql, arm, query, task, scope);
   const rid = crypto.randomUUID(), text = packetText(chunks, lines);
-  await sql`insert into memory.retrieval (id, mcp_session, arm, query, task, scope, candidates, delivered, latency_ms,
+  await sql`insert into memory.retrieval (id, mcp_session, arm, query, task, scope, candidates, delivered, rejected, latency_ms,
       degraded, packet)
     values (${rid}, ${session}, ${arm}, ${query}, ${task || null}, ${scope || null},
-      ${sql.json(ranked.map(([id, score]: Ranked) => ({ id, score })))}, ${sql.json(delivered)},
+      ${sql.json(ranked.map(([id, score]: Ranked) => ({ id, score })))}, ${sql.json(delivered)}, ${sql.json(rejected)},
       ${Math.round(performance.now() - started)}, ${degraded}, ${text})`;
   return `retrieval ${rid}\n\n${text}`;
 }

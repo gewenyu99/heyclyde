@@ -64,3 +64,39 @@ export async function screen(text: string): Promise<string | null> {
   if ((body.answers ?? []).length !== QUESTIONS.length) throw new Error("the judge answered only part of the questions");
   return flagged.length ? `memory won't store this because ${flagged.map((n) => REASONS[n] ?? n).join(", and ")}.` : null;
 }
+
+const RELEVANT = "Is memory item {n} relevant to the request? Relevant means an assistant handling the request needs it " +
+  "or must respect it. An item that only shares a word or a topic with the request is not relevant.";
+
+/** The probability each item is relevant to the request, in the items' order. One Decisions call asks about all of them.
+ * Throws when the judge can't answer, and recall then serves its ranking unfiltered. */
+export async function relevance(request: string, items: string[]): Promise<number[]> {
+  const { used, cap } = await budget();
+  if (used >= cap) throw new OverBudget("the month's OpenAI budget is spent");
+  const key = await secret("openai_key");
+  if (!key) throw new Error("no openai_key in Vault");
+  const input = `Request:\n${request.slice(0, 2000)}\n\nMemory items:\n` +
+    items.map((t, i) => `[${i + 1}] ${t.slice(0, 700)}`).join("\n");
+  const r = await fetch("https://api.openai.com/v1/decisions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: MODEL, input,
+      questions: items.map((_, i) => ({ type: "predicate", name: `i${i + 1}`, instructions: RELEVANT.replace("{n}", String(i + 1)) })),
+    }),
+    signal: AbortSignal.timeout(3000),
+  });
+  if (!r.ok) throw new Error(`OpenAI Decisions ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const body = await r.json();
+  const tokens = body.usage?.input_tokens ?? 0;
+  if (tokens) {
+    await sql`insert into memory.embed_usage (month, tokens) values (date_trunc('month', now())::date, ${tokens})
+      on conflict (month) do update set tokens = memory.embed_usage.tokens + excluded.tokens`;
+  }
+  const byName = new Map((body.answers ?? []).map((a: Record<string, any>) => [a.name, a]));
+  return items.map((_, i) => {
+    const a = byName.get(`i${i + 1}`) as Record<string, any> | undefined;
+    if (!a || typeof a.probability !== "number") throw new Error(`the judge didn't answer for item ${i + 1}`);
+    return a.probability;
+  });
+}
