@@ -6,6 +6,8 @@ import { type Row, type Sql, sql } from "./db.ts";
 import { budget, contentSha, entryText, sha256, syncEmbeddings } from "./embed.ts";
 import { ARMS, hybridComponents } from "./search.ts";
 import * as service from "./service.ts";
+import { redact, redactText } from "./redact.ts";
+import { screen } from "./judge.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 
@@ -242,7 +244,7 @@ async function fields(data: Row) {
     shortEnough(k, v);
     const [ok, error] = VALID[k] ?? [(x: string) => Boolean(x), `${k} cannot be empty.`];
     if (!ok(v)) throw new ApiError(422, error);
-    out[k] = k === "title" ? v.trim() : v;
+    out[k] = redactText(k === "title" ? v.trim() : v)[0];
   }
   if ("evidence" in out) out.evidence_sha256 = out.evidence ? await sha256(out.evidence) : null;
   return out;
@@ -716,7 +718,7 @@ async function importRows(req: Request) {
       throw new ApiError(400, "Every line must be JSON.");
     }
     if (!IMPORTABLE.has(rec.table) || !rec.row || typeof rec.row !== "object") throw new ApiError(422, `Can't import ${rec.table}.`);
-    const { tsv_en: _, ...row } = rec.row;
+    const { tsv_en: _, ...row } = redact(rec.row);
     for (const [k, v] of Object.entries(row)) {
       if (v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 1 && "base64" in v) {
         row[k] = Uint8Array.from(atob((v as Row).base64), (c) => c.charCodeAt(0));
@@ -759,6 +761,46 @@ async function evalRank(data: Row) {
   const r = await service.rankAndPack(sql, data.arm, query);
   const parts = data.arm === "hybrid" ? (await hybridComponents(sql, query)).parts : null;
   return { candidates: r.ranked.map(([id]) => id), delivered: r.delivered, degraded: r.degraded, parts };
+}
+
+// The text each table holds, for the redaction backfill: its key column and the columns to redact.
+const REDACTABLE: Record<string, [key: string, cols: string[]]> = {
+  event: ["id", ["payload"]], entry: ["id", ["title", "body", "evidence"]], message: ["id", ["body"]],
+  retrieval: ["id", ["query", "task", "packet"]],
+};
+
+/** Redact one page of stored rows in place with the same rules new writes get. Returns how many changed and where the
+ * next page starts. */
+async function redactBackfill(data: Row) {
+  const table = data.table, after = data.after ?? null;
+  if (!(table in REDACTABLE)) throw new ApiError(422, `table must be one of ${Object.keys(REDACTABLE).join(", ")}.`);
+  const [key, cols] = REDACTABLE[table];
+  const rows = await sql`select ${sql([key, ...cols])} from ${sql("memory." + table)}
+    where ${after === null ? sql`true` : sql`${sql(key)}::text > ${String(after)}`} order by ${sql(key)}::text limit 500`;
+  let changed = 0;
+  const kinds: Record<string, number> = {};
+  for (const r of rows) {
+    const found: string[] = [];
+    const next = Object.fromEntries(cols.map((c) => [c, redact(r[c], found)]));
+    if (!found.length) continue;
+    for (const k of found) kinds[k] = (kinds[k] ?? 0) + 1;
+    const set = Object.fromEntries(cols.map((c) => [c, c === "payload" ? sql.json(next[c]) : next[c]]));
+    await sql`update ${sql("memory." + table)} set ${sql(set)} where ${sql(key)} = ${r[key]}`;
+    changed++;
+  }
+  return { table, scanned: rows.length, changed, kinds, next: rows.length === 500 ? String(rows.at(-1)![key]) : null };
+}
+
+/** Run the judge over stored entries, one page at a time, and report which ones it would refuse today. Changes nothing. */
+async function judgeBackfill(data: Row) {
+  const offset = Number(data.offset ?? 0);
+  const rows = await sql`select id, title, body, evidence from memory.entry order by id limit 25 offset ${offset}`;
+  const flagged: Row[] = [];
+  for (const r of rows) {
+    const why = await screen([r.title, r.body, r.evidence].filter(Boolean).join("\n\n"));
+    if (why) flagged.push({ id: r.id, title: r.title, why });
+  }
+  return { scanned: rows.length, flagged, next: rows.length === 25 ? offset + 25 : null };
 }
 
 const auditList = (p: Row) =>
@@ -892,6 +934,8 @@ const ROUTES: Route[] = [
   ["DELETE", /^\/devices\/([^/]+)$/, 200, (_r, m) => revokeDevice(id(m[1], "name"))],
   ["PUT", /^\/secrets\/(openai_key)$/, 200, async (r, m) => putSecret(m[1], await body(r))],
   ["POST", /^\/import$/, 200, (r) => importRows(r)],
+  ["POST", /^\/redact\/backfill$/, 200, async (r) => redactBackfill(await body(r))],
+  ["POST", /^\/judge\/backfill$/, 200, async (r) => judgeBackfill(await body(r))],
   ["GET", /^\/eval\/questions$/, 200, (_r, _m, q) => evalQuestions(q.choice("split", ["all", "train", "test"], "train")!)],
   ["POST", /^\/eval\/rank$/, 200, async (r) => evalRank(await body(r))],
   ["GET", /^\/audit$/, 200, (_r, _m, q) => auditList(q.page())],

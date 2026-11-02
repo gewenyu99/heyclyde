@@ -2,6 +2,8 @@
 // enforces on the vault, written in one transaction. The constants copy build.py's, plus run:<id> scopes.
 import { type Row, type Sql, sql } from "./db.ts";
 import { sha256 } from "./embed.ts";
+import { redactText } from "./redact.ts";
+import { screen } from "./judge.ts";
 
 const AUTHORITY = new Set(["approved", "observed", "draft"]);
 const LINK_TYPES = new Set(["supersedes", "supports", "contradicts", "derived_from", "relates", "part_of", "corrects"]);
@@ -236,7 +238,7 @@ async function blobs(value: unknown, errs: string[]): Promise<Row[]> {
         errs.push(`Blob ${label} has text that isn't a string.`);
         continue;
       }
-      data = new TextEncoder().encode(b.text);
+      data = new TextEncoder().encode(redactText(b.text)[0]);
       defaultType = "text/plain";
     } else {
       const decoded = b64decode(b.base64);
@@ -342,6 +344,16 @@ class Retry extends Error {}
  * sync picks the entry up after the response. */
 export async function remember(payload: unknown, caller: string) {
   const e = await validate(payload, caller);
+  // Secrets and identifiers come out first. Then the judge reads what would be stored and can refuse it. A judge that
+  // can't answer refuses too: memory fails closed.
+  for (const f of ["title", "body", "evidence"]) e[f] = redactText(e[f])[0];
+  let why: string | null;
+  try {
+    why = await screen([e.title, e.body, e.evidence, ...e.blobs.map((b: Row) => new TextDecoder().decode(b.content).slice(0, 4000))].join("\n\n"));
+  } catch (err) {
+    throw new Refused(`memory couldn't screen this note right now (${(err as Error).message.slice(0, 80)}), so it wrote nothing. Try again later.`);
+  }
+  if (why) throw new Refused(why[0].toUpperCase() + why.slice(1));
   try {
     await sql.begin(async (tx) => {
       if (await landed(tx, e)) return;

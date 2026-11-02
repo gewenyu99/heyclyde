@@ -3,6 +3,8 @@ import { config } from "./config.ts";
 import { type Row, type Sql, sql } from "./db.ts";
 import { ARMS, fetchEntries, pack, type Ranked, renderEntry } from "./search.ts";
 import { Refused, SCOPE_RE } from "./write.ts";
+import { redact, redactText } from "./redact.ts";
+import { screen } from "./judge.ts";
 
 const RID = /retrieval ([0-9a-f-]{36})/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -40,6 +42,8 @@ export function packetText(chunks: string[], lines: boolean) {
 export async function recall(session: string, query: string, task = "", client: string | null = null,
   scope: string | null = null) {
   if (scope && !SCOPE_RE.test(scope)) throw new Refused(`scope ${JSON.stringify(scope)} must look like run:<id>, or be left out.`);
+  query = redactText(query)[0];
+  task = redactText(task)[0];
   const started = performance.now();
   const arm = await sessionArm(sql, session, client);
   const { ranked, degraded, delivered, chunks, lines } = await rankAndPack(sql, arm, query, task, scope);
@@ -119,7 +123,7 @@ export function noNul(value: any): any {
  * to the client's session id. */
 export async function hook(event: string, payload: Row, agent: string | null = null) {
   event = noNul(event);
-  payload = noNul(payload);
+  payload = redact(noNul(payload));
   const sessionId = typeof payload.session_id === "string" ? payload.session_id : null;
   await sql`insert into memory.event (session_id, event, payload, agent) values (${sessionId}, ${event}, ${sql.json(payload)}, ${agent})`;
   if (event === "PostToolUse" && String(payload.tool_name ?? "").endsWith("recall") && sessionId) {
@@ -143,6 +147,18 @@ export async function postMessage(db: Sql, sender: string, to: string, body: str
   to = to.trim().toLowerCase();
   body = body.trim();
   if (!AGENTS.includes(to) || !body) return "Need a recipient (claude, codex or all) and a body.";
+  body = redactText(body)[0];
+  // Messages land straight in another agent's context, so they pass the same judge as notes. Wen's own, from the
+  // console, don't.
+  if (sender !== "wen") {
+    let why: string | null;
+    try {
+      why = await screen(body);
+    } catch {
+      return "memory couldn't screen this message right now, so it didn't post it. Try again later.";
+    }
+    if (why) return `Not posted: ${why}`;
+  }
   const [row] = await db`insert into memory.message (sender, recipient, body) values (${sender}, ${to}, ${body}) returning id`;
   return `Posted message ${row.id} to ${to}.`;
 }
