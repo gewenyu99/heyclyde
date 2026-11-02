@@ -1,5 +1,7 @@
 # memory
 
+Requirements and their acceptance criteria are GitHub issues labelled `requirement`. Start at the index, issue #31.
+
 Wen's personal knowledge graph, served to Claude Code and Codex through one MCP endpoint. It runs the PKG v1 experiment: several retrieval arms read the same store, and the arm your agents follow most consistently wins. clyde-flow hands work between stages through it, over HTTP.
 
 Phase 0 is built. The index and hybrid arms serve live, hooks log every session, and the decider run-off has its keyword baseline. The spreading and hindsight arms and the idle audit come in Phase 1.
