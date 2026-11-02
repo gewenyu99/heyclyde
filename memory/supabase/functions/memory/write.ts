@@ -347,11 +347,14 @@ class Retry extends Error {}
 export async function remember(payload: unknown, caller: string) {
   const e = await validate(payload, caller);
   // Secrets and identifiers come out first. Then the judge reads what would be stored and can refuse it. A judge that
-  // can't answer refuses too: memory fails closed.
+  // can't answer refuses too: memory fails closed. A private or confidential entry reaches a third-party model by its
+  // title alone, so the judge reads only that, and its body rests on redaction.
   for (const f of ["title", "body", "evidence"]) e[f] = redactText(e[f])[0];
+  const titleOnly = e.sensitivity === "private" || e.sensitivity === "confidential";
   let why: string | null;
   try {
-    why = await screen([e.title, e.body, e.evidence, ...e.blobs.map((b: Row) => new TextDecoder().decode(b.content).slice(0, 4000))].join("\n\n"));
+    why = await screen(titleOnly ? e.title
+      : [e.title, e.body, e.evidence, ...e.blobs.map((b: Row) => new TextDecoder().decode(b.content).slice(0, 4000))].join("\n\n"));
   } catch (err) {
     throw new Refused(`memory couldn't screen this note right now (${(err as Error).message.slice(0, 80)}), so it wrote nothing. Try again later.`);
   }

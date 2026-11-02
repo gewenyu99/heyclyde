@@ -77,11 +77,18 @@ export async function rankAndPack(db: Sql, arm: string, query: string, task = ""
   return { ranked, degraded, delivered, chunks, lines, rejected };
 }
 
+/** The line a degraded recall leads with, so the caller knows the results are weaker than usual. */
+function degradedLine(degraded: string) {
+  const how = [degraded.includes("embed-failed") && "keyword-only", degraded.includes("filter-failed") && "unfiltered"];
+  return `Degraded: ${degraded}; results are ${how.filter(Boolean).join(" and ") || "partial"}.`;
+}
+
 /** What the agent reads under the retrieval id. The console's preview shows the same text. */
-export function packetText(chunks: string[], lines: boolean) {
-  if (!chunks.length) return "Nothing in memory matches. Ask Wen rather than guessing.";
-  if (lines) return "Index lines that match. Open any with get_entry(id).\n" + chunks.join("\n");
-  return chunks.join("\n\n");
+export function packetText(chunks: string[], lines: boolean, degraded: string | null = null) {
+  const head = degraded ? degradedLine(degraded) + "\n\n" : "";
+  if (!chunks.length) return head + "Nothing in memory matches. Ask Wen rather than guessing.";
+  if (lines) return head + "Index lines that match. Open any with get_entry(id).\n" + chunks.join("\n");
+  return head + chunks.join("\n\n");
 }
 
 /** Search memory. With a scope like run:abc, that run's entries are candidates too and rank first. */
@@ -93,7 +100,7 @@ export async function recall(session: string, query: string, task = "", client: 
   const started = performance.now();
   const arm = await sessionArm(sql, session, client);
   const { ranked, degraded, delivered, chunks, lines, rejected } = await rankAndPack(sql, arm, query, task, scope);
-  const rid = crypto.randomUUID(), text = packetText(chunks, lines);
+  const rid = crypto.randomUUID(), text = packetText(chunks, lines, degraded);
   await sql`insert into memory.retrieval (id, mcp_session, arm, query, task, scope, candidates, delivered, rejected, latency_ms,
       degraded, packet)
     values (${rid}, ${session}, ${arm}, ${query}, ${task || null}, ${scope || null},

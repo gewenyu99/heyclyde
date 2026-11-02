@@ -601,7 +601,7 @@ async function recallPreview(data: Row) {
     const t = await titles(sql, top.map(([id]) => id));
     const inPacket = new Set(r.delivered);
     out.push({
-      arm, degraded: r.degraded, latency_ms: ms, packet: r.delivered, text: service.packetText(r.chunks, r.lines),
+      arm, degraded: r.degraded, latency_ms: ms, packet: r.delivered, text: service.packetText(r.chunks, r.lines, r.degraded),
       ranked: top.map(([id, score], i) => ({ rank: i + 1, id, score, ...known(t, id), in_packet: inPacket.has(id) })),
     });
   }
