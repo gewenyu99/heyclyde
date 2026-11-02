@@ -102,7 +102,9 @@ memory/deploy.sh
 
 It bakes the installer's files from `supabase/functions/memory/client/` into `client/files.ts`, then deploys with the Supabase CLI, which needs one `supabase login` per computer. `--no-verify-jwt` is right: the function checks its own tokens in [auth.ts](supabase/functions/memory/auth.ts).
 
-Schema changes go in [supabase/migrations](supabase/migrations) and apply with `supabase db push`. Every migration so far is safe to rerun.
+Schema changes go in [supabase/migrations](supabase/migrations) and apply with `supabase db push`. Not every migration is safe to rerun on a database that has the later ones: `dashboard_views` fails once `dashboard_confidence` has added its columns.
+
+Test a change end to end first with `memory/e2e/run.sh`. It brings a throwaway preview branch up to this checkout, runs [the e2e suite](e2e/README.md) against it, and deletes it.
 
 ## Embeddings
 
