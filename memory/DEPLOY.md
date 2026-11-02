@@ -51,6 +51,23 @@ Revoke a lost computer with `DELETE /api/v1/devices/<name>`. A computer's token 
 
 On a work computer, install with `MEMORY_HOOKS=metadata` in front of `sh`. memory then keeps only the event, session, folder and tool name from its hooks, never prompts or tool output. Switch an existing computer with `PATCH /api/v1/devices/<name>` and `{"hooks": "metadata"}`. After 10 wrong tokens from one address, it's locked out, twice as long with each further miss, up to 15 minutes.
 
+## How memory learns
+
+memory learns from how you react, with no approval step and nothing moving by calendar time. An entry nobody recalls for a year stays exactly as it was.
+
+| Event | Effect |
+|---|---|
+| New entry | Confidence starts at approved 0.95, observed 0.7, draft 0.4. A groomer draft quoting you starts at 0.6 |
+| Served, and your next prompt doesn't push back | +0.03, capped at 0.99. Links between the served entries +0.2, capped at 5 |
+| Your next prompt pushes back and blames a served entry | That entry ×0.8. Its links among the served entries ×0.9, floor 0.2 |
+| You say it again in a new session | +0.15, through the daily groom |
+| The filter judges it irrelevant more than 5 recalls in a row | ×0.98 per further miss |
+| Below 0.15 | Dormant: recall skips it, nothing deletes it |
+
+The learner ([learn.ts](supabase/functions/memory/learn.ts)) runs every 5 minutes through pg_cron. `gpt-6-luna` reads the prompt you sent after each recall to spot pushback and which item caused it. Recall ranks by score × (0.9 + 0.1 × confidence), tuned on train. Every change lands in `memory.confidence_log`, so any of it can be traced and undone.
+
+The daily groom drafts new entries from your own words. It's a Claude Code scheduled task, "Groom memory daily", at 9 pm, following [skills/groom-memory](../skills/groom-memory/SKILL.md) through [groom/groom.py](groom/groom.py). Every draft names the hook event its quote came from, and memory refuses any quote that isn't in that prompt word for word. Scheduled tasks run while the Claude app is open, and a missed one runs at next launch.
+
 ## Ship a change
 
 ```bash

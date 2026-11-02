@@ -1,0 +1,44 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Grooming L1</title>
+<style>body{margin:0;padding:24px;background:#fff;font-family:system-ui,sans-serif}@media (prefers-color-scheme:dark){body{background:#1f1e1d}}</style>
+</head><body>
+<div id="d"></div>
+<script type="module">
+import mermaid from 'https://esm.sh/mermaid@11/dist/mermaid.esm.min.mjs';
+const src = `flowchart LR
+  Hook["memory-hook<br/>prompts + recalls"]
+  subgraph Supabase["Supabase project"]
+    Learn["learner (new)<br/>deterministic, pg_cron<br/>reinforce · weaken · supersede"]
+    Mem[("memory.entry + link<br/>confidence + weight (new)")]
+  end
+  Judge["gpt-6-luna<br/>pushback + which item caused it"]
+  Daily["daily Claude task (new)<br/>skill: groom-memory<br/>drafts from your words"]
+  Recall["recall<br/>score × confidence"]
+  Hook --> Learn
+  Learn -- "your next prompt after a recall" --> Judge
+  Judge -- "pushback, cause" --> Learn
+  Learn --> Mem
+  Daily -- "low-confidence drafts" --> Mem
+  Mem --> Recall`;
+const scheme = matchMedia('(prefers-color-scheme: dark)');
+const isDark = () => { const mode = document.documentElement.dataset.mode; return mode ? mode === 'dark' : scheme.matches; };
+let n = 0;
+async function draw() {
+  const dark = isDark();
+  const p = dark
+    ? { bg: '#1f1e1d', node: '#30302e', edge: '#6b6a65', text: '#e8e6dc', line: '#9c9a92', note: '#3a3936' }
+    : { bg: '#ffffff', node: '#f5f4ef', edge: '#b4b2a7', text: '#3d3d3a', line: '#73726c', note: '#f0eee6' };
+  mermaid.initialize({ startOnLoad: false, theme: 'base', fontFamily: '"anthropic-sans", sans-serif',
+    themeVariables: { darkMode: dark, fontSize: '13px', fontFamily: '"anthropic-sans", sans-serif',
+      background: p.bg, mainBkg: p.node, primaryColor: p.node, secondaryColor: p.node, tertiaryColor: p.bg,
+      primaryBorderColor: p.edge, primaryTextColor: p.text, secondaryTextColor: p.text, tertiaryTextColor: p.text,
+      textColor: p.text, nodeTextColor: p.text, titleColor: p.text, lineColor: p.line,
+      edgeLabelBackground: p.bg, labelBackground: p.bg, clusterBkg: 'transparent', clusterBorder: p.edge } });
+  const el = document.getElementById('d');
+  try { await mermaid.parse(src); el.innerHTML = (await mermaid.render('d-svg-' + n++, src)).svg; }
+  catch (e) { el.textContent = 'Mermaid error: ' + e.message; }
+}
+await document.fonts.ready; await draw();
+scheme.addEventListener('change', draw);
+</script>
+</body></html>

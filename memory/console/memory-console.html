@@ -152,8 +152,8 @@ async function loadLive() {
     (select coalesce(sum(tokens),0) from memory.embed_usage where month = date_trunc('month', now())::date) tokens,
     (select max(received_at) from memory.event where event <> 'get_entry') last_hook, (select max(created_at) from memory.retrieval) last_recall`);
   const [entries, links, recalls, activity] = await Promise.all([
-    sql(`select id, title, pattern, authority, scope, sensitivity, valid_from::text, project, body, links, times_delivered, replaced_by
-         from memory.entries_overview order by times_delivered desc, links desc, id`),
+    sql(`select id, title, pattern, authority, scope, sensitivity, valid_from::text, project, body, links, times_delivered, replaced_by,
+         confidence, origin from memory.entries_overview order by times_delivered desc, links desc, id`),
     sql(`select src, src_title, type, dst, dst_title from memory.links_readable`),
     sql(`select created_at, arm, client, query, latency_ms, degraded, delivered from memory.recalls_recent limit 100`),
     sql(`select d::date::text as day, (select count(*) from memory.event where received_at::date = d::date and event <> 'get_entry') as hooks,
@@ -185,6 +185,8 @@ function renderStats(note = "") {
 
 const chip = (type) => `<span class="chip t-${["supersedes", "relates", "supports", "contradicts"].includes(type) ? type : "other"}">${esc(type)}</span>`;
 const auth = (a) => `<span class="chip auth-${esc(a)}">${esc(a)}</span>`;
+// Confidence as a number, dimmed when the entry has gone dormant (under 0.15) and recall no longer serves it.
+const conf = (r) => r.confidence == null ? "" : `<span title="${r.confidence < 0.15 ? "Dormant: recall skips it" : "Confidence"}" style="${r.confidence < 0.15 ? "color:var(--muted)" : ""}">${Number(r.confidence).toFixed(2)}${r.origin === "groomer" ? " ·g" : ""}</span>`;
 const has = (hay, needle) => String(hay ?? "").toLowerCase().includes(needle);
 
 // ---------------------------------------------------------------- entries
@@ -200,9 +202,9 @@ function entries() {
     const rows = data.entries.filter((r) => (!entryFilter.pattern || r.pattern === entryFilter.pattern) &&
       (!entryFilter.text || has(r.title, entryFilter.text) || has(r.body, entryFilter.text) || has(r.id, entryFilter.text))).slice(0, 300);
     $("#elist").innerHTML = rows.length ? `<table><thead><tr><th>Entry</th><th>Pattern</th><th>Authority</th><th>Project</th>
-      <th class="num">Bindings</th><th class="num">Served</th></tr></thead><tbody>${rows.map((r) => `<tr class="click" data-id="${esc(r.id)}">
+      <th class="num">Confidence</th><th class="num">Bindings</th><th class="num">Served</th></tr></thead><tbody>${rows.map((r) => `<tr class="click" data-id="${esc(r.id)}">
       <td>${r.replaced_by ? "<s>" + esc(r.title) + "</s>" : esc(r.title)}<div class="id">${esc(r.id)}</div></td><td>${esc(r.pattern)}</td>
-      <td>${auth(r.authority)}</td><td>${esc(r.project)}</td><td class="num">${r.links}</td><td class="num">${r.times_delivered}</td></tr>`).join("")}</tbody></table>`
+      <td>${auth(r.authority)}</td><td>${esc(r.project)}</td><td class="num">${conf(r)}</td><td class="num">${r.links}</td><td class="num">${r.times_delivered}</td></tr>`).join("")}</tbody></table>`
       : `<div class="empty">${data.entries.length ? "No entries match." : "No entries loaded yet."}</div>`;
     $("#elist").querySelectorAll("tr.click").forEach((tr) => tr.onclick = () => entry(tr.dataset.id));
   };
@@ -220,7 +222,7 @@ async function entry(id) {
     return `<div class="links"><b>${label}</b>${ls.length ? ls.map((l) => `<div class="link">${chip(l.type)} <a data-id="${esc(l.other)}">${esc(l.title)}</a> <span class="id">${esc(l.other)}</span></div>`).join("") : `<span class="status">None</span>`}</div>`; };
   v.innerHTML = `<div class="panel detail"><button class="back" id="back">← All entries</button>
     <h2>${esc(e.title)}</h2>
-    <div class="meta">${auth(e.authority)}<span>${esc(e.pattern)}</span><span>${esc(e.scope)}</span><span>valid from ${esc(e.valid_from)}</span>
+    <div class="meta">${auth(e.authority)}${e.confidence != null ? `<span>confidence ${Number(e.confidence).toFixed(2)}${e.confidence < 0.15 ? " (dormant)" : ""}</span>` : ""}<span>${esc(e.pattern)}</span><span>${esc(e.scope)}</span><span>valid from ${esc(e.valid_from)}</span>
       <span>project ${esc(e.project)}</span>${e.sensitivity === "private" ? "<span>🔒 private</span>" : ""}<span class="id">${esc(e.id)}</span></div>
     <p>${esc(e.body)}</p>${e.evidence ? `<div class="links"><b>Evidence (${esc(e.evidence_kind)})</b><p>${esc(e.evidence)}</p></div>` : ""}
     ${group("out", "Binds to")}${group("in", "Bound from")}</div>`;

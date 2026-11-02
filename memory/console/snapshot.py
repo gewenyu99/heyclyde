@@ -48,7 +48,8 @@ def main(out):
                     "sensitivity": e["sensitivity"], "valid_from": e["valid_from"], "project": title.get(e["project"], e["project"]),
                     "body": e["body"], "evidence_kind": e["evidence_kind"], "evidence": (e["evidence"] or "")[:2000],
                     "links": nlinks.get(e["id"], 0), "times_delivered": served.get(e["id"], 0),
-                    "replaced_by": ", ".join(replaced.get(e["id"], [])) or None} for e in entries),
+                    "replaced_by": ", ".join(replaced.get(e["id"], [])) or None,
+                    "confidence": e.get("confidence"), "origin": e.get("origin")} for e in entries),
                   key=lambda r: (-r["times_delivered"], -r["links"], r["id"]))
     for i in range(0, len(rows), 100):
         (out / f"entries_{i // 100}.json").write_text(json.dumps({"rows": rows[i:i + 100]}, ensure_ascii=False))

@@ -8,6 +8,7 @@ import { ARMS, hybridComponents } from "./search.ts";
 import * as service from "./service.ts";
 import { redact, redactText } from "./redact.ts";
 import { screen } from "./judge.ts";
+import { remember, Refused } from "./write.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 
@@ -786,7 +787,8 @@ const evalQuestions = (split: string) =>
 async function evalRank(data: Row) {
   const [query] = optionalText(data, "query");
   if (!query || !(data.arm in ARMS)) throw new ApiError(422, "Need a query and an arm.");
-  const r = await service.rankAndPack(sql, data.arm, query, "", null, data.filter !== false);
+  const r = await service.rankAndPack(sql, data.arm, query, "", null, data.filter !== false,
+    typeof data.tilt === "number" ? data.tilt : undefined);
   const parts = data.arm === "hybrid" ? (await hybridComponents(sql, query)).parts : null;
   return { candidates: r.ranked.map(([id]) => id), delivered: r.delivered, rejected: r.rejected, degraded: r.degraded, parts };
 }
@@ -829,6 +831,92 @@ async function judgeBackfill(data: Row) {
     if (why) flagged.push({ id: r.id, title: r.title, why });
   }
   return { scanned: rows.length, flagged, next: rows.length === 25 ? offset + 25 : null };
+}
+
+// ---------------------------------------------------------------- grooming
+// The daily groom-memory skill drafts entries from Wen's own words. Every draft and reinforcement names the hook event
+// its quote came from, and the quote has to appear in that event's prompt word for word, so the groomer can't put
+// words in his mouth. Drafts start at confidence 0.6 and earn the rest through the learner.
+
+const squash = (t: string) => t.toLowerCase().replace(/\s+/g, " ").trim();
+
+/** The event's prompt, when `quote` appears in it word for word, else a 422. */
+async function quoted(eventId: unknown, quote: unknown) {
+  if (typeof quote !== "string" || squash(quote).length < 8) throw new ApiError(422, "quote must be Wen's words, at least 8 characters.");
+  if (!/^\d+$/.test(String(eventId))) throw new ApiError(422, "event_id must be the hook event the quote came from.");
+  const [ev] = await sql`select id, session_id, payload->>'prompt' as prompt from memory.event
+    where id = ${String(eventId)} and event = 'UserPromptSubmit'`;
+  if (!ev?.prompt) throw new ApiError(422, `Event ${eventId} isn't one of Wen's prompts.`);
+  if (!squash(ev.prompt).includes(squash(quote))) throw new ApiError(422, `That quote isn't in event ${eventId} word for word.`);
+  return ev;
+}
+
+/** Wen's prompts since the last groom, grouped by session, oldest first, up to 300 prompts. */
+async function groomSessions() {
+  const after = Number(await setting_("groom_checkpoint")) || 0;
+  const rows = await sql`select v.id, v.session_id, v.agent, v.received_at, v.payload->>'cwd' as cwd, v.payload->>'prompt' as prompt
+    from memory.event v where v.id > ${after} and v.event = 'UserPromptSubmit' and v.payload ? 'prompt'
+    order by v.id limit 300`;
+  const sessions = new Map<string, Row>();
+  for (const r of rows) {
+    const key = r.session_id ?? "unknown";
+    if (!sessions.has(key)) sessions.set(key, { session_id: key, agent: r.agent, cwd: r.cwd, prompts: [] });
+    sessions.get(key)!.prompts.push({ event_id: r.id, at: r.received_at, text: r.prompt });
+  }
+  const [{ last }] = await sql`select coalesce(max(id), 0) as last from memory.event`;
+  return { after, through: rows.length ? rows.at(-1)!.id : last, more: rows.length === 300, sessions: [...sessions.values()] };
+}
+
+async function setting_(name: string) {
+  const [r] = await sql`select value from memory.setting where name = ${name}`;
+  return r?.value ?? "";
+}
+
+async function groomCheckpoint(data: Row) {
+  if (!/^\d+$/.test(String(data.through))) throw new ApiError(422, "through must be an event id.");
+  await sql`update memory.setting set value = ${String(data.through)} where name = 'groom_checkpoint'`;
+  return { checkpoint: Number(data.through) };
+}
+
+/** A new entry from Wen's words. It goes through remember()'s rules, redaction and judge like any other write. */
+async function groomDraft(data: Row) {
+  const ev = await quoted(data.event_id, data.quote);
+  let r;
+  try {
+    r = await remember({
+      pattern: data.pattern, title: data.title, body: data.body, scope: data.scope ?? "global",
+      project: data.project || null, sensitivity: data.sensitivity ?? "normal", lang: data.lang ?? "en",
+      authority: "observed", evidence_kind: "quote", evidence: data.quote,
+      source: { kind: "session", title: `Wen's prompt in session ${ev.session_id ?? "unknown"}`, uri: `event:${ev.id}` },
+      links: data.links ?? [], supersedes: data.supersedes ?? [],
+    }, "runtime");
+  } catch (e) {
+    if (e instanceof Refused) throw new ApiError(422, e.message);
+    throw e;
+  }
+  const [e] = await sql`update memory.entry set confidence = least(confidence, 0.6), origin = 'groomer'
+    where id = ${r.id} and origin <> 'groomer' returning confidence`;
+  if (e) {
+    await sql`insert into memory.confidence_log (target, before, after, reason, event_id)
+      values (${"entry:" + r.id}, null, ${e.confidence}, 'drafted by the groomer from Wen''s words', ${ev.id})`;
+  }
+  return { id: r.id, confidence: e?.confidence ?? null };
+}
+
+/** Wen said it again in a new session: +0.15, once per event. */
+async function groomReinforce(data: Row) {
+  const ev = await quoted(data.event_id, data.quote);
+  const id = String(data.entry_id ?? "");
+  const [e] = await sql`select confidence from memory.entry where id = ${id}`;
+  if (!e) throw new ApiError(404, `No entry ${id}.`);
+  if ((await sql`select 1 from memory.confidence_log where target = ${"entry:" + id} and event_id = ${ev.id}`).length) {
+    return { id, confidence: e.confidence, already: true };
+  }
+  const after = Math.min(0.99, e.confidence + 0.15);
+  await sql`update memory.entry set confidence = ${after} where id = ${id}`;
+  await sql`insert into memory.confidence_log (target, before, after, reason, event_id)
+    values (${"entry:" + id}, ${e.confidence}, ${after}, 'Wen said it again', ${ev.id})`;
+  return { id, confidence: after };
 }
 
 const auditList = (p: Row) =>
@@ -963,6 +1051,10 @@ const ROUTES: Route[] = [
   ["PATCH", /^\/devices\/([^/]+)$/, 200, async (r, m) => setDeviceHooks(id(m[1], "name"), await body(r))],
   ["PUT", /^\/secrets\/(openai_key)$/, 200, async (r, m) => putSecret(m[1], await body(r))],
   ["POST", /^\/import$/, 200, (r) => importRows(r)],
+  ["GET", /^\/groom\/sessions$/, 200, () => groomSessions()],
+  ["POST", /^\/groom\/checkpoint$/, 200, async (r) => groomCheckpoint(await body(r))],
+  ["POST", /^\/groom\/draft$/, 201, async (r) => groomDraft(await body(r))],
+  ["POST", /^\/groom\/reinforce$/, 200, async (r) => groomReinforce(await body(r))],
   ["POST", /^\/redact\/backfill$/, 200, async (r) => redactBackfill(await body(r))],
   ["POST", /^\/judge\/backfill$/, 200, async (r) => judgeBackfill(await body(r))],
   ["GET", /^\/eval\/questions$/, 200, (_r, _m, q) => evalQuestions(q.choice("split", ["all", "train", "test"], "train")!)],

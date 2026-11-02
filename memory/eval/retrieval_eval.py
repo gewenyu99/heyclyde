@@ -52,13 +52,13 @@ def stage(gold, candidates, delivered):
     return "ranked-out" if r > PACKET_ITEMS else "budget-cut"
 
 
-def run(arms, split, probes=None, filter=True):
+def run(arms, split, probes=None, filter=True, tilt=None):
     questions = json.loads(Path(probes).read_text()) if probes else call(f"/eval/questions?split={split}")
     report = {}
     for arm in arms:
         per_q = []
         for q in questions:
-            r = call("/eval/rank", {"query": q["text"], "arm": arm, "filter": filter})
+            r = call("/eval/rank", {"query": q["text"], "arm": arm, "filter": filter, **({"tilt": tilt} if tilt is not None else {})})
             candidates, delivered = r["candidates"], r["delivered"]
             p = {"id": q["id"], "text": q["text"], "qtype": q["qtype"], "gold": q["gold"],
                  "gold_hit": bool(set(q["gold"]) & set(delivered)) if q["gold"] else None,
@@ -85,10 +85,11 @@ def main():
     ap.add_argument("--split", default="train", choices=["all", "train", "test"])
     ap.add_argument("--misses", action="store_true", help="list every miss and leak with its stage")
     ap.add_argument("--json", action="store_true", help="print per-query detail")
+    ap.add_argument("--tilt", type=float, help="try a confidence tilt base (0 to 1) instead of the deployed one")
     ap.add_argument("--no-filter", action="store_true", help="skip the relevance filter, to compare against it")
     ap.add_argument("--probes", help="a JSON file of {id, qtype, text, gold, must_not} to run instead, like labels/zh-probes.json")
     a = ap.parse_args()
-    report = run(a.arms.split(","), a.split, a.probes, not a.no_filter)
+    report = run(a.arms.split(","), a.split, a.probes, not a.no_filter, a.tilt)
     if a.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return

@@ -100,3 +100,44 @@ export async function relevance(request: string, items: string[]): Promise<numbe
     return a.probability;
   });
 }
+
+const PUSHBACK = "The text is the latest message Wen sent to an AI assistant. Answer true if he is pushing back: " +
+  "correcting the assistant, saying it is wrong, rejecting what it did or suggested, or showing frustration with it. " +
+  "Answer false for new requests, answers to its questions, neutral follow-ups and agreement.";
+const CAUSE = "If Wen is pushing back, which memory item delivered to the assistant just before caused it? Pick none if " +
+  "no delivered item did.";
+
+/** The learner's read of the prompt Wen sent after a recall: whether he pushed back, and which delivered item caused
+ * it, by id, or null. Throws when the judge can't answer, and the learner tries that recall again later. */
+export async function reaction(prompt: string, items: { id: string; text: string }[]) {
+  const { used, cap } = await budget();
+  if (used >= cap) throw new OverBudget("the month's OpenAI budget is spent");
+  const key = await secret("openai_key");
+  if (!key) throw new Error("no openai_key in Vault");
+  const questions: Record<string, unknown>[] = [{ type: "predicate", name: "pushback", instructions: PUSHBACK }];
+  if (items.length) {
+    questions.push({ type: "choice", name: "cause", instructions: CAUSE,
+      choices: [{ value: "none" }, ...items.map((it) => ({ value: it.id }))] });
+  }
+  const input = `Wen's message:\n${prompt.slice(0, 4000)}` + (items.length
+    ? "\n\nMemory items delivered to the assistant just before:\n" + items.map((it, i) => `[${i + 1}] ${it.id}: ${it.text.slice(0, 500)}`).join("\n")
+    : "");
+  const r = await fetch("https://api.openai.com/v1/decisions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: MODEL, input, questions }),
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!r.ok) throw new Error(`OpenAI Decisions ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const body = await r.json();
+  const tokens = body.usage?.input_tokens ?? 0;
+  if (tokens) {
+    await sql`insert into memory.embed_usage (month, tokens) values (date_trunc('month', now())::date, ${tokens})
+      on conflict (month) do update set tokens = memory.embed_usage.tokens + excluded.tokens`;
+  }
+  const byName = new Map((body.answers ?? []).map((a: Record<string, any>) => [a.name, a]));
+  const p = (byName.get("pushback") as Record<string, any> | undefined)?.probability;
+  if (typeof p !== "number") throw new Error("the judge gave no pushback answer");
+  const choice = (byName.get("cause") as Record<string, any> | undefined)?.choice;
+  return { pushback: p >= 0.5, p, cause: choice && choice !== "none" ? String(choice) : null };
+}

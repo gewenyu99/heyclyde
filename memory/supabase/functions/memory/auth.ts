@@ -21,7 +21,7 @@ export function credentialFor(path: string): Kind | null {
   if (["/mcp", "/mcp/", "/entries", "/recall"].includes(path)) return "agent";
   if (["/hooks/", "/messages/", "/entries/", "/blobs/"].some((p) => path.startsWith(p))) return "agent";
   if (path === "/export") return "backup";
-  if (path === "/embeddings/sync") return "cron";
+  if (path === "/embeddings/sync" || path === "/learn") return "cron";
   return null;
 }
 

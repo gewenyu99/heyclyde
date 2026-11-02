@@ -23,6 +23,21 @@ export async function sessionArm(db: Sql, session: string, client: string | null
 
 // The filter reads this many of an arm's top candidates and keeps the ones the judge calls relevant. Tuned on train only.
 const FILTER_K = 12;
+// Confidence tilts the ranking without overriding it: score × (TILT_BASE + (1 - TILT_BASE) × confidence). Tuned on train.
+const TILT_BASE = Number(Deno.env.get("MEMORY_TILT_BASE") ?? 0.9);
+const DORMANT = 0.15;
+
+/** The arm's ranking with dormant entries dropped and every score tilted by its entry's confidence. */
+async function tilt(db: Sql, ranked: Ranked[], base = TILT_BASE): Promise<Ranked[]> {
+  const ids = ranked.slice(0, FILTER_K * 4).map(([id]) => id);
+  if (!ids.length) return ranked;
+  const conf = new Map((await db`select id, confidence from memory.entry where id = any(${ids}::text[])`)
+    .map((r) => [r.id, r.confidence as number]));
+  return ranked
+    .filter(([id]) => (conf.get(id) ?? 1) >= DORMANT)
+    .map(([id, score, line]): Ranked => [id, score * (base + (1 - base) * (conf.get(id) ?? 0.7)), line])
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+}
 const FILTER_THRESHOLD = Number(Deno.env.get("MEMORY_FILTER_THRESHOLD") ?? 0.5);
 
 /** What the filter shows the judge for one candidate. Private and confidential entries go by title alone, since their
@@ -40,9 +55,10 @@ function itemText(line: string | null, row: Row | undefined) {
  * top FILTER_K and drops what it calls irrelevant. When it drops them all, recall says nothing matches rather than
  * serving noise. When it can't answer, the ranking goes out unfiltered and `degraded` says so. */
 export async function rankAndPack(db: Sql, arm: string, query: string, task = "", scope: string | null = null,
-  filter = true) {
+  filter = true, tiltBase = TILT_BASE) {
   const request = task ? `${task}\n${query}`.trim() : query;
-  const [ranked, armDegraded] = await ARMS[arm](db, request, scope || null);
+  const [armRanked, armDegraded] = await ARMS[arm](db, request, scope || null);
+  const ranked = await tilt(db, armRanked, tiltBase);
   const lines = ranked.every(([, , line]) => line !== null);
   const rows = lines ? {} : await fetchEntries(db, ranked.slice(0, FILTER_K * 2).map(([id]) => id));
   let candidates = ranked, rejected: string[] = [], filterDegraded: string | null = null;

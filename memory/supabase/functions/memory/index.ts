@@ -5,6 +5,7 @@ import * as admin from "./admin.ts";
 import { allowed, authenticate, type Principal } from "./auth.ts";
 import { config } from "./config.ts";
 import { sql } from "./db.ts";
+import { learn } from "./learn.ts";
 import * as mcp from "./mcp.ts";
 import * as service from "./service.ts";
 import { Refused, remember } from "./write.ts";
@@ -197,6 +198,7 @@ async function route(req: Request): Promise<Response> {
   }
   if (m === "POST" && path === "/recall") return httpRecall(req);
   if (m === "GET" && path === "/export") return exportPage(url);
+  if (m === "POST" && path === "/learn") return json(await learn());
   if (m === "POST" && path === "/embeddings/sync") {
     EdgeRuntime.waitUntil(admin.runEmbeddingSync("periodic"));
     return json({ started: true }, 202);
