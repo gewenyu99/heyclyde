@@ -110,8 +110,7 @@ const CAUSE = "If Wen is pushing back, which memory item delivered to the assist
 export async function reaction(prompt: string, items: { id: string; text: string }[]) {
   const { used, cap } = await budget();
   if (used >= cap) throw new OverBudget("the month's OpenAI budget is spent");
-  const key = await secret("openai_key");
-  if (!key) throw new Error("no openai_key in Vault");
+  const { url, key } = await openai();
   const questions: Record<string, unknown>[] = [{ type: "predicate", name: "pushback", instructions: PUSHBACK }];
   if (items.length) {
     questions.push({ type: "choice", name: "cause", instructions: CAUSE,
@@ -120,7 +119,7 @@ export async function reaction(prompt: string, items: { id: string; text: string
   const input = `Wen's message:\n${prompt.slice(0, 4000)}` + (items.length
     ? "\n\nMemory items delivered to the assistant just before:\n" + items.map((it, i) => `[${i + 1}] ${it.id}: ${it.text.slice(0, 500)}`).join("\n")
     : "");
-  const r = await fetch("https://api.openai.com/v1/decisions", {
+  const r = await fetch(`${url}/decisions`, {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({ model: MODEL, input, questions }),
