@@ -27,3 +27,8 @@ additional_redirect_urls = [
 enabled = true
 authorization_url_path = "/oauth/consent"
 allow_dynamic_registration = true
+
+# Pro lets the sign-in email say what it's for. Both the installer and the connector sign-in send it.
+[auth.email.template.magic_link]
+subject = "memory: approve a new connection?"
+content_path = "./supabase/templates/magic_link.html"
