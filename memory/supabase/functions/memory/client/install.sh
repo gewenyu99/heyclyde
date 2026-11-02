@@ -6,13 +6,17 @@
 # MEMORY_HOOKS=metadata so memory keeps no prompts or tool output from its hooks. Rerun it any time: it replaces only
 # its own entries, the old kb ones too.
 # The token lands in ~/.config/memory/token, ~/.claude.json and ~/.codex/config.toml, all readable by you only.
+# `install.sh --update` is what memory-hook runs to update itself (R31). It asks nothing and keeps the token: it only
+# merges the hook config and replaces memory-hook, and only for the clients that already have a memory hook.
 set -eu
-URL=${MEMORY_URL:-https://memory.heyclyde.me}
 DIR=$HOME/.config/memory
+if [ "${1:-}" = --update ]; then UPDATE=1; else UPDATE=; fi
+URL=${MEMORY_URL:-$([ -n "$UPDATE" ] && cat "$DIR/url" 2>/dev/null || true)}
+URL=${URL:-https://memory.heyclyde.me}
 DEVICE=${MEMORY_DEVICE:-$(hostname -s 2>/dev/null | tr 'A-Z' 'a-z' | tr -c 'a-z0-9._-\n' '-')}
 
 umask 077
-mkdir -p "$DIR" "$HOME/.claude" "$HOME/.codex"
+[ -n "$UPDATE" ] || mkdir -p "$DIR" "$HOME/.claude" "$HOME/.codex"
 
 # The files next to this script when run from a checkout, else fetched from the function.
 HERE=$(cd "$(dirname "$0")" 2>/dev/null && pwd || echo /nonexistent)
@@ -68,29 +72,45 @@ print(v, base64.urlsafe_b64encode(hashlib.sha256(v.encode()).digest()).rstrip(b"
     --data "{\"name\": \"$DEVICE\", \"hooks\": \"${MEMORY_HOOKS:-full}\"}" | python3 -c 'import json, sys; d = json.load(sys.stdin); print(d.get("token") or ""); sys.exit(0 if d.get("token") else d.get("error") or "that email can'"'"'t connect a computer")'
 }
 
-TOKEN=${MEMORY_TOKEN:-$(cat "$DIR/token" 2>/dev/null || true)}
-if [ -n "$TOKEN" ] && [ "$(probe "$TOKEN")" = 200 ]; then
-  echo "This computer is already connected as $DEVICE, so no sign-in. Refreshing its Claude Code and Codex setup."
-else
-  TOKEN=$(sign_in)
-fi
-case $(probe "$TOKEN") in
-  200) ;;
-  401) echo "$URL refused the token" >&2; exit 1 ;;
-  000) echo "$URL is unreachable" >&2; exit 1 ;;
-  *) echo "$URL answered $(probe "$TOKEN")" >&2; exit 1 ;;
-esac
+# memory-hook, moved into place in one step, so a hook running now never reads half a file. A checkout's copy has no
+# version yet, so it gets the server's. A fetched one was stamped by the server.
+put_hook() {
+  new=$DIR/.memory-hook.$$
+  if grep -q '^VERSION=@MEMORY_VERSION@$' "$HERE/memory-hook"; then
+    ver=$(curl -fsS -m 10 "$URL/healthz" 2>/dev/null | field version 2>/dev/null || true)
+    case $ver in ''|*[!0-9.]*) ver=@MEMORY_VERSION@ ;; esac
+    sed "s/^VERSION=@MEMORY_VERSION@\$/VERSION=$ver/" "$HERE/memory-hook" > "$new"
+  else
+    cp "$HERE/memory-hook" "$new"
+  fi
+  chmod 700 "$new" && mv -f "$new" "$DIR/memory-hook"
+}
 
-printf '%s\n' "$URL" > "$DIR/url"
-printf '%s\n' "$TOKEN" > "$DIR/token"
-cp "$HERE/memory-hook" "$DIR/memory-hook" && chmod 700 "$DIR/memory-hook"
+if [ -z "$UPDATE" ]; then
+  TOKEN=${MEMORY_TOKEN:-$(cat "$DIR/token" 2>/dev/null || true)}
+  if [ -n "$TOKEN" ] && [ "$(probe "$TOKEN")" = 200 ]; then
+    echo "This computer is already connected as $DEVICE, so no sign-in. Refreshing its Claude Code and Codex setup."
+  else
+    TOKEN=$(sign_in)
+  fi
+  case $(probe "$TOKEN") in
+    200) ;;
+    401) echo "$URL refused the token" >&2; exit 1 ;;
+    000) echo "$URL is unreachable" >&2; exit 1 ;;
+    *) echo "$URL answered $(probe "$TOKEN")" >&2; exit 1 ;;
+  esac
+
+  printf '%s\n' "$URL" > "$DIR/url"
+  printf '%s\n' "$TOKEN" > "$DIR/token"
+  put_hook
+fi
 
 # Merge a {"hooks": {...}} snippet into a client's hooks file. Earlier memory and kb entries go, the user's own stay.
 merge() {
   python3 - "$@" <<'PY'
 import json, sys
 from pathlib import Path
-path, ours = Path(sys.argv[1]).expanduser(), json.loads(Path(sys.argv[2]).read_text())["hooks"]
+path, ours = Path(sys.argv[1]).expanduser().resolve(), json.loads(Path(sys.argv[2]).read_text())["hooks"]
 doc = json.loads(path.read_text()) if path.exists() and path.read_text().strip() else {}
 
 def stale(h):
@@ -125,10 +145,22 @@ hooks = doc.setdefault("hooks", {})
 clean(hooks, list(hooks))
 for event, groups in ours.items():
     hooks[event] = hooks.get(event, []) + groups
-path.write_text(json.dumps(doc, indent=2) + "\n")
-path.chmod(0o600)
+# Written beside the file and moved over it, so a client reading it now never sees half of it.
+tmp = path.with_name(path.name + ".memory-tmp")
+tmp.write_text(json.dumps(doc, indent=2) + "\n")
+tmp.chmod(0o600)
+tmp.replace(path)
 PY
 }
+
+# A self-update stops here. The config goes first and memory-hook last, since the new version stamp is what says it's
+# done: if the merge fails, the old hook is still the old version and tries again.
+if [ -n "$UPDATE" ]; then
+  grep -qs memory-hook "$HOME/.claude/settings.json" && merge ~/.claude/settings.json "$HERE/claude-settings.json"
+  grep -qs memory-hook "$HOME/.codex/hooks.json" && merge ~/.codex/hooks.json "$HERE/codex-hooks.json"
+  put_hook
+  exit 0
+fi
 
 # Claude Code's CLI. The Claude desktop app bundles its own and keeps it off PATH, so fall back to its newest version.
 claude_cli() {

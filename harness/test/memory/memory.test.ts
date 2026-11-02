@@ -16,6 +16,8 @@ import { startDaemon } from '../../src/daemon.ts'
 import { workListEntry } from '../../src/flow/memory.ts'
 import type { Run } from '../../src/flow/types.ts'
 import { Memory } from '../../src/memory.ts'
+import { request } from '../../src/request.ts'
+import { SERVER_VERSION } from '../../../memory/supabase/functions/memory/version.ts'
 import { formatList, type WorkList } from '../../src/lists.ts'
 import { request } from '../../src/request.ts'
 import { FAKE_BIN, HARNESS, LV, setup, tempDir, waitFor } from '../helpers.ts'
@@ -458,4 +460,76 @@ test('agents leave each other messages: codex reads claude\'s once, and a messag
   assert.match(await claude('post_message', { to: 'codex', body: flagged }), /^Not posted: memory won't store this because/)
   assert.equal((await call('GET', '/messages/codex', bearer(memory.token))).text, '')
   assert.deepEqual(sql(`select id from memory.message where body like '%${FAKE_REFUSE}%'`), [])
+})
+
+/** An MCP call as the device, JSON-RPC over HTTP, answered as a parsed object. */
+async function mcp(method: string, params: Record<string, unknown> = {}): Promise<any> {
+  const r = await request('POST', `${memory.url}/mcp`, {
+    headers: { authorization: `Bearer ${memory.token}`, accept: 'application/json, text/event-stream' },
+    body: { jsonrpc: '2.0', id: 1, method, params },
+  })
+  assert.equal(r.status, 200, r.text)
+  return JSON.parse(r.text).result
+}
+
+/** A hook call that sends this client version (or none), answered with its status and headers. */
+function hook(version: string | null, event = 'Stop') {
+  const headers: Record<string, string> = { authorization: `Bearer ${memory.token}` }
+  if (version) headers['x-memory-client-version'] = version
+  return request('POST', `${memory.url}/hooks/${event}?agent=claude`, { headers, body: { session_id: 'r31', cwd: '/tmp' } })
+}
+
+function messages(version: string | null) {
+  const headers: Record<string, string> = { authorization: `Bearer ${memory.token}` }
+  if (version) headers['x-memory-client-version'] = version
+  return request('GET', `${memory.url}/messages/claude`, { headers })
+}
+
+test('/healthz and MCP initialize report the one server version, and every answer carries it', { skip: SKIP }, async () => {
+  const health = await request('GET', `${memory.url}/healthz`)
+  assert.equal(JSON.parse(health.text).version, SERVER_VERSION)
+  assert.equal(health.headers['x-memory-version'], SERVER_VERSION)
+  assert.equal((await mcp('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'claude-code' } })).serverInfo.version, SERVER_VERSION)
+  assert.equal((await hook(null)).headers['x-memory-version'], SERVER_VERSION)
+  assert.equal((await request('GET', `${memory.url}/nothing-here`, { headers: { authorization: `Bearer ${memory.token}` } })).headers['x-memory-version'], SERVER_VERSION)
+})
+
+test('the install route serves memory-hook stamped with the server version', { skip: SKIP }, async () => {
+  const served = await request('GET', `${memory.url}/install/files/memory-hook`)
+  assert.equal(served.status, 200)
+  assert.match(served.text, new RegExp(`^VERSION=${SERVER_VERSION.replace('.', '\\.')}$`, 'm'))
+  assert.ok(!served.text.includes('VERSION=@MEMORY_VERSION@'))
+  for (const f of ['install.sh', 'claude-settings.json', 'codex-hooks.json']) assert.equal((await request('GET', `${memory.url}/install/files/${f}`)).status, 200, f)
+})
+
+test('hooks tell a client where it stands, and an older client keeps working', { skip: SKIP }, async () => {
+  const status = async (v: string | null) => {
+    const r = await hook(v)
+    assert.equal(r.status, 200, `${v}: ${r.text}`)
+    return r.headers['x-memory-client-status'] ?? null
+  }
+  assert.equal(await status(SERVER_VERSION), 'current')
+  assert.equal(await status('29991231.1'), 'current')
+  assert.equal(await status('dev'), 'current')
+  assert.equal(await status('20200101.1'), 'expired', 'past the 30 day cutoff')
+  assert.equal(await status('nonsense'), 'unknown')
+  assert.equal(await status(null), null, 'a hook that sends no version gets no status')
+  // N-1: the day before the server's version, still answered in full.
+  assert.ok(['behind', 'expired'].includes((await status('20261101.1')) ?? ''))
+})
+
+test('a client with no version or past the cutoff is told to rerun the installer, in its messages and in check_messages', { skip: SKIP }, async () => {
+  const note = /Rerun `curl -fsSL https:\/\/memory\.heyclyde\.me\/install \| sh`/
+  // An old hook sends no version: the inbox carries the note, so the old hook prints it.
+  assert.match((await messages(null)).text, note)
+  // One that sends a version prints its own line, so the server adds nothing.
+  assert.doesNotMatch((await messages(SERVER_VERSION)).text, note)
+  assert.doesNotMatch((await messages('20200101.1')).text, note)
+  // The MCP tool knows the computer by its last reported version.
+  await hook('20200101.1')
+  const stale = await mcp('tools/call', { name: 'check_messages', arguments: {} })
+  assert.match(stale.content[0].text, note)
+  await hook(SERVER_VERSION)
+  const fresh = await mcp('tools/call', { name: 'check_messages', arguments: {} })
+  assert.doesNotMatch(fresh.content[0].text, note)
 })

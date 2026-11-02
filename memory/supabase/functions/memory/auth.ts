@@ -4,6 +4,7 @@
 import { secret, setting, sql } from "./db.ts";
 import { sha256 } from "./embed.ts";
 import { resourceMetadataUrl } from "./oauth.ts";
+import { reportable } from "./version.ts";
 
 export type Kind = "open" | "agent" | "admin" | "backup" | "cron" | "owner";
 export type Principal = {
@@ -11,6 +12,8 @@ export type Principal = {
   device?: string;
   /** For a device: "full" keeps hook payloads, "metadata" keeps only the event, session, folder and tool name. */
   hooks?: string;
+  /** For a device: the memory-hook version it last reported (R31), or null for a hook that predates versions. */
+  clientVersion?: string | null;
 };
 
 /** Which credential a path takes. /healthz and the console's files take none. Any path not named takes none of them
@@ -79,7 +82,7 @@ async function miss(kind: Kind, client: string) {
     where kind = ${kind} and client = ${client}`;
 }
 
-async function resolve(kind: Kind, token: string): Promise<Principal | null> {
+async function resolve(kind: Kind, token: string, clientVersion: string | null): Promise<Principal | null> {
   const hash = await sha256(token);
   if (kind === "agent") {
     if (same(hash, await setting("runtime_token_sha256"))) return { role: "runtime" };
@@ -89,10 +92,11 @@ async function resolve(kind: Kind, token: string): Promise<Principal | null> {
       return claims?.client_id ? { role: "device", device: `oauth:${claims.client_id}`, hooks: "metadata" } : null;
     }
     // A computer's token lapses after 90 days unused. Rerunning the installer signs it in again.
-    const [d] = await sql`update memory.device set last_seen = now()
+    // The version a hook reports rides on the same write, so every computer's version is on its row.
+    const [d] = await sql`update memory.device set last_seen = now(), client_version = coalesce(${clientVersion}, client_version)
       where token_sha256 = ${hash} and revoked_at is null and coalesce(last_seen, created_at) > now() - interval '90 days'
-      returning name, hooks`;
-    return d ? { role: "device", device: d.name, hooks: d.hooks } : null;
+      returning name, hooks, client_version`;
+    return d ? { role: "device", device: d.name, hooks: d.hooks, clientVersion: d.client_version } : null;
   }
   if (kind === "admin") return same(hash, await setting("admin_token_sha256")) ? { role: "admin" } : null;
   if (kind === "backup") {
@@ -163,7 +167,8 @@ export async function authenticate(req: Request, path: string): Promise<Principa
   }
   const header = req.headers.get("authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const who = token ? await resolve(kind, token) : null;
+  const reported = req.headers.get("x-memory-client-version");
+  const who = token ? await resolve(kind, token, reportable(reported) ? reported : null) : null;
   if (!who) {
     // A JWT can't be guessed, and an expired one is how an OAuth client learns to refresh, so it costs no miss.
     if (token && !isJwt(token)) await miss(kind, client);

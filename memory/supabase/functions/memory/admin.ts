@@ -634,7 +634,7 @@ export async function runEmbeddingSync(trigger: string): Promise<Row | null> {
 }
 
 const devices = () =>
-  sql`select name, hooks, created_at, last_seen, revoked_at,
+  sql`select name, hooks, client_version, created_at, last_seen, revoked_at,
       coalesce(last_seen, created_at) + interval '90 days' as lapses_at from memory.device order by revoked_at nulls first, name`;
 
 /** Switch a computer between full and metadata-only hook payloads. */

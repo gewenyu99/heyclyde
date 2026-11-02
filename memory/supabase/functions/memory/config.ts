@@ -16,6 +16,8 @@ export const config = {
   rrfK: num("MEMORY_RRF_K", 10),
   vecWeight: num("MEMORY_VEC_WEIGHT", 1.5),
   indexDraftFactor: num("MEMORY_INDEX_DRAFT_FACTOR", 0.5),
+  // A client whose version stamp is older than this many days, and behind the server, is told to rerun the installer.
+  clientCutoffDays: num("MEMORY_CLIENT_CUTOFF_DAYS", 30),
   // A scoped recall multiplies its own scope's scores by this, so a run's handoff notes lead the packet.
   scopeBoost: num("MEMORY_SCOPE_BOOST", 3),
 };

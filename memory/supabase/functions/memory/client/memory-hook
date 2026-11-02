@@ -4,14 +4,78 @@
 # to the agent's context. MEMORY_AGENT names the agent (claude by default, codex for Codex) for its events and its inbox.
 # The URL and token come from MEMORY_URL and MEMORY_TOKEN, else from ~/.config/memory.
 # It never blocks the agent: no config, a slow server or an error all exit 0 and print nothing.
+#
+# Self-update (R31). Every call sends VERSION, and the server answers with its own. When the server's is newer, an
+# installed hook starts `memory-hook --update` in the background, which fetches the current client files, checks them,
+# and has install.sh --update put them in place with the same token. Any failure leaves this client as it was, and a
+# failed try isn't repeated for 10 minutes. A client past the server's cutoff gets one line asking for a rerun of the installer.
+# The server stamps VERSION when it serves this file. A checkout's copy carries a placeholder, which counts as dev.
+VERSION=@MEMORY_VERSION@
 dir=$HOME/.config/memory
 url=${MEMORY_URL:-$(cat "$dir/url" 2>/dev/null)}
 token=${MEMORY_TOKEN:-$(cat "$dir/token" 2>/dev/null)}
 [ -n "$1" ] && [ -n "$url" ] && [ -n "$token" ] || exit 0
-curl -fsS -m 3 -o /dev/null -X POST "$url/hooks/$1?agent=${MEMORY_AGENT:-claude}" \
-  -H "Authorization: Bearer $token" -H "Content-Type: application/json" --data-binary @- 2>/dev/null
+
+# True for YYYYMMDD.N and nothing else.
+isver() {
+  case $1 in
+    ''|*[!0-9.]*|.*|*.|*.*.*) return 1 ;;
+    *.*) return 0 ;;
+  esac
+  return 1
+}
+
+# True when version $1 is newer than $2. Both must pass isver.
+newer() {
+  [ "${1%%.*}" -gt "${2%%.*}" ] || { [ "${1%%.*}" -eq "${2%%.*}" ] && [ "${1#*.}" -gt "${2#*.}" ]; }
+}
+
+update() {
+  # One update at a time. mkdir is atomic, and a lock older than 10 minutes belongs to a run that died.
+  find "$dir/update.lock" -maxdepth 0 -mmin +10 -exec rmdir {} \; 2>/dev/null
+  mkdir "$dir/update.lock" 2>/dev/null || return 0
+  tmp=$(mktemp -d "$dir/update.XXXXXX") || { rmdir "$dir/update.lock"; return 1; }
+  trap 'rm -rf "$tmp"; rmdir "$dir/update.lock" 2>/dev/null' EXIT
+  for f in memory-hook claude-settings.json codex-hooks.json install.sh; do
+    curl -fsS -m 15 "$url/install/files/$f" -o "$tmp/$f" 2>/dev/null && [ -s "$tmp/$f" ] || return 1
+  done
+  # Only what looks whole and newer goes in: scripts that parse, with a shebang, JSON that loads, and a stamped version.
+  for f in memory-hook install.sh; do
+    [ "$(head -c 2 "$tmp/$f")" = '#!' ] && sh -n "$tmp/$f" 2>/dev/null || return 1
+  done
+  for f in claude-settings.json codex-hooks.json; do
+    python3 -c 'import json, sys; json.load(open(sys.argv[1]))' "$tmp/$f" 2>/dev/null || return 1
+  done
+  got=$(sed -n 's/^VERSION=//p' "$tmp/memory-hook" | head -1)
+  isver "$got" && newer "$got" "$VERSION" || return 1
+  sh "$tmp/install.sh" --update >/dev/null 2>&1
+}
+
+if [ "$1" = --update ]; then
+  if update; then rm -f "$dir/update-failed"; else : > "$dir/update-failed"; fi
+  exit 0
+fi
+
+isver "$VERSION" && sent=$VERSION || sent=dev
+# The first call's headers say the server's version and where this client stands against it. -D - prints them, and the
+# body goes nowhere.
+headers=$(curl -sS -m 3 -D - -o /dev/null -X POST "$url/hooks/$1?agent=${MEMORY_AGENT:-claude}" \
+  -H "Authorization: Bearer $token" -H "Content-Type: application/json" -H "x-memory-client-version: $sent" \
+  --data-binary @- 2>/dev/null | tr 'A-Z' 'a-z' | tr -d '\r')
+header() { printf '%s\n' "$headers" | sed -n "/^$1:/{s/^[^:]*: *//p;q;}"; }
+
+# Only an installed hook updates itself. A checkout's, or a cloud session's, has no ~/.config/memory to replace.
+server=$(header x-memory-version)
+if [ "$0" = "$dir/memory-hook" ] && isver "$server" && isver "$VERSION" && newer "$server" "$VERSION" &&
+  [ -z "$(find "$dir/update-failed" -mmin -10 2>/dev/null)" ]; then
+  nohup "$0" --update </dev/null >/dev/null 2>&1 &
+fi
+
 case $1 in
   SessionStart|UserPromptSubmit)
-    curl -fsS -m 3 -H "Authorization: Bearer $token" "$url/messages/${MEMORY_AGENT:-claude}" 2>/dev/null ;;
+    [ "$(header x-memory-client-status)" = expired ] &&
+      echo "memory: this computer's client is out of date. Rerun \`curl -fsSL $url/install | sh\`, which needs no new sign-in."
+    curl -fsS -m 3 -H "Authorization: Bearer $token" -H "x-memory-client-version: $sent" \
+      "$url/messages/${MEMORY_AGENT:-claude}" 2>/dev/null ;;
 esac
 exit 0

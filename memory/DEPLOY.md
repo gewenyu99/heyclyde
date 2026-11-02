@@ -94,15 +94,28 @@ Every arm passes the same relevance filter and confidence tilt. Turn an arm on w
 
 [eval/ants.py](eval/ants.py) trains the per-link-type weights with an ant colony on the train questions. On today's 21 train questions it didn't beat neutral weights, so they're back at 1.0. Rerun it as the probe set grows.
 
+## Versions and self-update
+
+The server has one version, `SERVER_VERSION` in [version.ts](supabase/functions/memory/version.ts), a date and a serial like `20261102.1`. `/healthz` and the MCP `initialize` report it, and every response carries it as `x-memory-version`. It covers everything a client can see: the MCP tools, the server instructions, and the files in `client/` (memory-hook, install.sh and both hook configs).
+
+**Every client-visible change bumps it.** Change a tool, the instructions or a client file, then bump `SERVER_VERSION` (a new serial the same day, a new date otherwise) and set `SURFACE_HASH` to what `deno run -A --node-modules-dir=none harness/test/memory/surface.ts` prints. The tier 3 test `version.test.ts` hashes the tools, instructions and client files, and fails until the hash matches the version. Server-side changes no client can see (ranking, schema) need no bump.
+
+How each client picks a change up:
+
+- **MCP clients** (Claude Code, Codex, claude.ai, Cowork) read the tools and instructions at each `initialize`, so a deploy reaches them at their next session.
+- **Hooks.** The server stamps `VERSION=` into memory-hook as it serves it, so the file in git never carries one. Every hook call sends `x-memory-client-version`. When the answer's `x-memory-version` is newer, an installed hook runs `memory-hook --update` detached, which costs the hook a few milliseconds. The update fetches memory-hook, install.sh and both hook configs from `/install/files/` into a temp dir, refuses anything empty, unparseable, without a shebang, unstamped or not newer, then runs `install.sh --update`. That merges the hook configs the way the installer does, only into clients that already have a memory hook, and moves memory-hook into place last, atomically. It asks nothing and keeps `~/.config/memory/token` and `url` as they are. A lock directory stops two updates at once (a lock older than 10 minutes is a dead run's), and a failed try leaves the old client as it was and isn't repeated for 10 minutes. A checkout's memory-hook (a cloud session's) carries no stamp, reports `dev` and never updates.
+- **Old clients.** The server keeps answering every version. The cutoff, `MEMORY_CLIENT_CUTOFF_DAYS` (default 30), counts from the client version's date stamp: a client that's behind and older than that gets `x-memory-client-status: expired`, and its hook prints one line on SessionStart and UserPromptSubmit saying to rerun `curl -fsSL https://memory.heyclyde.me/install | sh`. A hook that sends no version at all predates self-update and can't fix itself, so the server adds that line to its inbox, and to `check_messages` for a computer whose last reported version is missing or expired. The rerun keeps the token and asks for no sign-in.
+- **Who has updated.** Each device row keeps the version its hook last reported, `client_version` in `GET /api/v1/devices`, next to `last_seen`.
+
 ## Ship a change
 
 ```bash
 memory/deploy.sh
 ```
 
-It bakes the installer's files from `supabase/functions/memory/client/` into `client/files.ts`, then deploys with the Supabase CLI, which needs one `supabase login` per computer. `--no-verify-jwt` is right: the function checks its own tokens in [auth.ts](supabase/functions/memory/auth.ts).
+It bakes the installer's files from `supabase/functions/memory/client/` into `client/files.ts` (`memory/deploy.sh --bake` does only that), then deploys with the Supabase CLI, which needs one `supabase login` per computer. `--no-verify-jwt` is right: the function checks its own tokens in [auth.ts](supabase/functions/memory/auth.ts).
 
-Schema changes go in [supabase/migrations](supabase/migrations) and apply with `supabase db push`. Not every migration is safe to rerun on a database that has the later ones: `dashboard_views` fails once `dashboard_confidence` has added its columns.
+Bump the version first when the change is client-visible, as above. Schema changes go in [supabase/migrations](supabase/migrations) and apply with `supabase db push`. Not every migration is safe to rerun on a database that has the later ones: `dashboard_views` fails once `dashboard_confidence` has added its columns.
 
 Test a change end to end first with `memory/e2e/run.sh`. It brings a throwaway preview branch up to this checkout, runs [the e2e suite](e2e/README.md) against it, and deletes it.
 

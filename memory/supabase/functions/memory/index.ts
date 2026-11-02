@@ -9,6 +9,7 @@ import { learn } from "./learn.ts";
 import * as mcp from "./mcp.ts";
 import * as oauth from "./oauth.ts";
 import * as service from "./service.ts";
+import { clientStatus, SERVER_VERSION, UPDATE_NOTE } from "./version.ts";
 import { Refused, remember } from "./write.ts";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { FILES } from "./client/files.ts";
@@ -130,8 +131,10 @@ async function exportPage(url: URL) {
 const CLIENT_FILES = ["install.sh", "memory-hook", "claude-settings.json", "codex-hooks.json"];
 const CLAIM = /^[A-Za-z0-9_-]{20,100}$/;
 
+// memory-hook carries the version it was fetched at, stamped here so the checked-in file never needs editing.
 function clientFile(name: string) {
-  return FILES[name];
+  const file = FILES[name];
+  return name === "memory-hook" ? file.replace("VERSION=@MEMORY_VERSION@", `VERSION=${SERVER_VERSION}`) : file;
 }
 
 /** The installer, its files, and the sign-in hand-off. All open: nothing here reveals data or mints a token without the
@@ -174,9 +177,9 @@ async function route(req: Request): Promise<Response> {
 
   if (path === "/healthz") {
     await sql`select 1`;
-    return json({ ok: true, arms: config.arms });
+    return json({ ok: true, arms: config.arms, version: SERVER_VERSION });
   }
-  if (path === "/mcp" || path === "/mcp/") return mcp.handle(req);
+  if (path === "/mcp" || path === "/mcp/") return mcp.handle(req, who);
   if (path.startsWith("/.well-known/oauth-protected-resource")) return oauth.resourceMetadata(await baseOf(req));
   if (path.startsWith("/oauth/")) return oauth.handle(await baseOf(req), path, url);
   if (path === "/install" || path.startsWith("/install/")) return install(req, path, url);
@@ -186,7 +189,11 @@ async function route(req: Request): Promise<Response> {
   let match;
   if (m === "POST" && (match = /^\/hooks\/([^/]+)$/.exec(path))) return hooks(req, decodeURIComponent(match[1]), url, who);
   if (m === "GET" && (match = /^\/messages\/([^/]+)$/.exec(path))) {
-    return text(await service.readMessages(decodeURIComponent(match[1]).toLowerCase()));
+    const messages = await service.readMessages(decodeURIComponent(match[1]).toLowerCase());
+    // A hook that sends no version predates self-update and can't fix itself. One that does prints its own line.
+    const old = who.role === "device" && !who.device?.startsWith("oauth:") &&
+      clientStatus(req.headers.get("x-memory-client-version"), config.clientCutoffDays) === "unknown";
+    return text(old ? `${messages}${UPDATE_NOTE}\n` : messages);
   }
   if (m === "POST" && path === "/entries") return httpRemember(req, who);
   if (m === "GET" && (match = /^\/entries\/([^/]+)$/.exec(path))) {
@@ -213,9 +220,9 @@ async function route(req: Request): Promise<Response> {
 // runs on another origin.
 const CORS = {
   "access-control-allow-origin": "*",
-  "access-control-allow-headers": "authorization, content-type, mcp-session-id, mcp-protocol-version",
+  "access-control-allow-headers": "authorization, content-type, mcp-session-id, mcp-protocol-version, x-memory-client-version",
   "access-control-allow-methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  "access-control-expose-headers": "mcp-session-id, retry-after, x-rows, www-authenticate",
+  "access-control-expose-headers": "mcp-session-id, retry-after, x-rows, www-authenticate, x-memory-version, x-memory-client-status",
 };
 
 Deno.serve(async (req) => {
@@ -231,5 +238,9 @@ Deno.serve(async (req) => {
     }
   }
   for (const [k, v] of Object.entries(CORS)) res.headers.set(k, v);
+  // Every answer carries the server's version. A client that sent its own also hears where it stands (R31).
+  res.headers.set("x-memory-version", SERVER_VERSION);
+  const sent = req.headers.get("x-memory-client-version");
+  if (sent) res.headers.set("x-memory-client-status", clientStatus(sent, config.clientCutoffDays));
   return res;
 });

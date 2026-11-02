@@ -1,19 +1,22 @@
 // MCP over streamable HTTP, stateless, JSON responses only. initialize mints an Mcp-Session-Id and records the client's
 // name, so a later call in any isolate knows claude from codex and keeps the arm its session drew. GET gets 405, which
 // the spec allows a server that offers no stream.
+import type { Principal } from "./auth.ts";
+import { config } from "./config.ts";
 import { sql } from "./db.ts";
 import * as service from "./service.ts";
+import { clientStatus, needsInstaller, SERVER_VERSION, UPDATE_NOTE } from "./version.ts";
 import { Refused, remember } from "./write.ts";
 
 const VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
-const INSTRUCTIONS = "Wen's memory. Call recall before acting on anything that depends on Wen's decisions, " +
+export const INSTRUCTIONS = "Wen's memory. Call recall before acting on anything that depends on Wen's decisions, " +
   "preferences or history. Wen's other agents leave you messages. Call check_messages when you start a task, " +
   "and post_message to reach them.";
 
 const str = (description: string) => ({ type: "string", description });
 const int = (description: string) => ({ type: "integer", description });
 
-const TOOLS = [
+export const TOOLS = [
   {
     name: "recall",
     description: "Search Wen's memory: his decisions, preferences, observations and past reactions.\n\n" +
@@ -84,7 +87,13 @@ const TOOLS = [
   },
 ];
 
-type Call = { session: string; client: string | null; args: Record<string, any> };
+/** The note for a computer whose hook is too old to update itself, or "" for everyone else. A claude.ai connector has no hook. */
+function installNote(who: Principal) {
+  if (who.role !== "device" || who.device?.startsWith("oauth:")) return "";
+  return needsInstaller(clientStatus(who.clientVersion, config.clientCutoffDays)) ? UPDATE_NOTE : "";
+}
+
+type Call = { session: string; client: string | null; args: Record<string, any>; note: string };
 const s = (v: unknown, fallback = "") => typeof v === "string" ? v : fallback;
 
 const RUN: Record<string, (c: Call) => Promise<string>> = {
@@ -104,7 +113,8 @@ const RUN: Record<string, (c: Call) => Promise<string>> = {
   },
   feedback: ({ args }) => service.feedback(sql, s(args.retrieval_id), s(args.verdict), s(args.entry_id) || null, s(args.note) || null),
   post_message: ({ client, args }) => service.postMessage(sql, service.agentName(client), s(args.to), s(args.body)),
-  check_messages: async ({ client }) => (await service.readMessages(service.agentName(client))) || "No new messages.",
+  check_messages: async ({ client, note }) =>
+    ((await service.readMessages(service.agentName(client))) || "No new messages.") + (note ? `\n${note}` : ""),
 };
 
 type RpcMessage = { jsonrpc?: string; id?: string | number | null; method?: string; params?: any };
@@ -117,7 +127,7 @@ async function clientOf(session: string | null): Promise<string | null> {
   return row?.client ?? null;
 }
 
-async function answer(msg: RpcMessage, session: string | null, minted: { id?: string }) {
+async function answer(msg: RpcMessage, session: string | null, minted: { id?: string }, who: Principal) {
   const id = msg.id;
   switch (msg.method) {
     case "initialize": {
@@ -129,7 +139,7 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
       return result(id, {
         protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0],
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: "memory", version: "2.0.0" },
+        serverInfo: { name: "memory", version: SERVER_VERSION },
         instructions: INSTRUCTIONS,
       });
     }
@@ -142,7 +152,7 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
       if (!run) return error(id, -32602, `Unknown tool ${name}`);
       const sid = session ?? `anon-${crypto.randomUUID()}`;
       try {
-        const text = await run({ session: sid, client: await clientOf(session), args: msg.params?.arguments ?? {} });
+        const text = await run({ session: sid, client: await clientOf(session), args: msg.params?.arguments ?? {}, note: installNote(who) });
         return result(id, { content: [{ type: "text", text }] });
       } catch (e) {
         if (!(e instanceof Refused)) console.error(e);
@@ -155,7 +165,7 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
   }
 }
 
-export async function handle(req: Request): Promise<Response> {
+export async function handle(req: Request, who: Principal): Promise<Response> {
   if (req.method === "GET") return new Response(null, { status: 405, headers: { allow: "POST, DELETE" } });
   if (req.method === "DELETE") return new Response(null, { status: 200 });
   if (req.method !== "POST") return new Response(null, { status: 405 });
@@ -170,7 +180,7 @@ export async function handle(req: Request): Promise<Response> {
   const batch = Array.isArray(body);
   const replies = [];
   for (const msg of batch ? body as RpcMessage[] : [body as RpcMessage]) {
-    const reply = await answer(msg, session, minted);
+    const reply = await answer(msg, session, minted, who);
     if (reply && msg.id !== undefined) replies.push(reply);
   }
   const headers: Record<string, string> = minted.id ? { "mcp-session-id": minted.id } : {};
