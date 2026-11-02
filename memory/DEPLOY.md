@@ -1,6 +1,6 @@
 # Deploy
 
-Memory runs on one Supabase project, `memory` (ref `wlhlncmgjqyidosunugv`, Canada, Free plan). Postgres holds the store in schema `memory`, which Supabase's public API can't reach. One Edge Function, also named `memory`, serves everything at:
+Memory runs on one Supabase project, `memory` (ref `wlhlncmgjqyidosunugv`, Canada, Pro plan). Postgres holds the store in schema `memory`, which Supabase's public API can't reach. One Edge Function, also named `memory`, serves everything at:
 
 ```
 https://memory.heyclyde.me
@@ -129,11 +129,14 @@ python memory/backup/restore.py memory.ndjson.gz.enc
 
 Embeddings aren't backed up. The next sync rebuilds them, for about $0.03.
 
-## Free plan limits
+## Pro plan
 
-- **500 MB database.** It's 93 MB today, mostly hook events.
-- **No platform backups.** The nightly export covers that.
-- **Pauses after a week idle.** Hooks write every session, so it won't idle while you work.
+Wen keeps the org on Pro ($25 a month, decided 2026-11-02).
+
+- **8 GB of database disk included.** memory used 93 MB on 2026-11-01, mostly hook events.
+- **Daily platform backups, kept 7 days.** The nightly encrypted export to GitHub stays as the copy that lives off Supabase.
+- **No pausing when idle.**
+- **100 GB of Storage included**, which is room for blobs (R20).
 
 ## See your memory
 
