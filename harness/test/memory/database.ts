@@ -1,8 +1,9 @@
 /**
  * Tier 3 support, run with deno: `reset` rebuilds schema memory from memory/supabase/migrations on SUPABASE_DB_URL, loads
- * the made-up tea vault, and stores the SHA-256 of MEMORY_TEST_TOKEN as a device and of MEMORY_TEST_RUNTIME_TOKEN as the
- * runtime token, the way auth.ts reads them. `drop` removes the schema again. pg_cron only lives in the postgres
- * database, so the tests reset a schema rather than create a database.
+ * the made-up tea vault, and stores the SHA-256 of MEMORY_TEST_TOKEN as a device, of MEMORY_TEST_RUNTIME_TOKEN as the
+ * runtime token and of MEMORY_TEST_ADMIN_TOKEN as the admin token, the way auth.ts reads them, with
+ * MEMORY_TEST_CRON_SECRET in Vault. `drop` removes the schema again. `sql <statement>` prints its rows as JSON, for what
+ * no route shows. pg_cron only lives in the postgres database, so the tests reset a schema rather than create a database.
  */
 import postgres from 'npm:postgres@3.4.7'
 
@@ -31,17 +32,31 @@ async function sha256(text: string): Promise<string> {
 const env = (name: string) => Deno.env.get(name) ?? ''
 const sql = postgres(env('SUPABASE_DB_URL'), { max: 1, onnotice: () => {} })
 
+// The migrations schedule these against the real project, with the cron secret. The tests never want them.
+const CRONS = ['memory-embed-sync', 'memory-learn']
+
+async function unschedule() {
+  await sql`select cron.unschedule(jobname) from cron.job where jobname::text = any(${CRONS}::text[])`
+}
+
 async function drop() {
-  await sql`select cron.unschedule(jobname) from cron.job where jobname = 'memory-embed-sync'`.catch(() => {})
+  await unschedule().catch(() => {})
   await sql`drop schema if exists memory cascade`
+}
+
+/** Vault lives outside schema memory, so a rerun updates the secret rather than adding a second. */
+async function putSecret(name: string, value: string) {
+  await sql`create extension if not exists supabase_vault cascade`.catch(() => {})
+  const [old] = await sql`select id from vault.secrets where name = ${name}`
+  if (old) await sql`select vault.update_secret(${old.id}::uuid, ${value})`
+  else await sql`select vault.create_secret(${value}, ${name})`
 }
 
 async function reset() {
   await drop()
   const files = [...Deno.readDirSync(MIGRATIONS)].map((f) => f.name).filter((n) => n.endsWith('.sql')).sort()
   for (const name of files) await sql.unsafe(await Deno.readTextFile(new URL(name, MIGRATIONS))).simple()
-  // The migration schedules an embed sync against the real project. The tests never want it.
-  await sql`select cron.unschedule('memory-embed-sync')`
+  await unschedule()
   for (const [id, kind, title, uri, date] of SOURCES) {
     await sql`insert into memory.source (id, kind, title, uri, date) values (${id}, ${kind}, ${title}, ${uri}, ${date})`
   }
@@ -54,13 +69,16 @@ async function reset() {
   }
   for (const [src, dst, type] of LINKS) await sql`insert into memory.link (src, dst, type) values (${src}, ${dst}, ${type})`
   await sql`insert into memory.setting (name, value) values ('runtime_token_sha256', ${await sha256(env('MEMORY_TEST_RUNTIME_TOKEN'))})`
+  await sql`insert into memory.setting (name, value) values ('admin_token_sha256', ${await sha256(env('MEMORY_TEST_ADMIN_TOKEN'))})`
   await sql`insert into memory.device (name, token_sha256) values ('clyde-test', ${await sha256(env('MEMORY_TEST_TOKEN'))})`
+  await putSecret('cron_secret', env('MEMORY_TEST_CRON_SECRET'))
 }
 
 try {
   if (Deno.args[0] === 'reset') await reset()
   else if (Deno.args[0] === 'drop') await drop()
-  else throw new Error('usage: database.ts reset|drop')
+  else if (Deno.args[0] === 'sql') console.log(JSON.stringify(await sql.unsafe(Deno.args[1])))
+  else throw new Error('usage: database.ts reset|drop|sql <statement>')
 } finally {
   await sql.end()
 }

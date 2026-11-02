@@ -56,7 +56,9 @@ jobs:
         with:
           deno-version: v2.x
       - name: Cache the function's imports
-        run: deno cache --node-modules-dir=none memory/supabase/functions/memory/index.ts harness/test/memory/database.ts
+        run: deno cache --node-modules-dir=none harness/test/memory/edge.ts harness/test/memory/database.ts
+      - name: The function's unit tests
+        run: deno test --allow-env --node-modules-dir=none harness/test/memory/embed_test.ts
       - uses: actions/setup-node@v4
         with:
           node-version: '22'

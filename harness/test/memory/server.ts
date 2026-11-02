@@ -3,26 +3,36 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import net from 'node:net'
 import { join } from 'node:path'
-import { repoRoot } from '../../src/config.ts'
 import { request } from '../../src/request.ts'
+import { type FakeAuth, startFakeAuth } from './auth.ts'
 import { type FakeOpenAI, startFakeOpenAI } from './openai.ts'
 
 export const DATABASE_URL = process.env.MEMORY_TEST_DATABASE_URL ?? ''
 export const SKIP = DATABASE_URL ? false : 'set MEMORY_TEST_DATABASE_URL to the postgres database of a supabase/postgres container to run the memory tests'
 
 const DENO = process.env.MEMORY_TEST_DENO || 'deno'
-const FUNCTION = join(repoRoot(), 'memory', 'supabase', 'functions', 'memory', 'index.ts')
+// index.ts behind a stand-in for the Supabase runtime's EdgeRuntime global.
+const FUNCTION = join(import.meta.dirname, 'edge.ts')
 const DATABASE = join(import.meta.dirname, 'database.ts')
 // Without it, the harness's package.json puts deno in manual mode, where npm: imports have to be in harness/node_modules.
 const NO_NODE_MODULES = '--node-modules-dir=none'
 
-export type RealMemory = { url: string; token: string; runtimeToken: string; openai: FakeOpenAI; close: () => Promise<void> }
+export type RealMemory = {
+  url: string; token: string; runtimeToken: string; adminToken: string; cronSecret: string; openai: FakeOpenAI; auth: FakeAuth
+  close: () => Promise<void>
+}
 
-function database(command: 'reset' | 'drop', tokens: Record<string, string> = {}): void {
-  const r = spawnSync(DENO, ['run', '-A', NO_NODE_MODULES, DATABASE, command], {
+function database(args: string[], tokens: Record<string, string> = {}): string {
+  const r = spawnSync(DENO, ['run', '-A', NO_NODE_MODULES, DATABASE, ...args], {
     encoding: 'utf8', timeout: 120_000, env: { ...process.env, SUPABASE_DB_URL: DATABASE_URL, ...tokens },
   })
-  if (r.status !== 0) throw new Error(`database.ts ${command} failed (${r.status}): ${r.stderr || r.stdout || r.error?.message}`)
+  if (r.status !== 0) throw new Error(`database.ts ${args[0]} failed (${r.status}): ${r.stderr || r.stdout || r.error?.message}`)
+  return r.stdout
+}
+
+/** The rows of one SQL statement on the test database, for what no route shows: hashes, absences, seeded rows. */
+export function sql(statement: string): Record<string, any>[] {
+  return JSON.parse(database(['sql', statement]))
 }
 
 function freePort(): Promise<number> {
@@ -51,17 +61,24 @@ async function waitHealthy(url: string, child: ChildProcess, log: () => string):
   throw new Error(`memory never answered /healthz:\n${log()}`)
 }
 
-/** A fresh schema memory and the function on it, with a device token and the runtime token. close() stops the function and drops the schema. */
+/** A fresh schema memory and the function on it, with a device token, the runtime and admin tokens, and the cron secret.
+ * close() stops the function and drops the schema. */
 export async function startRealMemory(): Promise<RealMemory> {
   const token = `device-${randomBytes(8).toString('hex')}`
   const runtimeToken = `runtime-${randomBytes(8).toString('hex')}`
-  database('reset', { MEMORY_TEST_TOKEN: token, MEMORY_TEST_RUNTIME_TOKEN: runtimeToken })
+  const adminToken = `admin-${randomBytes(8).toString('hex')}`
+  const cronSecret = `cron-${randomBytes(8).toString('hex')}`
+  database(['reset'], {
+    MEMORY_TEST_TOKEN: token, MEMORY_TEST_RUNTIME_TOKEN: runtimeToken, MEMORY_TEST_ADMIN_TOKEN: adminToken, MEMORY_TEST_CRON_SECRET: cronSecret,
+  })
   const port = await freePort()
-  // Embeddings, the write judge and the recall filter all go to the fake, so nothing leaves the machine.
+  // Embeddings, the write judge and the recall filter all go to the fake OpenAI, and sign-ins to the fake Supabase Auth,
+  // so nothing leaves the machine.
   const openai = await startFakeOpenAI()
+  const auth = await startFakeAuth()
   const env = {
     ...process.env, SUPABASE_DB_URL: DATABASE_URL, DENO_SERVE_ADDRESS: `tcp:127.0.0.1:${port}`, MEMORY_OPENAI_URL: openai.url,
-    NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost',
+    SUPABASE_URL: auth.url, SUPABASE_ANON_KEY: 'fake-anon-key', NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost',
   }
   const child = spawn(DENO, ['run', '-A', NO_NODE_MODULES, FUNCTION], { env, stdio: ['ignore', 'pipe', 'pipe'] })
   let output = ''
@@ -75,7 +92,8 @@ export async function startRealMemory(): Promise<RealMemory> {
       await new Promise((r) => child.once('exit', r))
     }
     await openai.close()
-    database('drop')
+    await auth.close()
+    database(['drop'])
   }
   try {
     await waitHealthy(url, child, () => output)
@@ -83,5 +101,5 @@ export async function startRealMemory(): Promise<RealMemory> {
     await close()
     throw err
   }
-  return { url, token, runtimeToken, openai, close }
+  return { url, token, runtimeToken, adminToken, cronSecret, openai, auth, close }
 }
