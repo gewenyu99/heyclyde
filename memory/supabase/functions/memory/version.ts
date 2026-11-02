@@ -6,7 +6,7 @@ export const SERVER_VERSION = "20261102.1";
 
 // SHA-256 of the tools, instructions and client files at SERVER_VERSION. After a bump, set it to what
 // `deno run -A harness/test/memory/surface.ts` prints.
-export const SURFACE_HASH = "a126d29d19649c14f41fa0c07dd7a355742ba3c77bc00535d2a687f9629cf929";
+export const SURFACE_HASH = "3c327afeb3e9e4986b9a065ffe35f8d891fe9dbc5b192828b555bb261f5a0567";
 
 /** What a rerun of the installer fixes: it replaces a hook too old to update itself, and keeps the device token. */
 export const UPDATE_NOTE = "memory: this computer's client is out of date. Rerun `curl -fsSL https://memory.heyclyde.me/install | sh`, " +

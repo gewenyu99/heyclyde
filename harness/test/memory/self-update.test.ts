@@ -30,21 +30,32 @@ type Fake = {
   override: Record<string, string | number>
   /** Sent as x-memory-client-status on hook calls. */
   status: string
+  /** The x-memory-device of each request, by "METHOD /path". */
+  devices: Record<string, string[]>
+  /** What a hook call answers with, by event, as {status, body}. Empty and 200 when the event has none. */
+  answer: Record<string, { status: number; body: string }>
   delayMs: number
   close: () => Promise<void>
 }
 
 /** A server that answers hooks and /messages with its version header and serves /install/files like the function. */
 async function fakeServer(version = NEW): Promise<Fake> {
-  const fake = { hits: [], sent: {}, version, override: {}, status: 'behind', delayMs: 0 } as unknown as Fake
+  const fake = { hits: [], sent: {}, devices: {}, answer: {}, version, override: {}, status: 'behind', delayMs: 0 } as unknown as Fake
   const server = http.createServer((req, res) => {
     const key = `${req.method} ${(req.url ?? '').split('?')[0]}`
     fake.hits.push(key)
     ;(fake.sent[key] ??= []).push(String(req.headers['x-memory-client-version'] ?? ''))
+    ;(fake.devices[key] ??= []).push(String(req.headers['x-memory-device'] ?? ''))
     req.resume()
     req.on('end', () => {
       res.setHeader('x-memory-version', fake.version)
-      if (req.method === 'POST' && req.url?.startsWith('/hooks/')) res.setHeader('x-memory-client-status', fake.status)
+      if (req.method === 'POST' && req.url?.startsWith('/hooks/')) {
+        res.setHeader('x-memory-client-status', fake.status)
+        const answer = fake.answer[/^\/hooks\/([^/?]+)/.exec(req.url)?.[1] ?? ''] ?? { status: 200, body: '' }
+        res.statusCode = answer.status
+        res.end(answer.body)
+        return
+      }
       const file = /^\/install\/files\/([^/]+)$/.exec(req.url ?? '')?.[1]
       if (!file) {
         res.end(req.url === '/healthz' ? JSON.stringify({ ok: true, version: fake.version }) : '')
@@ -91,6 +102,7 @@ function computer(url: string, at = OLD): Computer {
   writeFileSync(hook, read('memory-hook').replace('VERSION=@MEMORY_VERSION@', `VERSION=${at}`), { mode: 0o700 })
   writeFileSync(join(dir, 'url'), `${url}\n`)
   writeFileSync(join(dir, 'token'), `${TOKEN}\n`, { mode: 0o600 })
+  writeFileSync(join(dir, 'device-id'), 'test-mac\n')
   const claude = join(home, '.claude', 'settings.json')
   const ours = JSON.parse(read('claude-settings.json')).hooks
   writeFileSync(claude, JSON.stringify({ model: 'opus', hooks: { ...ours, UserPromptSubmit: [USER_HOOK, ...ours.UserPromptSubmit] } }, null, 2))
@@ -356,6 +368,57 @@ test('install.sh --update from a checkout stamps the hook with the server versio
     assert.equal(existsSync(c.claude), false, 'no settings.json made for a computer that has none')
     assert.equal(readFileSync(c.codex, 'utf8'), '{}\n', 'a hooks file with no memory hook is left alone')
     assert.equal(tokenOf(c), `${TOKEN}\n`)
+  } finally {
+    await fake.close()
+    rmSync(c.home, { recursive: true, force: true })
+  }
+})
+
+test('every call names the computer, by the installer\'s device name or an id made once and kept', async () => {
+  const fake = await fakeServer(NEW)
+  const c = computer(fake.url, NEW)
+  try {
+    await runHook(c, 'Stop')
+    await runHook(c, 'UserPromptSubmit')
+    assert.deepEqual(fake.devices['POST /hooks/Stop'], ['test-mac'])
+    assert.deepEqual(fake.devices['GET /messages/claude'], ['test-mac'], 'the inbox call too')
+    // No device-id: the hook makes one, saves it, and keeps using it.
+    rmSync(join(c.dir, 'device-id'))
+    await runHook(c, 'Stop')
+    await runHook(c, 'Stop')
+    const [first, second] = fake.devices['POST /hooks/Stop'].slice(1)
+    assert.match(first, /^[0-9a-f]{16}$/)
+    assert.equal(second, first, 'stable across calls')
+    assert.equal(readFileSync(join(c.dir, 'device-id'), 'utf8'), `${first}\n`)
+  } finally {
+    await fake.close()
+    rmSync(c.home, { recursive: true, force: true })
+  }
+})
+
+test("the server's answer to SessionStart, UserPromptSubmit and Stop reaches stdout untouched, and an empty one prints nothing", async () => {
+  const fake = await fakeServer(NEW)
+  const c = computer(fake.url, NEW)
+  const block = '{"decision":"block","reason":"You committed. remember() what you decided."}'
+  try {
+    for (const event of ['SessionStart', 'UserPromptSubmit', 'Stop', 'PostToolUse']) {
+      assert.deepEqual((await runHook(c, event)).stdout, '', `${event}: an empty answer prints nothing`)
+    }
+    fake.answer.Stop = { status: 200, body: block }
+    assert.equal((await runHook(c, 'Stop')).stdout, block, 'a Stop decision arrives byte for byte, for Claude Code to act on')
+    const odd = '  {"a":"b\\n","z":"é"}\n\n'
+    fake.answer.Stop = { status: 200, body: odd }
+    assert.equal((await runHook(c, 'Stop')).stdout, odd, 'spacing and trailing newlines survive')
+    fake.answer.SessionStart = { status: 200, body: 'Wen prefers oolong at 90C.\n' }
+    assert.equal((await runHook(c, 'SessionStart')).stdout, 'Wen prefers oolong at 90C.\n')
+    fake.answer.UserPromptSubmit = { status: 200, body: 'context for this prompt\n' }
+    assert.equal((await runHook(c, 'UserPromptSubmit')).stdout, 'context for this prompt\n')
+    // Other events never print, and neither does an error page.
+    fake.answer.PostToolUse = { status: 200, body: 'ignored' }
+    assert.equal((await runHook(c, 'PostToolUse')).stdout, '')
+    fake.answer.Stop = { status: 500, body: '{"error":"The server hit an error."}' }
+    const failed = await runHook(c, 'Stop')
+    assert.deepEqual([failed.code, failed.stdout], [0, ''])
   } finally {
     await fake.close()
     rmSync(c.home, { recursive: true, force: true })

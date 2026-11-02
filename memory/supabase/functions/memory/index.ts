@@ -59,7 +59,8 @@ async function hooks(req: Request, event: string, url: URL, who: Principal) {
   let body = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : { body: payload };
   if (who.hooks === "metadata") body = Object.fromEntries(HOOK_METADATA.filter((k) => k in body).map((k) => [k, body[k]]));
   await service.hook(event, body, AGENT.test(agent) ? agent : null);
-  return json({ ok: true });
+  // Empty on purpose: memory-hook prints whatever comes back into the agent's context, so an answer is a decision to make.
+  return new Response("");
 }
 
 /** clyde-flow's write, with the runtime token, up to approved. A device token writes as remember does. */
@@ -220,7 +221,7 @@ async function route(req: Request): Promise<Response> {
 // runs on another origin.
 const CORS = {
   "access-control-allow-origin": "*",
-  "access-control-allow-headers": "authorization, content-type, mcp-session-id, mcp-protocol-version, x-memory-client-version",
+  "access-control-allow-headers": "authorization, content-type, mcp-session-id, mcp-protocol-version, x-memory-client-version, x-memory-device",
   "access-control-allow-methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
   "access-control-expose-headers": "mcp-session-id, retry-after, x-rows, www-authenticate, x-memory-version, x-memory-client-status",
 };

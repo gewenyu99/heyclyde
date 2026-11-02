@@ -13,7 +13,7 @@ DIR=$HOME/.config/memory
 if [ "${1:-}" = --update ]; then UPDATE=1; else UPDATE=; fi
 URL=${MEMORY_URL:-$([ -n "$UPDATE" ] && cat "$DIR/url" 2>/dev/null || true)}
 URL=${URL:-https://memory.heyclyde.me}
-DEVICE=${MEMORY_DEVICE:-$(hostname -s 2>/dev/null | tr 'A-Z' 'a-z' | tr -c 'a-z0-9._-\n' '-')}
+DEVICE=${MEMORY_DEVICE:-$(hostname -s 2>/dev/null | tr 'A-Z' 'a-z' | tr -c 'a-z0-9._\n-' '-')}
 
 umask 077
 [ -n "$UPDATE" ] || mkdir -p "$DIR" "$HOME/.claude" "$HOME/.codex"
@@ -102,6 +102,7 @@ if [ -z "$UPDATE" ]; then
 
   printf '%s\n' "$URL" > "$DIR/url"
   printf '%s\n' "$TOKEN" > "$DIR/token"
+  printf '%s\n' "$DEVICE" > "$DIR/device-id"
   put_hook
 fi
 

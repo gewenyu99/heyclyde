@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { randomBytes, randomUUID } from 'node:crypto'
-import { chmodSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 import { DaemonClient } from '../../src/client.ts'
@@ -19,8 +19,8 @@ import { Memory } from '../../src/memory.ts'
 import { request } from '../../src/request.ts'
 import { SERVER_VERSION } from '../../../memory/supabase/functions/memory/version.ts'
 import { formatList, type WorkList } from '../../src/lists.ts'
-import { request } from '../../src/request.ts'
 import { FAKE_BIN, HARNESS, LV, setup, tempDir, waitFor } from '../helpers.ts'
+import { repoRoot } from '../../src/config.ts'
 import { jwt } from './auth.ts'
 import { FAKE_DOWN, FAKE_REFUSE } from './openai.ts'
 import { SKIP, sql, startRealMemory, type RealMemory } from './server.ts'
@@ -508,6 +508,7 @@ test('hooks tell a client where it stands, and an older client keeps working', {
     assert.equal(r.status, 200, `${v}: ${r.text}`)
     return r.headers['x-memory-client-status'] ?? null
   }
+  assert.equal((await hook(SERVER_VERSION)).text, '', 'a hook call answers with an empty body, so memory-hook prints nothing')
   assert.equal(await status(SERVER_VERSION), 'current')
   assert.equal(await status('29991231.1'), 'current')
   assert.equal(await status('dev'), 'current')
@@ -532,4 +533,25 @@ test('a client with no version or past the cutoff is told to rerun the installer
   await hook(SERVER_VERSION)
   const fresh = await mcp('tools/call', { name: 'check_messages', arguments: {} })
   assert.doesNotMatch(fresh.content[0].text, note)
+})
+
+test("the real memory-hook against the real server prints nothing for SessionStart, UserPromptSubmit and Stop", { skip: SKIP }, async () => {
+  const home = tempDir('memory-hook-real-')
+  try {
+    for (const event of ['SessionStart', 'UserPromptSubmit', 'Stop']) {
+      const ran = await new Promise<{ code: number | null; stdout: string }>((resolve) => {
+        const env = { PATH: process.env.PATH ?? '', HOME: home, MEMORY_URL: memory.url, MEMORY_TOKEN: memory.token, NO_PROXY: '127.0.0.1', no_proxy: '127.0.0.1' }
+        const child = spawn(join(repoRoot(), 'memory', 'supabase', 'functions', 'memory', 'client', 'memory-hook'), [event], { env, stdio: ['pipe', 'pipe', 'ignore'] })
+        let stdout = ''
+        child.stdout.on('data', (d) => (stdout += d))
+        child.stdin.end('{"session_id":"r31-real","cwd":"/tmp"}')
+        child.on('close', (code) => resolve({ code, stdout }))
+      })
+      assert.equal(ran.code, 0, event)
+      // The checkout's hook reports dev, which is current, so the server adds no installer note either.
+      assert.equal(ran.stdout, '', `${event} printed ${JSON.stringify(ran.stdout)}`)
+    }
+  } finally {
+    rmSync(home, { recursive: true, force: true })
+  }
 })

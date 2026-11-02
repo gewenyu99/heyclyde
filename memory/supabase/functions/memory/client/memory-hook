@@ -4,6 +4,10 @@
 # to the agent's context. MEMORY_AGENT names the agent (claude by default, codex for Codex) for its events and its inbox.
 # The URL and token come from MEMORY_URL and MEMORY_TOKEN, else from ~/.config/memory.
 # It never blocks the agent: no config, a slow server or an error all exit 0 and print nothing.
+# It is a forwarder. For SessionStart, UserPromptSubmit and Stop it also prints whatever the server answers the event
+# with, untouched: Claude Code adds that to the agent's context, and acts on a Stop answer like {"decision":"block",...}.
+# Each call names this computer with x-memory-device: the installer's device name, else an id made once and kept in
+# ~/.config/memory/device-id.
 #
 # Self-update (R31). Every call sends VERSION, and the server answers with its own. When the server's is newer, an
 # installed hook starts `memory-hook --update` in the background, which fetches the current client files, checks them,
@@ -57,10 +61,17 @@ if [ "$1" = --update ]; then
 fi
 
 isver "$VERSION" && sent=$VERSION || sent=dev
-# The first call's headers say the server's version and where this client stands against it. -D - prints them, and the
-# body goes nowhere.
-headers=$(curl -sS -m 3 -D - -o /dev/null -X POST "$url/hooks/$1?agent=${MEMORY_AGENT:-claude}" \
-  -H "Authorization: Bearer $token" -H "Content-Type: application/json" -H "x-memory-client-version: $sent" \
+device=$(cat "$dir/device-id" 2>/dev/null | tr -cd 'a-z0-9._-')
+if [ -z "$device" ]; then
+  device=$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')
+  { mkdir -p "$dir" && printf '%s\n' "$device" > "$dir/device-id"; } 2>/dev/null
+fi
+# The first call's headers say the server's version and where this client stands against it: -D - prints them. The
+# body goes to a file. -f keeps an error page out of it.
+body=$(mktemp 2>/dev/null) || body=/dev/null
+headers=$(curl -fsS -m 3 -D - -o "$body" -X POST "$url/hooks/$1?agent=${MEMORY_AGENT:-claude}" \
+  -H "Authorization: Bearer $token" -H "Content-Type: application/json" \
+  -H "x-memory-client-version: $sent" -H "x-memory-device: $device" \
   --data-binary @- 2>/dev/null | tr 'A-Z' 'a-z' | tr -d '\r')
 header() { printf '%s\n' "$headers" | sed -n "/^$1:/{s/^[^:]*: *//p;q;}"; }
 
@@ -72,10 +83,14 @@ if [ "$0" = "$dir/memory-hook" ] && isver "$server" && isver "$VERSION" && newer
 fi
 
 case $1 in
+  SessionStart|UserPromptSubmit|Stop) [ -s "$body" ] && cat "$body" ;;
+esac
+[ "$body" = /dev/null ] || rm -f "$body"
+case $1 in
   SessionStart|UserPromptSubmit)
     [ "$(header x-memory-client-status)" = expired ] &&
       echo "memory: this computer's client is out of date. Rerun \`curl -fsSL $url/install | sh\`, which needs no new sign-in."
     curl -fsS -m 3 -H "Authorization: Bearer $token" -H "x-memory-client-version: $sent" \
-      "$url/messages/${MEMORY_AGENT:-claude}" 2>/dev/null ;;
+      -H "x-memory-device: $device" "$url/messages/${MEMORY_AGENT:-claude}" 2>/dev/null ;;
 esac
 exit 0
