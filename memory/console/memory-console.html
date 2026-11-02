@@ -87,6 +87,9 @@ tr.click { cursor: pointer; } tr.click:hover td { background: var(--accent-soft)
     <button role="tab" data-tab="map" aria-selected="false">Map</button>
     <button role="tab" data-tab="bindings" aria-selected="false">Bindings</button>
     <button role="tab" data-tab="recalls" aria-selected="false">Recalls</button>
+    <button role="tab" data-tab="sessions" aria-selected="false">Sessions</button>
+    <button role="tab" data-tab="events" aria-selected="false">Events</button>
+    <button role="tab" data-tab="messages" aria-selected="false">Messages</button>
     <button role="tab" data-tab="activity" aria-selected="false">Activity</button>
   </nav>
   <div id="view"></div>
@@ -102,7 +105,8 @@ const lit = (v) => "'" + String(v).replace(/'/g, "''") + "'";
 
 // Everything the views show. Filled from the snapshot in this page's database first, then from Supabase live when the
 // Supabase connector answers.
-const data = { stats: null, entries: [], links: [], recalls: [], activity: [], source: "none", snapshotAt: null };
+const data = { stats: null, entries: [], links: [], recalls: [], activity: [], sessions: [], events: [], messages: [],
+  source: "none", snapshotAt: null };
 let mcp = null;
 
 const FIX = {
@@ -141,7 +145,9 @@ async function loadSnapshot() {
     Promise.all(Array.from({ length: s.entry_docs }, (_, i) => read("entries_" + i))).then((a) => a.flat()),
     Promise.all(Array.from({ length: s.link_docs }, (_, i) => read("links_" + i))).then((a) => a.flat()),
     read("recalls"), read("activity")]);
-  Object.assign(data, { stats: s, entries, links, recalls, activity, source: "snapshot", snapshotAt: s.taken_at });
+  // Snapshots from before the agents' logs name no documents for them, and those views stay empty.
+  const [sessions, events, messages] = await Promise.all(["session_doc", "event_doc", "message_doc"].map((k) => s[k] ? read(s[k]) : []));
+  Object.assign(data, { stats: s, entries, links, recalls, activity, sessions, events, messages, source: "snapshot", snapshotAt: s.taken_at });
   return true;
 }
 
@@ -160,6 +166,17 @@ async function loadLive() {
          (select count(*) from memory.retrieval where created_at::date = d::date) as recalls
          from generate_series(current_date - 29, current_date, interval '1 day') d order by 1`)]);
   Object.assign(data, { stats, entries, links, recalls, activity, source: "live" });
+  // The agents' logs come second, so a refusal here keeps the rest live and these on the snapshot.
+  try {
+    const [sessions, events, messages] = await Promise.all([
+      sql(`select s.id, s.arm, s.client, s.claude_session_id, s.created_at, count(r.id) as recalls,
+           coalesce(json_agg(r.created_at) filter (where r.id is not null), '[]') as recall_times
+           from memory.mcp_session s left join memory.retrieval r on r.mcp_session = s.id
+           group by s.id order by s.created_at desc limit 200`),
+      sql(`select received_at, agent, event, session_id, summary, cwd from memory.events_recent limit 300`),
+      sql(`select id, created_at, sender, recipient, body, read_by from memory.message order by id desc limit 200`)]);
+    Object.assign(data, { sessions, events, messages });
+  } catch (e) { console.warn("logs", e); }
 }
 
 function problem(e) {
@@ -335,7 +352,77 @@ function activity() {
   </svg><div class="status">Bars are hook events. Dots mark days with recalls.</div></div>`;
 }
 
-const VIEWS = { entries, map, bindings, recalls, activity };
+// ---------------------------------------------------------------- sessions
+// A session keeps the times of its recalls. The same instant can come back as 2026-11-01 09:00:00.5+00 or
+// 2026-11-01T09:00:00.500Z, so both sides are written one way before they're compared.
+const instant = (t) => {
+  const m = String(t ?? "").match(/^(\d{4}-\d\d-\d\d)[T ](\d\d:\d\d:\d\d)(?:\.(\d+))?\s*(Z|[+-]\d\d(?::?\d\d)?)?$/);
+  if (!m) return String(t ?? "");
+  const z = !m[4] || m[4] === "Z" ? "Z" : m[4].replace(/^([+-]\d\d):?(\d\d)?$/, (_, h, mm) => h + ":" + (mm || "00"));
+  return `${m[1]}T${m[2]}.${(m[3] || "").padEnd(6, "0").slice(0, 6)}${z === "+00:00" || z === "-00:00" ? "Z" : z}`;
+};
+const when = (t) => t ? esc(new Date(t).toLocaleString()) : "";
+const list = (v) => Array.isArray(v) ? v : typeof v === "string" && v.trim().startsWith("[") ? JSON.parse(v)
+  : typeof v === "string" ? v.replace(/^\{|\}$/g, "").split(",").filter(Boolean) : [];
+
+function sessions() {
+  const rows = data.sessions;
+  $("#view").innerHTML = `<div class="panel">${rows.length ? `<table><thead><tr><th>Client</th><th>Arm</th><th>Started</th><th class="num">Recalls</th></tr></thead><tbody>${rows.map((r, i) =>
+    `<tr class="click" data-i="${i}"><td>${r.client ? esc(r.client) : `<span class="status">unknown</span>`}<div class="id">${esc(r.claude_session_id || r.id)}</div></td>
+    <td>${esc(r.arm)}</td><td class="id">${when(r.created_at)}</td><td class="num">${Number(r.recalls) || 0}</td></tr>`).join("")}</tbody></table>`
+    : `<div class="empty">No MCP sessions yet. The first recall starts one.</div>`}</div>`;
+  $("#view").querySelectorAll("tr.click").forEach((tr) => tr.onclick = () => session(rows[tr.dataset.i]));
+}
+
+function session(s) {
+  const times = new Set(list(s.recall_times).map(instant));
+  const rows = data.recalls.filter((r) => times.has(instant(r.created_at)));
+  const total = Number(s.recalls) || 0;
+  $("#view").innerHTML = `<div class="panel detail"><button class="back" id="back">← All sessions</button>
+    <h2>${s.client ? esc(s.client) : "Unknown client"} session</h2>
+    <div class="meta"><span>${esc(s.arm)}</span><span>started ${when(s.created_at)}</span><span>${total} recall${total === 1 ? "" : "s"}</span>
+      <span class="id">${esc(s.id)}</span>${s.claude_session_id ? `<span class="id">client session ${esc(s.claude_session_id)}</span>` : ""}</div>
+    ${rows.length < total ? `<span class="status">${rows.length ? `Showing ${rows.length} of them.` : "None of them are here."} The page loads the newest 100 recalls.</span>` : ""}</div>
+    ${rows.length ? `<div class="panel"><table><thead><tr><th>When</th><th>Query</th><th>Delivered</th><th class="num">ms</th></tr></thead><tbody>${rows.map((r) =>
+      `<tr><td class="id">${when(r.created_at)}</td><td>${esc(r.query)}${r.degraded ? `<div class="id" style="color:var(--warn)">${esc(r.degraded)}</div>` : ""}</td>
+      <td>${typeof r.delivered === "number" ? r.delivered + " items" : esc(String(r.delivered || "nothing").split(" | ").slice(0, 4).join(" · "))}</td><td class="num">${r.latency_ms ?? ""}</td></tr>`).join("")}</tbody></table></div>`
+      : total ? "" : `<div class="panel"><div class="empty">No recalls in this session.</div></div>`}`;
+  $("#back").onclick = sessions;
+}
+
+// ---------------------------------------------------------------- events
+let eventFilter = "";
+function events() {
+  const v = $("#view");
+  v.innerHTML = `<div class="tools"><input type="search" id="vq" placeholder="Filter by event type or summary" value="${esc(eventFilter)}"></div>
+    <div class="panel" id="vlist"></div>`;
+  const run = () => {
+    eventFilter = $("#vq").value;
+    const text = eventFilter.trim().toLowerCase();
+    const rows = data.events.filter((r) => !text || has(r.event, text) || has(r.summary, text));
+    $("#vlist").innerHTML = rows.length ? `<table><thead><tr><th>Received</th><th>Event</th><th>Agent</th><th>Summary</th><th>Session</th><th>Directory</th></tr></thead><tbody>${rows.map((r) =>
+      `<tr><td class="id">${when(r.received_at)}</td><td><span class="chip t-other">${esc(r.event)}</span></td><td>${esc(r.agent)}</td>
+      <td>${esc(r.summary)}</td><td class="id">${r.session_id ? esc(r.session_id) : "none"}</td>
+      <td class="id" title="${esc(r.cwd)}">${esc(String(r.cwd || "").split("/").filter(Boolean).pop() || r.cwd)}</td></tr>`).join("")}</tbody></table>`
+      : `<div class="empty">${data.events.length ? "No events match." : "No hook events yet. memory-hook sends them from Claude Code and Codex."}</div>`;
+  };
+  $("#vq").oninput = run;
+  run();
+}
+
+// ---------------------------------------------------------------- messages
+// The board as it stands. Reading it here marks nothing read, so the agents still get their mail.
+function messages() {
+  const rows = data.messages;
+  $("#view").innerHTML = `<div class="panel">${rows.length ? `<table><thead><tr><th>From → to</th><th>When</th><th>Message</th><th>Read by</th></tr></thead><tbody>${rows.map((m) => {
+    const read = list(m.read_by);
+    return `<tr><td style="white-space:nowrap"><b>${esc(m.sender)}</b> → <b>${esc(m.recipient)}</b><div class="id">#${esc(m.id)}</div></td>
+    <td class="id">${when(m.created_at)}</td><td style="white-space:pre-wrap;max-width:60ch">${esc(m.body)}</td>
+    <td>${read.length ? read.map((n) => `<span class="chip t-relates">${esc(n)}</span>`).join(" ") : `<span class="status">Unread</span>`}</td></tr>`; }).join("")}</tbody></table>`
+    : `<div class="empty">No messages yet.</div>`}</div>`;
+}
+
+const VIEWS = { entries, map, bindings, recalls, activity, sessions, events, messages };
 let current = "entries";
 function select(tab, render = true) {
   current = tab;

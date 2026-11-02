@@ -3,7 +3,8 @@
   python memory/console/snapshot.py <out_dir>
 
 Reads through the function with the admin and backup tokens in ~/.config/memory. Writes one file per document:
-stats.json, entries_<n>.json (100 entries each), links_<n>.json (300 each), recalls.json and activity.json.
+stats.json, entries_<n>.json (100 entries each), links_<n>.json (300 each), recalls.json, activity.json, sessions.json,
+events.json (the newest 300) and messages.json.
 """
 import json, os, sys, urllib.request
 from pathlib import Path
@@ -63,13 +64,34 @@ def main(out):
         full[r["id"]] = r
     (out / "recalls.json").write_text(json.dumps({"rows": [{"created_at": r["created_at"], "arm": r["arm"], "client": r["client"],
         "query": r["query"], "latency_ms": r["latency_ms"], "degraded": r["degraded"], "delivered": r["delivered_count"]} for r in rec]}, ensure_ascii=False))
+    # Each session keeps the times of its recalls, so the page can find them among the recalls above.
+    times = {}
+    for r in rec:
+        if r.get("mcp_session"):
+            times.setdefault(r["mcp_session"], []).append(r["created_at"])
+    sess = json.loads(get("/api/v1/sessions?limit=200", "admin-token"))["items"]
+    (out / "sessions.json").write_text(json.dumps({"rows": [{"id": s["id"], "arm": s["arm"], "client": s["client"],
+        "claude_session_id": s["claude_session_id"], "created_at": s["created_at"], "recalls": int(s["recalls"] or 0),
+        "recall_times": times.get(s["id"], [])} for s in sess]}, ensure_ascii=False))
+    ev = []
+    while len(ev) < 300:
+        got = json.loads(get(f"/api/v1/events?limit=200&offset={len(ev)}", "admin-token"))["items"]
+        ev += got
+        if len(got) < 200:
+            break
+    (out / "events.json").write_text(json.dumps({"rows": [{"received_at": e["received_at"], "agent": e["agent"], "event": e["event"],
+        "session_id": e["session_id"], "summary": e["summary"], "cwd": e["cwd"]} for e in ev[:300]]}, ensure_ascii=False))
+    msgs = json.loads(get("/api/v1/messages?limit=200", "admin-token"))["items"]
+    (out / "messages.json").write_text(json.dumps({"rows": [{"id": m["id"], "created_at": m["created_at"], "sender": m["sender"],
+        "recipient": m["recipient"], "body": (m["body"] or "")[:4000], "read_by": m["read_by"] or []} for m in msgs]}, ensure_ascii=False))
     act = json.loads(get("/api/v1/activity?days=30", "admin-token"))
     (out / "activity.json").write_text(json.dumps({"rows": [{"day": d["day"], "hooks": d["events"], "recalls": d["recalls"]} for d in act["days"]]}))
     ov = json.loads(get("/api/v1/overview", "admin-token"))
     c = ov["counts"]
     stats = {"entries": c["entries"], "links": c["links"], "recalls": c["recalls"], "events": c["events"], "computers": c["devices"],
              "embedded": ov["embeddings"]["embedded"], "tokens": ov["health"]["budget"]["used"], "last_hook": ov["last"]["hook"],
-             "last_recall": ov["last"]["recall"], "taken_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(), "entry_docs": (len(rows) + 99) // 100, "link_docs": (len(lrows) + 299) // 300}
+             "last_recall": ov["last"]["recall"], "taken_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(), "entry_docs": (len(rows) + 99) // 100, "link_docs": (len(lrows) + 299) // 300,
+             "session_doc": "sessions", "event_doc": "events", "message_doc": "messages"}
     (out / "stats.json").write_text(json.dumps(stats))
     print(json.dumps(stats))
 
