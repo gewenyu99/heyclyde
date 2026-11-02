@@ -1,0 +1,149 @@
+<title>Recall Trace</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: the query, a five-stage strip you step through, the graph lit up for the chosen stage, then every entry's fate. */
+:root {
+  --bg: #f6f7f8; --panel: #fff; --fg: #1d2329; --muted: #5d6873; --line: #dde2e7;
+  --seed: #3e5c8a; --link: #7b4fb0; --kept: #2d6b3c; --pruned: #a32d2d; --dim: #c9d0d6; --accent: #23656b;
+  --sans: "Atkinson Hyperlegible", system-ui, sans-serif; --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15191d; --panel: #1d2227; --fg: #e4e8ec; --muted: #9aa5b0; --line: #2f363d;
+  --seed: #8fb0e3; --link: #c3a0ef; --kept: #8ccf98; --pruned: #f09595; --dim: #39424a; --accent: #6fbcc2; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #15191d; --panel: #1d2227; --fg: #e4e8ec; --muted: #9aa5b0; --line: #2f363d;
+  --seed: #8fb0e3; --link: #c3a0ef; --kept: #8ccf98; --pruned: #f09595; --dim: #39424a; --accent: #6fbcc2; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--sans); }
+.wrap { max-width: 1060px; margin: 0 auto; padding-block: 20px 48px; display: grid; gap: 16px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+h1 { font-size: 22px; margin: 0; text-wrap: balance; }
+.q { font: 600 15px var(--mono); color: var(--accent); }
+.answer { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; max-width: 75ch; }
+.stages { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+.stage { text-align: left; font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; cursor: pointer; }
+.stage b { display: block; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.stage strong { font: 600 18px var(--mono); }
+.stage span { display: block; font-size: 13px; color: var(--muted); }
+.stage[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.stage:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.explain { min-height: 3em; max-width: 80ch; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; }
+.graph { height: min(64vh, 620px); min-height: 400px; position: relative; overflow: hidden; }
+.graph svg { width: 100%; height: 100%; display: block; }
+.lbl { font: 11px var(--sans); fill: var(--fg); paint-order: stroke; stroke: var(--panel); stroke-width: 3px; pointer-events: none; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; gap: 6px; align-items: center; }
+.legend i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+th { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+.id { font: 12px var(--mono); color: var(--muted); }
+.tag { font: 600 11px var(--mono); padding: 1px 6px; border-radius: 4px; border: 1px solid currentColor; white-space: nowrap; }
+.up { color: var(--kept); } .down { color: var(--pruned); }
+</style>
+<div class="wrap">
+  <h1>Recall Trace</h1>
+  <div class="q" id="q"></div>
+  <div class="answer"><b>What came back:</b> memory has no named characters. It knows the film is a solo action production in Toronto with East Asian characters, and that keeping the same characters consistent across videos is a core requirement.</div>
+  <div class="stages" id="stages"></div>
+  <div class="explain" id="explain"></div>
+  <div class="legend">
+    <span><i style="background:var(--seed)"></i>Seed from keywords and vectors</span>
+    <span><i style="background:var(--link)"></i>Reached only through links</span>
+    <span><i style="background:var(--kept)"></i>Kept by the filter</span>
+    <span><i style="background:var(--pruned)"></i>Pruned by the filter</span>
+  </div>
+  <div class="panel graph" id="graph"></div>
+  <div class="panel"><table id="fate"></table></div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script>
+const DATA = {"query": "who are the main characters of my action film", "keyword": ["proj-video", "vid-needs", "vid-gpt-image2-character-sheets", "vid-t060-character-consistency-across-videos-is-a", "vid-t066-corrected-claude-asked-about-seedance-2", "vid-draft-character-refs", "vid-krea-removed-seedance", "vid-reviews-unreliable"], "vec": ["proj-video", "vid-t294-models-don-t-grasp-small-asian-frames", "vid-t292-seedance-characters-have-near-identical", "vid-seedance-fight-choreo", "vid-t066-corrected-claude-asked-about-seedance-2", "vid-production-models", "vid-wan3-amazing", "vid-t170-skip-wan-2-2-already-on-wan-3-0"], "nodes": [{"id": "proj-video", "title": "Action film production with AI video tools", "pattern": "projects", "hybrid": 1, "spread": 1, "seed": true, "top12": true, "linked": false, "kept": true, "pruned": false}, {"id": "vid-needs", "title": "Core film needs", "pattern": "observations", "hybrid": 3, "spread": 2, "seed": true, "top12": true, "linked": false, "kept": false, "pruned": true}, {"id": "vid-draft-character-refs", "title": "Character consistency: one front-view portrait + one full-body ref", "pattern": "recommendations", "hybrid": 12, "spread": 3, "seed": true, "top12": true, "linked": false, "kept": false, "pruned": true}, {"id": "vid-production-models", "title": "Production video models: Seedance 2.5 and Wan 3.0", "pattern": "decisions", "hybrid": 9, "spread": 4, "seed": true, "top12": true, "linked": false, "kept": false, "pruned": true}, {"id": "vid-t066-corrected-claude-asked-about-seedance-2", "title": "Corrected Claude: asked about Seedance 2.5, not H3", "pattern": "reactions", "hybrid": 2, "spread": 5, "seed": true, "top12": true, "linked": false, "kept": false, "pruned": true}, {"id": "vid-t292-seedance-characters-have-near-identical", "title": "Seedance characters have near-identical body types", "pattern": "observations", "hybrid": 4, "spread": 6, "seed": true, "top12": true, "linked": false, "kept": false, "pruned": true}, {"id": "vid-wan3-amazing", "title": "Wan 3.0 output is excellent on Wen's footage", "pattern": "observations", "hybrid": 7, "spread": 7, "seed": true, "top12": true, "linked": false, "kept": false, "pruned": true}, {"id": "vid-gpt-image2-character-sheets", "title": "GPT Image 2 for character sheets and consistency", "pattern": "decisions", "hybrid": 10, "spread": 8, "seed": true, "top12": true, "linked": false, "kept": false, "pruned": true}, {"id": "vid-t060-character-consistency-across-videos-is-a", "title": "Character consistency across videos is a core requirement", "pattern": "decisions", "hybrid": 5, "spread": 9, "seed": true, "top12": true, "linked": false, "kept": true, "pruned": false}, {"id": "vid-seedance-fight-choreo", "title": "Seedance 2.5 handles text-prompted fight choreography well", "pattern": "observations", "hybrid": 6, "spread": 10, "seed": true, "top12": true, "linked": false, "kept": false, "pruned": true}, {"id": "vid-draft-seedream-asian", "title": "Seedream 5 may beat GPT Image 2 for Asian physique reference sheets", "pattern": "recommendations", "hybrid": 14, "spread": 11, "seed": true, "top12": true, "linked": false, "kept": false, "pruned": true}, {"id": "vid-t294-models-don-t-grasp-small-asian-frames", "title": "Models don't grasp small Asian frames", "pattern": "observations", "hybrid": 8, "spread": 12, "seed": true, "top12": true, "linked": false, "kept": false, "pruned": true}, {"id": "vid-t002-laptop-is-a-16gb-m4-macbook-air", "title": "Laptop is a 16GB M4 MacBook Air", "pattern": "observations", "hybrid": 11, "spread": 13, "seed": true, "top12": false, "linked": false, "kept": false, "pruned": false}, {"id": "vid-t158-told-claude-to-stop-arguing-and-answer-t", "title": "Told Claude to stop arguing and answer the question", "pattern": "reactions", "hybrid": 13, "spread": 14, "seed": true, "top12": false, "linked": false, "kept": false, "pruned": false}, {"id": "vid-t254-gpt-image-2-is-the-best-image-model-for", "title": "GPT Image 2 is the best image model for him", "pattern": "decisions", "hybrid": 15, "spread": 16, "seed": true, "top12": false, "linked": false, "kept": false, "pruned": false}, {"id": "pref-live-pages", "title": "Fetch live vendor pages; don't trust catalogs, snippets or reseller reviews", "pattern": "preferences", "hybrid": null, "spread": 44, "seed": false, "top12": false, "linked": true, "kept": false, "pruned": false}, {"id": "vid-wan3-slow", "title": "Wan 3.0 is very slow (30s @480p ≈ 88 min extrapolated)", "pattern": "observations", "hybrid": null, "spread": 49, "seed": false, "top12": false, "linked": true, "kept": false, "pruned": false}], "edges": [["pref-live-pages", "part_of", "proj-video"], ["vid-draft-character-refs", "part_of", "proj-video"], ["vid-draft-character-refs", "relates", "vid-needs"], ["vid-draft-seedream-asian", "part_of", "proj-video"], ["vid-draft-seedream-asian", "contradicts", "vid-gpt-image2-character-sheets"], ["vid-gpt-image2-character-sheets", "part_of", "proj-video"], ["vid-needs", "part_of", "proj-video"], ["vid-production-models", "part_of", "proj-video"], ["vid-seedance-fight-choreo", "part_of", "proj-video"], ["vid-t002-laptop-is-a-16gb-m4-macbook-air", "part_of", "proj-video"], ["vid-t060-character-consistency-across-videos-is-a", "part_of", "proj-video"], ["vid-t066-corrected-claude-asked-about-seedance-2", "part_of", "proj-video"], ["vid-t158-told-claude-to-stop-arguing-and-answer-t", "part_of", "proj-video"], ["vid-t254-gpt-image-2-is-the-best-image-model-for", "part_of", "proj-video"], ["vid-t292-seedance-characters-have-near-identical", "part_of", "proj-video"], ["vid-t294-models-don-t-grasp-small-asian-frames", "part_of", "proj-video"], ["vid-wan3-amazing", "part_of", "proj-video"], ["vid-wan3-amazing", "supports", "vid-production-models"], ["vid-wan3-slow", "part_of", "proj-video"], ["vid-wan3-slow", "relates", "vid-production-models"]]};
+const $ = (s) => document.querySelector(s);
+const esc = (v) => String(v ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const N = DATA.nodes, byId = new Map(N.map((n) => [n.id, n]));
+const kept = N.filter((n) => n.kept), pruned = N.filter((n) => n.pruned), linked = N.filter((n) => n.linked);
+const movedUp = N.filter((n) => n.hybrid && n.spread && n.hybrid - n.spread >= 3);
+$("#q").textContent = "“" + DATA.query + "”";
+
+const STAGES = [
+  { key: "seeds", title: "1 · Seeds", big: "50", sub: "hybrid candidates",
+    text: `Keyword search found ${DATA.keyword.length}+ matches and vector search ranked by meaning. Hybrid fuses the two lists into its top 50, which become the spreading arm's seeds. The 15 strongest are drawn here, sized by rank.` },
+  { key: "spread", title: "2 · Spread", big: String(DATA.edges.length), sub: "links walked",
+    text: `Activation flows from the seeds along typed links by personalized PageRank. ${movedUp.length} entries climbed because their neighbors were strong, like “${esc(movedUp[0]?.title ?? "")}” (hybrid ${movedUp[0]?.hybrid} → ${movedUp[0]?.spread}). ${linked.length} entries were reached only through links, but too faintly to make the top 12.` },
+  { key: "judge", title: "3 · Filter", big: "12", sub: "judged by gpt-6-luna",
+    text: `The judge reads the top 12 against the question and asks which ones an assistant answering it actually needs. ${pruned.length} were about the right film but the wrong question: models, tools, references. They were pruned.` },
+  { key: "packet", title: "4 · Packet", big: String(kept.length), sub: "delivered",
+    text: `${kept.length} entries reached the agent. Nothing in memory names your characters, so recall gave what it had instead of padding the answer with near misses.` },
+];
+let stage = "seeds";
+$("#stages").innerHTML = STAGES.map((s) => `<button class="stage" data-k="${s.key}" aria-pressed="false"><b>${s.title}</b><strong>${s.big}</strong><span>${s.sub}</span></button>`).join("");
+document.querySelectorAll(".stage").forEach((b) => b.onclick = () => show(b.dataset.k));
+
+function fill(n) {
+  if (stage === "seeds") return n.seed ? "var(--seed)" : "var(--dim)";
+  if (stage === "spread") return n.linked ? "var(--link)" : n.seed ? "var(--seed)" : "var(--dim)";
+  if (stage === "judge") return n.kept ? "var(--kept)" : n.pruned ? "var(--pruned)" : "var(--dim)";
+  return n.kept ? "var(--kept)" : "var(--dim)";
+}
+function radius(n) {
+  if (n.id === "proj-video") return 13;
+  const r = stage === "seeds" ? n.hybrid : n.spread;
+  return r ? Math.max(4, 11 - r * 0.45) : 4;
+}
+function edgeOn(e) { return stage === "spread" || (stage !== "seeds" && (byId.get(e.source.id ?? e.source)?.kept || byId.get(e.target.id ?? e.target)?.kept)); }
+
+const el = $("#graph"), W = el.clientWidth || 900, H = el.clientHeight || 560;
+const svg = d3.select(el).append("svg").attr("viewBox", [0, 0, W, H]).attr("role", "img").attr("aria-label", "Entries and links in this recall");
+const g = svg.append("g");
+svg.call(d3.zoom().scaleExtent([0.4, 4]).on("zoom", (ev) => g.attr("transform", ev.transform)));
+const links = DATA.edges.map(([s, type, t]) => ({ source: s, target: t, type }));
+const typeColor = { relates: "var(--seed)", supports: "var(--kept)", contradicts: "var(--pruned)" };
+const edge = g.append("g").selectAll("line").data(links).join("line")
+  .attr("stroke", (l) => typeColor[l.type] || "var(--line)").attr("stroke-width", (l) => l.type === "part_of" ? 1 : 2);
+const edgeLbl = g.append("g").selectAll("text").data(links.filter((l) => l.type !== "part_of")).join("text").attr("class", "lbl").text((l) => l.type);
+const nodes = N.map((n) => ({ ...n }));
+const node = g.append("g").selectAll("circle").data(nodes).join("circle").attr("stroke", "var(--panel)").attr("stroke-width", 1.5);
+node.append("title").text((n) => `${n.title}\nhybrid rank ${n.hybrid ?? "—"} · spreading rank ${n.spread ?? "—"}`);
+const label = g.append("g").selectAll("text").data(nodes).join("text").attr("class", "lbl").attr("dx", 12).attr("dy", 4)
+  .text((n) => n.title.length > 44 ? n.title.slice(0, 42) + "…" : n.title);
+// The layout is computed in one go, not animated: some views never fire animation frames, which would leave every
+// node piled where it started.
+const sim = d3.forceSimulation(nodes)
+  .force("link", d3.forceLink(links).id((n) => n.id).distance((l) => l.type === "part_of" ? 120 : 70).strength((l) => l.type === "part_of" ? 0.3 : 0.8))
+  .force("charge", d3.forceManyBody().strength(-260))
+  .force("collide", d3.forceCollide(28))
+  .force("x", d3.forceX(W / 2).strength(0.05)).force("y", d3.forceY(H / 2).strength(0.07))
+  .stop();
+for (let i = 0; i < 400; i++) sim.tick();
+edge.attr("x1", (l) => l.source.x).attr("y1", (l) => l.source.y).attr("x2", (l) => l.target.x).attr("y2", (l) => l.target.y);
+edgeLbl.attr("x", (l) => (l.source.x + l.target.x) / 2).attr("y", (l) => (l.source.y + l.target.y) / 2);
+node.attr("cx", (n) => n.x).attr("cy", (n) => n.y);
+label.attr("x", (n) => n.x).attr("y", (n) => n.y);
+// Fit the drawing to the panel, with room for the labels to the right of each node.
+const xs = nodes.map((n) => n.x), ys = nodes.map((n) => n.y);
+const pad = 30, x0 = Math.min(...xs) - pad, y0 = Math.min(...ys) - pad;
+svg.attr("viewBox", [x0, y0, Math.max(...xs) - x0 + 260, Math.max(...ys) - y0 + pad]);
+
+function show(k) {
+  stage = k;
+  document.querySelectorAll(".stage").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.k === k)));
+  $("#explain").innerHTML = STAGES.find((s) => s.key === k).text;
+  node.attr("r", radius).attr("fill", fill);
+  edge.attr("opacity", (l) => edgeOn(l) ? 0.9 : 0.12);
+  edgeLbl.attr("opacity", stage === "spread" ? 1 : 0);
+  label.attr("opacity", (n) => stage === "packet" ? (n.kept ? 1 : 0.25) : stage === "judge" ? (n.top12 ? 1 : 0.3) : 1);
+}
+
+$("#fate").innerHTML = `<thead><tr><th>Entry</th><th class="num">Hybrid</th><th class="num">Spreading</th><th>Fate</th></tr></thead><tbody>` +
+  N.map((n) => {
+    const moved = n.hybrid && n.spread ? n.hybrid - n.spread : 0;
+    const fate = n.kept ? `<span class="tag" style="color:var(--kept)">delivered</span>` : n.pruned ? `<span class="tag" style="color:var(--pruned)">pruned by filter</span>`
+      : n.linked ? `<span class="tag" style="color:var(--link)">reached by link, too faint</span>` : `<span class="tag" style="color:var(--muted)">below the top 12</span>`;
+    return `<tr><td>${esc(n.title)}<div class="id">${esc(n.id)}</div></td><td class="num">${n.hybrid ?? "—"}</td>
+      <td class="num">${n.spread ?? "—"}${moved ? ` <span class="${moved > 0 ? "up" : "down"}">${moved > 0 ? "▲" + moved : "▼" + -moved}</span>` : ""}</td><td>${fate}</td></tr>`;
+  }).join("") + `</tbody>`;
+show("seeds");
+</script>
