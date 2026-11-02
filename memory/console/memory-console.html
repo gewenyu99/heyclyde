@@ -9,13 +9,16 @@
   --accent: #23656b; --accent-soft: #e2f0f0; --warn: #9a5b00; --bad: #a32d2d;
   --sans: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --s1: #23656b; --s2: #8a4b14; --s3: #3e5c8a; --s4: #6b3e8a; --s5: #2d6b3c; --s6: #a3365c; --s7: #7a6a1d; --other: #9aa5b0;
   --t-supersedes: #8a4b14; --t-relates: #3e5c8a; --t-supports: #2d6b3c; --t-contradicts: #a32d2d; --t-other: #5d6873;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --s1: #6fbcc2; --s2: #e3a568; --s3: #8fb0e3; --s4: #c1a0e8; --s5: #8ccf98; --s6: #ec9ab8; --s7: #d8c46e; --other: #5d6873;
   --bg: #15191d; --panel: #1d2227; --fg: #e4e8ec; --muted: #9aa5b0; --line: #2f363d;
   --accent: #6fbcc2; --accent-soft: #1f3335; --warn: #e0a54a; --bad: #f09595;
   --t-supersedes: #e3a568; --t-relates: #8fb0e3; --t-supports: #8ccf98; --t-contradicts: #f09595; --t-other: #9aa5b0; color-scheme: dark } }
 :root[data-theme="dark"] {
+  --s1: #6fbcc2; --s2: #e3a568; --s3: #8fb0e3; --s4: #c1a0e8; --s5: #8ccf98; --s6: #ec9ab8; --s7: #d8c46e; --other: #5d6873;
   --bg: #15191d; --panel: #1d2227; --fg: #e4e8ec; --muted: #9aa5b0; --line: #2f363d;
   --accent: #6fbcc2; --accent-soft: #1f3335; --warn: #e0a54a; --bad: #f09595;
   --t-supersedes: #e3a568; --t-relates: #8fb0e3; --t-supports: #8ccf98; --t-contradicts: #f09595; --t-other: #9aa5b0; color-scheme: dark }
@@ -61,6 +64,15 @@ tr.click { cursor: pointer; } tr.click:hover td { background: var(--accent-soft)
 .chart { padding: 16px; }
 .chart svg { width: 100%; height: auto; display: block; }
 .back { font: inherit; background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; justify-self: start; }
+.map { position: relative; height: min(72vh, 720px); min-height: 420px; }
+.map svg { width: 100%; height: 100%; display: block; cursor: grab; }
+.map .edge { stroke: var(--line); stroke-width: 1; }
+.map .edge.typed { stroke-width: 1.4; }
+.map .label { font: 600 11px var(--sans); fill: var(--fg); paint-order: stroke; stroke: var(--panel); stroke-width: 3px; pointer-events: none; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 13px; max-width: 280px; box-shadow: 0 2px 8px rgb(0 0 0 / .12); }
 @media (prefers-reduced-motion: no-preference) { tr.click td { transition: background .12s; } }
 </style>
 
@@ -72,6 +84,7 @@ tr.click { cursor: pointer; } tr.click:hover td { background: var(--accent-soft)
   <div class="stats" id="stats" aria-live="polite"></div>
   <nav role="tablist" id="tabs">
     <button role="tab" data-tab="entries" aria-selected="true">Entries</button>
+    <button role="tab" data-tab="map" aria-selected="false">Map</button>
     <button role="tab" data-tab="bindings" aria-selected="false">Bindings</button>
     <button role="tab" data-tab="recalls" aria-selected="false">Recalls</button>
     <button role="tab" data-tab="activity" aria-selected="false">Activity</button>
@@ -79,6 +92,7 @@ tr.click { cursor: pointer; } tr.click:hover td { background: var(--accent-soft)
   <div id="view"></div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script>
 const PROJECT = "wlhlncmgjqyidosunugv";
 const SERVER = "Supabase";
@@ -214,6 +228,65 @@ async function entry(id) {
   v.querySelectorAll("a[data-id]").forEach((a) => a.onclick = () => entry(a.dataset.id));
 }
 
+
+// ---------------------------------------------------------------- map
+// The old console's graph: every entry a node colored by its project, projects larger and labeled, replaced entries
+// hollow, part_of links short and loose, other bindings typed and tighter. Drag to pan, scroll to zoom, click to open.
+let mapProject = "", mapSuperseded = false;
+function map() {
+  const v = $("#view");
+  if (!window.d3) { v.innerHTML = `<div class="panel"><div class="empty">The map's drawing library didn't load. Reload the page.</div></div>`; return; }
+  const projectOf = (e) => e.pattern === "projects" ? e.title : (e.project || "");
+  const sizes = new Map();
+  data.entries.forEach((e) => { const p = projectOf(e); if (p) sizes.set(p, (sizes.get(p) || 0) + 1); });
+  const top = [...sizes].sort((a, b) => b[1] - a[1]).slice(0, 7).map(([p]) => p);
+  const color = (p) => top.includes(p) ? `var(--s${top.indexOf(p) + 1})` : "var(--other)";
+  v.innerHTML = `<div class="tools"><select id="mp"><option value="">All projects</option>${[...sizes].sort((a, b) => b[1] - a[1])
+      .map(([p, n]) => `<option value="${esc(p)}" ${p === mapProject ? "selected" : ""}>${esc(p)} (${n})</option>`).join("")}</select>
+    <label class="status" style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" id="ms" ${mapSuperseded ? "checked" : ""}> Show replaced entries</label></div>
+    <div class="legend">${top.map((p) => `<span><i style="background:${color(p)}"></i>${esc(p)}</span>`).join("")}<span><i style="background:var(--other)"></i>Other</span>
+      <span><i style="border:2px solid var(--muted)"></i>Replaced</span></div>
+    <div class="panel map" id="map"><div class="tip" id="tip" hidden></div></div>`;
+  $("#mp").onchange = () => { mapProject = $("#mp").value; map(); };
+  $("#ms").onchange = () => { mapSuperseded = $("#ms").checked; map(); };
+  const shown = data.entries.filter((e) => (mapSuperseded || !e.replaced_by) && (!mapProject || projectOf(e) === mapProject));
+  const ids = new Set(shown.map((e) => e.id));
+  const nodes = shown.map((e) => ({ ...e, proj: projectOf(e) }));
+  const links = data.links.filter((l) => ids.has(l.src) && ids.has(l.dst)).map((l) => ({ source: l.src, target: l.dst, type: l.type }));
+  const el = $("#map"), W = el.clientWidth || 900, H = el.clientHeight || 600;
+  const svg = d3.select(el).append("svg").attr("viewBox", [0, 0, W, H]).attr("role", "img").attr("aria-label", `Map of ${nodes.length} entries and ${links.length} bindings`);
+  const g = svg.append("g");
+  svg.call(d3.zoom().scaleExtent([0.2, 6]).on("zoom", (ev) => g.attr("transform", ev.transform)));
+  const typeColor = { supersedes: "var(--t-supersedes)", relates: "var(--t-relates)", supports: "var(--t-supports)", contradicts: "var(--t-contradicts)" };
+  const edge = g.append("g").selectAll("line").data(links).join("line")
+    .attr("class", (l) => "edge" + (l.type === "part_of" ? "" : " typed")).style("stroke", (l) => typeColor[l.type] || null);
+  const radius = (n) => n.pattern === "projects" ? 9 : 4 + Math.min(4, Math.sqrt(n.times_delivered || 0));
+  const node = g.append("g").selectAll("circle").data(nodes).join("circle")
+    .attr("r", radius).style("cursor", "pointer")
+    .style("fill", (n) => n.replaced_by ? "var(--panel)" : color(n.proj)).style("stroke", (n) => n.replaced_by ? color(n.proj) : "var(--panel)")
+    .style("stroke-width", (n) => n.replaced_by ? 2 : 1)
+    .on("click", (_, n) => { select("entries", false); entry(n.id); });
+  const label = g.append("g").selectAll("text").data(nodes.filter((n) => n.pattern === "projects")).join("text")
+    .attr("class", "label").attr("dx", 12).attr("dy", 4).text((n) => n.title);
+  const tip = $("#tip");
+  node.on("mouseenter", (ev, n) => { tip.hidden = false; tip.innerHTML = `<b>${esc(n.title)}</b><div class="id">${esc(n.id)}</div><div class="status">${esc(n.pattern)} · ${esc(n.authority)}${n.replaced_by ? " · replaced" : ""} · served ${n.times_delivered}×</div>`; })
+    .on("mousemove", (ev) => { const r = el.getBoundingClientRect(); tip.style.left = Math.min(ev.clientX - r.left + 12, r.width - 290) + "px"; tip.style.top = (ev.clientY - r.top + 12) + "px"; })
+    .on("mouseleave", () => { tip.hidden = true; });
+  node.call(d3.drag().on("start", (ev, n) => { if (!ev.active) sim.alphaTarget(0.3).restart(); n.fx = n.x; n.fy = n.y; })
+    .on("drag", (ev, n) => { n.fx = ev.x; n.fy = ev.y; }).on("end", (ev, n) => { if (!ev.active) sim.alphaTarget(0); n.fx = null; n.fy = null; }));
+  const sim = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(links).id((n) => n.id).distance((l) => l.type === "part_of" ? 36 : 60).strength((l) => l.type === "part_of" ? 0.25 : 0.6))
+    .force("charge", d3.forceManyBody().strength(-45).distanceMax(400))
+    .force("collide", d3.forceCollide((n) => radius(n) + 3))
+    .force("x", d3.forceX(W / 2).strength(0.04)).force("y", d3.forceY(H / 2).strength(0.04))
+    .on("tick", () => {
+      edge.attr("x1", (l) => l.source.x).attr("y1", (l) => l.source.y).attr("x2", (l) => l.target.x).attr("y2", (l) => l.target.y);
+      node.attr("cx", (n) => n.x).attr("cy", (n) => n.y);
+      label.attr("x", (n) => n.x).attr("y", (n) => n.y);
+    });
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { sim.stop(); for (let i = 0; i < 300; i++) sim.tick(); sim.on("tick")(); }
+}
+
 // ---------------------------------------------------------------- bindings
 function bindings() {
   const v = $("#view");
@@ -260,7 +333,7 @@ function activity() {
   </svg><div class="status">Bars are hook events. Dots mark days with recalls.</div></div>`;
 }
 
-const VIEWS = { entries, bindings, recalls, activity };
+const VIEWS = { entries, map, bindings, recalls, activity };
 let current = "entries";
 function select(tab, render = true) {
   current = tab;
