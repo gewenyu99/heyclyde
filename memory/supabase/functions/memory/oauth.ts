@@ -8,7 +8,6 @@ import { allowed } from "./auth.ts";
 import { sql } from "./db.ts";
 
 const AUTH = () => `${Deno.env.get("SUPABASE_URL")}/auth/v1`;
-const BASE = () => `${Deno.env.get("SUPABASE_URL")}/functions/v1/memory`;
 const ID = /^[A-Za-z0-9_-]{8,100}$/;
 const FRESH = "15 minutes";
 // Where an approved code may go: Claude's own callbacks, and a program on this computer (Claude Code and other local
@@ -23,16 +22,16 @@ const text = (body: string, status = 200, headers: Record<string, string> = {}) 
 
 /** The resource metadata (RFC 9728) an MCP client reads from the 401's WWW-Authenticate. It names Supabase Auth as the
  * authorization server; the client finds the rest at /.well-known/oauth-authorization-server/auth/v1. */
-export function resourceMetadata() {
+export function resourceMetadata(base: string) {
   return Response.json({
-    resource: `${BASE()}/mcp`,
+    resource: `${base}/mcp`,
     authorization_servers: [AUTH()],
     bearer_methods_supported: ["header"],
     resource_name: "memory",
   });
 }
 
-export const RESOURCE_METADATA_URL = () => `${BASE()}/.well-known/oauth-protected-resource`;
+export const resourceMetadataUrl = (base: string) => `${base}/.well-known/oauth-protected-resource`;
 
 function b64url(bytes: Uint8Array) {
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -46,9 +45,9 @@ async function auth(path: string, init: RequestInit & { jwt?: string } = {}) {
   return { ok: r.ok, status: r.status, body };
 }
 
-function waiting(id: string, line: string) {
+function waiting(base: string, id: string, line: string) {
   return text(`memory: ${line}\n\nThis page checks every few seconds and moves on by itself once you click the link.`, 200,
-    { refresh: `3; url=${BASE()}/oauth/wait?authorization_id=${encodeURIComponent(id)}`, "cache-control": "no-store" });
+    { refresh: `3; url=${base}/oauth/wait?authorization_id=${encodeURIComponent(id)}`, "cache-control": "no-store" });
 }
 
 function masked(email: string) {
@@ -57,10 +56,10 @@ function masked(email: string) {
 }
 
 /** Where Supabase sends the owner: email the sign-in link once per request, then wait. */
-async function consent(id: string) {
+async function consent(base: string, id: string) {
   const [row] = await sql`select created_at > now() - ${FRESH}::interval as fresh from memory.oauth_consent
     where authorization_id = ${id}`;
-  if (row?.fresh) return waiting(id, "the sign-in link is in your email.");
+  if (row?.fresh) return waiting(base, id, "the sign-in link is in your email.");
   const emails = await sql`select email from memory.allowed_email order by email limit 2`;
   if (emails.length !== 1) return text("memory: connecting a client needs exactly one allowed email.", 500);
   const [{ n }] = await sql`select count(*)::int as n from memory.oauth_consent where created_at > now() - ${FRESH}::interval`;
@@ -70,7 +69,7 @@ async function consent(id: string) {
   const challenge = b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
   await sql`insert into memory.oauth_consent (authorization_id, code_verifier) values (${id}, ${verifier})
     on conflict (authorization_id) do update set code_verifier = excluded.code_verifier, redirect_url = null, created_at = now()`;
-  const redirect = encodeURIComponent(`${BASE()}/oauth/approve?authorization_id=${encodeURIComponent(id)}`);
+  const redirect = encodeURIComponent(`${base}/oauth/approve?authorization_id=${encodeURIComponent(id)}`);
   const sent = await auth(`/otp?redirect_to=${redirect}`, {
     method: "POST",
     body: JSON.stringify({ email: emails[0].email, create_user: false, code_challenge: challenge, code_challenge_method: "s256" }),
@@ -79,7 +78,7 @@ async function consent(id: string) {
     await sql`delete from memory.oauth_consent where authorization_id = ${id}`;
     return text(`memory: couldn't send the sign-in email (${sent.body.msg ?? sent.body.error_description ?? sent.status}).`, 502);
   }
-  return waiting(id, `sent a sign-in link to ${masked(emails[0].email)}. Open it on any device to connect.`);
+  return waiting(base, id, `sent a sign-in link to ${masked(emails[0].email)}. Open it on any device to connect.`);
 }
 
 function clientAllowed(uri: string) {
@@ -134,21 +133,21 @@ async function approve(id: string, code: string | null, error: string | null) {
 }
 
 /** The waiting window reloads here until the link is clicked, then goes on to the client. */
-async function wait(id: string) {
+async function wait(base: string, id: string) {
   const [row] = await sql`select redirect_url, created_at > now() - ${FRESH}::interval as fresh from memory.oauth_consent
     where authorization_id = ${id}`;
   if (!row || !row.fresh) return text("memory: that sign-in expired. Start connecting again from the app.", 410);
-  if (!row.redirect_url) return waiting(id, "waiting for you to click the sign-in link in your email.");
+  if (!row.redirect_url) return waiting(base, id, "waiting for you to click the sign-in link in your email.");
   await sql`delete from memory.oauth_consent where authorization_id = ${id}`;
   return new Response(null, { status: 302, headers: { location: row.redirect_url, "cache-control": "no-store" } });
 }
 
-export async function handle(path: string, url: URL): Promise<Response> {
+export async function handle(base: string, path: string, url: URL): Promise<Response> {
   const id = url.searchParams.get("authorization_id") ?? "";
   if (!ID.test(id)) return text("memory: that link is missing its authorization_id. Start connecting again from the app.", 400);
   await sql`delete from memory.oauth_consent where created_at < now() - interval '1 day'`;
-  if (path === "/oauth/consent") return consent(id);
+  if (path === "/oauth/consent") return consent(base, id);
   if (path === "/oauth/approve") return approve(id, url.searchParams.get("code"), url.searchParams.get("error_description"));
-  if (path === "/oauth/wait") return wait(id);
+  if (path === "/oauth/wait") return wait(base, id);
   return text("No such endpoint.", 404);
 }

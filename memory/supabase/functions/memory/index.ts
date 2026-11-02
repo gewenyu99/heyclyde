@@ -2,7 +2,7 @@
 // nightly export and the embed sync. auth.ts decides who a request is before anything here runs.
 import "jsr:@supabase/functions-js@2/edge-runtime.d.ts";
 import * as admin from "./admin.ts";
-import { allowed, authenticate, type Principal } from "./auth.ts";
+import { allowed, authenticate, baseOf, type Principal } from "./auth.ts";
 import { config } from "./config.ts";
 import { sql } from "./db.ts";
 import { learn } from "./learn.ts";
@@ -177,8 +177,8 @@ async function route(req: Request): Promise<Response> {
     return json({ ok: true, arms: config.arms });
   }
   if (path === "/mcp" || path === "/mcp/") return mcp.handle(req);
-  if (path.startsWith("/.well-known/oauth-protected-resource")) return oauth.resourceMetadata();
-  if (path.startsWith("/oauth/")) return oauth.handle(path, url);
+  if (path.startsWith("/.well-known/oauth-protected-resource")) return oauth.resourceMetadata(await baseOf(req));
+  if (path.startsWith("/oauth/")) return oauth.handle(await baseOf(req), path, url);
   if (path === "/install" || path.startsWith("/install/")) return install(req, path, url);
   if (m === "POST" && path === "/devices/claim") return admin.claimDevice(await admin.readJson(req));
   if (path.startsWith("/api/v1") || path === "/") return path === "/" ? json({ ok: true }) : admin.handle(req, path);

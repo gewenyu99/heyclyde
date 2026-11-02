@@ -3,7 +3,7 @@
 // stored, so a database read never yields a token.
 import { secret, setting, sql } from "./db.ts";
 import { sha256 } from "./embed.ts";
-import { RESOURCE_METADATA_URL } from "./oauth.ts";
+import { resourceMetadataUrl } from "./oauth.ts";
 
 export type Kind = "open" | "agent" | "admin" | "backup" | "cron" | "owner";
 export type Principal = {
@@ -27,10 +27,26 @@ export function credentialFor(path: string): Kind | null {
   return null;
 }
 
-/** The client's address from the platform's X-Forwarded-For. IPv6 counts by /64, the block one host usually holds,
- * so rotating through it buys no extra guesses. */
-export function clientKey(req: Request) {
-  const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
+// memory's own address. A Cloudflare Worker there passes requests through and proves it with a shared secret.
+export const DOMAIN = "https://memory.heyclyde.me";
+const DIRECT = () => `${Deno.env.get("SUPABASE_URL")}/functions/v1/memory`;
+
+/** True when the request came through the Worker at memory.heyclyde.me. Only its SHA-256 is stored. */
+export async function viaProxy(req: Request) {
+  const s = req.headers.get("x-memory-proxy") ?? "";
+  return Boolean(s) && same(await sha256(s), await setting("proxy_secret_sha256"));
+}
+
+/** The address the caller used, for the URLs memory hands back: the resource an MCP client checks, the sign-in links. */
+export async function baseOf(req: Request) {
+  return (await viaProxy(req)) ? DOMAIN : DIRECT();
+}
+
+/** The client's address. Through the Worker, it's the one Cloudflare saw. Otherwise it's the platform's
+ * X-Forwarded-For. IPv6 counts by /64, the block one host usually holds, so rotating through it buys no extra guesses. */
+export async function clientKey(req: Request) {
+  const ip = (await viaProxy(req) ? req.headers.get("x-memory-client") : null)
+    ?? (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
   return ip.includes(":") ? ip.split(":").slice(0, 4).join(":") + "::/64" : ip;
 }
 
@@ -139,7 +155,7 @@ export async function authenticate(req: Request, path: string): Promise<Principa
   if (kind === "admin" && !(await setting("admin_token_sha256"))) {
     return json({ error: "The console is off. No admin token is set." }, 503);
   }
-  const client = clientKey(req);
+  const client = await clientKey(req);
   const wait = await lockedFor(kind, client);
   if (wait) {
     return json({ error: `Too many wrong tokens from your address. Try again in ${wait} second${wait === 1 ? "" : "s"}.` },
@@ -153,7 +169,7 @@ export async function authenticate(req: Request, path: string): Promise<Principa
     if (token && !isJwt(token)) await miss(kind, client);
     // The header that points an MCP client at how to sign in (RFC 9728).
     const challenge: Record<string, string> = path.startsWith("/mcp")
-      ? { "www-authenticate": `Bearer resource_metadata="${RESOURCE_METADATA_URL()}"` } : {};
+      ? { "www-authenticate": `Bearer resource_metadata="${resourceMetadataUrl(await baseOf(req))}"` } : {};
     return json({ error: "unauthorized" }, 401, challenge);
   }
   return who;

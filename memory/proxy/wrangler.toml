@@ -1,0 +1,7 @@
+# Deploy: npx wrangler@4 deploy (from memory/proxy). The secret: npx wrangler@4 secret put PROXY_SECRET, with its SHA-256
+# in memory.setting proxy_secret_sha256.
+name = "memory-proxy"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = false
+routes = [{ pattern = "memory.heyclyde.me", custom_domain = true }]
