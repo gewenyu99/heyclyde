@@ -2,7 +2,7 @@
 // nightly export and the embed sync. auth.ts decides who a request is before anything here runs.
 import "jsr:@supabase/functions-js@2/edge-runtime.d.ts";
 import * as admin from "./admin.ts";
-import { authenticate, type Principal } from "./auth.ts";
+import { allowed, authenticate, type Principal } from "./auth.ts";
 import { config } from "./config.ts";
 import { sql } from "./db.ts";
 import * as mcp from "./mcp.ts";
@@ -132,6 +132,12 @@ function clientFile(name: string) {
  * PKCE verifier and the owner's sign-in. */
 async function install(req: Request, path: string, url: URL) {
   if (path === "/install") return text(clientFile("install.sh"));
+  if (path === "/install/check" && req.method === "POST") {
+    const email = String((await admin.readJson(req, 4096))?.email ?? "");
+    return (await allowed(email))
+      ? json({ allowed: true })
+      : json({ error: `${email || "That email"} isn't on memory's allowlist.` }, 403);
+  }
   if (path === "/install/config") {
     return json({ auth: `${Deno.env.get("SUPABASE_URL")}/auth/v1`, key: Deno.env.get("SUPABASE_ANON_KEY") });
   }

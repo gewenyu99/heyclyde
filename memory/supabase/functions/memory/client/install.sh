@@ -1,8 +1,8 @@
 #!/bin/sh
 # Connect this computer's Claude Code and Codex to Wen's memory server. No checkout needed:
 #   curl -fsSL https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory/install | sh
-# A computer with no token signs in with a link to Wen's email, clicked from any device, and gets a token of its own
-# named after this computer (or MEMORY_DEVICE). Rerun it any time: it replaces only its own entries, the old kb ones too.
+# memory is allowlist only. A computer with no token signs in with a link to an allowlisted email, clicked from any
+# device, and gets a token of its own named after this computer (or MEMORY_DEVICE). Rerun it any time: it replaces only its own entries, the old kb ones too.
 # The token lands in ~/.config/memory/token, ~/.claude.json and ~/.codex/config.toml, all readable by you only.
 set -eu
 URL=${MEMORY_URL:-https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory}
@@ -38,12 +38,16 @@ sign_in() {
   conf=$(curl -fsS -m 15 "$URL/install/config")
   auth=$(printf '%s' "$conf" | field auth); key=$(printf '%s' "$conf" | field key)
   printf 'Your email: ' >/dev/tty; read -r email </dev/tty
+  # memory is allowlist only. Anyone else stops here, before any email is sent.
+  python3 -c 'import json, sys; print(json.dumps({"email": sys.argv[1]}))' "$email" |
+    curl -sS -m 15 -X POST "$URL/install/check" -H "Content-Type: application/json" --data-binary @- |
+    python3 -c 'import json, sys; d = json.load(sys.stdin); sys.exit(0 if d.get("allowed") else d.get("error") or "not allowed")'
   set -- $(python3 -c 'import base64, hashlib, secrets
 v = secrets.token_urlsafe(48)
 print(v, base64.urlsafe_b64encode(hashlib.sha256(v.encode()).digest()).rstrip(b"=").decode(), secrets.token_urlsafe(24))')
   verifier=$1 challenge=$2 claim=$3
   redirect=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$URL/install/approve?claim=$claim")
-  python3 -c 'import json, sys; print(json.dumps({"email": sys.argv[1], "create_user": True, "code_challenge": sys.argv[2], "code_challenge_method": "s256"}))' \
+  python3 -c 'import json, sys; print(json.dumps({"email": sys.argv[1], "create_user": False, "code_challenge": sys.argv[2], "code_challenge_method": "s256"}))' \
     "$email" "$challenge" | curl -fsS -m 15 -o /dev/null -X POST "$auth/otp?redirect_to=$redirect" \
     -H "apikey: $key" -H "Content-Type: application/json" --data-binary @-
   echo "Check $email and click the sign-in link, from any device. Waiting..." >/dev/tty

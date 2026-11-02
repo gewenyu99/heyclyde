@@ -8,7 +8,9 @@ verify_jwt = false
 
 # The installer signs a new computer in through Supabase's default sign-in email. The link lands on the function's
 # /install/approve, and the installer finishes the PKCE exchange itself, so the link alone signs nobody in. The function
-# mints a device token only for the owner_email in memory.setting.
+# mints a device token only for an email in memory.allowed_email. Sign-ups are off: memory is allowlist only, and the
+# accounts that exist were added on purpose.
 [auth]
+enable_signup = false
 site_url = "https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory/install/approve"
 additional_redirect_urls = ["https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory/install/approve**"]

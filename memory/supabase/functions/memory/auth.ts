@@ -74,18 +74,21 @@ async function resolve(kind: Kind, token: string): Promise<Principal | null> {
   return null;
 }
 
-/** True when a Supabase Auth access token belongs to owner_email, with the email confirmed. Supabase Auth checks the
- * token, so a forged or expired one comes back 401. */
+/** Whether an email is on memory's allowlist. Only those emails sign in to connect a computer. */
+export async function allowed(email: string) {
+  return (await sql`select 1 from memory.allowed_email where email = ${email.trim().toLowerCase()}`).length > 0;
+}
+
+/** True when a Supabase Auth access token belongs to an allowlisted email, confirmed. Supabase Auth checks the token,
+ * so a forged or expired one comes back 401. */
 async function ownerOf(jwt: string) {
-  const owner = (await setting("owner_email")).toLowerCase();
-  if (!owner) return false;
   const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/auth/v1/user`, {
     headers: { apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "", Authorization: `Bearer ${jwt}` },
     signal: AbortSignal.timeout(10_000),
   });
   if (!r.ok) return false;
   const user = await r.json();
-  return String(user.email ?? "").toLowerCase() === owner && Boolean(user.email_confirmed_at);
+  return Boolean(user.email && user.email_confirmed_at) && await allowed(user.email);
 }
 
 const json = (body: unknown, status: number, headers: Record<string, string> = {}) =>
