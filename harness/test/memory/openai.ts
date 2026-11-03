@@ -18,6 +18,9 @@ export type FakeOpenAI = { url: string; calls: { path: string; body: any }[]; cl
 function vector(text: string): number[] {
   const v = new Array<number>(DIM).fill(0)
   for (const word of text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []) v[createHash('sha256').update(word).digest().readUInt32BE(0) % DIM] += 1
+  // A shared axis the text's own hash scales, so texts with no word in common still sit at distinct distances. Without it
+  // they tie at 0, and a tie's order in the HNSW index isn't something a test can pin.
+  v[0] += 0.05 + 0.05 * (createHash('sha256').update(`tie:${text}`).digest().readUInt32BE(0) / 2 ** 32)
   const norm = Math.hypot(...v) || 1
   return v.map((x) => x / norm)
 }
