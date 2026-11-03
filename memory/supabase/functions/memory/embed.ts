@@ -1,7 +1,8 @@
 // Embeddings from OpenAI's text-embedding-3-large, cut to 1024 dimensions. Private and confidential entries never reach a
 // third-party model, so OpenAI only ever sees their title.
 import { config } from "./config.ts";
-import { type Row, secret, setting, type Sql, sql } from "./db.ts";
+import { assertBudget, meter } from "./budget.ts";
+import { type Row, secret, type Sql, sql } from "./db.ts";
 
 export async function sha256(data: string | Uint8Array): Promise<string> {
   const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
@@ -19,21 +20,6 @@ export function contentSha(text: string) {
   return sha256(`${config.embedModel}\n${text}`);
 }
 
-/** The month's embedding spend passed its cap. Recall serves keyword ranks until the month turns. */
-export class OverBudget extends Error {
-  override name = "OverBudget";
-}
-
-/** $5 a month at text-embedding-3-large's $0.13 per million tokens, unless the setting says otherwise. */
-const DEFAULT_BUDGET_TOKENS = 38_000_000;
-
-export async function budget() {
-  const [row] = await sql`select coalesce((select tokens from memory.embed_usage
-    where month = date_trunc('month', now())::date), 0) as used`;
-  const cap = Number(await setting("embed_budget_tokens")) || DEFAULT_BUDGET_TOKENS;
-  return { used: row.used as number, cap };
-}
-
 /** Where OpenAI calls go, and with which key. Tier 3 sets MEMORY_OPENAI_URL to a local fake, which takes no real key,
  * so CI never reaches OpenAI. */
 export async function openai(): Promise<{ url: string; key: string }> {
@@ -45,8 +31,7 @@ export async function openai(): Promise<{ url: string; key: string }> {
 }
 
 export async function embed(texts: string[]): Promise<number[][]> {
-  const { used, cap } = await budget();
-  if (used >= cap) throw new OverBudget(`${used} of ${cap} embedding tokens spent this month`);
+  await assertBudget("embed");
   const { url, key } = await openai();
   const r = await fetch(`${url}/embeddings`, {
     method: "POST",
@@ -56,8 +41,7 @@ export async function embed(texts: string[]): Promise<number[][]> {
   });
   if (!r.ok) throw new Error(`OpenAI embeddings ${r.status}: ${(await r.text()).slice(0, 200)}`);
   const body = await r.json();
-  await sql`insert into memory.embed_usage (month, tokens) values (date_trunc('month', now())::date, ${body.usage.total_tokens})
-    on conflict (month) do update set tokens = memory.embed_usage.tokens + excluded.tokens`;
+  await meter("embed", body.usage.total_tokens);
   const vecs = body.data.sort((a: Row, b: Row) => a.index - b.index).map((d: Row) => d.embedding);
   if (vecs.length !== texts.length || vecs.some((v: number[]) => v.length !== config.embedDim)) {
     throw new Error(`${config.embedModel} returned ${vecs.length} vectors, expected ${texts.length} of ${config.embedDim}`);

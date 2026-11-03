@@ -61,7 +61,7 @@ jobs:
       - name: Cache the function's imports
         run: deno cache --node-modules-dir=none harness/test/memory/edge.ts harness/test/memory/database.ts
       - name: The function's unit tests
-        run: deno test --allow-env --node-modules-dir=none harness/test/memory/embed_test.ts
+        run: deno test --allow-env --allow-read --node-modules-dir=none harness/test/memory/*_test.ts
       - uses: actions/setup-node@v4
         with:
           node-version: '22'

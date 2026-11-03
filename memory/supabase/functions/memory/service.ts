@@ -1,6 +1,8 @@
 // What the MCP tools and hook endpoints do, independent of transport, so tests can call it directly.
-import { config } from "./config.ts";
+import { sessionSet, unitOf } from "./allocation.ts";
 import { type Row, type Sql, sql } from "./db.ts";
+import { features } from "./features.ts";
+import type { Params, ParamSet } from "./params.ts";
 import { ARMS, fetchEntries, pack, type Ranked, redact as redactPrivate, renderEntry } from "./search.ts";
 import { Refused, SCOPE_RE } from "./write.ts";
 import { redact, redactText } from "./redact.ts";
@@ -11,34 +13,19 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const PRIVATE_BLOB = "[private blob: ask Wen]";
 const PAGE_MAX = 100_000;
 
-/** The session's arm, drawn once at random on first use. The agent and Wen never see it. */
-export async function sessionArm(db: Sql, session: string, client: string | null = null): Promise<string> {
-  const arm = config.arms[Math.floor(Math.random() * config.arms.length)];
-  const [row] = await db`insert into memory.mcp_session (id, arm, client) values (${session}, ${arm}, ${client})
-    on conflict (id) do nothing returning arm`;
-  if (row) return row.arm;
-  const [existing] = await db`select arm from memory.mcp_session where id = ${session}`;
-  return existing.arm;
-}
-
-// The filter reads this many of an arm's top candidates and keeps the ones the judge calls relevant. Tuned on train only.
-const FILTER_K = 12;
-// Confidence tilts the ranking without overriding it: score × (TILT_BASE + (1 - TILT_BASE) × confidence). Tuned on train.
-const TILT_BASE = Number(Deno.env.get("MEMORY_TILT_BASE") ?? 0.9);
-const DORMANT = 0.15;
-
-/** The arm's ranking with dormant entries dropped and every score tilted by its entry's confidence. */
-async function tilt(db: Sql, ranked: Ranked[], base = TILT_BASE): Promise<Ranked[]> {
-  const ids = ranked.slice(0, FILTER_K * 4).map(([id]) => id);
-  if (!ids.length) return ranked;
+/** The arm's ranking with dormant entries dropped and every score tilted by its entry's confidence, and the confidences
+ * the tilt read. Confidence tilts the ranking without overriding it: score × (tiltBase + (1 - tiltBase) × confidence). */
+async function tilt(db: Sql, ranked: Ranked[], p: Params): Promise<[Ranked[], Map<string, number>]> {
+  const ids = ranked.slice(0, p.tiltWindow).map(([id]) => id);
+  if (!ids.length) return [ranked, new Map()];
   const conf = new Map((await db`select id, confidence from memory.entry where id = any(${ids}::text[])`)
     .map((r) => [r.id, r.confidence as number]));
-  return ranked
-    .filter(([id]) => (conf.get(id) ?? 1) >= DORMANT)
-    .map(([id, score, line]): Ranked => [id, score * (base + (1 - base) * (conf.get(id) ?? 0.7)), line])
+  const tilted = ranked
+    .filter(([id]) => (conf.get(id) ?? 1) >= p.dormant)
+    .map(([id, score, line]): Ranked => [id, score * (p.tiltBase + (1 - p.tiltBase) * (conf.get(id) ?? p.tiltUnknownConfidence)), line])
     .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  return [tilted, conf];
 }
-const FILTER_THRESHOLD = Number(Deno.env.get("MEMORY_FILTER_THRESHOLD") ?? 0.5);
 
 /** What the filter shows the judge for one candidate. Private and confidential entries go by title alone, since their
  * bodies never reach a third-party model. */
@@ -48,33 +35,35 @@ function itemText(line: string | null, row: Row | undefined) {
   return `${r.title}. ${r.sensitivity === "normal" ? r.body : ""}`.trim();
 }
 
-/** One arm's ranking and the packet recall delivers from it. Writes nothing, so the console can preview an arm.
+/** One parameter set's ranking and the packet recall delivers from it. Writes nothing, so the console can preview a set.
  * With a scope like run:abc, that run's entries are candidates too and rank first.
  *
  * Every arm's candidates pass the same relevance filter before packing, so the arms stay comparable. The judge reads the
- * top FILTER_K and drops what it calls irrelevant. When it drops them all, recall says nothing matches rather than
+ * top filterK and drops what it calls irrelevant. When it drops them all, recall says nothing matches rather than
  * serving noise. When it can't answer, the ranking goes out unfiltered and `degraded` says so. */
-export async function rankAndPack(db: Sql, arm: string, query: string, task = "", scope: string | null = null,
-  filter = true, tiltBase = TILT_BASE) {
+export async function rankAndPack(db: Sql, set: ParamSet, query: string, task = "", scope: string | null = null, filter = true) {
+  const p = set.params;
   const request = task ? `${task}\n${query}`.trim() : query;
-  const [armRanked, armDegraded] = await ARMS[arm](db, request, scope || null);
-  const ranked = await tilt(db, armRanked, tiltBase);
+  const [armRanked, armDegraded, trace] = await ARMS[set.arm](db, request, scope || null, p);
+  const [ranked, confidence] = await tilt(db, armRanked, p);
   const lines = ranked.every(([, , line]) => line !== null);
-  const rows = lines ? {} : await fetchEntries(db, ranked.slice(0, FILTER_K * 2).map(([id]) => id));
+  const rows = lines ? {} : await fetchEntries(db, ranked.slice(0, p.rowWindow).map(([id]) => id));
   let candidates = ranked, rejected: string[] = [], filterDegraded: string | null = null;
+  const judged = new Map<string, number>();
   if (filter && ranked.length) {
-    const top = ranked.filter(([id, , line]) => line !== null || id in rows).slice(0, FILTER_K);
+    const top = ranked.filter(([id, , line]) => line !== null || id in rows).slice(0, p.filterK);
     try {
-      const p = await relevance(request, top.map(([id, , line]) => itemText(line, rows[id])));
-      candidates = top.filter((_, i) => p[i] >= FILTER_THRESHOLD);
-      rejected = top.filter((_, i) => p[i] < FILTER_THRESHOLD).map(([id]) => id);
+      const odds = await relevance(request, top.map(([id, , line]) => itemText(line, rows[id])));
+      top.forEach(([id], i) => judged.set(id, odds[i]));
+      candidates = top.filter((_, i) => odds[i] >= p.filterThreshold);
+      rejected = top.filter((_, i) => odds[i] < p.filterThreshold).map(([id]) => id);
     } catch (e) {
       filterDegraded = `filter-failed: ${(e as Error).name}`;
     }
   }
-  const [delivered, chunks] = pack(candidates, rows);
+  const [delivered, chunks] = pack(candidates, rows, p);
   const degraded = [armDegraded, filterDegraded].filter(Boolean).join("; ") || null;
-  return { ranked, degraded, delivered, chunks, lines, rejected };
+  return { ranked, degraded, delivered, chunks, lines, rejected, features: features(ranked, trace, confidence, judged) };
 }
 
 /** The line a degraded recall leads with, so the caller knows the results are weaker than usual. */
@@ -93,19 +82,22 @@ export function packetText(chunks: string[], lines: boolean, degraded: string | 
 
 /** Search memory. With a scope like run:abc, that run's entries are candidates too and rank first. */
 export async function recall(session: string, query: string, task = "", client: string | null = null,
-  scope: string | null = null) {
+  scope: string | null = null, principal = "anyone") {
   if (scope && !SCOPE_RE.test(scope)) throw new Refused(`scope ${JSON.stringify(scope)} must look like run:<id>, or be left out.`);
   query = redactText(query)[0];
   task = redactText(task)[0];
   const started = performance.now();
-  const arm = await sessionArm(sql, session, client);
-  const { ranked, degraded, delivered, chunks, lines, rejected } = await rankAndPack(sql, arm, query, task, scope);
+  const { set, propensity } = await sessionSet(sql, session, unitOf(scope, principal, client), client);
+  const { ranked, degraded, delivered, chunks, lines, rejected, features: logged } = await rankAndPack(sql, set, query, task, scope);
   const rid = crypto.randomUUID(), text = packetText(chunks, lines, degraded);
+  // Only a whole recall ticks the clock, so a degraded one takes no seq.
+  const seq = degraded ? null : sql`nextval('memory.retrieval_seq')`;
   await sql`insert into memory.retrieval (id, mcp_session, arm, query, task, scope, candidates, delivered, rejected, latency_ms,
-      degraded, packet)
-    values (${rid}, ${session}, ${arm}, ${query}, ${task || null}, ${scope || null},
+      degraded, packet, param_set, propensity, seq, context)
+    values (${rid}, ${session}, ${set.arm}, ${query}, ${task || null}, ${scope || null},
       ${sql.json(ranked.map(([id, score]: Ranked) => ({ id, score })))}, ${sql.json(delivered)}, ${sql.json(rejected)},
-      ${Math.round(performance.now() - started)}, ${degraded}, ${text})`;
+      ${Math.round(performance.now() - started)}, ${degraded}, ${text}, ${set.id}, ${propensity}, ${seq},
+      ${sql.json({ param_set: set.id, candidates: logged })})`;
   return `retrieval ${rid}\n\n${text}`;
 }
 

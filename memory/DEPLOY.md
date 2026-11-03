@@ -90,7 +90,14 @@ The daily groom drafts new entries from your own words. It's a Claude Code sched
 | `hybrid` | yes | English and 中文 keywords plus vectors, fused | 95% |
 | `spreading` | yes, since 2026-11-02 | Hybrid's top 50 as seeds, then personalized PageRank over typed links (`link_type_weight` × each link's learned weight), replaced entries ×0.3 | 95% |
 
-Every arm passes the same relevance filter and confidence tilt. Turn an arm on with the function's `MEMORY_ARMS` secret, for example `supabase secrets set MEMORY_ARMS=index,hybrid,spreading`.
+Every arm passes the same relevance filter and confidence tilt. Which arms serve, and with what share, is the allocation (`GET` and `PUT /api/v1/allocation`, [API.md](API.md#parameter-sets-and-allocation)), changed with no deploy. Until the allocation has a serving row, the function's `MEMORY_ARMS` secret decides, each arm on its v1 set with an equal share, for example `supabase secrets set MEMORY_ARMS=index,hybrid,spreading`. **Right after applying the learning-loop migration, PUT the allocation to match `MEMORY_ARMS`** if you want the table, not the secret, in charge:
+
+```bash
+curl -X PUT "$MEMORY_URL/api/v1/allocation" -H "Authorization: Bearer $MEMORY_ADMIN_TOKEN" -H 'content-type: application/json' \
+  -d '{"rows": [{"param_set": "index.v1", "role": "default", "weight": 333}, {"param_set": "hybrid.v1", "role": "default", "weight": 333}, {"param_set": "spreading.v1", "role": "default", "weight": 334}]}'
+```
+
+Every knob each arm ranks by (candidates, packet size, the filter, the tilt, the fusion and PageRank constants, the link type weights) is a row of `memory.param_set`, and a set never changes. `eval/retrieval_eval.py --params <id|file.json>` runs any set offline. Link type weights have one owner: the `linkTypeWeights` of the set a recall is served. `eval/ants.py` saves its result as a new spreading set (parent `spreading.v1`, id `spreading.ants-<time>`) and writes nothing else, so trying it is `retrieval_eval.py --params <id>`, and serving it is an allocation row. `PUT /link-type-weights` answers 410 and points at `POST /param-sets`. The `link_type_weight` table stays for the record, and nothing ranks by it.
 
 [eval/ants.py](eval/ants.py) trains the per-link-type weights with an ant colony on the train questions. On today's 21 train questions it didn't beat neutral weights, so they're back at 1.0. Rerun it as the probe set grows.
 
@@ -153,7 +160,7 @@ memory/hooks/set-openai-key.sh
 
 pg_cron calls `/embeddings/sync` every 5 minutes, which embeds any entry whose text changed. A write answers before it's embedded, and keyword search finds it at once.
 
-Spending stops at 38 million tokens a month, which is $5. Past that, recall serves keyword ranks until the month turns and the console says so. Raise the cap with a row in `memory.setting` named `embed_budget_tokens`.
+Spending is metered by kind in `memory.openai_usage` (embed, judge_write, judge_recall, shadow, research). Embeds, recall's judge, shadows and research share 38 million tokens a month, which is $5. Past that, recall serves keyword ranks until the month turns and the console says so. Raise the cap with a row in `memory.setting` named `embed_budget_tokens`. The judge that screens writes has a reserve of its own, 5 million tokens a month, that nothing else spends, so remember keeps screening when the general budget is gone. Past the reserve, remember refuses with a message that says so. Raise it with `judge_write_reserve_tokens`. The two don't add up to one cap: the most a month can spend is both.
 
 ## Back up and restore
 

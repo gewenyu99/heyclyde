@@ -60,7 +60,7 @@ The first pass found an implementation bug, not a design limit. Hybrid's fusion 
 
 Each clyde-flow run gets its own scope, `run:<id>`. Its stages leave notes there, and the next stage recalls them.
 
-- **Runs stay out of normal recalls.** A recall without a scope never sees `run:` entries. With `scope="run:abc"`, that run's entries join the candidates and their scores are multiplied by `MEMORY_SCOPE_BOOST`, default 3. Other runs stay hidden. Both arms filter and boost the same way.
+- **Runs stay out of normal recalls.** A recall without a scope never sees `run:` entries. With `scope="run:abc"`, that run's entries join the candidates and their scores are multiplied by the parameter set's `scopeBoost`, 3 in the v1 sets. Other runs stay hidden. Both arms filter and boost the same way.
 - **A run's project comes first.** Write a `projects` entry in scope `run:<id>`, then point every note at it with `project`.
 - **Writes keep the seed's rules.** `remember` checks each entry against the `seed/build.py` invariants and writes it in one transaction. Title, body and evidence stop at 300, 4,000 and 20,000 characters.
 - **A replacement reaches every recall the old entry did.** An entry supersedes only entries at or below its own authority, and a `run:` entry only entries in its run. Hybrid stops serving a superseded entry. The index arm lists it struck through and never boosts it.

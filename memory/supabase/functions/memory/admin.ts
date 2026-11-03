@@ -1,14 +1,17 @@
 // The management API behind Wen's console, mounted at /api/v1. JSON in and out. This is Wen's own console behind his
 // token, so private entries show in full. Every write lands with an admin_audit row in the same transaction. Query
 // strings that don't parse get a 400. Bodies that parse but don't validate get a 422. A body over 1 MiB gets a 413.
+import { allocation, serving, servingArms } from "./allocation.ts";
+import { budget } from "./budget.ts";
 import { config } from "./config.ts";
 import { type Row, type Sql, sql } from "./db.ts";
-import { budget, contentSha, entryText, sha256, syncEmbeddings } from "./embed.ts";
+import { contentSha, entryText, sha256, syncEmbeddings } from "./embed.ts";
+import { forgetParamSet, type Params, ParamError, paramSet, resolveParams } from "./params.ts";
 import { ARMS, hybridComponents } from "./search.ts";
 import * as service from "./service.ts";
 import { redact, redactText } from "./redact.ts";
 import { screen } from "./judge.ts";
-import { remember, Refused } from "./write.ts";
+import { canonical, remember, Refused } from "./write.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 
@@ -107,7 +110,7 @@ async function overview() {
     delete c[`last_${k}`];
   }
   return {
-    health: { db: true, arms: config.arms, embedding_model: config.embedModel, vector: true, sync: await syncStatus(),
+    health: { db: true, arms: await servingArms(sql), embedding_model: config.embedModel, vector: true, sync: await syncStatus(),
       budget: await budget() },
     counts: { ...c, unread: Object.fromEntries(unread.map((r) => [r.name, r.n])) },
     embeddings: await embeddingCounts(sql), last,
@@ -151,7 +154,7 @@ async function meta() {
     link_types: [...new Set([...types.map((r) => r.type), "part_of", "relates", "supersedes"])].sort(),
     projects: await sql`select id, title from memory.entry where pattern = 'projects' order by title, id`,
     sources: await sql`select id, kind, title, date from memory.source order by date desc nulls last, id`,
-    arms: Object.keys(ARMS), live_arms: config.arms,
+    arms: Object.keys(ARMS), live_arms: await servingArms(sql),
   };
 }
 
@@ -587,21 +590,34 @@ async function addMessage(data: Row) {
 /** What each arm would deliver for a query, through recall's own ranking and packing. No retrieval, no session. */
 async function recallPreview(data: Row) {
   const [query, task] = optionalText(data, "query", "task");
-  const arms = data.arms ?? Object.keys(ARMS);
   if (!query || !query.trim()) throw new ApiError(422, "Need a query.");
-  if (!Array.isArray(arms) || !arms.every((a) => typeof a === "string" && a in ARMS)) {
-    throw new ApiError(422, `arms must be a list drawn from ${Object.keys(ARMS).join(", ")}.`);
+  const ids = data.param_sets ?? (data.arms ? data.arms : null);
+  if (ids !== null && (!Array.isArray(ids) || !ids.every((a) => typeof a === "string"))) {
+    throw new ApiError(422, "param_sets must be a list of parameter set ids.");
+  }
+  // Named sets, or the arms' v1 sets for older callers, or else whatever is serving now.
+  const named: string[] = ids === null ? [...new Set(serving((await allocation(sql)).slots).map((s) => s.param_set))]
+    : data.param_sets ? ids : (ids as string[]).map((a) => (a in ARMS ? `${a}.v1` : a));
+  const sets = [];
+  for (const id of named) {
+    try {
+      sets.push(await paramSet(sql, id));
+    } catch (e) {
+      if (e instanceof ParamError) throw new ApiError(422, e.message);
+      throw e;
+    }
   }
   const out = [];
-  for (const arm of arms) {
+  for (const set of sets) {
+    const arm = set.arm;
     const started = performance.now();
-    const r = await service.rankAndPack(sql, arm, query, task ?? "");
+    const r = await service.rankAndPack(sql, set, query, task ?? "");
     const ms = Math.round(performance.now() - started);
     const top = r.ranked.slice(0, 25);
     const t = await titles(sql, top.map(([id]) => id));
     const inPacket = new Set(r.delivered);
     out.push({
-      arm, degraded: r.degraded, latency_ms: ms, packet: r.delivered, text: service.packetText(r.chunks, r.lines, r.degraded),
+      arm, param_set: set.id, degraded: r.degraded, latency_ms: ms, packet: r.delivered, text: service.packetText(r.chunks, r.lines, r.degraded),
       ranked: top.map(([id, score], i) => ({ rank: i + 1, id, score, ...known(t, id), in_packet: inPacket.has(id) })),
     });
   }
@@ -724,11 +740,39 @@ async function putSecret(name: string, data: Row) {
 
 // Tables /import fills, the same set /export writes, and the serial columns whose sequences follow the rows in.
 const IMPORTABLE = new Set(["source", "entry", "link", "question", "qrel", "blob", "entry_blob", "mcp_session", "mcp_client",
-  "retrieval", "event", "feedback", "message", "admin_audit", "link_type_weight", "device", "embed_usage"]);
+  "retrieval", "event", "feedback", "message", "admin_audit", "link_type_weight", "device", "embed_usage", "param_set", "allocation",
+  "openai_usage"]);
 const SERIAL = ["event", "feedback", "message", "admin_audit", "device"];
 // jsonb columns go in through sql.json, or a list of strings would be sent as text[].
-const JSONB = new Set(["payload", "candidates", "delivered", "rejected", "context", "before", "after"]);
+const JSONB = new Set(["payload", "candidates", "delivered", "rejected", "context", "before", "after", "params"]);
 const MAX_IMPORT = 8 * 1024 * 1024;
+
+/** Parameter sets never change, so a restore can't just overwrite one. A set that's there with the same params is skipped. A set
+ * the migration seeded (index.v1 and the like) takes the backup's params, since a restored database is seeded before its backup
+ * is loaded and the backup's are the ones its recalls were logged under. Any other set that differs is a 409 naming it, and
+ * nothing is imported. Returns how many rows it wrote. */
+async function importParamSets(tx: Sql, rows: Row[]) {
+  let written = 0, unlocked = false;
+  for (const r of rows) {
+    const [have] = await tx`select params, created_by from memory.param_set where id = ${r.id}`;
+    if (!have) {
+      await tx`insert into memory.param_set (id, arm, params, parent, note, created_by, created_at)
+        values (${r.id}, ${r.arm}, ${tx.json(r.params)}, ${r.parent ?? null}, ${r.note ?? null}, ${r.created_by ?? null},
+          coalesce(${r.created_at ?? null}::timestamptz, now()))`;
+    } else if (canonical(have.params) !== canonical(r.params)) {
+      if (have.created_by !== "migration") {
+        throw new ApiError(409, `Parameter set ${r.id} is already here with different params, and a set never changes. Nothing was imported.`);
+      }
+      if (!unlocked) await tx`alter table memory.param_set disable trigger param_set_immutable`;
+      unlocked = true;
+      await tx`update memory.param_set set params = ${tx.json(r.params)} where id = ${r.id}`;
+      forgetParamSet(r.id);
+    } else continue;
+    written++;
+  }
+  if (unlocked) await tx`alter table memory.param_set enable trigger param_set_immutable`;
+  return written;
+}
 
 /** Load rows in /export's NDJSON shape, {table, row} per line, in one transaction. A row whose key is taken is skipped,
  * so a chunk sent twice lands once. bytea comes as {base64}. Restores a backup without database credentials. */
@@ -759,6 +803,10 @@ async function importRows(req: Request) {
   const counts: Record<string, number> = {};
   await sql.begin(async (tx) => {
     for (const [table, rows] of groups) {
+      if (table === "param_set") {
+        counts[table] = (counts[table] ?? 0) + await importParamSets(tx, rows);
+        continue;
+      }
       const cols = [...new Set(rows.flatMap((r) => Object.keys(r)))];
       for (let i = 0; i < rows.length; i += 500) {
         const chunk = rows.slice(i, i + 500).map((r) =>
@@ -771,6 +819,8 @@ async function importRows(req: Request) {
     for (const t of SERIAL) {
       await tx`select setval(${`memory.${t}_id_seq`}, greatest(coalesce((select max(id) from ${tx("memory." + t)}), 1), 1))`;
     }
+    // The recall clock carries on from the last imported recall.
+    await tx`select setval('memory.retrieval_seq', greatest(coalesce((select max(seq) from memory.retrieval), 1), 1))`;
   });
   return { imported: counts };
 }
@@ -783,14 +833,33 @@ const evalQuestions = (split: string) =>
     from memory.question q left join memory.qrel r on r.question_id = q.id
     where ${split} = 'all' or q.split = ${split} group by q.id order by q.id`;
 
+/** The set an eval run ranks on: `param_set` names a stored one, `params` lays overrides on `parent` (default: the arm's v1)
+ * without storing anything, and with neither it's the arm's v1. `tilt` still overrides tiltBase, for older callers. */
+async function evalSet(data: Row) {
+  try {
+    if (typeof data.param_set === "string") {
+      const set = await paramSet(sql, data.param_set);
+      if (data.arm && data.arm !== set.arm) throw new ApiError(422, `${set.id} is a ${set.arm} set, not ${data.arm}.`);
+      return set;
+    }
+    const base = await paramSet(sql, typeof data.parent === "string" ? data.parent : `${data.arm}.v1`);
+    if (base.arm !== data.arm) throw new ApiError(422, `${base.id} is a ${base.arm} set, not ${data.arm}.`);
+    const overrides = { ...(data.params ?? {}), ...(typeof data.tilt === "number" ? { tiltBase: data.tilt } : {}) };
+    return { id: data.params || data.tilt !== undefined ? "(inline)" : base.id, arm: base.arm, params: resolveParams(base.params, overrides) };
+  } catch (e) {
+    if (e instanceof ParamError) throw new ApiError(422, e.message);
+    throw e;
+  }
+}
+
 /** One arm's full ranking and packet for a query, plus hybrid's rankers on their own, so the eval can place a miss. */
 async function evalRank(data: Row) {
   const [query] = optionalText(data, "query");
-  if (!query || !(data.arm in ARMS)) throw new ApiError(422, "Need a query and an arm.");
-  const r = await service.rankAndPack(sql, data.arm, query, "", null, data.filter !== false,
-    typeof data.tilt === "number" ? data.tilt : undefined);
-  const parts = data.arm === "hybrid" ? (await hybridComponents(sql, query)).parts : null;
-  return { candidates: r.ranked.map(([id]) => id), delivered: r.delivered, rejected: r.rejected, degraded: r.degraded, parts };
+  if (!query || (typeof data.param_set !== "string" && !(data.arm in ARMS))) throw new ApiError(422, "Need a query, and an arm or a param_set.");
+  const set = await evalSet(data);
+  const r = await service.rankAndPack(sql, set, query, "", null, data.filter !== false);
+  const parts = set.arm === "hybrid" ? (await hybridComponents(sql, query, null, set.params)).parts : null;
+  return { param_set: set.id, candidates: r.ranked.map(([id]) => id), delivered: r.delivered, rejected: r.rejected, degraded: r.degraded, parts };
 }
 
 // The text each table holds, for the redaction backfill: its key column and the columns to redact.
@@ -919,25 +988,86 @@ async function groomReinforce(data: Row) {
   return { id, confidence: after };
 }
 
-/** The spreading arm's per-link-type weights, as the ants left them. */
+/** The link type weights the table holds, from before they moved into parameter sets. Nothing ranks by it any more. */
 const linkTypeWeights = () =>
   sql`select src_pattern, link_type, dst_pattern, n_links, weight from memory.link_type_weight order by n_links desc`;
 
-/** Set per-link-type weights, clamped to 0.2 to 5. eval/ants.py writes them after training on train questions. */
-async function setLinkTypeWeights(data: Row) {
-  const rows = data.rows;
-  if (!Array.isArray(rows) || !rows.length) throw new ApiError(422, "rows must be a list of {src_pattern, link_type, dst_pattern, weight}.");
+// ---------------------------------------------------------------- parameter sets and allocation
+const SET_ID = /^[a-z0-9][a-z0-9._-]{1,63}$/;
+const ROLES = ["off", "shadow", "live", "default"];
+
+const paramSets = (arm: string | null) =>
+  sql`select id, arm, params, parent, note, created_by, created_at from memory.param_set
+    where ${arm}::text is null or arm = ${arm} order by arm, id`;
+
+async function getParamSet(id: string) {
+  const [row] = await sql`select id, arm, params, parent, note, created_by, created_at from memory.param_set where id = ${id}`;
+  if (!row) throw new ApiError(404, `No parameter set ${id}.`);
+  return row;
+}
+
+/** Make a parameter set. Sets are never changed, so this is the only way in. With a `parent`, `params` names only what
+ * differs and the set stores every knob. */
+async function createParamSet(data: Row) {
+  const { id: setId, parent = null, note = null, by = "admin" } = data;
+  if (typeof setId !== "string" || !SET_ID.test(setId)) throw new ApiError(422, "id must look like hybrid.v2: lowercase letters, digits, dots, dashes, underscores.");
+  for (const [name, v] of [["parent", parent], ["note", note], ["by", by]]) {
+    if (v !== null && typeof v !== "string") throw new ApiError(422, `${name} must be text.`);
+  }
+  let arm = data.arm, params: Params;
+  try {
+    const from = parent === null ? null : await paramSet(sql, parent);
+    if (from && arm !== undefined && arm !== from.arm) throw new ApiError(422, `${from.id} is a ${from.arm} set, not ${arm}.`);
+    arm ??= from?.arm;
+    params = resolveParams(from?.params ?? null, data.params ?? {});
+  } catch (e) {
+    if (e instanceof ParamError) throw new ApiError(422, e.message);
+    throw e;
+  }
+  if (typeof arm !== "string" || !(arm in ARMS)) throw new ApiError(422, `arm must be one of ${Object.keys(ARMS).join(", ")}.`);
   return await sql.begin(async (tx) => {
-    let n = 0;
+    const [row] = await tx`insert into memory.param_set (id, arm, params, parent, note, created_by)
+      values (${setId}, ${arm}, ${tx.json(params as any)}, ${parent}, ${note}, ${by}) on conflict (id) do nothing
+      returning id, arm, params, parent, note, created_by, created_at`;
+    if (!row) throw new ApiError(409, `Parameter set ${setId} exists. Sets never change, so make a new id.`);
+    await audit(tx, "param_set.create", `param_set:${setId}`, null, { arm, parent, note, by });
+    return row;
+  });
+}
+
+/** The allocation rows with each serving set's share of the traffic. While no row serves, MEMORY_ARMS stands in and the
+ * table reads empty. */
+async function allocationRows(db: Sql) {
+  const rows = await db`select a.param_set, p.arm, a.role, a.weight from memory.allocation a join memory.param_set p on p.id = a.param_set
+    order by a.param_set`;
+  const live = serving(rows as any);
+  const total = live.reduce((sum, s) => sum + s.weight, 0);
+  return rows.map((r) => ({ ...r, share: live.some((s) => s.param_set === r.param_set) ? r.weight / total : null }));
+}
+
+/** Set roles and weights. The rows named change and the rest stay, so one PUT can turn one variant off. A weight is a share
+ * of the live and default rows' total. The result has to serve someone. */
+async function putAllocation(data: Row) {
+  const rows = data.rows, by = data.by ?? "admin";
+  if (typeof by !== "string" || !by.trim() || by.length > 64) throw new ApiError(422, "by must be text, 1 to 64 characters.");
+  if (!Array.isArray(rows) || !rows.length) throw new ApiError(422, "rows must be a list of {param_set, role, weight}.");
+  for (const r of rows) {
+    if (!r || typeof r.param_set !== "string") throw new ApiError(422, "Every row needs a param_set.");
+    if (!ROLES.includes(r.role)) throw new ApiError(422, `role must be one of ${ROLES.join(", ")}.`);
+    if (!Number.isInteger(r.weight) || r.weight < 0) throw new ApiError(422, "weight must be a whole number, 0 or more.");
+  }
+  return await sql.begin(async (tx) => {
+    const before = await allocationRows(tx);
     for (const r of rows) {
-      const w = Math.min(5, Math.max(0.2, Number(r.weight)));
-      if (!Number.isFinite(w)) continue;
-      const done = await tx`update memory.link_type_weight set weight = ${w}
-        where src_pattern = ${r.src_pattern} and link_type = ${r.link_type} and dst_pattern = ${r.dst_pattern} returning 1`;
-      n += done.length;
+      const [known] = await tx`select 1 from memory.param_set where id = ${r.param_set}`;
+      if (!known) throw new ApiError(422, `No parameter set ${r.param_set}.`);
+      await tx`insert into memory.allocation (param_set, role, weight) values (${r.param_set}, ${r.role}, ${r.weight})
+        on conflict (param_set) do update set role = excluded.role, weight = excluded.weight, updated_at = now()`;
     }
-    await audit(tx, "link_type_weight.set", "link_type_weight", null, { rows: rows.length, updated: n, by: data.by ?? "ants" });
-    return { updated: n };
+    const after = await allocationRows(tx);
+    if (!after.some((r) => r.share !== null)) throw new ApiError(422, "That would leave no set serving. Give a live or default row a weight above 0.");
+    await audit(tx, "allocation.put", "allocation", { rows: before }, { by, rows: after });
+    return { rows: after };
   });
 }
 
@@ -1074,7 +1204,14 @@ const ROUTES: Route[] = [
   ["PUT", /^\/secrets\/(openai_key)$/, 200, async (r, m) => putSecret(m[1], await body(r))],
   ["POST", /^\/import$/, 200, (r) => importRows(r)],
   ["GET", /^\/link-type-weights$/, 200, () => linkTypeWeights()],
-  ["PUT", /^\/link-type-weights$/, 200, async (r) => setLinkTypeWeights(await body(r))],
+  ["PUT", /^\/link-type-weights$/, 200, () => {
+    throw new ApiError(410, "PUT /link-type-weights is gone. Link type weights belong to a parameter set (linkTypeWeights): POST /api/v1/param-sets with parent spreading.v1, as eval/ants.py does.");
+  }],
+  ["GET", /^\/param-sets$/, 200, (_r, _m, q) => paramSets(q.text("arm"))],
+  ["POST", /^\/param-sets$/, 201, async (r) => createParamSet(await body(r))],
+  ["GET", /^\/param-sets\/([^/]+)$/, 200, (_r, m) => getParamSet(id(m[1]))],
+  ["GET", /^\/allocation$/, 200, async () => ({ rows: await allocationRows(sql) })],
+  ["PUT", /^\/allocation$/, 200, async (r) => putAllocation(await body(r))],
   ["GET", /^\/groom\/sessions$/, 200, () => groomSessions()],
   ["POST", /^\/groom\/checkpoint$/, 200, async (r) => groomCheckpoint(await body(r))],
   ["POST", /^\/groom\/draft$/, 201, async (r) => groomDraft(await body(r))],

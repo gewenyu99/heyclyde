@@ -293,16 +293,50 @@ Body `{"to": "claude", "body": "..."}`. `to` is `claude`, `codex` or `all`, in a
 
 ### `POST /recall/preview`
 
-Body `{"query": "...", "task"?: "...", "arms"?: ["index", "hybrid"]}`. `arms` defaults to every arm the server knows, live or not.
+Body `{"query": "...", "task"?: "...", "param_sets"?: ["hybrid.v1", "hybrid.v2"]}`. `param_sets` defaults to the sets now serving, from the allocation (or `MEMORY_ARMS`' v1 sets while it has no serving row). An older caller's `"arms": ["index", "hybrid"]` still works and means each arm's v1. An unknown set id is a 422. Each item in `arms` in the reply names its `param_set`.
 
 ```json
-{"arms": [{"arm": "hybrid", "degraded": null, "latency_ms": 40, "packet": ["tea-oolong-temp"],
+{"arms": [{"arm": "hybrid", "param_set": "hybrid.v1", "degraded": null, "latency_ms": 40, "packet": ["tea-oolong-temp"],
            "text": "[1] tea-oolong-temp: Brew oolong at 90C\n    approved · ...",
            "ranked": [{"rank": 1, "id": "tea-oolong-temp", "score": 0.09, "title": "...", "authority": "approved",
                        "superseded_by": [], "current": true, "in_packet": true}]}]}
 ```
 
 It ranks and packs through recall's own code, so `packet` is what an agent on that arm would get and `text` is what it would read under the retrieval id. `ranked` is the top 25. A superseded entry has its replacements in `superseded_by` and `current` false. The index arm delivers those struck through, and `text` shows how. It never writes a retrieval or a session.
+
+## Parameter sets and allocation
+
+Every ranking knob lives in a parameter set, and an allocation says which sets serve. Changing either takes effect on the next recall, with no deploy.
+
+### `GET /param-sets?arm=`
+
+Every set, by arm then id. Each item has `id`, `arm`, `params`, `parent`, `note`, `created_by` and `created_at`. `params` holds every knob: `candidates`, `packetItems`, `packetTokens`, `filterK`, `filterThreshold`, `tiltBase`, `tiltUnknownConfidence`, `tiltWindow`, `rowWindow`, `dormant`, `rrfK`, `vecWeight`, `indexDraftFactor`, `scopeBoost`, `restart`, `iterations`, `supersededFactor`, `linkTypeWeights` (keyed `src_pattern|link_type|dst_pattern`) and the features' weights `wTemperature`, `wAge` and `wKind`, which stay 0 until the features exist. `index.v1`, `hybrid.v1` and `spreading.v1` hold the constants memory ranked by before parameter sets existed.
+
+### `GET /param-sets/{id}`
+
+One set, or 404.
+
+### `POST /param-sets`
+
+Body `{"id": "hybrid.v2", "parent"?: "hybrid.v1", "arm"?: "hybrid", "params": {...}, "note"?: "...", "by"?: "..."}`. With a `parent`, `params` names only the knobs that differ and the set stores all of them, and `arm` defaults to the parent's. Without one, `params` must name every knob. Returns 201 with the row. A set is never changed or deleted, and the database refuses it, so there is no PUT. An id that exists gets 409. An unknown knob, a value out of range or an unknown parent gets 422 with what to fix. Audited as `param_set.create`.
+
+### `GET /allocation`
+
+`{"rows": [{"param_set", "arm", "role", "weight", "share"}]}`. `role` is `off`, `shadow`, `live` or `default`. Only `live` and `default` rows with a weight above 0 serve, in proportion to their weights, and `share` is that proportion (null for the rest). A unit (a run scope's id, or else device, client and UTC day) is hashed with a salt into one of 1000 buckets laid along those shares, so it always gets the same set, and each recall logs the set and the share it was served with. While no row serves, the function's `MEMORY_ARMS` stands in: each arm on its v1, an equal share each, and `rows` is empty.
+
+### `PUT /allocation`
+
+Body `{"rows": [{"param_set", "role", "weight"}], "by"?: "..."}`. `by` is text of 1 to 64 characters and defaults to `admin`; the audit row records it. The rows named are set and the others stay, so one PUT can turn one variant off: `{"param_set": "hybrid.v2", "role": "off", "weight": 0}`. `weight` is a whole number, 0 or more. 422 if a set doesn't exist, a role is wrong, or the result would leave nothing serving, and then nothing changes. A session that a set served stops being served by it as soon as the set's role is off or its weight 0. Audited as `allocation.put`: `before` is `{"rows": [...]}`, the whole table before, and `after` is `{"by": "...", "rows": [...]}`.
+
+## Eval
+
+### `GET /eval/questions?split=train`
+
+The practice queries with their gold and must_not entries, for `eval/retrieval_eval.py`.
+
+### `POST /eval/rank`
+
+Body `{"query", "arm", "filter"?: true, "param_set"?: "hybrid.v1", "parent"?: "hybrid.v1", "params"?: {...}}`. Ranks and packs one query and returns `{"param_set", "candidates", "delivered", "rejected", "degraded", "parts"}`. With `param_set` it runs that stored set (and `arm` may be left out). With `params` it lays those knobs over `parent`, or the arm's v1, without storing anything. With neither it runs the arm's v1. It writes no retrieval, so it never ticks the recall clock.
 
 ## Embeddings
 
@@ -329,6 +363,8 @@ Newest first. Each item has `id`, `at`, `action`, `target`, `before` and `after`
 | `feedback.create` | `retrieval:<id>` | null | `verdict`, `entry_id`, `note` |
 | `message.create` | `message:<id>` | null | `to` and `body` as sent |
 | `embeddings.sync` | `embeddings` | null | `embedded` or `error` |
+| `param_set.create` | `param_set:<id>` | null | `arm`, `parent`, `note`, `by` |
+| `allocation.put` | `allocation` | `{rows}`, the table before | `{by, rows}`, the table after |
 
 ## Code
 

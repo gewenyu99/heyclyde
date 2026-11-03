@@ -95,11 +95,12 @@ function installNote(who: Principal) {
   return installerNote(clientStatus(who.clientVersion, config.clientCutoffDays), Boolean(who.updateFailed));
 }
 
-type Call = { session: string; client: string | null; args: Record<string, any>; note: string };
+type Call = { session: string; client: string | null; principal: string; args: Record<string, any>; note: string };
 const s = (v: unknown, fallback = "") => typeof v === "string" ? v : fallback;
 
 const RUN: Record<string, (c: Call) => Promise<string>> = {
-  recall: ({ session, client, args }) => service.recall(session, s(args.query), s(args.task), client, s(args.scope) || null),
+  recall: ({ session, client, principal, args }) =>
+    service.recall(session, s(args.query), s(args.task), client, s(args.scope) || null, principal),
   get_entry: async ({ session, args }) => (await service.getEntry(session, s(args.id))) ?? `No entry ${s(args.id)}.`,
   get_blob: ({ args }) => service.getBlob(s(args.sha256), Number(args.offset ?? 0), Number(args.limit ?? 20000)),
   remember: async ({ args }) => {
@@ -154,7 +155,8 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
       if (!run) return error(id, -32602, `Unknown tool ${name}`);
       const sid = session ?? `anon-${crypto.randomUUID()}`;
       try {
-        const text = await run({ session: sid, client: await clientOf(session), args: msg.params?.arguments ?? {}, note: installNote(who) });
+        const principal = who.device ?? who.role;
+        const text = await run({ session: sid, client: await clientOf(session), principal, args: msg.params?.arguments ?? {}, note: installNote(who) });
         return result(id, { content: [{ type: "text", text }] });
       } catch (e) {
         if (!(e instanceof Refused)) console.error(e);
