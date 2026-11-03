@@ -198,8 +198,6 @@ test('unscoped HTTP recalls from many devices land on their own unit\'s set, wit
     }
   } finally {
     clearAllocation()
-    sql(`delete from memory.retrieval where mcp_session = 'http-global'`)
-    sql(`delete from memory.mcp_session where id = 'http-global'`)
   }
 })
 
