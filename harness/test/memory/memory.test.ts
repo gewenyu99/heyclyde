@@ -828,14 +828,14 @@ test('queue: the hook inbox acknowledges what it prints, in the format hooks alr
   const said = await sender('post_message', { to: 'queue8-reader', body })
   const messageId = Number((/^Posted message (\d+) to queue8-reader\.$/.exec(said) ?? assert.fail(said))[1])
   const at = new Date(sql(`select created_at from memory.message where id = ${messageId}`)[0].created_at).toISOString().slice(0, 16).replace('T', ' ')
-  const first = await call('GET', '/messages/queue8-reader', bearer(memory.token))
+  const first = await call('GET', '/messages/queue8-reader', hookAuth())
   assert.equal(first.status, 200, first.text)
   assert.equal(first.text,
     `Messages from your other agents (reply with post_message):\n- #${messageId} from queue8-sender to queue8-reader at ${at} UTC: ${body}\n`)
   const row = sql(`select acked_at, delivered_count from memory.message_delivery where message_id = ${messageId}`)[0]
   assert.notEqual(row.acked_at, null, 'what it printed is acknowledged')
   assert.equal(row.delivered_count, 1)
-  assert.equal((await call('GET', '/messages/queue8-reader', bearer(memory.token))).text, '')
+  assert.equal((await call('GET', '/messages/queue8-reader', hookAuth())).text, '')
   assert.equal(await reader('check_messages', {}), 'No new messages.')
 })
 
@@ -927,7 +927,7 @@ test('queue: the hook inbox and check_messages share one id space, and an id clo
     (${b}, 'queue12-sender', 'queue12-reader', 'printed by the hook')`)
   sql(`insert into memory.message_delivery (id, message_id, recipient, visible_after) values
     (880100, ${a}, 'queue12-reader', now() + interval '1 hour'), (880101, ${b}, 'queue12-reader', now())`)
-  const hook = await call('GET', '/messages/queue12-reader', bearer(memory.token))
+  const hook = await call('GET', '/messages/queue12-reader', hookAuth())
   assert.deepEqual(messageIds(hook.text), [b], hook.text)
   const reader = await mcpSession(memory.token, 'queue12-reader')
   assert.match(await reader('ack_messages', { ids: [b] }), /^Acknowledged 0 messages\.$/, 'b was acknowledged when the hook printed it')
