@@ -4,7 +4,8 @@ import { type Row, type Sql, sql } from "./db.ts";
 import { features } from "./features.ts";
 import type { Params, ParamSet } from "./params.ts";
 import { ARMS, fetchEntries, pack, type Ranked, redact as redactPrivate, renderEntry } from "./search.ts";
-import { Refused, SCOPE_RE } from "./write.ts";
+import * as store from "./blobs.ts";
+import { MEDIA_TYPE_RE, Refused, SCOPE_RE } from "./write.ts";
 import { redact, redactText } from "./redact.ts";
 import { relevance, screen } from "./judge.ts";
 import { BAD_VERDICT, checkFeedback, feedbackFooter, REMIND_MAX, reminderLine, VERDICTS } from "./feedback.ts";
@@ -145,7 +146,7 @@ export async function getEntry(session: string, id: string): Promise<string | nu
       join memory.entry e on e.id = l.dst where l.src = ${id}
     union all select 'from', l.type, l.src, e.title from memory.link l join memory.entry e on e.id = l.src where l.dst = ${id}
     order by 1, 2, 3`;
-  const blobs = await sql`select x.name, x.sha256, b.media_type, b.size from memory.entry_blob x
+  const blobs = await sql`select x.name, x.sha256, x.kind, b.media_type, b.size from memory.entry_blob x
     join memory.blob b on b.sha256 = x.sha256 where x.entry_id = ${id} order by x.name`;
   await sql`insert into memory.event (session_id, event, payload) values (${session}, 'get_entry', ${sql.json({ entry_id: id })})`;
   return renderEntry(rows[id], links, blobs);
@@ -154,25 +155,67 @@ export async function getEntry(session: string, id: string): Promise<string | nu
 /** The blob and whether some public entry attaches it. A blob only private entries reach stays private, and so does
  * one no entry reaches any more. null when memory has no such blob. */
 export async function readBlob(sha: string): Promise<Row | null> {
-  const [row] = await sql`select b.media_type, b.size, b.content,
+  const [row] = await sql`select b.media_type, b.size, b.content, b.stored,
       coalesce(bool_or(e.sensitivity <> 'private'), false) as public
     from memory.blob b left join memory.entry_blob x on x.sha256 = b.sha256 left join memory.entry e on e.id = x.entry_id
     where b.sha256 = ${sha.trim().toLowerCase()} group by b.sha256`;
   return row ?? null;
 }
 
-/** A blob's text, one page of characters at a time, with the call for the next page. */
+/** upload_blob: a URL to PUT a big file to. Records what the device declared, so remember can refuse a file that isn't it.
+ * It never says whether memory already holds the file, since that would tell anyone who guessed a private file that it's here. */
+export async function uploadBlob(principal: string, args: Record<string, unknown>) {
+  if (!store.storageOn()) throw new Refused("This memory has no file storage. Send the file inline as base64.");
+  const sha = typeof args.sha256 === "string" ? args.sha256.trim().toLowerCase() : "";
+  if (!store.SHA_RE.test(sha)) throw new Refused("sha256 must be 64 hex digits.");
+  const size = args.size;
+  if (!(typeof size === "number" && Number.isInteger(size) && size >= 1 && size <= store.MAX_STORED_BYTES)) {
+    throw new Refused(`size must be 1 to ${store.MAX_STORED_BYTES} bytes.`);
+  }
+  const type = typeof args.media_type === "string" && args.media_type ? args.media_type.toLowerCase() : "application/octet-stream";
+  if (!MEDIA_TYPE_RE.test(type)) throw new Refused(`media_type must look like image/png, not ${JSON.stringify(args.media_type)}.`);
+  const { used, cap } = await store.quota();
+  if (used + size > cap) {
+    throw new Refused(`That needs ${size} bytes, and memory holds ${used} of its ${cap}. Free some space or raise blob_quota_bytes.`);
+  }
+  const [{ n }] = await sql`select count(*) as n from memory.upload where principal = ${principal} and sha256 <> ${sha}`;
+  if (n >= store.MAX_WAITING) {
+    throw new Refused(`This device has ${store.MAX_WAITING} uploads waiting. Cite them in remember, or wait two hours for memory to sweep them.`);
+  }
+  const url = await store.signUpload(sha);
+  await sql`insert into memory.upload (sha256, principal, size, media_type) values (${sha}, ${principal}, ${size}, ${type})
+    on conflict (principal, sha256) do update set size = excluded.size, media_type = excluded.media_type, created_at = now()`;
+  return [`Upload ${sha}, ${size} bytes. PUT the file within two hours:`,
+    `curl -fsS -X PUT -H 'content-type: ${type}' --data-binary @<file> '${url}'`,
+    `Then call remember with artifacts: [{"name": "<name>", "kind": "<kind>", "sha256": "${sha}"}]. memory checks the size and hash before it keeps the file.`,
+  ].join("\n");
+}
+
+export const notInBackup = (sha: string) => `Blob ${sha} wasn't in the backup.`;
+
+/** A blob's text, one page of characters at a time, with the call for the next page. A blob in Storage that isn't text
+ * comes back as a link that downloads it for 10 minutes. */
 export async function getBlob(sha: string, offset = 0, limit = 20000) {
   sha = sha.trim().toLowerCase();
   const row = await readBlob(sha);
   if (!row) return `No blob ${sha}.`;
   if (!row.public) return PRIVATE_BLOB;
-  let text: string;
-  try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(row.content);
-  } catch {
-    return `Blob ${sha} is ${row.size} bytes of binary ${row.media_type}. get_blob only pages text.`;
-  }
+  let bytes: Uint8Array | null;
+  if (row.stored === "storage") {
+    if (!store.storageOn()) return notInBackup(sha);
+    if (!store.isText(row.media_type)) {
+      try {
+        return `Blob ${sha}: ${row.media_type}, ${row.size} bytes. Download it within 10 minutes: ${await store.signDownload(sha)}`;
+      } catch (e) {
+        if (e instanceof store.NotStored) return notInBackup(sha);
+        throw e;
+      }
+    }
+    bytes = await store.get(sha);
+    if (!bytes) return notInBackup(sha);
+  } else bytes = row.content;
+  const text = store.utf8(bytes!);
+  if (text === null) return `Blob ${sha} is ${row.size} bytes of binary ${row.media_type}. get_blob only pages text.`;
   if (offset < 0 || limit < 1) return "offset must be 0 or more, and limit 1 or more.";
   if (offset && offset >= text.length) return `Blob ${sha} has ${text.length} characters, so offset ${offset} is past the end.`;
   const end = Math.min(offset + Math.min(limit, PAGE_MAX), text.length);

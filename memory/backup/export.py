@@ -19,7 +19,7 @@ TOKEN = os.environ.get("MEMORY_BACKUP_TOKEN") or (Path.home() / ".config/memory/
 def get(query=""):
     req = urllib.request.Request(URL + query, headers={"Authorization": f"Bearer {TOKEN}"})
     with urllib.request.urlopen(req, timeout=120) as r:
-        return r.headers.get("x-rows"), r.read().decode("utf-8")
+        return r.headers.get("x-rows"), r.read().decode("utf-8"), r.headers.get("x-truncated")
 
 
 def main():
@@ -27,14 +27,15 @@ def main():
     for t in json.loads(get()[1])["tables"]:
         got, offset = 0, 0
         while True:
-            rows, body = get(f"?table={t['table']}&offset={offset}")
+            rows, body, truncated = get(f"?table={t['table']}&offset={offset}")
             n = int(rows)
             if body.count("\n") != n:
                 sys.exit(f"{t['table']} page at {offset} said {n} rows and carried {body.count(chr(10))}")
             sys.stdout.write(body)
             got += n
             offset += n
-            if n < t["page"]:
+            # A blob page is cut by bytes as well as rows, so a short page only ends the table when it wasn't cut.
+            if n < t["page"] and not truncated:
                 break
         if got < t["rows"]:
             sys.exit(f"{t['table']}: exported {got} of {t['rows']} rows")

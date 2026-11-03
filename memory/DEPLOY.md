@@ -180,6 +180,17 @@ The queue lands in three steps, since the function live now reads `message.read_
 
 Restoring a backup from before the queue works either side of step 3. `/import` gives each message in it the deliveries `message_queue` would.
 
+## Artifacts and Storage
+
+Artifacts (R42) are blobs. Text up to 256 KB stays in `memory.blob.content`. Binary and bigger text go to the private Storage bucket `memory-blobs`, which migration `20261103030000_artifacts_storage.sql` creates with a 500 MB file limit and no policy on `storage.objects`, so only the function's service role reaches it. Two settings outside the migration:
+
+- **Raise the project's global upload limit to 500 MB.** Storage settings in the dashboard cap every bucket (50 MB by default), and the bucket's own limit can't go above it.
+- **`blob_quota_bytes`** is a row in `memory.setting` (bytes). Unset, the cap is 10 GiB, inside Pro's 100 GB. `0` freezes new blobs. `select coalesce(sum(size), 0) from memory.blob` is what memory holds now.
+
+pg_cron runs `memory-blob-sweep` hourly at :17. It calls `/blobs/sweep` with the cron secret, which deletes files in `incoming/` that nobody cited within two hours, and the `memory.upload` rows that expected them.
+
+Storage objects are not in the platform database backups. The nightly export carries Storage blobs of 4 MiB or less, up to 2 GiB a run (MEMORY_EXPORT_STORED_TOTAL). Bigger files have no copy off Supabase.
+
 ## Back up and restore
 
 [memory-backup.yml](../.github/workflows/memory-backup.yml) runs nightly at 08:17 UTC. It pulls `/export`, compresses and encrypts it, and keeps it as an artifact for 30 days. It needs two repository secrets, `MEMORY_BACKUP_TOKEN` and `MEMORY_BACKUP_KEY`. The key is also in `~/.config/memory/backup-key`.

@@ -38,6 +38,9 @@ export type Params = {
   trialFloor?: number;
   trialStep?: number;
   settledStep?: number;
+  /** Optional and unlimited when a set doesn't carry it: each packet item's body is cut to this many characters, with
+   * "… more in get_entry" after it. */
+  itemChars?: number;
   /** Spreading: personalized PageRank's restart share and iteration count, what a replaced entry keeps, and each link
    * type's weight, keyed "src_pattern|link_type|dst_pattern" (1 for a type not named). */
   restart: number;
@@ -51,7 +54,7 @@ export type Params = {
 };
 
 type Spec = { min: number; max: number; int?: boolean; above?: boolean };
-type OptionalKnob = "otherRunFactor" | "globalAgentDraftFactor" | "trialItems" | "trialFloor" | "trialStep" | "settledStep";
+type OptionalKnob = "otherRunFactor" | "globalAgentDraftFactor" | "trialItems" | "trialFloor" | "trialStep" | "settledStep" | "itemChars";
 const WEIGHT: Spec = { min: -10, max: 10 };
 const KNOBS: Record<Exclude<keyof Params, "linkTypeWeights" | OptionalKnob>, Spec> = {
   candidates: { min: 1, max: 200, int: true }, packetItems: { min: 1, max: 50, int: true }, packetTokens: { min: 100, max: 20000, int: true },
@@ -66,6 +69,7 @@ const OPTIONAL: Record<OptionalKnob, Spec> = {
   otherRunFactor: { min: 0, max: 1, above: true }, globalAgentDraftFactor: { min: 0, max: 1, above: true },
   trialItems: { min: 0, max: 10, int: true }, trialFloor: { min: 0, max: 1 },
   trialStep: { min: 0, max: 0.5, above: true }, settledStep: { min: 0, max: 0.5, above: true },
+  itemChars: { min: 50, max: 4000, int: true },
 };
 const LINK_KEY = /^[a-z][a-z_-]{1,40}\|[a-z_]{2,40}\|[a-z][a-z_-]{1,40}$/;
 // The range eval/ants.py keeps link type weights in.

@@ -28,6 +28,7 @@ export function credentialFor(path: string): Kind | null {
   if (path === "/devices/claim") return "owner";
   if (path === "/" || path === "/api/v1" || path.startsWith("/api/v1/")) return "admin";
   if (["/mcp", "/mcp/", "/entries", "/recall"].includes(path)) return "agent";
+  if (path === "/blobs/sweep") return "cron";
   if (["/hooks/", "/messages/", "/entries/", "/blobs/"].some((p) => path.startsWith(p))) return "agent";
   if (path === "/export") return "backup";
   if (path === "/embeddings/sync" || path === "/learn") return "cron";

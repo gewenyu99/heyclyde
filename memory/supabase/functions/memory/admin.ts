@@ -2,6 +2,7 @@
 // token, so private entries show in full. Every write lands with an admin_audit row in the same transaction. Query
 // strings that don't parse get a 400. Bodies that parse but don't validate get a 422. A body over 1 MiB gets a 413.
 import { allocation, serving, servingArms } from "./allocation.ts";
+import * as store from "./blobs.ts";
 import { budget } from "./budget.ts";
 import { config } from "./config.ts";
 import { type Row, type Sql, sql } from "./db.ts";
@@ -800,6 +801,32 @@ async function importParamSets(tx: Sql, rows: Row[]) {
   return written;
 }
 
+/** A blob row from a backup, as this memory holds it. With Storage on, a Storage blob's bytes go back to Storage and the row
+ * keeps none. Without it the bytes stay in Postgres. A row exported without its bytes (too big, or its object was missing)
+ * is a Storage row with no object, which get_blob answers as "wasn't in the backup". A backup from before Storage has no
+ * stored column, and those rows are Postgres rows. */
+async function placeImportedBlob(r: Row) {
+  r.stored = r.stored === "storage" ? "storage" : "db";
+  if (r.content instanceof Uint8Array) {
+    if (r.stored === "storage" && store.storageOn()) {
+      await store.put(r.sha256, r.media_type, r.content);
+      r.content = null;
+    } else r.stored = "db";
+  } else {
+    r.content = null;
+    r.stored = "storage";
+  }
+}
+
+/** A backup from before artifacts has no kind on its entry_blob lines. They get the kind their blob's media type and name give. */
+async function fillKinds(tx: Sql, rows: Row[]) {
+  const missing = rows.filter((r) => !r.kind);
+  if (!missing.length) return;
+  const types = new Map((await tx`select sha256, media_type from memory.blob where sha256 = any(${missing.map((r) => r.sha256)}::text[])`)
+    .map((r) => [r.sha256 as string, r.media_type as string]));
+  for (const r of rows) r.kind ??= store.kindOf(types.get(r.sha256) ?? "application/octet-stream", String(r.name ?? ""));
+}
+
 /** Load rows in /export's NDJSON shape, {table, row} per line, in one transaction. A row whose key is taken is skipped,
  * so a chunk sent twice lands once. bytea comes as {base64}. Restores a backup without database credentials. */
 async function importRows(req: Request) {
@@ -840,6 +867,8 @@ async function importRows(req: Request) {
         counts[table] = (counts[table] ?? 0) + await importParamSets(tx, rows);
         continue;
       }
+      if (table === "blob") for (const r of rows) await placeImportedBlob(r);
+      if (table === "entry_blob") await fillKinds(tx, rows);
       const cols = [...new Set(rows.flatMap((r) => Object.keys(r)))];
       for (let i = 0; i < rows.length; i += 500) {
         const chunk = rows.slice(i, i + 500).map((r) =>

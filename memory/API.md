@@ -52,6 +52,20 @@ The console, in [console/](console/), is static files with no data in them. It a
 
 - **Every write is audited.** It adds an `admin_audit` row in the same transaction as the change. `target` is `entry:<id>`, `message:<id>`, `retrieval:<id>` or `embeddings`.
 
+## Artifacts and blobs (MCP and the agent routes)
+
+An agent's memory is short, and its details are **artifacts**: documents, logs, transcripts, images, skills, code. Every artifact is a blob, and recall lists a memory's artifacts as `name (kind, size)` with no content.
+
+- **remember** takes `artifacts: [{name, kind, text | base64 | sha256}]`. `blobs` is the same field under its old name. `kind` is one of image, video, audio, document, skill, artifact, data, other; memory derives it from the media type and name when it is left out, and refuses any other value ("Use one of image, video, audio, document, skill, artifact, data, other").
+- **500 characters.** A remember body over 500 characters is refused unless the call passes `long: true`; the message says to move the detail into an artifact. 4000 characters stays the hard cap. The parameter sets hybrid.v4 and spreading.v4 (children of v3) set the knob `itemChars` to 500, which cuts each packet item's body to that many characters plus "… more in get_entry".
+- **upload_blob** takes `sha256`, `size` (1 to 524288000 bytes) and `media_type`, and answers with a signed URL. The agent PUTs the file there within two hours and cites the sha256 in remember. memory reads the size from Storage's object info before it reads a byte, then checks the hash, and deletes a file that is the wrong size or hash, has a secret in its text, or is text too long to scan. One entry may cite up to 1073741824 bytes of new uploads. A device may have 10 uploads waiting.
+- **Where bytes live.** Text up to 262144 bytes stays in Postgres. Binary and bigger text go to the private Storage bucket `memory-blobs`, under their sha256. With Storage off (no `SUPABASE_SERVICE_ROLE_KEY`), everything stays in Postgres under the old 4 MiB limit, and upload_blob says so.
+- **blob_quota_bytes.** A row in `memory.setting` caps every blob together, Postgres and Storage. The default is 10 GiB (10737418240 bytes). A value that isn't a whole number of 0 or more is the default, and `0` freezes new blobs. Citing a blob memory already has costs no quota.
+- **get_blob** pages a text blob. For an image, video, audio file or any other non-text blob in Storage it answers with a link that downloads it for 10 minutes. `GET /blobs/{sha256}` redirects (302) to the same kind of link. A blob only private entries reach gets neither.
+- **/export and /import.** `/export?table=blob` carries Storage blobs of 4 MiB or less as base64, up to MEMORY_EXPORT_STORED_TOTAL bytes (2 GiB) per export, in sha256 order. Bigger blobs and missing objects go out with `content: null`, counted in `x-missing-blobs`. A blob page is cut by size too, and `x-truncated: 1` says so. `/api/v1/import` puts Storage blobs back (or into Postgres when Storage is off) and fills a missing `kind`; get_blob on a blob that wasn't in the backup answers "Blob <sha256> wasn't in the backup."
+- **POST /blobs/sweep** takes the cron secret and deletes uploads under `incoming/` older than 7200 seconds.
+- /mcp refuses a body over 12582912 bytes with 413.
+
 ## Dashboard
 
 ### `GET /overview`

@@ -8,6 +8,7 @@ import * as service from "./service.ts";
 import { clientStatus, installerNote, SERVER_VERSION } from "./version.ts";
 import { Refused, remember } from "./write.ts";
 
+export const MAX_MCP_BODY = 12 * 1024 * 1024;
 const RID = /^retrieval ([0-9a-f-]{36})/;
 const VERSIONS =["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 export const INSTRUCTIONS = "Wen's memory. Call recall before acting on anything that depends on Wen's decisions, " +
@@ -16,7 +17,10 @@ export const INSTRUCTIONS = "Wen's memory. Call recall before acting on anything
   "handled them, or they come back. To keep what you learn, call remember: it needs only pattern, title, body and " +
   "evidence, and every other agent can recall the note at once. Give feedback after every recall: one feedback call " +
   "with a verdict (used, irrelevant or wrong) for each result, or nothing_useful when none helped. The packet shows " +
-  "some results under On trial, new notes still earning their place, so judge those too.";
+  "some results under On trial, new notes still earning their place, so judge those too. Keep each memory under 500 " +
+  "characters and put the details in artifacts: remember takes artifacts: [{name, kind, text or base64 or sha256}], and " +
+  "recall lists a memory's artifacts by name and kind. Open one with get_blob. A file too big to send inline goes " +
+  "through upload_blob.";
 
 const str = (description: string) => ({ type: "string", description });
 const int = (description: string) => ({ type: "integer", description });
@@ -37,15 +41,27 @@ export const TOOLS = [
   },
   {
     name: "get_entry",
-    description: "Open one memory entry by id, with its evidence, source, links and blobs.",
+    description: "Open one memory entry by id, with its evidence, source, links and artifacts.",
     inputSchema: { type: "object", required: ["id"], properties: { id: str("Entry id") } },
   },
   {
     name: "get_blob",
-    description: "Read a blob that get_entry lists, as text, one page at a time. The reply says how to get the next page.",
+    description: "Read an artifact that get_entry lists, as text, one page at a time. The reply says how to get the next page. " +
+      "An image, video, audio file or other non-text artifact comes back as a link that downloads it for 10 minutes.",
     inputSchema: {
       type: "object", required: ["sha256"],
       properties: { sha256: str("The blob's sha256"), offset: int("First character, default 0"), limit: int("Characters, default 20000") },
+    },
+  },
+  {
+    name: "upload_blob",
+    description: "Send a file to memory that is too big to put in remember inline, up to 500 MB: an image, video, audio, PDF, " +
+      "zip or long text. Give its sha256, its size in bytes and its media type. memory replies with a URL: PUT the file there " +
+      "within two hours (curl -X PUT --data-binary @file '<url>'), then cite the sha256 in remember as an artifact: " +
+      "artifacts: [{name, kind, sha256}]. memory checks the hash and size before it keeps the file. Text with a secret in it is refused.",
+    inputSchema: {
+      type: "object", required: ["sha256", "size"],
+      properties: { sha256: str("sha256 of the file, 64 hex digits"), size: int("Size in bytes"), media_type: str("Like image/png. Default application/octet-stream") },
     },
   },
   {
@@ -53,7 +69,8 @@ export const TOOLS = [
     description: "Write one note to Wen's memory. Every other agent can recall it at once, labelled by its kind and marked " +
       "unreviewed until Wen or clyde-flow reviews it.\n\n" +
       "pattern: projects, decisions, observations, preferences, recommendations, references or reactions.\n" +
-      "title, body: a one-line title, and the summary recall ranks on.\n" +
+      "title, body: a one-line title, and the summary recall ranks on. Keep a memory under 500 characters and put the details " +
+      "in artifacts. A body over 500 characters is refused unless you pass long: true. 4000 is the most.\n" +
       "evidence: what backs it.\n" +
       "kind: observation (default: your inference or summary), fact, wen or plan. A fact starts high only when its " +
       "evidence is a line from a tool's output that memory holds. Pass evidence_event, the id the hook printed as " +
@@ -66,8 +83,12 @@ export const TOOLS = [
       'links: [{"type": "supports|contradicts|derived_from|relates|corrects", "to": "<id>"}].\n' +
       "supersedes: ids of notes in the same run that this note replaces. Hybrid recall stops serving them, and the " +
       "index arm lists them struck through.\n" +
-      'blobs: [{"name": "gate-evidence", "media_type": "text/markdown", "text": "..."}] for long evidence.\n' +
-      "Returns the entry's id and each blob's sha256.",
+      'artifacts: [{"name": "plan.md", "kind": "document", "text": "..."}] for the details: a plan, log, transcript, image, code. ' +
+      "Each has a name and one of text (UTF-8), base64 (binary, up to 4 MiB; use upload_blob for bigger files) or sha256 (a file " +
+      "sent with upload_blob). kind is image, video, audio, document, skill, artifact, data or other, and memory derives it when you " +
+      "leave it out. Recall lists a memory's artifacts by name, kind and size, never their content. blobs still works as the same field.\n" +
+      "long: true lets a body past 500 characters through.\n" +
+      "Returns the entry's id and each artifact's sha256.",
     inputSchema: {
       type: "object", required: ["pattern", "title", "body", "evidence"],
       properties: {
@@ -78,7 +99,9 @@ export const TOOLS = [
         evidence_kind: str("summary, assistant or memory"), authority: str("Leave out"), sensitivity: str("normal, private (title only for everyone) or confidential (work: title only for outside models)"),
         lang: str("Language code, default en"), valid_from: str("YYYY-MM-DD"),
         links: { type: "array", items: { type: "object" } }, supersedes: { type: "array", items: { type: "string" } },
-        blobs: { type: "array", items: { type: "object" } },
+        artifacts: { type: "array", items: { type: "object" }, description: "[{name, kind, text | base64 | sha256}]" },
+        blobs: { type: "array", items: { type: "object" }, description: "Same as artifacts" },
+        long: { type: "boolean", description: "Allow a body past 500 characters" },
       },
     },
   },
@@ -158,16 +181,20 @@ const RUN: Record<string, (c: Call) => Promise<string>> = {
     service.recall(session, s(args.query), s(args.task), client, s(args.scope) || null, principal),
   get_entry: async ({ session, args }) => (await service.getEntry(session, s(args.id))) ?? `No entry ${s(args.id)}.`,
   get_blob: ({ args }) => service.getBlob(s(args.sha256), Number(args.offset ?? 0), Number(args.limit ?? 20000)),
-  remember: async ({ args, client }) => {
+  upload_blob: ({ principal, args }) => service.uploadBlob(principal, args),
+  remember: async ({ args, client, principal }) => {
     const payload = {
       pattern: args.pattern, title: args.title, body: args.body, scope: args.scope || null, evidence: args.evidence,
       kind: args.kind || null, evidence_event: args.evidence_event ?? null,
       evidence_kind: args.evidence_kind ?? "summary", authority: args.authority ?? "draft",
       sensitivity: args.sensitivity ?? "normal", lang: args.lang ?? "en", project: args.project || null,
       valid_from: args.valid_from || null, links: args.links ?? [], supersedes: args.supersedes ?? [], blobs: args.blobs ?? [],
+      // Only when sent, so a write without them keeps the id and digest it always had.
+      ...(args.artifacts !== undefined ? { artifacts: args.artifacts } : {}), ...(args.long !== undefined ? { long: args.long } : {}),
     };
-    const r = await remember(payload, "agent", service.agentName(client));
-    return [`Remembered ${r.id}.`, ...r.blobs.map((b: { name: string; sha256: string }) => `Blob ${b.name}: ${b.sha256}`),
+    const r = await remember(payload, "agent", service.agentName(client), principal);
+    return [`Remembered ${r.id}.`,
+      ...r.blobs.map((b: { name: string; sha256: string; kind: string; size: number }) => `Blob ${b.name}: ${b.sha256} (${b.kind}, ${b.size} bytes)`),
       "Keyword search finds it now. Vector search finds it after the next embedding sync."].join("\n");
   },
   feedback: ({ session, args }) => service.agentFeedback(session, args),
@@ -246,7 +273,10 @@ export async function handle(req: Request, who: Principal): Promise<Response> {
   if (req.method !== "POST") return new Response(null, { status: 405 });
   let body: RpcMessage | RpcMessage[];
   try {
-    body = await req.json();
+    // An inline base64 artifact is the biggest thing a call carries, so this is the same cap /entries has.
+    const raw = new Uint8Array(await req.arrayBuffer());
+    if (raw.byteLength > MAX_MCP_BODY) return Response.json({ error: `The body is over ${MAX_MCP_BODY} bytes. Send big files with upload_blob.` }, { status: 413 });
+    body = JSON.parse(new TextDecoder().decode(raw));
   } catch {
     return Response.json(error(null, -32700, "Parse error"), { status: 400 });
   }

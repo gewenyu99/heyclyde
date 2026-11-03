@@ -10,6 +10,7 @@ import { learn } from "./learn.ts";
 import * as mcp from "./mcp.ts";
 import * as oauth from "./oauth.ts";
 import * as service from "./service.ts";
+import * as store from "./blobs.ts";
 import { CLIENT_VERSION, clientStatus, installerNote, SERVER_VERSION } from "./version.ts";
 import { Refused, remember } from "./write.ts";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
@@ -72,7 +73,7 @@ async function httpRemember(req: Request, who: Principal) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<"late">((resolve) => timer = setTimeout(() => resolve("late"), WRITE_DEADLINE_MS));
   try {
-    const result = await Promise.race([remember(payload, who.role === "runtime" ? "runtime" : "agent"), deadline]);
+    const result = await Promise.race([remember(payload, who.role === "runtime" ? "runtime" : "agent", "agent", who.device ?? who.role), deadline]);
     if (result === "late") return json({ error: "write temporarily unavailable; retry the same entry" }, 503);
     return json(result);
   } catch (e) {
@@ -105,8 +106,50 @@ const ORDER: Record<string, string> = {
   feedback: "id", message: "id", message_delivery: "id", admin_audit: "id", link_type_weight: "src_pattern, link_type, dst_pattern", device: "id",
   embed_usage: "month", param_set: "id", allocation: "param_set", openai_usage: "month, kind",
 };
-// Blobs run to 4 MiB each, so their pages stay small.
-const PAGE = (table: string) => table === "blob" ? 20 : 2000;
+// A blob page is cut by bytes as well as rows (exportBlobs), so its row count is only the most it takes.
+const PAGE = (table: string) => table === "blob" ? 500 : 2000;
+const BLOB_PAGE_BYTES = 16 * 1024 * 1024;
+
+/** One page of the blob table. A page holds at most 500 rows and about 16 MiB of blob bytes, so the row count it returns
+ * (x-rows) can be less than a full page, and x-truncated says it was cut for size. Postgres blobs go out as base64. A Storage blob
+ * goes out too if it is 4 MiB or less and the export is still within MEMORY_EXPORT_STORED_TOTAL bytes of them, counted in sha256
+ * order so each page can tell without remembering the last. Any other Storage blob goes out with content null, and so does one
+ * whose object is missing, and x-missing-blobs counts them. */
+async function exportBlobs(offset: number) {
+  const head = await sql`select sha256, media_type, size, stored, created_at,
+      case when stored = 'storage' and size <= ${store.EXPORT_BLOB_MAX}
+        then sum(size) filter (where stored = 'storage' and size <= ${store.EXPORT_BLOB_MAX}) over (order by sha256) end as running
+    from memory.blob order by sha256 limit ${PAGE("blob")} offset ${offset}`;
+  const page: Record<string, any>[] = [];
+  let bytes = 0, truncated = false;
+  for (const r of head) {
+    const carried = r.stored === "db" || (r.running !== null && r.running <= store.EXPORT_STORED_TOTAL);
+    const cost = carried ? r.size : 0;
+    if (page.length && bytes + cost > BLOB_PAGE_BYTES) {
+      truncated = true;
+      break;
+    }
+    bytes += cost;
+    page.push(r);
+  }
+  const inDb = new Map((await sql`select sha256, content from memory.blob where stored = 'db' and sha256 = any(${page.map((r) => r.sha256)}::text[])`)
+    .map((r) => [r.sha256 as string, r.content as Uint8Array]));
+  let missing = 0;
+  const lines: string[] = [];
+  for (const r of page) {
+    const { running, ...row } = r;
+    let content: Uint8Array | null = null;
+    if (r.stored === "db") content = inDb.get(r.sha256) ?? null;
+    else {
+      if (running !== null && running <= store.EXPORT_STORED_TOTAL && store.storageOn()) content = await store.get(r.sha256);
+      if (!content) missing++;
+    }
+    lines.push(JSON.stringify({ table: "blob", row: { ...row, content: content ? { base64: encodeBase64(content) } : null } }) + "\n");
+  }
+  const headers: Record<string, string> = { "content-type": "application/x-ndjson", "x-rows": String(page.length), "x-missing-blobs": String(missing) };
+  if (truncated) headers["x-truncated"] = "1";
+  return new Response(lines.join(""), { headers });
+}
 
 /** With no table, the tables to export in load order, with each one's page size and row count. With ?table=&offset=, one page of that
  * table as NDJSON, one {table, row} per line, and its row count in x-rows. Pages keep each request inside the
@@ -121,6 +164,7 @@ async function exportPage(url: URL) {
   if (!EXPORT.includes(table)) return json({ error: `Can't export ${table}.` }, 400);
   const offset = Number(url.searchParams.get("offset") ?? 0);
   if (!Number.isInteger(offset) || offset < 0) return json({ error: "offset must be a whole number." }, 400);
+  if (table === "blob") return exportBlobs(offset);
   const rows = await sql`select * from ${sql("memory." + table)} order by ${sql.unsafe(ORDER[table])}
     limit ${PAGE(table)} offset ${offset}`;
   const body = rows.map((row) => {
@@ -211,7 +255,23 @@ async function route(req: Request): Promise<Response> {
     const blob = await service.readBlob(match[1]);
     if (!blob) return json({ error: "no such blob" }, 404);
     if (!blob.public) return json({ error: service.PRIVATE_BLOB }, 403);
+    if (blob.stored === "storage") {
+      // A link that works for 10 minutes. A restored blob whose file wasn't in the backup is a 404.
+      if (!store.storageOn()) return json({ error: service.notInBackup(match[1]) }, 404);
+      try {
+        return new Response(null, { status: 302, headers: { location: await store.signDownload(match[1].toLowerCase()) } });
+      } catch (e) {
+        if (e instanceof store.NotStored) return json({ error: service.notInBackup(match[1]) }, 404);
+        throw e;
+      }
+    }
     return new Response(blob.content, { headers: { "content-type": blob.media_type, "x-content-type-options": "nosniff" } });
+  }
+  if (m === "POST" && path === "/blobs/sweep") {
+    // Uploads nobody cited in two hours: the file in incoming/, and the row that says it is expected.
+    const files = store.storageOn() ? await store.sweepIncoming() : 0;
+    const rows = await sql`delete from memory.upload where created_at < now() - make_interval(secs => ${store.UPLOAD_TTL_SECONDS}) returning 1`;
+    return json({ swept: files, uploads: rows.length });
   }
   if (m === "POST" && path === "/recall") return httpRecall(req, who);
   if (m === "GET" && path === "/export") return exportPage(url);

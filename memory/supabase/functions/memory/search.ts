@@ -296,14 +296,16 @@ export const ARMS: Record<string, (db: Sql, query: string, scope: string | null,
 export async function fetchEntries(db: Sql, ids: string[]): Promise<Record<string, Row>> {
   if (!ids.length) return {};
   const rows = await db`select e.*, s.title as source_title, s.uri as source_uri,
-      (select string_agg(l.src, ', ' order by l.src) from memory.link l where l.dst = e.id and l.type = 'supersedes') as superseded_by
+      (select string_agg(l.src, ', ' order by l.src) from memory.link l where l.dst = e.id and l.type = 'supersedes') as superseded_by,
+      (select jsonb_agg(jsonb_build_object('name', x.name, 'kind', x.kind, 'size', b.size) order by x.name)
+        from memory.entry_blob x join memory.blob b on b.sha256 = x.sha256 where x.entry_id = e.id) as artifacts
     from memory.entry e left join memory.source s on s.id = e.source_id where e.id = any(${ids}::text[])`;
   return Object.fromEntries(rows.map((r) => [r.id, r]));
 }
 
 /** Private entries never leave the server unredacted: the agent sees the title and the id only. */
 export function redact(row: Row): Row {
-  return row.sensitivity !== "private" ? row : { ...row, body: "[private entry: ask Wen]", evidence: "" };
+  return row.sensitivity !== "private" ? row : { ...row, body: "[private entry: ask Wen]", evidence: "", artifacts: null };
 }
 
 /** What a note claims and how far it is trusted: "fact", "observation unverified" with a failed check, joined to the
@@ -313,13 +315,29 @@ export function kindLabel(row: Row, sep: string) {
     Number(row.confidence ?? 0).toFixed(2)}`;
 }
 
-export function renderItem(n: number, row: Row) {
+/** A size for a packet line: 800 B, 5.0 KB, 1.2 MB. */
+export function sizeLabel(bytes: number) {
+  return bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/** An item's artifacts as "Artifacts: plan.md (document, 5.0 KB), shot.png (image, 1.2 MB)": names and kinds, never content. */
+export function artifactsLine(row: Row) {
+  const list: { name: string; kind: string; size: number }[] = row.artifacts ?? [];
+  return list.length ? `Artifacts: ${list.map((a) => `${a.name} (${a.kind}, ${sizeLabel(a.size)})`).join(", ")}` : "";
+}
+
+export const MORE = "… more in get_entry";
+
+export function renderItem(n: number, row: Row, itemChars?: number) {
   row = redact(row);
   // A draft is a note nobody has reviewed. It's served all the same.
   let meta = `    ${kindLabel(row, " · confidence ")} · ${row.authority}${row.authority === "draft" ? " · unreviewed" : ""} · ${row.scope} · ${row.valid_from}`;
   if (row.superseded_by) meta += ` · replaced by ${row.superseded_by}`;
-  const parts = [`[${n}] ${row.id}: ${row.title}`, meta, `    ${row.body}`];
+  const body = itemChars && String(row.body).length > itemChars ? `${String(row.body).slice(0, itemChars)}${MORE}` : row.body;
+  const parts = [`[${n}] ${row.id}: ${row.title}`, meta, `    ${body}`];
   if (row.evidence && row.evidence_kind === "quote") parts.push(`    Wen: “${row.evidence}”`);
+  const artifacts = artifactsLine(row);
+  if (artifacts) parts.push(`    ${artifacts}`);
   return parts.join("\n");
 }
 
@@ -343,7 +361,7 @@ export function pack(ranked: Ranked[], rows: Record<string, Row>, p: Params): [s
   let used = 0;
   for (const [id, , line] of ranked) {
     if (!(id in rows) && line === null) continue;
-    let chunk = line ?? renderItem(delivered.length + 1, rows[id]);
+    let chunk = line ?? renderItem(delivered.length + 1, rows[id], p.itemChars);
     let cost = estimateTokens(chunk);
     if (used + cost > p.packetTokens) {
       if (delivered.length) break;
@@ -376,7 +394,7 @@ export function renderEntry(row: Row, links: Row[], blobs: Row[] = []) {
     out.push("", `Blobs: ${blobs.length}, private. Ask Wen.`);
   } else if (blobs.length) {
     out.push("", "Blobs. Open one with get_blob(sha256):",
-      ...blobs.map((b) => `- ${b.name}: ${b.sha256} · ${b.media_type} · ${b.size} bytes`));
+      ...blobs.map((b) => `- ${b.name}: ${b.sha256} · ${b.kind} · ${b.media_type} · ${b.size} bytes`));
   }
   return out.join("\n");
 }
