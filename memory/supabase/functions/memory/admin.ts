@@ -588,7 +588,7 @@ async function addMessage(data: Row) {
   return await sql.begin(async (tx) => {
     const aid = await audit(tx, "message.create", "message", null, { to, body });
     const said = await service.postMessage(tx, "wen", to ?? "", body ?? "");
-    const m = /^Posted message (\d+) to (\w+)\.$/.exec(said);
+    const m = /^Posted message (\d+) to ([\w-]+)\.$/.exec(said);
     if (!m) throw new ApiError(422, said);
     await tx`update memory.admin_audit set target = ${`message:${m[1]}`} where id = ${aid}`;
     return { id: Number(m[1]), to: m[2] };
