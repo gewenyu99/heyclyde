@@ -2,8 +2,8 @@
 // message an agent or clyde-flow writes is asked three typed questions before it's stored. Any yes refuses the write,
 // and so does a judge that can't answer: memory fails closed. Hook events are too many and too time-bound for it, so
 // they get redact.ts alone.
-import { sql } from "./db.ts";
-import { budget, openai, OverBudget } from "./embed.ts";
+import { assertBudget, meter } from "./budget.ts";
+import { openai } from "./embed.ts";
 
 const MODEL = "gpt-6-luna";
 
@@ -39,8 +39,7 @@ const REASONS: Record<string, string> = {
 
 /** Why memory won't store this text, or null when it may. Throws when the judge can't answer, so callers fail closed. */
 export async function screen(text: string): Promise<string | null> {
-  const { used, cap } = await budget();
-  if (used >= cap) throw new OverBudget("the month's OpenAI budget is spent");
+  await assertBudget("judge_write");
   const { url, key } = await openai();
   const r = await fetch(`${url}/decisions`, {
     method: "POST",
@@ -50,11 +49,7 @@ export async function screen(text: string): Promise<string | null> {
   });
   if (!r.ok) throw new Error(`OpenAI Decisions ${r.status}: ${(await r.text()).slice(0, 200)}`);
   const body = await r.json();
-  const tokens = body.usage?.input_tokens ?? 0;
-  if (tokens) {
-    await sql`insert into memory.embed_usage (month, tokens) values (date_trunc('month', now())::date, ${tokens})
-      on conflict (month) do update set tokens = memory.embed_usage.tokens + excluded.tokens`;
-  }
+  await meter("judge_write", body.usage?.input_tokens ?? 0);
   const flagged: string[] = [];
   for (const a of body.answers ?? []) {
     if (a.type === "refusal") flagged.push(a.name);
@@ -70,8 +65,7 @@ const RELEVANT = "Is memory item {n} relevant to the request? Relevant means an 
 /** The probability each item is relevant to the request, in the items' order. One Decisions call asks about all of them.
  * Throws when the judge can't answer, and recall then serves its ranking unfiltered. */
 export async function relevance(request: string, items: string[]): Promise<number[]> {
-  const { used, cap } = await budget();
-  if (used >= cap) throw new OverBudget("the month's OpenAI budget is spent");
+  await assertBudget("judge_recall");
   const { url, key } = await openai();
   const input = `Request:\n${request.slice(0, 2000)}\n\nMemory items:\n` +
     items.map((t, i) => `[${i + 1}] ${t.slice(0, 700)}`).join("\n");
@@ -86,11 +80,7 @@ export async function relevance(request: string, items: string[]): Promise<numbe
   });
   if (!r.ok) throw new Error(`OpenAI Decisions ${r.status}: ${(await r.text()).slice(0, 200)}`);
   const body = await r.json();
-  const tokens = body.usage?.input_tokens ?? 0;
-  if (tokens) {
-    await sql`insert into memory.embed_usage (month, tokens) values (date_trunc('month', now())::date, ${tokens})
-      on conflict (month) do update set tokens = memory.embed_usage.tokens + excluded.tokens`;
-  }
+  await meter("judge_recall", body.usage?.input_tokens ?? 0);
   const byName = new Map((body.answers ?? []).map((a: Record<string, any>) => [a.name, a]));
   return items.map((_, i) => {
     const a = byName.get(`i${i + 1}`) as Record<string, any> | undefined;
@@ -108,8 +98,7 @@ const CAUSE = "If Wen is pushing back, which memory item delivered to the assist
 /** The learner's read of the prompt Wen sent after a recall: whether he pushed back, and which delivered item caused
  * it, by id, or null. Throws when the judge can't answer, and the learner tries that recall again later. */
 export async function reaction(prompt: string, items: { id: string; text: string }[]) {
-  const { used, cap } = await budget();
-  if (used >= cap) throw new OverBudget("the month's OpenAI budget is spent");
+  await assertBudget("judge_recall");
   const { url, key } = await openai();
   const questions: Record<string, unknown>[] = [{ type: "predicate", name: "pushback", instructions: PUSHBACK }];
   if (items.length) {
@@ -127,11 +116,7 @@ export async function reaction(prompt: string, items: { id: string; text: string
   });
   if (!r.ok) throw new Error(`OpenAI Decisions ${r.status}: ${(await r.text()).slice(0, 200)}`);
   const body = await r.json();
-  const tokens = body.usage?.input_tokens ?? 0;
-  if (tokens) {
-    await sql`insert into memory.embed_usage (month, tokens) values (date_trunc('month', now())::date, ${tokens})
-      on conflict (month) do update set tokens = memory.embed_usage.tokens + excluded.tokens`;
-  }
+  await meter("judge_recall", body.usage?.input_tokens ?? 0);
   const byName = new Map((body.answers ?? []).map((a: Record<string, any>) => [a.name, a]));
   const p = (byName.get("pushback") as Record<string, any> | undefined)?.probability;
   if (typeof p !== "number") throw new Error("the judge gave no pushback answer");

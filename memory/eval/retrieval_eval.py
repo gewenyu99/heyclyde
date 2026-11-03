@@ -2,7 +2,12 @@
 """Run each arm on the practice queries and score the packets against their known answers, through the live memory
 function's admin eval routes.
 
-  python eval/retrieval_eval.py [--arms index,hybrid] [--split train|test|all] [--misses] [--json]
+  python eval/retrieval_eval.py [--arms index,hybrid] [--split train|test|all] [--misses] [--json] [--params <id|file.json>]
+
+--params runs one parameter set instead of each arm's v1. An id names a stored set (hybrid.v1, or a researcher's hybrid.v2), and
+the arm is the set's own. A file is a POST /param-sets body without the id, {"arm": "hybrid", "parent": "hybrid.v1",
+"params": {"tiltBase": 0.8}}: its params lay over the parent (the arm's v1 by default), and nothing is stored. Without --params
+the arms run on their v1 sets, which is what the code ranked by before parameter sets.
 
 The admin token comes from MEMORY_ADMIN_TOKEN or ~/.config/memory/admin-token. Tune on train. Read test once, after
 the knobs are frozen.
@@ -19,6 +24,9 @@ No session is written: the eval routes read the arms directly.
 import argparse
 import json
 import os
+import sys
+import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -52,13 +60,29 @@ def stage(gold, candidates, delivered):
     return "ranked-out" if r > PACKET_ITEMS else "budget-cut"
 
 
-def run(arms, split, probes=None, filter=True, tilt=None):
+def resolve_params(spec):
+    """The arm a --params spec names (None for a file that names none), what to send the eval route, and how to label it."""
+    path = Path(spec)
+    if path.is_file():
+        d = json.loads(path.read_text())
+        return d.get("arm"), {"params": d.get("params", {}), **({"parent": d["parent"]} if d.get("parent") else {})}, spec
+    try:
+        stored = call(f"/param-sets/{urllib.parse.quote(spec)}")
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            sys.exit(f"memory has no parameter set {spec}, and no file by that name.")
+        raise
+    return stored["arm"], {"param_set": spec}, spec
+
+
+def run(arms, split, probes=None, filter=True, tilt=None, params=None):
     questions = json.loads(Path(probes).read_text()) if probes else call(f"/eval/questions?split={split}")
     report = {}
-    for arm in arms:
+    only_arm, extra, label = resolve_params(params) if params else (None, {}, None)
+    for arm in [only_arm] if only_arm else arms:
         per_q = []
         for q in questions:
-            r = call("/eval/rank", {"query": q["text"], "arm": arm, "filter": filter, **({"tilt": tilt} if tilt is not None else {})})
+            r = call("/eval/rank", {"query": q["text"], "arm": arm, "filter": filter, **extra, **({"tilt": tilt} if tilt is not None else {})})
             candidates, delivered = r["candidates"], r["delivered"]
             p = {"id": q["id"], "text": q["text"], "qtype": q["qtype"], "gold": q["gold"],
                  "gold_hit": bool(set(q["gold"]) & set(delivered)) if q["gold"] else None,
@@ -72,7 +96,7 @@ def run(arms, split, probes=None, filter=True, tilt=None):
         for p in per_q:
             if p["stage"]:
                 stages[p["stage"]] = stages.get(p["stage"], 0) + 1
-        report[arm] = {"gold_hit_rate": round(sum(p["gold_hit"] for p in answerable) / max(len(answerable), 1), 3),
+        report[arm] = {"param_set": label, "gold_hit_rate": round(sum(p["gold_hit"] for p in answerable) / max(len(answerable), 1), 3),
                        "answerable": len(answerable), "misses_by_stage": stages,
                        "queries_with_leaks": sum(bool(p["leaks"]) for p in per_q), "n": len(per_q),
                        "degraded": sorted({p["degraded"] for p in per_q if p["degraded"]}), "per_query": per_q}
@@ -87,15 +111,17 @@ def main():
     ap.add_argument("--json", action="store_true", help="print per-query detail")
     ap.add_argument("--tilt", type=float, help="try a confidence tilt base (0 to 1) instead of the deployed one")
     ap.add_argument("--no-filter", action="store_true", help="skip the relevance filter, to compare against it")
+    ap.add_argument("--params", help="a stored parameter set id like hybrid.v1, or a JSON file {arm, parent, params} to try without storing it")
     ap.add_argument("--probes", help="a JSON file of {id, qtype, text, gold, must_not} to run instead, like labels/zh-probes.json")
     a = ap.parse_args()
-    report = run(a.arms.split(","), a.split, a.probes, not a.no_filter, a.tilt)
+    report = run(a.arms.split(","), a.split, a.probes, not a.no_filter, a.tilt, a.params)
     if a.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return
     for arm, r in report.items():
         stages = ", ".join(f"{k} {v}" for k, v in sorted(r["misses_by_stage"].items())) or "none"
-        print(f"{arm}: gold hit {r['gold_hit_rate']:.0%} of {r['answerable']} answerable, misses: {stages}, "
+        name = f"{arm} ({r['param_set']})" if r["param_set"] else arm
+        print(f"{name}: gold hit {r['gold_hit_rate']:.0%} of {r['answerable']} answerable, misses: {stages}, "
               f"leaks in {r['queries_with_leaks']}/{r['n']}" + (f", degraded: {', '.join(r['degraded'])}" if r["degraded"] else ""))
         if a.misses:
             for p in r["per_query"]:

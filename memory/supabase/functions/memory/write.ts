@@ -1,5 +1,6 @@
 // remember(): the runtime write path. One entry with its source, links and blobs, held to the invariants seed/build.py
 // enforces on the vault, written in one transaction. The constants copy build.py's, plus run:<id> scopes.
+import { OverBudget } from "./budget.ts";
 import { type Row, type Sql, sql } from "./db.ts";
 import { sha256 } from "./embed.ts";
 import { redactText } from "./redact.ts";
@@ -356,6 +357,7 @@ export async function remember(payload: unknown, caller: string) {
     why = await screen(titleOnly ? e.title
       : [e.title, e.body, e.evidence, ...e.blobs.map((b: Row) => new TextDecoder().decode(b.content).slice(0, 4000))].join("\n\n"));
   } catch (err) {
+    if (err instanceof OverBudget) throw new Refused(`memory won't take new notes this month: ${err.message}.`);
     throw new Refused(`memory couldn't screen this note right now (${(err as Error).message.slice(0, 80)}), so it wrote nothing. Try again later.`);
   }
   if (why) throw new Refused(why[0].toUpperCase() + why.slice(1));

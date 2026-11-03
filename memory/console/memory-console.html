@@ -155,7 +155,7 @@ async function loadLive() {
   const [stats] = await sql(`select (select count(*) from memory.entry_current) entries, (select count(*) from memory.link) links,
     (select count(*) from memory.retrieval) recalls, (select count(*) from memory.event) events,
     (select count(*) from memory.device where revoked_at is null) computers, (select count(*) from memory.entry_embedding) embedded,
-    (select coalesce(sum(tokens),0) from memory.embed_usage where month = date_trunc('month', now())::date) tokens,
+    (select coalesce(sum(tokens),0) from memory.openai_usage where month = date_trunc('month', now())::date) tokens,
     (select max(received_at) from memory.event where event <> 'get_entry') last_hook, (select max(created_at) from memory.retrieval) last_recall`);
   const [entries, links, recalls, activity] = await Promise.all([
     sql(`select id, title, pattern, authority, scope, sensitivity, valid_from::text, project, body, links, times_delivered, replaced_by,

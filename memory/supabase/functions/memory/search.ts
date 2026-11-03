@@ -2,8 +2,14 @@
 import { config } from "./config.ts";
 import { type Row, type Sql } from "./db.ts";
 import { embed, toPgvector } from "./embed.ts";
+import type { Params } from "./params.ts";
 
 export type Ranked = [id: string, score: number, line: string | null];
+/** Each ranker's own list, by name, for the features a recall logs. A ranker with no score of its own gives null. */
+export type Trace = Record<string, [id: string, score: number | null][]>;
+export type ArmResult = [Ranked[], string | null, Trace];
+const scored = (ranked: Ranked[]): Trace[string] => ranked.map(([id, score]) => [id, score]);
+const unscored = (ids: string[]): Trace[string] => ids.map((id) => [id, null]);
 
 const CJK = /[㐀-鿿豈-﫿]/;
 const CJK_RUNS = /[㐀-鿿豈-﫿]+/g;
@@ -47,9 +53,9 @@ function scopeFilter(db: Sql, scope: string | null, alias = "") {
 
 const byScore = (a: Ranked, b: Ranked) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
 
-/** Multiply the scores of entries in the asked-for scope by MEMORY_SCOPE_BOOST and re-sort, so a run's notes lead. */
-export function boost(scored: Ranked[], ids: Set<string>): Ranked[] {
-  return scored.map(([id, s, line]): Ranked => [id, ids.has(id) ? s * config.scopeBoost : s, line]).sort(byScore);
+/** Multiply the scores of entries in the asked-for scope by the set's scopeBoost and re-sort, so a run's notes lead. */
+export function boost(scores: Ranked[], ids: Set<string>, factor: number): Ranked[] {
+  return scores.map(([id, s, line]): Ranked => [id, ids.has(id) ? s * factor : s, line]).sort(byScore);
 }
 
 // ---------------------------------------------------------------- index: grep the index map
@@ -77,34 +83,35 @@ export async function indexLines(db: Sql, scope: string | null = null) {
  *
  * A superseded line stays, struck through, but gets no scope boost. Its line names its replacement, so it matches
  * every word the replacement does and would otherwise outrank it. */
-export async function indexSearch(db: Sql, query: string, scope: string | null = null): Promise<[Ranked[], string | null]> {
+export async function indexSearch(db: Sql, query: string, scope: string | null, p: Params): Promise<ArmResult> {
   const q = tokens(query);
-  const scored: Ranked[] = [], scoped = new Set<string>();
+  const hits: Ranked[] = [], scoped = new Set<string>();
   for (const l of await indexLines(db, scope)) {
     const words = tokens(l.line + " " + l.id.replaceAll("-", " "));
     let hit = 0;
     for (const t of q) if (words.has(t)) hit++;
     if (hit) {
-      scored.push([l.id, hit * (l.authority === "draft" ? config.indexDraftFactor : 1), l.line]);
+      hits.push([l.id, hit * (l.authority === "draft" ? p.indexDraftFactor : 1), l.line]);
       if (scope && l.scope === scope && !l.superseded) scoped.add(l.id);
     }
   }
-  return [boost(scored, scoped).slice(0, config.candidates), null];
+  const ranked = boost(hits, scoped, p.scopeBoost).slice(0, p.candidates);
+  return [ranked, null, { index: scored(ranked) }];
 }
 
 // ---------------------------------------------------------------- hybrid: keyword plus vector search
-async function englishRanks(db: Sql, query: string, scope: string | null): Promise<string[]> {
+async function englishRanks(db: Sql, query: string, scope: string | null, limit: number): Promise<string[]> {
   // plainto_tsquery ANDs every term, which a natural-language question rarely satisfies. OR them instead.
   const rows = await db`select id, ts_rank_cd(tsv_en, t.q) as score from memory.entry_current
     cross join (select nullif(replace(plainto_tsquery('english', ${query})::text, ' & ', ' | '), '')::tsquery as q) t
     where t.q is not null and tsv_en @@ t.q and ${scopeFilter(db, scope)}
-    order by score desc, id limit ${config.candidates}`;
+    order by score desc, id limit ${limit}`;
   return rows.map((r) => r.id);
 }
 
 /** PGroonga over search_text, indexed as bigrams. The query's 中文 bigrams are OR'ed, the way the English ranker ORs
  * its terms. pgroonga_score only counts when the index runs, so the scan is forced onto it. */
-async function chineseRanks(db: Sql, query: string, scope: string | null): Promise<string[]> {
+async function chineseRanks(db: Sql, query: string, scope: string | null, limit: number): Promise<string[]> {
   const terms = [...new Set(bigrams(query))];
   if (!terms.length) return [];
   const run = async (tx: Sql) => {
@@ -113,7 +120,7 @@ async function chineseRanks(db: Sql, query: string, scope: string | null): Promi
       where e.search_text operator(extensions.&@~) ${terms.join(" OR ")}
         and not exists (select 1 from memory.link l where l.dst = e.id and l.type = 'supersedes')
         and ${scopeFilter(tx, scope, "e.")}
-      order by score desc, e.id limit ${config.candidates}`;
+      order by score desc, e.id limit ${limit}`;
   };
   const rows = "begin" in db ? await (db as any).begin(run) : await run(db);
   return rows.map((r: Row) => r.id);
@@ -131,7 +138,7 @@ async function queryVector(query: string) {
   return queryVectors.get(key)!;
 }
 
-async function vectorRanks(db: Sql, query: string, scope: string | null): Promise<[string[], string | null]> {
+async function vectorRanks(db: Sql, query: string, scope: string | null, limit: number): Promise<[string[], string | null]> {
   let vec: number[];
   try {
     vec = await queryVector(query);
@@ -144,13 +151,13 @@ async function vectorRanks(db: Sql, query: string, scope: string | null): Promis
     await tx`set local hnsw.iterative_scan = strict_order`;
     return await tx`select x.entry_id as id from memory.entry_embedding x join memory.entry_current e on e.id = x.entry_id
       where ${scopeFilter(tx, scope, "e.")}
-      order by x.embedding <=> ${toPgvector(vec)}::extensions.vector limit ${config.candidates}`;
+      order by x.embedding <=> ${toPgvector(vec)}::extensions.vector limit ${limit}`;
   };
   const rows = "begin" in db ? await (db as any).begin(run) : await run(db);
   return [rows.map((r: Row) => r.id), null];
 }
 
-export function rrf(rankings: string[][], weights?: number[], k = config.rrfK): [string, number][] {
+export function rrf(rankings: string[][], weights: number[] | undefined, k: number): [string, number][] {
   const score = new Map<string, number>();
   rankings.forEach((ranking, i) => {
     const w = weights?.[i] ?? 1;
@@ -161,95 +168,108 @@ export function rrf(rankings: string[][], weights?: number[], k = config.rrfK): 
 
 /** Each ranker's list on its own, so an eval can tell which one lost an entry. The 中文 ranker only runs on queries
  * with 中文 in them, so English keyword evidence never counts twice. */
-export async function hybridComponents(db: Sql, query: string, scope: string | null = null) {
-  const [vec, degraded] = await vectorRanks(db, query, scope);
-  const en = await englishRanks(db, query, scope);
+export async function hybridComponents(db: Sql, query: string, scope: string | null, p: Params) {
+  const [vec, degraded] = await vectorRanks(db, query, scope, p.candidates);
+  const en = await englishRanks(db, query, scope, p.candidates);
   let zh: string[] = [], keyword = en;
   if (CJK.test(query)) {
-    zh = await chineseRanks(db, query, scope);
-    keyword = rrf([en, zh]).map(([id]) => id);
+    zh = await chineseRanks(db, query, scope, p.candidates);
+    keyword = rrf([en, zh], undefined, p.rrfK).map(([id]) => id);
   }
   return { parts: { en, zh, keyword, vec }, degraded };
 }
 
-export async function hybridSearch(db: Sql, query: string, scope: string | null = null): Promise<[Ranked[], string | null]> {
-  const { parts, degraded } = await hybridComponents(db, query, scope);
-  let fused = rrf([parts.keyword, parts.vec], [1, config.vecWeight]).map(([id, s]): Ranked => [id, s, null]);
+export async function hybridSearch(db: Sql, query: string, scope: string | null, p: Params): Promise<ArmResult> {
+  const { parts, degraded } = await hybridComponents(db, query, scope, p);
+  let fused = rrf([parts.keyword, parts.vec], [1, p.vecWeight], p.rrfK).map(([id, s]): Ranked => [id, s, null]);
   if (scope && fused.length) {
     const rows = await db`select id from memory.entry where id = any(${fused.map(([id]) => id)}::text[]) and scope = ${scope}`;
-    fused = boost(fused, new Set(rows.map((r) => r.id)));
+    fused = boost(fused, new Set(rows.map((r) => r.id)), p.scopeBoost);
   }
-  return [fused.slice(0, config.candidates), degraded];
+  const ranked = fused.slice(0, p.candidates);
+  return [ranked, degraded, { hybrid: scored(ranked), keyword: unscored(parts.keyword), vec: unscored(parts.vec) }];
 }
 
 // ---------------------------------------------------------------- spreading: Wen's design
-// Seeds are hybrid's top 50. Activation spreads from them by personalized PageRank over typed links: each edge carries
-// its link type's weight (link_type_weight, set by the ants on train) times its own learned weight (link.weight, moved
+// Seeds are hybrid's top candidates. Activation spreads from them by personalized PageRank over typed links: each edge carries
+// its link type's weight (the set's linkTypeWeights, set by the ants on train) times its own learned weight (link.weight, moved
 // by the learner). A supersedes link carries activation from the old entry to its replacement only, so a query that
-// matches an outdated note reaches what replaced it. Replaced entries keep ×0.3 of what they gather.
-const RESTART = 0.5, ITERATIONS = 20, SUPERSEDED_FACTOR = 0.3;
-
-type Graph = { out: Map<string, [string, number][]>; scope: Map<string, string>; superseded: Set<string>; at: number };
+// matches an outdated note reaches what replaced it. Replaced entries keep supersededFactor of what they gather.
+type Edges = Map<string, [string, number][]>;
+type Graph = {
+  links: Row[]; scope: Map<string, string>; superseded: Set<string>; at: number;
+  /** The edges under one set's link type weights, built once per distinct weights. */
+  edges: Map<string, Edges>;
+};
 let graphCache: Graph | null = null;
 
-/** The link graph with each edge's weight, cached per isolate for a minute. */
+/** The links and scopes, cached per isolate for a minute. */
 async function graph(db: Sql): Promise<Graph> {
   if (graphCache && Date.now() - graphCache.at < 60_000) return graphCache;
-  const [links, entries, types] = await Promise.all([
+  const [links, entries] = await Promise.all([
     db`select l.src, l.dst, l.type, coalesce(l.weight, 1) as weight, s.pattern as sp, d.pattern as dp
        from memory.link l join memory.entry s on s.id = l.src join memory.entry d on d.id = l.dst`,
-    db`select id, scope from memory.entry`,
-    db`select src_pattern, link_type, dst_pattern, weight from memory.link_type_weight`]);
-  const typeWeight = new Map(types.map((t) => [`${t.src_pattern}|${t.link_type}|${t.dst_pattern}`, t.weight as number]));
-  const out = new Map<string, [string, number][]>();
+    db`select id, scope from memory.entry`]);
+  graphCache = {
+    links: [...links], scope: new Map(entries.map((e) => [e.id, e.scope])), at: Date.now(), edges: new Map(),
+    superseded: new Set(links.filter((l) => l.type === "supersedes").map((l) => l.dst as string)),
+  };
+  return graphCache;
+}
+
+/** Every edge with its weight under these link type weights. */
+function edgesUnder(g: Graph, typeWeights: Params["linkTypeWeights"]): Edges {
+  const key = JSON.stringify(typeWeights);
+  const hit = g.edges.get(key);
+  if (hit) return hit;
+  const out: Edges = new Map();
   const add = (a: string, b: string, w: number) => { if (!out.has(a)) out.set(a, []); out.get(a)!.push([b, w]); };
-  const superseded = new Set<string>();
-  for (const l of links) {
-    const w = (typeWeight.get(`${l.sp}|${l.type}|${l.dp}`) ?? 1) * l.weight;
+  for (const l of g.links) {
+    const w = (typeWeights[`${l.sp}|${l.type}|${l.dp}`] ?? 1) * l.weight;
     if (l.type === "supersedes") {
-      superseded.add(l.dst);
       add(l.dst, l.src, w);  // old → new only
     } else {
       add(l.src, l.dst, w);
       add(l.dst, l.src, w);
     }
   }
-  graphCache = { out, scope: new Map(entries.map((e) => [e.id, e.scope])), superseded, at: Date.now() };
-  return graphCache;
+  g.edges.set(key, out);
+  return out;
 }
 
 /** Personalized PageRank from the seeds. Returns each reached entry's activation. */
-export function spread(g: Graph, seeds: Map<string, number>) {
+export function spread(out: Edges, seeds: Map<string, number>, restart: number, iterations: number) {
   const total = [...seeds.values()].reduce((a, b) => a + b, 0) || 1;
   const p = new Map([...seeds].map(([id, s]) => [id, s / total]));
   let r = new Map(p);
-  for (let i = 0; i < ITERATIONS; i++) {
+  for (let i = 0; i < iterations; i++) {
     const next = new Map<string, number>();
-    for (const [id, v] of p) next.set(id, RESTART * v);
+    for (const [id, v] of p) next.set(id, restart * v);
     for (const [id, v] of r) {
-      const edges = g.out.get(id);
-      if (!edges?.length) { next.set(id, (next.get(id) ?? 0) + (1 - RESTART) * v); continue; }
+      const edges = out.get(id);
+      if (!edges?.length) { next.set(id, (next.get(id) ?? 0) + (1 - restart) * v); continue; }
       const sum = edges.reduce((a, [, w]) => a + w, 0);
-      for (const [to, w] of edges) next.set(to, (next.get(to) ?? 0) + (1 - RESTART) * v * (w / sum));
+      for (const [to, w] of edges) next.set(to, (next.get(to) ?? 0) + (1 - restart) * v * (w / sum));
     }
     r = next;
   }
   return r;
 }
 
-export async function spreadingSearch(db: Sql, query: string, scope: string | null = null): Promise<[Ranked[], string | null]> {
-  const [seedsRanked, degraded] = await hybridSearch(db, query, scope);
+export async function spreadingSearch(db: Sql, query: string, scope: string | null, p: Params): Promise<ArmResult> {
+  const [seedsRanked, degraded, seedTrace] = await hybridSearch(db, query, scope, p);
   const g = await graph(db);
-  const activation = spread(g, new Map(seedsRanked.map(([id, s]) => [id, s])));
+  const activation = spread(edgesUnder(g, p.linkTypeWeights), new Map(seedsRanked.map(([id, s]) => [id, s])), p.restart, p.iterations);
   const visible = (id: string) => { const sc = g.scope.get(id) ?? ""; return !sc.startsWith("run:") || sc === scope; };
   const ranked = [...activation]
     .filter(([id]) => visible(id))
-    .map(([id, a]): Ranked => [id, g.superseded.has(id) ? a * SUPERSEDED_FACTOR : a, null])
-    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
-  return [ranked.slice(0, config.candidates), degraded];
+    .map(([id, a]): Ranked => [id, g.superseded.has(id) ? a * p.supersededFactor : a, null])
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .slice(0, p.candidates);
+  return [ranked, degraded, { ...seedTrace, spreading: scored(ranked) }];
 }
 
-export const ARMS: Record<string, (db: Sql, query: string, scope?: string | null) => Promise<[Ranked[], string | null]>> = {
+export const ARMS: Record<string, (db: Sql, query: string, scope: string | null, p: Params) => Promise<ArmResult>> = {
   index: indexSearch,
   hybrid: hybridSearch,
   spreading: spreadingSearch,
@@ -293,22 +313,22 @@ export function clip(text: string, budget: number) {
 
 /** Fill the packet in rank order up to the item and token budgets. The first item always goes in, cut to the budget
  * when it's bigger, so one huge entry can't fill an agent's context. */
-export function pack(ranked: Ranked[], rows: Record<string, Row>): [string[], string[]] {
+export function pack(ranked: Ranked[], rows: Record<string, Row>, p: Params): [string[], string[]] {
   const delivered: string[] = [], chunks: string[] = [];
   let used = 0;
   for (const [id, , line] of ranked) {
     if (!(id in rows) && line === null) continue;
     let chunk = line ?? renderItem(delivered.length + 1, rows[id]);
     let cost = estimateTokens(chunk);
-    if (used + cost > config.packetTokens) {
+    if (used + cost > p.packetTokens) {
       if (delivered.length) break;
-      chunk = clip(chunk, config.packetTokens);
+      chunk = clip(chunk, p.packetTokens);
       cost = estimateTokens(chunk);
     }
     delivered.push(id);
     chunks.push(chunk);
     used += cost;
-    if (delivered.length === config.packetItems) break;
+    if (delivered.length === p.packetItems) break;
   }
   return [delivered, chunks];
 }

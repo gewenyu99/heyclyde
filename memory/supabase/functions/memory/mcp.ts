@@ -1,6 +1,7 @@
 // MCP over streamable HTTP, stateless, JSON responses only. initialize mints an Mcp-Session-Id and records the client's
 // name, so a later call in any isolate knows claude from codex and keeps the arm its session drew. GET gets 405, which
 // the spec allows a server that offers no stream.
+import type { Principal } from "./auth.ts";
 import { sql } from "./db.ts";
 import * as service from "./service.ts";
 import { Refused, remember } from "./write.ts";
@@ -84,11 +85,12 @@ const TOOLS = [
   },
 ];
 
-type Call = { session: string; client: string | null; args: Record<string, any> };
+type Call = { session: string; client: string | null; principal: string; args: Record<string, any> };
 const s = (v: unknown, fallback = "") => typeof v === "string" ? v : fallback;
 
 const RUN: Record<string, (c: Call) => Promise<string>> = {
-  recall: ({ session, client, args }) => service.recall(session, s(args.query), s(args.task), client, s(args.scope) || null),
+  recall: ({ session, client, principal, args }) =>
+    service.recall(session, s(args.query), s(args.task), client, s(args.scope) || null, principal),
   get_entry: async ({ session, args }) => (await service.getEntry(session, s(args.id))) ?? `No entry ${s(args.id)}.`,
   get_blob: ({ args }) => service.getBlob(s(args.sha256), Number(args.offset ?? 0), Number(args.limit ?? 20000)),
   remember: async ({ args }) => {
@@ -117,7 +119,7 @@ async function clientOf(session: string | null): Promise<string | null> {
   return row?.client ?? null;
 }
 
-async function answer(msg: RpcMessage, session: string | null, minted: { id?: string }) {
+async function answer(msg: RpcMessage, session: string | null, minted: { id?: string }, who: Principal) {
   const id = msg.id;
   switch (msg.method) {
     case "initialize": {
@@ -142,7 +144,8 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
       if (!run) return error(id, -32602, `Unknown tool ${name}`);
       const sid = session ?? `anon-${crypto.randomUUID()}`;
       try {
-        const text = await run({ session: sid, client: await clientOf(session), args: msg.params?.arguments ?? {} });
+        const principal = who.device ?? who.role;
+        const text = await run({ session: sid, client: await clientOf(session), principal, args: msg.params?.arguments ?? {} });
         return result(id, { content: [{ type: "text", text }] });
       } catch (e) {
         if (!(e instanceof Refused)) console.error(e);
@@ -155,7 +158,7 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
   }
 }
 
-export async function handle(req: Request): Promise<Response> {
+export async function handle(req: Request, who: Principal): Promise<Response> {
   if (req.method === "GET") return new Response(null, { status: 405, headers: { allow: "POST, DELETE" } });
   if (req.method === "DELETE") return new Response(null, { status: 200 });
   if (req.method !== "POST") return new Response(null, { status: 405 });
@@ -170,7 +173,7 @@ export async function handle(req: Request): Promise<Response> {
   const batch = Array.isArray(body);
   const replies = [];
   for (const msg of batch ? body as RpcMessage[] : [body as RpcMessage]) {
-    const reply = await answer(msg, session, minted);
+    const reply = await answer(msg, session, minted, who);
     if (reply && msg.id !== undefined) replies.push(reply);
   }
   const headers: Record<string, string> = minted.id ? { "mcp-session-id": minted.id } : {};

@@ -2,6 +2,7 @@
 // nightly export and the embed sync. auth.ts decides who a request is before anything here runs.
 import "jsr:@supabase/functions-js@2/edge-runtime.d.ts";
 import * as admin from "./admin.ts";
+import { servingArms } from "./allocation.ts";
 import { allowed, authenticate, baseOf, type Principal } from "./auth.ts";
 import { config } from "./config.ts";
 import { sql } from "./db.ts";
@@ -23,7 +24,7 @@ const MAX_ENTRY_BODY = 12 * 1024 * 1024;
 const WRITE_DEADLINE_MS = 1500;
 // Tables the export carries, parents first, so a restore can load them in order. Embeddings are rebuilt, not kept.
 const EXPORT = ["source", "entry", "link", "question", "qrel", "blob", "entry_blob", "mcp_session", "mcp_client", "retrieval",
-  "event", "feedback", "message", "admin_audit", "link_type_weight", "device", "embed_usage"];
+  "event", "feedback", "message", "admin_audit", "link_type_weight", "device", "embed_usage", "param_set", "allocation", "openai_usage"];
 
 const json = (body: unknown, status = 200) => Response.json(body, { status });
 const text = (body: string, status = 200) => new Response(body, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
@@ -79,7 +80,7 @@ async function httpRemember(req: Request, who: Principal) {
   }
 }
 
-async function httpRecall(req: Request) {
+async function httpRecall(req: Request, who: Principal) {
   const body = (await jsonObject(req, 1 << 20)) ?? {};
   const { query, task = "", scope = null } = body;
   if (!(typeof query === "string" && query.trim()) || typeof task !== "string" || (scope !== null && typeof scope !== "string")) {
@@ -87,7 +88,7 @@ async function httpRecall(req: Request) {
   }
   try {
     // Each scope is its own session, so a run draws one arm and keeps it.
-    return text(await service.recall(`http-${scope || "global"}`, query, task, "http", scope || null));
+    return text(await service.recall(`http-${scope || "global"}`, query, task, "http", scope || null, who.device ?? who.role));
   } catch (e) {
     if (e instanceof Refused) return json({ error: e.message }, 400);
     throw e;
@@ -99,7 +100,7 @@ const ORDER: Record<string, string> = {
   source: "id", entry: "id", link: "src, dst, type", question: "id", qrel: "question_id, entry_id", blob: "sha256",
   entry_blob: "entry_id, name", mcp_session: "id", mcp_client: "session_id", retrieval: "created_at, id", event: "id",
   feedback: "id", message: "id", admin_audit: "id", link_type_weight: "src_pattern, link_type, dst_pattern", device: "id",
-  embed_usage: "month",
+  embed_usage: "month", param_set: "id", allocation: "param_set", openai_usage: "month, kind",
 };
 // Blobs run to 4 MiB each, so their pages stay small.
 const PAGE = (table: string) => table === "blob" ? 20 : 2000;
@@ -174,9 +175,9 @@ async function route(req: Request): Promise<Response> {
 
   if (path === "/healthz") {
     await sql`select 1`;
-    return json({ ok: true, arms: config.arms });
+    return json({ ok: true, arms: await servingArms(sql).catch(() => config.arms) });
   }
-  if (path === "/mcp" || path === "/mcp/") return mcp.handle(req);
+  if (path === "/mcp" || path === "/mcp/") return mcp.handle(req, who);
   if (path.startsWith("/.well-known/oauth-protected-resource")) return oauth.resourceMetadata(await baseOf(req));
   if (path.startsWith("/oauth/")) return oauth.handle(await baseOf(req), path, url);
   if (path === "/install" || path.startsWith("/install/")) return install(req, path, url);
@@ -199,7 +200,7 @@ async function route(req: Request): Promise<Response> {
     if (!blob.public) return json({ error: service.PRIVATE_BLOB }, 403);
     return new Response(blob.content, { headers: { "content-type": blob.media_type, "x-content-type-options": "nosniff" } });
   }
-  if (m === "POST" && path === "/recall") return httpRecall(req);
+  if (m === "POST" && path === "/recall") return httpRecall(req, who);
   if (m === "GET" && path === "/export") return exportPage(url);
   if (m === "POST" && path === "/learn") return json(await learn());
   if (m === "POST" && path === "/embeddings/sync") {
