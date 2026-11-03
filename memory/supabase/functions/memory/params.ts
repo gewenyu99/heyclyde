@@ -26,6 +26,10 @@ export type Params = {
   /** Index: a draft's score is multiplied by this. Every arm: a scoped recall multiplies its own scope's scores by scopeBoost. */
   indexDraftFactor: number;
   scopeBoost: number;
+  /** Every arm, optional and 1 when a set doesn't carry it. A candidate in another run's scope (run:<x>, not the recall's own)
+   * has its score multiplied by otherRunFactor, a draft in a non-run scope by globalAgentDraftFactor. Both are in (0, 1]. */
+  otherRunFactor?: number;
+  globalAgentDraftFactor?: number;
   /** Spreading: personalized PageRank's restart share and iteration count, what a replaced entry keeps, and each link
    * type's weight, keyed "src_pattern|link_type|dst_pattern" (1 for a type not named). */
   restart: number;
@@ -40,13 +44,17 @@ export type Params = {
 
 type Spec = { min: number; max: number; int?: boolean; above?: boolean };
 const WEIGHT: Spec = { min: -10, max: 10 };
-const KNOBS: Record<Exclude<keyof Params, "linkTypeWeights">, Spec> = {
+const KNOBS: Record<Exclude<keyof Params, "linkTypeWeights" | "otherRunFactor" | "globalAgentDraftFactor">, Spec> = {
   candidates: { min: 1, max: 200, int: true }, packetItems: { min: 1, max: 50, int: true }, packetTokens: { min: 100, max: 20000, int: true },
   filterK: { min: 1, max: 50, int: true }, filterThreshold: { min: 0, max: 1 }, tiltBase: { min: 0, max: 1 },
   tiltUnknownConfidence: { min: 0, max: 1 }, tiltWindow: { min: 1, max: 200, int: true }, rowWindow: { min: 1, max: 200, int: true },
   dormant: { min: 0, max: 1 }, rrfK: { min: 1, max: 1000 }, vecWeight: { min: 0, max: 20 }, indexDraftFactor: { min: 0, max: 1 },
   scopeBoost: { min: 0, max: 20 }, restart: { min: 0, max: 1, above: true }, iterations: { min: 1, max: 100, int: true },
   supersededFactor: { min: 0, max: 1 }, wTemperature: WEIGHT, wAge: WEIGHT, wKind: WEIGHT,
+};
+// Knobs a set may leave out: the v1 sets predate them, and a set without one ranks as before.
+const OPTIONAL: Record<"otherRunFactor" | "globalAgentDraftFactor", Spec> = {
+  otherRunFactor: { min: 0, max: 1, above: true }, globalAgentDraftFactor: { min: 0, max: 1, above: true },
 };
 const LINK_KEY = /^[a-z][a-z_-]{1,40}\|[a-z_]{2,40}\|[a-z][a-z_-]{1,40}$/;
 // The range eval/ants.py keeps link type weights in.
@@ -63,10 +71,11 @@ export function resolveParams(base: Params | null, overrides: unknown): Params {
   if (!overrides || typeof overrides !== "object" || Array.isArray(overrides)) throw new ParamError("params must be an object of knobs.");
   const merged: Record<string, unknown> = { ...base, ...overrides };
   for (const name of Object.keys(overrides)) {
-    if (name !== "linkTypeWeights" && !(name in KNOBS)) throw new ParamError(`unknown knob ${name}.`);
+    if (name !== "linkTypeWeights" && !(name in KNOBS) && !(name in OPTIONAL)) throw new ParamError(`unknown knob ${name}.`);
   }
-  for (const [name, spec] of Object.entries(KNOBS)) {
+  for (const [name, spec] of [...Object.entries(KNOBS), ...Object.entries(OPTIONAL)]) {
     const v = merged[name];
+    if (v === undefined && name in OPTIONAL) continue;
     if (v === undefined) throw new ParamError(`${name} is missing. A set with no parent must say every knob.`);
     const low = spec.above ? (v as number) > spec.min : (v as number) >= spec.min;
     if (typeof v !== "number" || !Number.isFinite(v) || !low || v > spec.max || (spec.int && !Number.isInteger(v))) {

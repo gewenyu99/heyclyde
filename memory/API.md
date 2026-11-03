@@ -310,7 +310,7 @@ Every ranking knob lives in a parameter set, and an allocation says which sets s
 
 ### `GET /param-sets?arm=`
 
-Every set, by arm then id. Each item has `id`, `arm`, `params`, `parent`, `note`, `created_by` and `created_at`. `params` holds every knob: `candidates`, `packetItems`, `packetTokens`, `filterK`, `filterThreshold`, `tiltBase`, `tiltUnknownConfidence`, `tiltWindow`, `rowWindow`, `dormant`, `rrfK`, `vecWeight`, `indexDraftFactor`, `scopeBoost`, `restart`, `iterations`, `supersededFactor`, `linkTypeWeights` (keyed `src_pattern|link_type|dst_pattern`) and the features' weights `wTemperature`, `wAge` and `wKind`, which stay 0 until the features exist. `index.v1`, `hybrid.v1` and `spreading.v1` hold the constants memory ranked by before parameter sets existed.
+Every set, by arm then id. Each item has `id`, `arm`, `params`, `parent`, `note`, `created_by` and `created_at`. `params` holds every knob: `candidates`, `packetItems`, `packetTokens`, `filterK`, `filterThreshold`, `tiltBase`, `tiltUnknownConfidence`, `tiltWindow`, `rowWindow`, `dormant`, `rrfK`, `vecWeight`, `indexDraftFactor`, `scopeBoost`, the optional `otherRunFactor` and `globalAgentDraftFactor` (each in (0, 1], 1 when a set leaves them out, so the v1 sets rank as before), `restart`, `iterations`, `supersededFactor`, `linkTypeWeights` (keyed `src_pattern|link_type|dst_pattern`) and the features' weights `wTemperature`, `wAge` and `wKind`, which stay 0 until the features exist. `index.v1`, `hybrid.v1` and `spreading.v1` hold the constants memory ranked by before parameter sets existed.
 
 ### `GET /param-sets/{id}`
 

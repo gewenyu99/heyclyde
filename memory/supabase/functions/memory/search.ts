@@ -55,6 +55,23 @@ export function boost(scores: Ranked[], ids: Set<string>, factor: number): Ranke
   return scores.map(([id, s, line]): Ranked => [id, ids.has(id) ? s * factor : s, line]).sort(byScore);
 }
 
+/** What the discount needs to know of a candidate. */
+export type Scoped = { scope: string; authority: string };
+
+/** Discount the scores of other runs' notes (scope run:<x>, not the recall's own) by otherRunFactor, and of drafts in a
+ * non-run scope by globalAgentDraftFactor. Both are 1 when a set doesn't carry them. Nothing is dropped, only ranked lower. */
+export function discount(scores: Ranked[], info: Map<string, Scoped>, scope: string | null, p: Params): Ranked[] {
+  const run = p.otherRunFactor ?? 1, draft = p.globalAgentDraftFactor ?? 1;
+  if (run === 1 && draft === 1) return scores;
+  return scores.map(([id, s, line]): Ranked => {
+    const e = info.get(id);
+    if (!e) return [id, s, line];
+    const inRun = e.scope.startsWith("run:");
+    const f = inRun ? (e.scope !== scope ? run : 1) : e.authority === "draft" ? draft : 1;
+    return [id, s * f, line];
+  }).sort(byScore);
+}
+
 // ---------------------------------------------------------------- index: grep the index map
 /** The INDEX.md map, one line per entry, superseded entries struck through, as build.py writes it. */
 export async function indexLines(db: Sql) {
@@ -86,17 +103,18 @@ export async function indexLines(db: Sql) {
  * every word the replacement does and would otherwise outrank it. */
 export async function indexSearch(db: Sql, query: string, scope: string | null, p: Params): Promise<ArmResult> {
   const q = tokens(query);
-  const hits: Ranked[] = [], scoped = new Set<string>();
+  const hits: Ranked[] = [], scoped = new Set<string>(), info = new Map<string, Scoped>();
   for (const l of await indexLines(db)) {
     const words = tokens(l.line + " " + l.id.replaceAll("-", " "));
     let hit = 0;
     for (const t of q) if (words.has(t)) hit++;
     if (hit) {
       hits.push([l.id, hit * (l.authority === "draft" ? p.indexDraftFactor : 1), l.shown]);
+      info.set(l.id, { scope: l.scope, authority: l.authority });
       if (scope && l.scope === scope && !l.superseded) scoped.add(l.id);
     }
   }
-  const ranked = boost(hits, scoped, p.scopeBoost).slice(0, p.candidates);
+  const ranked = discount(boost(hits, scoped, p.scopeBoost), info, scope, p).slice(0, p.candidates);
   return [ranked, null, { index: scored(ranked) }];
 }
 
@@ -184,6 +202,10 @@ export async function hybridSearch(db: Sql, query: string, scope: string | null,
   if (scope && fused.length) {
     const rows = await db`select id from memory.entry where id = any(${fused.map(([id]) => id)}::text[]) and scope = ${scope}`;
     fused = boost(fused, new Set(rows.map((r) => r.id)), p.scopeBoost);
+  }
+  if (fused.length && ((p.otherRunFactor ?? 1) !== 1 || (p.globalAgentDraftFactor ?? 1) !== 1)) {
+    const rows = await db`select id, scope, authority from memory.entry where id = any(${fused.map(([id]) => id)}::text[])`;
+    fused = discount(fused, new Map(rows.map((r) => [r.id as string, { scope: r.scope as string, authority: r.authority as string }])), scope, p);
   }
   const ranked = fused.slice(0, p.candidates);
   return [ranked, degraded, { hybrid: scored(ranked), keyword: unscored(parts.keyword), vec: unscored(parts.vec) }];

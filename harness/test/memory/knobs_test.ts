@@ -82,7 +82,7 @@ const ALLOWED: Record<string, number[]> = {
 // The names of the knobs that used to be constants or config, and the env vars that used to set them.
 const KNOBS = [
   /\bFILTER_K\b/, /\bFILTER_THRESHOLD\b/, /\bTILT_BASE\b/, /\bDORMANT\b/, /\bRESTART\b/, /\bITERATIONS\b/, /\bSUPERSEDED_FACTOR\b/,
-  /\bconfig\.(candidates|packetItems|packetTokens|rrfK|vecWeight|indexDraftFactor|scopeBoost)\b/,
+  /\bconfig\.(candidates|packetItems|packetTokens|rrfK|vecWeight|indexDraftFactor|scopeBoost|otherRunFactor|globalAgentDraftFactor)\b/,
 ]
 
 // R32 (#36): a test fails if a knob is hard-coded in search.ts or service.ts.
