@@ -154,7 +154,7 @@ test('R28: settled entries fill the main list and the top 3 trial entries the On
   for (let i = 0; i < 10; i++) seed(`${w}-s${i}`, { title: `${w} settled note ${i}`, kind: 'wen', confidence: 0.8, chances: 0 })
   for (let i = 0; i < 5; i++) seed(`${w}-t${i}`, { title: `${w} trial note ${i}`, chances: 3 })
   const { tool } = await mcp()
-  const text = await tool('recall', { query: `${w} note` })
+  const text = await tool('recall', { query: w })
   const { main, trial } = lists(text)
   const inMain = [...main.matchAll(/^\[\d+\] (\S+):/gm)].map((m) => m[1])
   const inTrial = [...trial.matchAll(/^\[T\d+\] (\S+):/gm)].map((m) => m[1])
@@ -654,9 +654,9 @@ test('R28: a recall with no feedback and no opens moves nothing, and a shown ent
 test('R28: Wen\'s pushback blaming a trial entry takes the trial step of -1, and a settled one the settled step', { skip: SKIP }, async () => {
   await serveV3()
   const w = word(), v = word()
-  seed(`${w}-pb`, { title: `${w} blamed trial` })
-  seed(`${v}-pb`, { title: `${v} blamed settled`, kind: 'wen', confidence: 0.8, chances: 0 })
-  for (const query of [`${w} blamed trial`, `${v} blamed settled`]) {
+  seed(`${w}-pb`, { title: `${w} alpha` })
+  seed(`${v}-pb`, { title: `${v} beta`, kind: 'wen', confidence: 0.8, chances: 0 })
+  for (const query of [w, v]) {
     const s = await mcp()
     await s.tool('recall', { query })
     const cs = `claude-${nonce()}`
