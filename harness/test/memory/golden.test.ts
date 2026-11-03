@@ -14,10 +14,10 @@ test('v1 ranks exactly like today on every arm: same candidates and scores, same
   const golden = JSON.parse(readFileSync(join(import.meta.dirname, 'golden-v1.json'), 'utf8'))
   const ants = Object.fromEntries(LINK_TYPE_WEIGHTS.map(([s, t, d, w]) => [`${s}|${t}|${d}`, w]))
   const actual = await scenario((id, arm, pass) => {
-    // The second pass's spreading runs on a set that carries the ants' weights, the way the table did. Index runs on a
-    // session from before parameter sets, which names no set: it falls back to the arm's v1.
-    const set = pass === 2 ? 'spreading.ants' : arm === 'index' ? null : `${arm}.v1`
-    sql(`insert into memory.mcp_session (id, arm${set ? ', param_set' : ''}) values ('${id}', '${arm}'${set ? `, '${set}'` : ''})`)
+    // Each session is pinned to the set the old code's arm named, for the unit its scope makes, so no hash picks the arm. The
+    // second pass's spreading runs on a set that carries the ants' weights, the way the table did.
+    const set = pass === 2 ? 'spreading.ants' : `${arm}.v1`
+    sql(`insert into memory.mcp_session (id, arm, param_set, unit) values ('${id}', '${arm}', '${set}', '${id.replace('http-', '')}')`)
   }, async (m, pass) => {
     if (pass === 2) {
       await call(m, 'POST', '/api/v1/param-sets', m.adminToken, {

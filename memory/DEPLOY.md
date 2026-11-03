@@ -97,7 +97,7 @@ curl -X PUT "$MEMORY_URL/api/v1/allocation" -H "Authorization: Bearer $MEMORY_AD
   -d '{"rows": [{"param_set": "index.v1", "role": "default", "weight": 333}, {"param_set": "hybrid.v1", "role": "default", "weight": 333}, {"param_set": "spreading.v1", "role": "default", "weight": 334}]}'
 ```
 
-Every knob each arm ranks by (candidates, packet size, the filter, the tilt, the fusion and PageRank constants, the link type weights) is a row of `memory.param_set`, and a set never changes. `eval/retrieval_eval.py --params <id|file.json>` runs any set offline. The `link_type_weight` table is still what `eval/ants.py` writes, but ranking reads the `linkTypeWeights` of the set it serves: to put new ants weights into service, make a new set with them.
+Every knob each arm ranks by (candidates, packet size, the filter, the tilt, the fusion and PageRank constants, the link type weights) is a row of `memory.param_set`, and a set never changes. `eval/retrieval_eval.py --params <id|file.json>` runs any set offline. Link type weights have one owner: the `linkTypeWeights` of the set a recall is served. `eval/ants.py` saves its result as a new spreading set (parent `spreading.v1`, id `spreading.ants-<time>`) and writes nothing else, so trying it is `retrieval_eval.py --params <id>`, and serving it is an allocation row. `PUT /link-type-weights` answers 410 and points at `POST /param-sets`. The `link_type_weight` table stays for the record, and nothing ranks by it.
 
 [eval/ants.py](eval/ants.py) trains the per-link-type weights with an ant colony on the train questions. On today's 21 train questions it didn't beat neutral weights, so they're back at 1.0. Rerun it as the probe set grows.
 

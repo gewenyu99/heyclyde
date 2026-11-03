@@ -49,7 +49,7 @@ const KNOBS: Record<Exclude<keyof Params, "linkTypeWeights">, Spec> = {
   supersededFactor: { min: 0, max: 1 }, wTemperature: WEIGHT, wAge: WEIGHT, wKind: WEIGHT,
 };
 const LINK_KEY = /^[a-z][a-z_-]{1,40}\|[a-z_]{2,40}\|[a-z][a-z_-]{1,40}$/;
-// The range eval/ants.py and PUT /link-type-weights already keep link type weights in.
+// The range eval/ants.py keeps link type weights in.
 const LINK_WEIGHT = { min: 0.2, max: 5 };
 
 /** A set that can't be made or found. The message says what to fix. */
@@ -89,6 +89,9 @@ export type ParamSet = { id: string; arm: string; params: Params };
 
 // A set never changes, so an isolate keeps each one it has read for good.
 const known = new Map<string, ParamSet>();
+
+/** Drop a cached set. Only an import that restores a backup over a migration-seeded set changes one. */
+export const forgetParamSet = (id: string) => void known.delete(id);
 
 /** The set with this id. Throws ParamError when there is none. */
 export async function paramSet(db: Sql, id: string): Promise<ParamSet> {

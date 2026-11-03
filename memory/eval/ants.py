@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""Train the spreading arm's per-link-type weights with an ant colony on the train questions, then write them.
+"""Train the spreading arm's per-link-type weights with an ant colony on the train questions, then save them as a new
+spreading parameter set.
 
-  python eval/ants.py [--iterations 30] [--ants 15] [--dry-run]
+  python eval/ants.py [--iterations 30] [--ants 15] [--id spreading.ants-<time>] [--dry-run]
 
 Wen's design: ants start at hybrid's seeds for a question and walk up to 3 hops over typed links. Each step picks a
 neighbor with probability ∝ τ^α · η^β, where τ is the link type's pheromone and η favors entries hybrid also ranked
 (α=1, β=2), with 10% exploration. An ant that reaches a gold entry deposits 1/hops on every link type it walked.
-Pheromone evaporates 10% a round. The final pheromone, scaled to a mean of 1 and clamped to 0.2 to 5, becomes
-link_type_weight. Train split only: the test split stays unread until the knobs freeze.
+Pheromone evaporates 10% a round. The final pheromone, scaled to a mean of 1 and clamped to 0.2 to 5, becomes the
+linkTypeWeights of a new parameter set whose parent is spreading.v1. Nothing goes live: allocate the set, or run it offline
+with retrieval_eval.py --params <id>. Train split only: the test split stays unread until the knobs freeze.
 """
 import argparse, json, os, random, urllib.request
+from datetime import datetime, timezone
 from collections import defaultdict
 from pathlib import Path
 
@@ -31,7 +34,8 @@ def main():
     ap.add_argument("--iterations", type=int, default=30)
     ap.add_argument("--ants", type=int, default=15)
     ap.add_argument("--seed", type=int, default=7)
-    ap.add_argument("--dry-run", action="store_true", help="print the weights without writing them")
+    ap.add_argument("--id", help="the new parameter set's id, default spreading.ants-<UTC time>")
+    ap.add_argument("--dry-run", action="store_true", help="print the weights without saving a set")
     a = ap.parse_args()
     rng = random.Random(a.seed)
 
@@ -99,7 +103,12 @@ def main():
         print(f"  {r['weight']:5.2f}  {r['src_pattern']} -{r['link_type']}-> {r['dst_pattern']}")
     print(f"  ... {len(rows)} link types in all")
     if not a.dry_run:
-        print(call("/link-type-weights", {"rows": rows, "by": "ants"}, method="PUT"))
+        set_id = a.id or "spreading.ants-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
+        made = call("/param-sets", {
+            "id": set_id, "parent": "spreading.v1", "by": "ants",
+            "note": f"ant colony weights: {a.iterations} rounds of {a.ants} ants on {len(questions)} train questions, seed {a.seed}",
+            "params": {"linkTypeWeights": {f"{r['src_pattern']}|{r['link_type']}|{r['dst_pattern']}": r["weight"] for r in rows}}})
+        print(f"saved parameter set {made['id']} with {len(rows)} link type weights")
 
 
 if __name__ == "__main__":

@@ -293,10 +293,10 @@ Body `{"to": "claude", "body": "..."}`. `to` is `claude`, `codex` or `all`, in a
 
 ### `POST /recall/preview`
 
-Body `{"query": "...", "task"?: "...", "arms"?: ["index", "hybrid"]}`. `arms` defaults to every arm the server knows, live or not.
+Body `{"query": "...", "task"?: "...", "param_sets"?: ["hybrid.v1", "hybrid.v2"]}`. `param_sets` defaults to the sets now serving, from the allocation (or `MEMORY_ARMS`' v1 sets while it has no serving row). An older caller's `"arms": ["index", "hybrid"]` still works and means each arm's v1. An unknown set id is a 422. Each item in `arms` in the reply names its `param_set`.
 
 ```json
-{"arms": [{"arm": "hybrid", "degraded": null, "latency_ms": 40, "packet": ["tea-oolong-temp"],
+{"arms": [{"arm": "hybrid", "param_set": "hybrid.v1", "degraded": null, "latency_ms": 40, "packet": ["tea-oolong-temp"],
            "text": "[1] tea-oolong-temp: Brew oolong at 90C\n    approved · ...",
            "ranked": [{"rank": 1, "id": "tea-oolong-temp", "score": 0.09, "title": "...", "authority": "approved",
                        "superseded_by": [], "current": true, "in_packet": true}]}]}
@@ -326,7 +326,7 @@ Body `{"id": "hybrid.v2", "parent"?: "hybrid.v1", "arm"?: "hybrid", "params": {.
 
 ### `PUT /allocation`
 
-Body `{"rows": [{"param_set", "role", "weight"}], "by"?: "..."}`. The rows named are set and the others stay, so one PUT can turn one variant off: `{"param_set": "hybrid.v2", "role": "off", "weight": 0}`. `weight` is a whole number, 0 or more. 422 if a set doesn't exist, a role is wrong, or the result would leave nothing serving, and then nothing changes. A session that a set served stops being served by it as soon as the set's role is off or its weight 0. Audited as `allocation.put`, with the whole table before and after.
+Body `{"rows": [{"param_set", "role", "weight"}], "by"?: "..."}`. `by` is text of 1 to 64 characters and defaults to `admin`; the audit row records it. The rows named are set and the others stay, so one PUT can turn one variant off: `{"param_set": "hybrid.v2", "role": "off", "weight": 0}`. `weight` is a whole number, 0 or more. 422 if a set doesn't exist, a role is wrong, or the result would leave nothing serving, and then nothing changes. A session that a set served stops being served by it as soon as the set's role is off or its weight 0. Audited as `allocation.put`: `before` is `{"rows": [...]}`, the whole table before, and `after` is `{"by": "...", "rows": [...]}`.
 
 ## Eval
 
@@ -364,7 +364,7 @@ Newest first. Each item has `id`, `at`, `action`, `target`, `before` and `after`
 | `message.create` | `message:<id>` | null | `to` and `body` as sent |
 | `embeddings.sync` | `embeddings` | null | `embedded` or `error` |
 | `param_set.create` | `param_set:<id>` | null | `arm`, `parent`, `note`, `by` |
-| `allocation.put` | `allocation` | The rows before | The rows after |
+| `allocation.put` | `allocation` | `{rows}`, the table before | `{by, rows}`, the table after |
 
 ## Code
 

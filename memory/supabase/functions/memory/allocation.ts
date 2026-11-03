@@ -63,20 +63,23 @@ export async function servingArms(db: Sql): Promise<string[]> {
   return [...arms];
 }
 
-/** The set a session is served, its propensity, and whether this call drew it. A session keeps what it drew, unless the
- * allocation table names serving sets and the session's is no longer one of them: a set set to off or 0 stops serving at
- * once, sessions already under way included. A session from before parameter sets keeps its arm's v1. */
+/** The set a session is served and the propensity of the draw that chose it. The unit is the sticky key, not the session
+ * row: an unscoped HTTP recall shares one row across every device and day. The row holds a draw only for the unit it was
+ * drawn for, so another unit, a new day or a row from before units draws afresh, and the row keeps the latest draw. Even
+ * for its own unit, a draw stops serving once the allocation table names serving sets and its set is not among them: a
+ * set set to off or 0 stops at once. */
 export async function sessionSet(db: Sql, session: string, unit: string, client: string | null): Promise<{ set: ParamSet; propensity: number | null }> {
   const { salt, slots, explicit } = await allocation(db);
-  const [stored] = await db`select arm, param_set, propensity from memory.mcp_session where id = ${session}`;
-  if (stored) {
+  const [stored] = await db`select arm, param_set, propensity, unit from memory.mcp_session where id = ${session}`;
+  if (stored?.unit === unit) {
     const id = (stored.param_set as string | null) ?? `${stored.arm}.v1`;
     if (!explicit || serving(slots).some((s) => s.param_set === id)) return { set: await paramSet(db, id), propensity: stored.propensity };
   }
   const drawn = (await assign(salt, unit, slots))!;
   const set = await paramSet(db, drawn.param_set);
-  await db`insert into memory.mcp_session (id, arm, client, param_set, propensity)
-    values (${session}, ${set.arm}, ${client}, ${set.id}, ${drawn.propensity})
-    on conflict (id) do update set arm = excluded.arm, param_set = excluded.param_set, propensity = excluded.propensity`;
+  await db`insert into memory.mcp_session (id, arm, client, param_set, propensity, unit)
+    values (${session}, ${set.arm}, ${client}, ${set.id}, ${drawn.propensity}, ${unit})
+    on conflict (id) do update set arm = excluded.arm, param_set = excluded.param_set, propensity = excluded.propensity,
+      unit = excluded.unit`;
   return { set, propensity: drawn.propensity };
 }
