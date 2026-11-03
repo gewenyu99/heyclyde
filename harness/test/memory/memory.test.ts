@@ -1011,7 +1011,7 @@ test('queue: the migration moves legacy messages into deliveries and the contrac
     from generate_series(1, 17) g`)
   sql(`insert into memory.message (sender, recipient, body, read_by, created_at)
     values ('codex', 'all', 'legacy all', array['claude', 'gemini'], '2026-10-11')`)
-  apply('20261102000000_message_queue.sql')
+  apply('20261103000000_message_queue.sql')
   assert.equal(countOf(readByColumns), 1, 'the expand step keeps read_by, so the old function still works')
   assert.equal(countOf(`select count(*) as n from memory.message_delivery d join memory.message m on m.id = d.message_id
     where m.recipient = 'queue11-reader'`), 17)
