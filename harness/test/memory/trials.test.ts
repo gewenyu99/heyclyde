@@ -314,7 +314,8 @@ test('R28: each On trial item renders in at most 400 characters', { skip: SKIP }
   const w = word()
   for (let i = 0; i < 3; i++) seed(`${w}-l${i}`, { title: `${w} long ${i}`, body: `${w} long ${'padding '.repeat(500)}` })
   const { tool } = await mcp()
-  const { trial } = lists(await tool('recall', { query: `${w} long` }))
+  const { trial: withFooter } = lists(await tool('recall', { query: `${w} long` }))
+  const trial = withFooter.split('\nAfter using these')[0]
   const items = trial.split(/\n(?=\[T\d\])/).filter((part) => part.startsWith('[T')).map((part) => part.trim())
   assert.equal(items.length, 3)
   for (const item of items) assert.ok(item.length <= 400, String(item.length))
