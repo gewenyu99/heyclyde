@@ -254,32 +254,32 @@
       "score": 0.20511363636363636
      },
      {
-      "id": "tea-oolong-temp",
-      "score": 0.13568181818181818
-     },
-     {
-      "id": "tea-draft-cold",
-      "score": 0.10846153846153847
-     },
-     {
       "id": "tea-supplier",
-      "score": 0.10392857142857143
+      "score": 0.13227272727272726
      },
      {
       "id": "proj-tea",
-      "score": 0.097
+      "score": 0.11192307692307693
+     },
+     {
+      "id": "tea-draft-cold",
+      "score": 0.10071428571428571
+     },
+     {
+      "id": "tea-oolong-temp",
+      "score": 0.0995
      }
     ],
     "delivered": [
      "tea-zh",
-     "tea-oolong-temp",
-     "tea-draft-cold",
      "tea-supplier",
-     "proj-tea"
+     "proj-tea",
+     "tea-draft-cold",
+     "tea-oolong-temp"
     ],
     "rejected": [],
     "degraded": null,
-    "packet": "[1] tea-zh: 喜欢乌龙茶\n    approved · domain:tea · 2026-09-01\n    偏好乌龙茶，不加糖。\n    Wen: “我最喜欢乌龙茶”\n\n[2] tea-oolong-temp: Brew oolong at 90C\n    approved · domain:tea · 2026-09-01\n    Oolong water temperature is 90C.\n    Wen: “oolong at 90 from now on”\n\n[3] tea-draft-cold: Try cold-brew oolong\n    draft · domain:tea · 2026-09-01\n    Claude suggested cold brew; never confirmed.\n\n[4] tea-supplier: Buys oolong from a private supplier\n    observed · domain:tea · 2026-09-01\n    [private entry: ask Wen]\n\n[5] proj-tea: Tea brewing\n    approved · domain:tea · 2026-09-01\n    Daily tea brewing.\n    Wen: “i brew tea every morning”"
+    "packet": "[1] tea-zh: 喜欢乌龙茶\n    approved · domain:tea · 2026-09-01\n    偏好乌龙茶，不加糖。\n    Wen: “我最喜欢乌龙茶”\n\n[2] tea-supplier: Buys oolong from a private supplier\n    observed · domain:tea · 2026-09-01\n    [private entry: ask Wen]\n\n[3] proj-tea: Tea brewing\n    approved · domain:tea · 2026-09-01\n    Daily tea brewing.\n    Wen: “i brew tea every morning”\n\n[4] tea-draft-cold: Try cold-brew oolong\n    draft · domain:tea · 2026-09-01\n    Claude suggested cold brew; never confirmed.\n\n[5] tea-oolong-temp: Brew oolong at 90C\n    approved · domain:tea · 2026-09-01\n    Oolong water temperature is 90C.\n    Wen: “oolong at 90 from now on”"
    },
    "hybrid/4": {
     "candidates": [
@@ -454,36 +454,36 @@
    "spreading/3": {
     "candidates": [
      {
-      "id": "tea-zh",
-      "score": 0.25957017771457036
+      "id": "proj-tea",
+      "score": 0.26005920844634844
      },
      {
-      "id": "proj-tea",
-      "score": 0.24395148951999016
+      "id": "tea-zh",
+      "score": 0.2510968576941005
      },
      {
       "id": "tea-oolong-temp",
-      "score": 0.23376427312149378
-     },
-     {
-      "id": "tea-draft-cold",
-      "score": 0.1040063284914182
+      "score": 0.20569234104038264
      },
      {
       "id": "tea-supplier",
-      "score": 0.10140207008875311
+      "score": 0.12401472954421304
+     },
+     {
+      "id": "tea-draft-cold",
+      "score": 0.09982687779854753
      }
     ],
     "delivered": [
-     "tea-zh",
      "proj-tea",
+     "tea-zh",
      "tea-oolong-temp",
-     "tea-draft-cold",
-     "tea-supplier"
+     "tea-supplier",
+     "tea-draft-cold"
     ],
     "rejected": [],
     "degraded": null,
-    "packet": "[1] tea-zh: 喜欢乌龙茶\n    approved · domain:tea · 2026-09-01\n    偏好乌龙茶，不加糖。\n    Wen: “我最喜欢乌龙茶”\n\n[2] proj-tea: Tea brewing\n    approved · domain:tea · 2026-09-01\n    Daily tea brewing.\n    Wen: “i brew tea every morning”\n\n[3] tea-oolong-temp: Brew oolong at 90C\n    approved · domain:tea · 2026-09-01\n    Oolong water temperature is 90C.\n    Wen: “oolong at 90 from now on”\n\n[4] tea-draft-cold: Try cold-brew oolong\n    draft · domain:tea · 2026-09-01\n    Claude suggested cold brew; never confirmed.\n\n[5] tea-supplier: Buys oolong from a private supplier\n    observed · domain:tea · 2026-09-01\n    [private entry: ask Wen]"
+    "packet": "[1] proj-tea: Tea brewing\n    approved · domain:tea · 2026-09-01\n    Daily tea brewing.\n    Wen: “i brew tea every morning”\n\n[2] tea-zh: 喜欢乌龙茶\n    approved · domain:tea · 2026-09-01\n    偏好乌龙茶，不加糖。\n    Wen: “我最喜欢乌龙茶”\n\n[3] tea-oolong-temp: Brew oolong at 90C\n    approved · domain:tea · 2026-09-01\n    Oolong water temperature is 90C.\n    Wen: “oolong at 90 from now on”\n\n[4] tea-supplier: Buys oolong from a private supplier\n    observed · domain:tea · 2026-09-01\n    [private entry: ask Wen]\n\n[5] tea-draft-cold: Try cold-brew oolong\n    draft · domain:tea · 2026-09-01\n    Claude suggested cold brew; never confirmed."
    },
    "spreading/4": {
     "candidates": [
@@ -982,17 +982,17 @@
    "hybrid/3/filter": {
     "candidates": [
      "tea-zh",
-     "tea-oolong-temp",
-     "tea-draft-cold",
      "tea-supplier",
-     "proj-tea"
+     "proj-tea",
+     "tea-draft-cold",
+     "tea-oolong-temp"
     ],
     "delivered": [
      "tea-zh",
-     "tea-oolong-temp",
-     "tea-draft-cold",
      "tea-supplier",
-     "proj-tea"
+     "proj-tea",
+     "tea-draft-cold",
+     "tea-oolong-temp"
     ],
     "rejected": [],
     "degraded": null,
@@ -1005,28 +1005,28 @@
       "tea-zh"
      ],
      "vec": [
-      "tea-oolong-temp",
-      "tea-zh",
-      "tea-draft-cold",
       "tea-supplier",
-      "proj-tea"
+      "tea-zh",
+      "proj-tea",
+      "tea-draft-cold",
+      "tea-oolong-temp"
      ]
     }
    },
    "hybrid/3/raw": {
     "candidates": [
      "tea-zh",
-     "tea-oolong-temp",
-     "tea-draft-cold",
      "tea-supplier",
-     "proj-tea"
+     "proj-tea",
+     "tea-draft-cold",
+     "tea-oolong-temp"
     ],
     "delivered": [
      "tea-zh",
-     "tea-oolong-temp",
-     "tea-draft-cold",
      "tea-supplier",
-     "proj-tea"
+     "proj-tea",
+     "tea-draft-cold",
+     "tea-oolong-temp"
     ],
     "rejected": [],
     "degraded": null,
@@ -1039,11 +1039,11 @@
       "tea-zh"
      ],
      "vec": [
-      "tea-oolong-temp",
-      "tea-zh",
-      "tea-draft-cold",
       "tea-supplier",
-      "proj-tea"
+      "tea-zh",
+      "proj-tea",
+      "tea-draft-cold",
+      "tea-oolong-temp"
      ]
     }
    },
@@ -1323,18 +1323,18 @@
    },
    "spreading/3/filter": {
     "candidates": [
-     "tea-zh",
      "proj-tea",
+     "tea-zh",
      "tea-oolong-temp",
-     "tea-draft-cold",
-     "tea-supplier"
+     "tea-supplier",
+     "tea-draft-cold"
     ],
     "delivered": [
-     "tea-zh",
      "proj-tea",
+     "tea-zh",
      "tea-oolong-temp",
-     "tea-draft-cold",
-     "tea-supplier"
+     "tea-supplier",
+     "tea-draft-cold"
     ],
     "rejected": [],
     "degraded": null,
@@ -1342,18 +1342,18 @@
    },
    "spreading/3/raw": {
     "candidates": [
-     "tea-zh",
      "proj-tea",
+     "tea-zh",
      "tea-oolong-temp",
-     "tea-draft-cold",
-     "tea-supplier"
+     "tea-supplier",
+     "tea-draft-cold"
     ],
     "delivered": [
-     "tea-zh",
      "proj-tea",
+     "tea-zh",
      "tea-oolong-temp",
-     "tea-draft-cold",
-     "tea-supplier"
+     "tea-supplier",
+     "tea-draft-cold"
     ],
     "rejected": [],
     "degraded": null,
@@ -1443,23 +1443,23 @@
     "candidates": [
      {
       "id": "proj-tea",
-      "score": 0.2845700959104375
+      "score": 0.28094915483951033
      },
      {
       "id": "tea-oolong-temp",
-      "score": 0.22159074874547452
+      "score": 0.22231727516423597
      },
      {
       "id": "tea-zh",
-      "score": 0.1482233554847048
+      "score": 0.15213985428064994
      },
      {
       "id": "tea-supplier",
-      "score": 0.14573372016780603
+      "score": 0.14537162606201348
      },
      {
       "id": "tea-draft-cold",
-      "score": 0.13942252987184803
+      "score": 0.13907163455283253
      }
     ],
     "delivered": [
@@ -1549,11 +1549,11 @@
      },
      {
       "id": "tea-zh",
-      "score": 0.22022663680640522
+      "score": 0.2337634072279754
      },
      {
       "id": "tea-oolong-temp",
-      "score": 0.20138305834173217
+      "score": 0.18720507247914026
      },
      {
       "id": "tea-supplier",
@@ -1561,7 +1561,7 @@
      },
      {
       "id": "tea-draft-cold",
-      "score": 0.1024896741118165
+      "score": 0.10248967411181649
      }
     ],
     "delivered": [
@@ -1579,23 +1579,23 @@
     "candidates": [
      {
       "id": "proj-tea",
-      "score": 0.2874503899337874
+      "score": 0.28382944886286027
      },
      {
       "id": "tea-oolong-temp",
-      "score": 0.20972934529225754
+      "score": 0.21045587171101904
      },
      {
       "id": "tea-supplier",
-      "score": 0.16074479980884246
+      "score": 0.16038270570304985
      },
      {
       "id": "tea-zh",
-      "score": 0.14510795872538287
+      "score": 0.14902445752132798
      },
      {
       "id": "tea-draft-cold",
-      "score": 0.13609372747685253
+      "score": 0.13574283215783706
      }
     ],
     "delivered": [
