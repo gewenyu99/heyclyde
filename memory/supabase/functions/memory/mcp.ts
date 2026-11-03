@@ -11,7 +11,8 @@ import { Refused, remember } from "./write.ts";
 const VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 export const INSTRUCTIONS = "Wen's memory. Call recall before acting on anything that depends on Wen's decisions, " +
   "preferences or history. Wen's other agents leave you messages. Call check_messages when you start a task, " +
-  "and post_message to reach them.";
+  "and post_message to reach them. check_messages numbers each message: call ack_messages with those ids once you've " +
+  "handled them, or they come back.";
 
 const str = (description: string) => ({ type: "string", description });
 const int = (description: string) => ({ type: "integer", description });
@@ -82,8 +83,31 @@ export const TOOLS = [
   },
   {
     name: "check_messages",
-    description: "Read your unread messages from Wen's other agents. Reading marks them read.",
+    description: "Read your waiting messages from Wen's other agents, oldest first, up to 20, each with an id. Reading " +
+      "doesn't finish them: call ack_messages with the ids once you've handled them. One you don't acknowledge comes " +
+      "back after 30 minutes, up to 3 times, then it's dropped and its sender is told.",
     inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "ack_messages",
+    description: "Mark messages handled, by the ids check_messages listed. Only your own can be acknowledged.",
+    inputSchema: {
+      type: "object", required: ["ids"],
+      properties: { ids: { type: "array", items: { type: "integer" }, description: "Message ids from check_messages" } },
+    },
+  },
+  {
+    name: "dismiss_messages",
+    description: "Clear messages without handling them: ids from check_messages, or \"all\" for everything waiting for you.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ids: {
+          anyOf: [{ type: "array", items: { type: "integer" } }, { type: "string", enum: ["all"] }],
+          description: "Message ids, or \"all\"",
+        },
+      },
+    },
   },
 ];
 
@@ -117,7 +141,9 @@ const RUN: Record<string, (c: Call) => Promise<string>> = {
   feedback: ({ args }) => service.feedback(sql, s(args.retrieval_id), s(args.verdict), s(args.entry_id) || null, s(args.note) || null),
   post_message: ({ client, args }) => service.postMessage(sql, service.agentName(client), s(args.to), s(args.body)),
   check_messages: async ({ client, note }) =>
-    ((await service.readMessages(service.agentName(client))) || "No new messages.") + (note ? `\n${note}` : ""),
+    ((await service.checkMessages(service.agentName(client))) || "No new messages.") + (note ? `\n${note}` : ""),
+  ack_messages: ({ client, args }) => service.ackMessages(service.agentName(client), args.ids),
+  dismiss_messages: ({ client, args }) => service.dismissMessages(service.agentName(client), args.ids),
 };
 
 type RpcMessage = { jsonrpc?: string; id?: string | number | null; method?: string; params?: any };

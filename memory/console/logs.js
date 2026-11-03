@@ -261,11 +261,15 @@ export function feedbackView(root) {
 // ---------------------------------------------------------------- message board
 function messageCard(m, reply) {
   const read = m.read_by || [];
+  const waiting = m.pending || [];
+  const dropped = m.dropped || [];
+  const status = [read.length && `Read by ${read.join(', ')}.`, waiting.length && `Waiting for ${waiting.join(', ')}.`,
+    dropped.length && `Dropped for ${dropped.join(', ')}.`].filter(Boolean).join(' ');
   return h('article', { class: 'msg' },
     h('header', null, h('strong', null, m.sender), h('span', { class: 'muted' }, ' to '), h('strong', null, m.recipient),
       h('span', { class: 'spacer' }), when(m.created_at), h('span', { class: 'muted small' }, ` #${m.id}`)),
     h('p', { class: 'prose' }, m.body),
-    h('footer', { class: 'row small muted' }, read.length ? `Read by ${read.join(', ')}.` : 'Unread.',
+    h('footer', { class: 'row small muted' }, status || 'Unread.',
       AGENTS.includes(m.sender) && h('button', { type: 'button', class: 'small', onclick: () => reply(m) }, `Reply to ${m.sender}`)));
 }
 

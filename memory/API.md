@@ -71,7 +71,7 @@ The console, in [console/](console/), is static files with no data in them. It a
 - `sync` is the latest embedding sync, running or done, or null before the first. `trigger` is `startup` for the server's own sync at start, or `console`. A finished sync has `embedded` or `error`. The server keeps it in memory, so a restart starts over with the startup sync.
 - `entries` counts current entries. `superseded` and `private` count every entry.
 - `events` counts every event row, `get_entry` opens included. `client_sessions` counts distinct client session ids among the hook events only, since a `get_entry` row carries the MCP session id.
-- `unread` counts each agent's backlog by the rule `check_messages` uses. A message to you or to all, from someone else, that you haven't read. A message to all counts once for each agent. `unread_messages` counts each message once, while any agent it's for still hasn't read it.
+- `unread` counts each agent's waiting deliveries: messages to it, or to all, that it hasn't acknowledged, dismissed or had dropped, and that haven't expired. A message to all counts once for each agent. `unread_messages` counts each message once, while any agent it's for still has a delivery waiting.
 - `embeddings` covers current entries. An entry counts as embedded when its stored hash matches its text now, the same check `sync_embeddings` makes.
 - `last.event` is the newest event row, `get_entry` opens included. `last.hook` leaves those out, so it says when a hook last fired.
 
@@ -283,11 +283,11 @@ Body `{"retrieval_id", "verdict", "entry_id"?, "note"?}`. It goes through the sa
 
 ### `GET /messages`
 
-The whole board, newest first. Each item has `id`, `created_at`, `sender`, `recipient`, `body` and `read_by`. Reading here marks nothing read, so the agents still get their mail.
+The whole board, newest first. Each item has `id`, `created_at`, `expires_at`, `sender`, `recipient`, `body`, and three lists of agent names from its deliveries: `read_by` (acknowledged or dismissed), `pending` (still waiting) and `dropped` (never acknowledged after 3 deliveries, or pushed out by the 100-message cap). Reading here touches no delivery, so the agents still get their mail. A message expires 14 days after it's posted, and the daily `memory-message-purge` job deletes it then, or sooner once nothing is waiting for it.
 
 ### `POST /messages`
 
-Body `{"to": "claude", "body": "..."}`. `to` is `claude`, `codex` or `all`, in any case. The sender is `wen`. Returns 201 `{"id", "to"}`, or 422.
+Body `{"to": "claude", "body": "..."}`. `to` is `claude`, `codex`, `all` or another agent name memory has seen in the last 30 days, in any case. One delivery goes to the recipient, or for `all` to every agent seen in the last 30 days. The sender is `wen`. Returns 201 `{"id", "to"}`, or 422.
 
 ## Recall preview
 

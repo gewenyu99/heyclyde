@@ -187,11 +187,18 @@ export function agentName(client: string | null) {
 }
 
 const AGENTS = ["claude", "codex", "all"];
+const AGENT = /^[a-z0-9_-]{1,40}$/;
+// A delivery that isn't acknowledged comes back after this long, up to three times.
+const REDELIVER_MINUTES = 30;
 
 export async function postMessage(db: Sql, sender: string, to: string, body: string) {
   to = to.trim().toLowerCase();
   body = body.trim();
-  if (!AGENTS.includes(to) || !body) return "Need a recipient (claude, codex or all) and a body.";
+  // claude, codex and all, or any other agent memory has seen in the last 30 days.
+  const known = AGENTS.includes(to) ||
+    (AGENT.test(to) && (await db`select exists (select 1 from memory.agent_names() a where a = ${to}::text) as known`)[0].known);
+  if (!known || !body) return "Need a recipient (claude, codex or all) and a body.";
+  if (to === sender) return "That's you. Message another agent, or all.";
   body = redactText(body)[0];
   // Messages land straight in another agent's context, so they pass the same judge as notes. Wen's own, from the
   // console, don't.
@@ -204,21 +211,95 @@ export async function postMessage(db: Sql, sender: string, to: string, body: str
     }
     if (why) return `Not posted: ${why}`;
   }
-  const [row] = await db`insert into memory.message (sender, recipient, body) values (${sender}, ${to}, ${body}) returning id`;
+  // One statement, so a message never exists without its deliveries. All fans out to every agent name seen lately but
+  // the sender's own.
+  const [row] = await db`with m as (insert into memory.message (sender, recipient, body)
+      values (${sender}, ${to}, ${body}) returning id),
+    d as (insert into memory.message_delivery (message_id, recipient)
+      select m.id, r.name from m, (
+        select a as name from memory.agent_names() a where ${to}::text = 'all' and a <> ${sender}::text
+        union select ${to}::text where ${to}::text <> 'all') r
+      returning 1)
+    select id from m`;
   return `Posted message ${row.id} to ${to}.`;
 }
 
 const stamp = (d: Date) => d.toISOString().slice(0, 16).replace("T", " ");
+const count = (k: number, one: string) => `${k} ${one}${k === 1 ? "" : "s"}`;
 
-/** Unread messages for me or all, oldest first, as text, marked read for me only. One statement claims them, so two
- * readers at once never get the same message. */
+/** Up to 20 of my waiting deliveries, oldest first, claimed in one statement: each is hidden for 30 minutes and counted
+ * as delivered, and with `ack` it's acknowledged on the spot. skip locked keeps two readers at once from claiming the
+ * same one. A delivery already out three times without an ack is dropped here first, with a note to its sender. */
+async function claimMessages(me: string, ack: boolean) {
+  return await sql.begin(async (tx) => {
+    await tx`select memory.drop_exhausted(${me}::text)`;
+    return await tx`with picked as (
+        update memory.message_delivery d set delivered_count = d.delivered_count + 1,
+          visible_after = now() + make_interval(mins => ${REDELIVER_MINUTES}::int),
+          acked_at = case when ${ack}::boolean then now() end
+        where d.id in (
+          select d2.id from memory.message_delivery d2 join memory.message m on m.id = d2.message_id
+          where d2.recipient = ${me}::text and d2.acked_at is null and d2.dropped_at is null and d2.visible_after <= now()
+            and m.expires_at > now()
+          order by d2.id limit 20 for update of d2 skip locked)
+        returning d.id, d.message_id)
+      select p.id, p.message_id, m.sender, m.recipient, m.body, m.created_at
+      from picked p join memory.message m on m.id = p.message_id order by p.id`;
+  });
+}
+
+const line = (r: Row, id: number) => `- #${id} from ${r.sender} to ${r.recipient} at ${stamp(r.created_at)} UTC: ${r.body}`;
+
+/** The hook inbox: my waiting messages as text, acknowledged as they print, since the agent sees them in its context.
+ * Hooks have read this format since before the queue, message ids and all. */
 export async function readMessages(me: string) {
-  const rows = await sql`update memory.message set read_by = array_append(read_by, ${me}) where id in (
-      select id from memory.message where recipient in (${me}, 'all') and sender <> ${me} and not (${me} = any(read_by))
-      order by id limit 20 for update skip locked)
-    returning id, sender, recipient, body, created_at`;
+  const rows = await claimMessages(me, true);
   if (!rows.length) return "";
-  const lines = [...rows].sort((a, b) => a.id - b.id)
-    .map((r) => `- #${r.id} from ${r.sender} to ${r.recipient} at ${stamp(r.created_at)} UTC: ${r.body}`);
-  return "Messages from your other agents (reply with post_message):\n" + lines.join("\n") + "\n";
+  return "Messages from your other agents (reply with post_message):\n" + rows.map((r) => line(r, r.message_id)).join("\n") + "\n";
+}
+
+/** check_messages: the same list, numbered by delivery, left waiting until ack_messages or a dismiss. */
+export async function checkMessages(me: string) {
+  const rows = await claimMessages(me, false);
+  if (!rows.length) return "";
+  return "Messages from your other agents (reply with post_message):\n" + rows.map((r) => line(r, r.id)).join("\n") + "\n" +
+    `Call ack_messages with ids [${rows.map((r) => r.id).join(", ")}] once you've handled them. A message you don't ` +
+    `acknowledge comes back in ${REDELIVER_MINUTES} minutes, up to 3 times.\n`;
+}
+
+/** Delivery ids from a tool argument: a list of whole numbers or numeric strings, or one of them. */
+function deliveryIds(raw: unknown): number[] | null {
+  const list = Array.isArray(raw) ? raw : raw === undefined || raw === null ? [] : [raw];
+  const ids = list.map((v) => typeof v === "string" && /^\d+$/.test(v.trim()) ? Number(v) : v);
+  return ids.length && ids.every((v) => Number.isSafeInteger(v) && (v as number) > 0) ? ids as number[] : null;
+}
+
+/** Closes my deliveries, by acknowledging or dismissing them. Only mine count: any other id, taken or made up, changes
+ * nothing and comes back as "not yours". */
+async function closeDeliveries(me: string, raw: unknown, verb: string, everything: boolean) {
+  const ids = everything ? null : deliveryIds(raw);
+  if (!everything && !ids) return "Need the ids check_messages listed, like [12, 13].";
+  const done = everything
+    ? await sql`update memory.message_delivery set acked_at = now()
+        where recipient = ${me}::text and acked_at is null and dropped_at is null returning id`
+    : await sql`update memory.message_delivery set acked_at = now()
+        where id = any(${ids}::bigint[]) and recipient = ${me}::text and acked_at is null and dropped_at is null returning id`;
+  let said = `${verb} ${count(done.length, "message")}.`;
+  if (ids) {
+    const mine = new Set(
+      (await sql`select id from memory.message_delivery where id = any(${ids}::bigint[]) and recipient = ${me}::text`)
+        .map((r) => Number(r.id)),
+    );
+    said += [...new Set(ids)].filter((id) => !mine.has(id)).map((id) => ` Delivery ${id}: not yours.`).join("");
+  }
+  return said;
+}
+
+/** ack_messages: I've handled these deliveries. */
+export const ackMessages = (me: string, ids: unknown) => closeDeliveries(me, ids, "Acknowledged", false);
+
+/** dismiss_messages: clear these deliveries, or all of mine, unread. */
+export function dismissMessages(me: string, ids: unknown) {
+  const all = ids === "all" || (Array.isArray(ids) && ids.includes("all"));
+  return closeDeliveries(me, ids, "Dismissed", all);
 }

@@ -174,7 +174,7 @@ async function loadLive() {
            from memory.mcp_session s left join memory.retrieval r on r.mcp_session = s.id
            group by s.id order by s.created_at desc limit 200`),
       sql(`select received_at, agent, event, session_id, summary, cwd from memory.events_recent limit 300`),
-      sql(`select id, created_at, sender, recipient, body, read_by from memory.message order by id desc limit 200`)]);
+      sql(`select m.id, m.created_at, m.sender, m.recipient, m.body, array(select d.recipient from memory.message_delivery d where d.message_id = m.id and d.acked_at is not null) as read_by from memory.message m order by m.id desc limit 200`)]);
     Object.assign(data, { sessions, events, messages });
   } catch (e) { console.warn("logs", e); }
 }

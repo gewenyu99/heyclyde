@@ -25,7 +25,8 @@ const MAX_ENTRY_BODY = 12 * 1024 * 1024;
 const WRITE_DEADLINE_MS = 1500;
 // Tables the export carries, parents first, so a restore can load them in order. Embeddings are rebuilt, not kept.
 const EXPORT = ["source", "entry", "link", "question", "qrel", "blob", "entry_blob", "mcp_session", "mcp_client", "retrieval",
-  "event", "feedback", "message", "admin_audit", "link_type_weight", "device", "embed_usage", "param_set", "allocation", "openai_usage"];
+  "event", "feedback", "message", "message_delivery", "admin_audit", "link_type_weight", "device", "embed_usage", "param_set", "allocation",
+  "openai_usage"];
 
 const json = (body: unknown, status = 200) => Response.json(body, { status });
 const text = (body: string, status = 200) => new Response(body, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
@@ -101,7 +102,7 @@ async function httpRecall(req: Request, who: Principal) {
 const ORDER: Record<string, string> = {
   source: "id", entry: "id", link: "src, dst, type", question: "id", qrel: "question_id, entry_id", blob: "sha256",
   entry_blob: "entry_id, name", mcp_session: "id", mcp_client: "session_id", retrieval: "created_at, id", event: "id",
-  feedback: "id", message: "id", admin_audit: "id", link_type_weight: "src_pattern, link_type, dst_pattern", device: "id",
+  feedback: "id", message: "id", message_delivery: "id", admin_audit: "id", link_type_weight: "src_pattern, link_type, dst_pattern", device: "id",
   embed_usage: "month", param_set: "id", allocation: "param_set", openai_usage: "month, kind",
 };
 // Blobs run to 4 MiB each, so their pages stay small.

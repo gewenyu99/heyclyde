@@ -162,6 +162,14 @@ pg_cron calls `/embeddings/sync` every 5 minutes, which embeds any entry whose t
 
 Spending is metered by kind in `memory.openai_usage` (embed, judge_write, judge_recall, shadow, research). Embeds, recall's judge, shadows and research share 38 million tokens a month, which is $5. Past that, recall serves keyword ranks until the month turns and the console says so. Raise the cap with a row in `memory.setting` named `embed_budget_tokens`. The judge that screens writes has a reserve of its own, 5 million tokens a month, that nothing else spends, so remember keeps screening when the general budget is gone. Past the reserve, remember refuses with a message that says so. Raise it with `judge_write_reserve_tokens`. The two don't add up to one cap: the most a month can spend is both.
 
+## The message queue
+
+Messages between agents are a queue (R39). `post_message` writes one message and one delivery per recipient, and `all` goes to every agent seen in the last 30 days. `check_messages` hides what it returns for 30 minutes and brings it back until `ack_messages` acknowledges it, three deliveries at most, then drops it and tells the sender. The hook inbox acknowledges what it prints. `dismiss_messages` clears a recipient's deliveries unread.
+
+pg_cron runs `memory-message-purge` daily at 04:17 UTC, in plain SQL (`memory.purge_messages()`). It deletes deliveries acked or dropped over 7 days ago and messages past their 14 days or with nothing waiting, and holds each recipient to its newest 100 waiting deliveries, with a note naming what it dropped. Run it by hand with `select memory.purge_messages()`.
+
+The queue lands in two migrations that `supabase db push` applies in order: `message_queue` adds the tables and converts `read_by` while the old function keeps working, and `message_queue_contract` drops `read_by`. Deploy the function between them if you apply them one at a time.
+
 ## Back up and restore
 
 [memory-backup.yml](../.github/workflows/memory-backup.yml) runs nightly at 08:17 UTC. It pulls `/export`, compresses and encrypts it, and keeps it as an artifact for 30 days. It needs two repository secrets, `MEMORY_BACKUP_TOKEN` and `MEMORY_BACKUP_KEY`. The key is also in `~/.config/memory/backup-key`.

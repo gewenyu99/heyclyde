@@ -44,8 +44,8 @@ const SUPERSEDED = "exists (select 1 from memory.link s where s.dst = e.id and s
 const SUPERSEDED_BY = "array(select s.src from memory.link s where s.dst = e.id and s.type = 'supersedes' order by s.src)";
 const EVENT_SUMMARY = "case v.event when 'UserPromptSubmit' then left(coalesce(v.payload->>'prompt', ''), 160) " +
   "when 'PostToolUse' then coalesce(v.payload->>'tool_name', '') else '' end";
-// check_messages' rule: to a.name or to all, from someone else, not yet read by a.name.
-const UNREAD = "m.recipient in (a.name, 'all') and m.sender <> a.name and not (a.name = any(m.read_by))";
+// A delivery still waiting for its recipient: not acknowledged, dismissed or dropped.
+const LIVE = "d.acked_at is null and d.dropped_at is null";
 
 const n = (count: number, one: string, many = one + "s") => `${count} ${count === 1 ? one : many}`;
 const like = (q: string) => "%" + q.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_") + "%";
@@ -100,10 +100,11 @@ async function overview() {
       (select max(received_at) from memory.event where event <> 'get_entry') as last_hook,
       (select max(created_at) from memory.retrieval) as last_recall,
       (select max(created_at) from memory.message) as last_message, (select max(created_at) from memory.feedback) as last_feedback,
-      (select count(*) from memory.message m where exists (select 1 from unnest(${AGENTS}::text[]) a(name)
-        where ${u(UNREAD)})) as unread_messages`;
+      (select count(*) from memory.message m where m.expires_at > now() and exists (select 1 from memory.message_delivery d
+        where d.message_id = m.id and d.recipient = any(${AGENTS}::text[]) and ${u(LIVE)})) as unread_messages`;
   const unread = await sql`select a.name, count(m.id) as n from unnest(${AGENTS}::text[]) a(name)
-    left join memory.message m on ${u(UNREAD)} group by a.name`;
+    left join memory.message_delivery d on d.recipient = a.name and ${u(LIVE)}
+    left join memory.message m on m.id = d.message_id and m.expires_at > now() group by a.name`;
   const last: Row = {};
   for (const k of ["event", "hook", "recall", "message", "feedback"]) {
     last[k] = c[`last_${k}`];
@@ -570,9 +571,17 @@ async function addFeedback(data: Row) {
   });
 }
 
-/** The whole board, newest first. Reading here marks nothing read, so the agents still get their mail. */
+/** The whole board, newest first. Reading here touches no delivery, so the agents still get their mail. read_by names the
+ * recipients that acknowledged or dismissed it, pending those it still waits for, and dropped those it gave up on. */
 const messages = (p: Row) =>
-  page(sql, sql`select id, created_at, sender, recipient, body, read_by from memory.message`, "id desc", p.limit, p.offset);
+  page(sql, sql`select m.id, m.created_at, m.sender, m.recipient, m.body, m.expires_at,
+      array(select d.recipient from memory.message_delivery d where d.message_id = m.id and d.acked_at is not null
+        order by d.recipient) as read_by,
+      array(select d.recipient from memory.message_delivery d where d.message_id = m.id and ${u(LIVE)}
+        order by d.recipient) as pending,
+      array(select d.recipient from memory.message_delivery d where d.message_id = m.id and d.dropped_at is not null
+        and d.acked_at is null order by d.recipient) as dropped
+    from memory.message m`, "id desc", p.limit, p.offset);
 
 async function addMessage(data: Row) {
   const [to, body] = optionalText(data, "to", "body");
@@ -740,9 +749,9 @@ async function putSecret(name: string, data: Row) {
 
 // Tables /import fills, the same set /export writes, and the serial columns whose sequences follow the rows in.
 const IMPORTABLE = new Set(["source", "entry", "link", "question", "qrel", "blob", "entry_blob", "mcp_session", "mcp_client",
-  "retrieval", "event", "feedback", "message", "admin_audit", "link_type_weight", "device", "embed_usage", "param_set", "allocation",
-  "openai_usage"]);
-const SERIAL = ["event", "feedback", "message", "admin_audit", "device"];
+  "retrieval", "event", "feedback", "message", "message_delivery", "admin_audit", "link_type_weight", "device", "embed_usage", "param_set",
+  "allocation", "openai_usage"]);
+const SERIAL = ["event", "feedback", "message", "message_delivery", "admin_audit", "device"];
 // jsonb columns go in through sql.json, or a list of strings would be sent as text[].
 const JSONB = new Set(["payload", "candidates", "delivered", "rejected", "context", "before", "after", "params"]);
 const MAX_IMPORT = 8 * 1024 * 1024;
@@ -782,6 +791,7 @@ async function importRows(req: Request) {
   const raw = await req.text();
   if (raw.length > MAX_IMPORT) throw new ApiError(413, "The body is too large.");
   const groups: [string, Row[]][] = [];
+  const legacy: Row[] = [];
   for (const line of raw.split("\n")) {
     if (!line.trim()) continue;
     let rec: Row;
@@ -792,6 +802,14 @@ async function importRows(req: Request) {
     }
     if (!IMPORTABLE.has(rec.table) || !rec.row || typeof rec.row !== "object") throw new ApiError(422, `Can't import ${rec.table}.`);
     const { tsv_en: _, ...row } = redact(rec.row);
+    // A backup from before the queue carries read_by on its messages. Each name becomes an acknowledged delivery.
+    if (rec.table === "message" && "read_by" in row) {
+      const readBy = Array.isArray(row.read_by) ? row.read_by.filter((n: unknown) => typeof n === "string") : [];
+      delete row.read_by;
+      for (const recipient of readBy) {
+        legacy.push({ message_id: row.id, recipient, delivered_count: 1, acked_at: row.created_at ?? new Date().toISOString() });
+      }
+    }
     for (const [k, v] of Object.entries(row)) {
       if (v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 1 && "base64" in v) {
         row[k] = Uint8Array.from(atob((v as Row).base64), (c) => c.charCodeAt(0));
@@ -800,6 +818,7 @@ async function importRows(req: Request) {
     if (groups.at(-1)?.[0] !== rec.table) groups.push([rec.table, []]);
     groups.at(-1)![1].push(row);
   }
+  if (legacy.length) groups.push(["message_delivery", legacy]);
   const counts: Record<string, number> = {};
   await sql.begin(async (tx) => {
     for (const [table, rows] of groups) {
