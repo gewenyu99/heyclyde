@@ -35,6 +35,13 @@ export type SurfaceCheck = {
   history: [string, string][]
 }
 
+/** Hashes that main's history holds for a version but that never shipped, so the history check skips them. Each needs a
+ * reason. 20261102.1's first pin (c5c9…) was from R31's first review round, re-pinned to 70276… in round two before the
+ * first deploy, so the clients running 20261102.1 have only ever had 70276…. Add nothing here for a version that shipped. */
+export const NEVER_SHIPPED: Record<string, string[]> = {
+  '20261102.1': ['c5c9c8f997093c90726d3a43d9c13283279e6baaeb7bdc0c215c9c4d7f7c08bf'],
+}
+
 /** What is wrong with the pin, as sentences. Empty when the surface, its version and the history agree. */
 export function checkSurface({ version, hash, hashes, history }: SurfaceCheck): string[] {
   const problems: string[] = []
@@ -50,6 +57,7 @@ export function checkSurface({ version, hash, hashes, history }: SurfaceCheck): 
     byHash.set(h, v)
   }
   for (const [v, h] of history) {
+    if (NEVER_SHIPPED[v]?.includes(h)) continue
     if (!(v in hashes)) problems.push(`The entry for ${v} was removed. A released version stays pinned.`)
     else if (hashes[v] !== h) problems.push(`The entry for ${v} changed from ${h} to ${hashes[v]}. A released version's hash never changes: bump the version instead.`)
   }
