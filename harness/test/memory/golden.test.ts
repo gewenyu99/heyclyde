@@ -24,7 +24,7 @@ test('v1 ranks exactly like today on every arm: same candidates and scores, same
         id: 'spreading.ants', parent: 'spreading.v1', params: { linkTypeWeights: ants }, note: 'the weights link_type_weight held when this was captured',
       })
     }
-  })
+  }, (pass) => (pass === 2 ? { param_set: 'spreading.ants' } : {}))
   for (const pass of ['pass1', 'pass2']) {
     assert.deepEqual(Object.keys(actual[pass].recalls), Object.keys(golden[pass].recalls))
     for (const [key, want] of Object.entries<any>(golden[pass].recalls)) assert.deepEqual(actual[pass].recalls[key], want, `${pass} recall ${key}`)

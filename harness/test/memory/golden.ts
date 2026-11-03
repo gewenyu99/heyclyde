@@ -47,7 +47,7 @@ export async function embedAll(m: RealMemory) {
  * the eval route ranks it, with and without the filter. `session` makes the session row a recall will find, which pins
  * its arm: the old code knows only the arm, the new code a parameter set too.
  */
-export async function capture(m: RealMemory, arms: string[], session: (id: string, arm: string) => void): Promise<Captured> {
+export async function capture(m: RealMemory, arms: string[], session: (id: string, arm: string) => void, rankWith: Record<string, unknown> = {}): Promise<Captured> {
   const out: Captured = { recalls: {}, ranks: {} }
   for (const arm of arms) {
     for (const [i, query] of QUERIES.entries()) {
@@ -57,7 +57,7 @@ export async function capture(m: RealMemory, arms: string[], session: (id: strin
       const [row] = sql(`select candidates, delivered, rejected, degraded, packet from memory.retrieval where mcp_session = 'http-${scope}'`)
       out.recalls[`${arm}/${i}`] = row
       for (const filter of [true, false]) {
-        const r = JSON.parse(await call(m, 'POST', '/api/v1/eval/rank', m.adminToken, { query, arm, filter }))
+        const r = JSON.parse(await call(m, 'POST', '/api/v1/eval/rank', m.adminToken, { query, arm, filter, ...rankWith }))
         // The five fields the route had before parameter sets, so later additions to its reply don't count as a change.
         out.ranks[`${arm}/${i}/${filter ? 'filter' : 'raw'}`] = Object.fromEntries(['candidates', 'delivered', 'rejected', 'degraded', 'parts'].map((k) => [k, r[k]]))
       }
@@ -67,8 +67,10 @@ export async function capture(m: RealMemory, arms: string[], session: (id: strin
 }
 
 /** The scenario on a fresh memory: the first pass with every link type at weight 1, the second with the ants' weights, which
- * only spreading reads. The second pass runs on a new function, since the graph is cached per isolate. */
-export async function scenario(session: (id: string, arm: string, pass: number) => void, between?: (m: RealMemory, pass: number) => Promise<void>) {
+ * only spreading reads. The second pass runs on a new function, since the graph is cached per isolate. `rankWith` adds fields
+ * to the eval route's body, to name the set the eval ranks on. */
+export async function scenario(session: (id: string, arm: string, pass: number) => void, between?: (m: RealMemory, pass: number) => Promise<void>,
+  rankWith: (pass: number) => Record<string, unknown> = () => ({})) {
   const result: Captured = {}
   for (const pass of [1, 2]) {
     const m = await startRealMemory()
@@ -76,7 +78,7 @@ export async function scenario(session: (id: string, arm: string, pass: number) 
       prepare(pass === 2)
       await embedAll(m)
       await between?.(m, pass)
-      result[`pass${pass}`] = await capture(m, pass === 1 ? ARMS : ['spreading'], (id, arm) => session(id, arm, pass))
+      result[`pass${pass}`] = await capture(m, pass === 1 ? ARMS : ['spreading'], (id, arm) => session(id, arm, pass), rankWith(pass))
     } finally {
       await m.close()
     }

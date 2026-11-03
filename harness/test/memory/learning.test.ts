@@ -4,7 +4,7 @@
  * the eval run against any parameter set. The golden test that v1 ranks like the code before it is golden.test.ts.
  */
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
@@ -263,7 +263,7 @@ test('a recall logs its parameter set and 1 to 50 candidates, each with arms, co
 test('OpenAI tokens are metered by kind: embed and judge_recall by a recall, judge_write by a write', { skip: SKIP }, async () => {
   sql('delete from memory.openai_usage')
   await onlyHybrid()
-  assert.equal((await recall('a brand new question about gaiwan sizes')).status, 200)
+  assert.equal((await recall('oolong gaiwan sizes metering')).status, 200)
   clearAllocation()
   const used = () => Object.fromEntries(sql(`select kind, tokens::int as tokens from memory.openai_usage where month = date_trunc('month', now())::date`).map((r) => [r.kind, r.tokens]))
   assert.ok(used().embed > 0 && used().judge_recall > 0, JSON.stringify(used()))
@@ -331,36 +331,40 @@ test('retrieval_eval.py --params runs a parameter set by id or from a file, and 
     ('q-temp', 'what temperature for oolong', 'en', 'lookup', 'train', 'tier3'), ('q-zh', '乌龙茶', 'zh', 'lookup', 'train', 'tier3')`)
   sql(`insert into memory.qrel (question_id, entry_id, grade) values ('q-temp', 'tea-oolong-temp', 2), ('q-temp', 'tea-oolong-old', -1), ('q-zh', 'tea-zh', 2)`)
   const script = join(import.meta.dirname, '..', '..', '..', 'memory', 'eval', 'retrieval_eval.py')
-  const run = (...args: string[]) => {
-    const r = spawnSync('python3', [script, '--arms', 'hybrid', ...args], {
-      encoding: 'utf8', timeout: 120_000,
+  // Async: the fake OpenAI the function calls lives in this process, which a blocking spawn would freeze.
+  const run = (...args: string[]) => new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve) => {
+    const child = spawn('python3', [script, '--arms', 'hybrid', ...args], {
       env: { ...process.env, MEMORY_URL: memory.url, MEMORY_ADMIN_TOKEN: memory.adminToken, NO_PROXY: '127.0.0.1', no_proxy: '127.0.0.1' },
+      stdio: ['ignore', 'pipe', 'pipe'],
     })
-    return r
-  }
-  const report = (...args: string[]) => {
-    const r = run('--json', ...args)
+    let stdout = '', stderr = ''
+    child.stdout.on('data', (c) => (stdout += c))
+    child.stderr.on('data', (c) => (stderr += c))
+    child.on('close', (status) => resolve({ status, stdout, stderr }))
+  })
+  const report = async (...args: string[]) => {
+    const r = await run('--json', ...args)
     assert.equal(r.status, 0, r.stderr || r.stdout)
     return JSON.parse(r.stdout).hybrid
   }
-  const plain = report(), byId = report('--params', 'hybrid.v1')
+  const plain = await report(), byId = await report('--params', 'hybrid.v1')
   assert.equal(plain.gold_hit_rate, 1)
   assert.equal(byId.param_set, 'hybrid.v1')
   assert.deepEqual({ ...byId, param_set: undefined }, { ...plain, param_set: undefined }, 'the default set reproduces the numbers')
   // A file is a POST /param-sets body without the id. Here the packet shrinks to one item, so the knob reached the ranking.
   const file = join(tempDir('eval-params'), 'one-item.json')
   writeFileSync(file, JSON.stringify({ arm: 'hybrid', params: { packetItems: 1 } }))
-  const one = report('--params', file)
+  const one = await report('--params', file)
   assert.ok(plain.per_query.some((q: any) => q.delivered.length > 1))
   assert.ok(one.per_query.every((q: any) => q.delivered.length === 1), JSON.stringify(one.per_query.map((q: any) => q.delivered)))
   assert.match(one.param_set, /one-item/)
   // The same set, made through the API, evaluates the same as the file did.
   json(await admin('POST', '/param-sets', { id: 'hybrid.one', parent: 'hybrid.v1', params: { packetItems: 1 } }), 201)
-  assert.deepEqual(report('--params', 'hybrid.one').per_query, one.per_query)
-  const text = run('--params', 'hybrid.v1')
+  assert.deepEqual((await report('--params', 'hybrid.one')).per_query, one.per_query)
+  const text = await run('--params', 'hybrid.v1')
   assert.equal(text.status, 0, text.stderr)
   assert.match(text.stdout, /^hybrid \(hybrid\.v1\): gold hit 100% of 2 answerable/m)
-  const missing = run('--params', 'nope.v1')
+  const missing = await run('--params', 'nope.v1')
   assert.notEqual(missing.status, 0)
   assert.match(missing.stderr + missing.stdout, /nope\.v1/)
 })
