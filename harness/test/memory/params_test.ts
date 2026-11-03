@@ -3,7 +3,7 @@
  * is served, what a recall logs per candidate, and who may spend which OpenAI budget. No database.
  */
 import assert from 'node:assert/strict'
-import { assign, bucket, unitOf, type Slot } from '../../../memory/supabase/functions/memory/allocation.ts'
+import { assign, bucket, sessionSet, unitOf, type Slot } from '../../../memory/supabase/functions/memory/allocation.ts'
 import { type Kind, verdict } from '../../../memory/supabase/functions/memory/budget.ts'
 import { features } from '../../../memory/supabase/functions/memory/features.ts'
 import { type Params, resolveParams } from '../../../memory/supabase/functions/memory/params.ts'
@@ -117,4 +117,62 @@ Deno.test('the reserve stops the write judge alone, and the write judge never ea
   const empty = spent({ judge_write: 100 })
   assert.match(verdict('judge_write', empty, CAPS) ?? '', /reserve for screening writes is spent.*100 of 100/)
   for (const kind of ['embed', 'judge_recall', 'shadow', 'research'] as Kind[]) assert.equal(verdict(kind, empty, CAPS), null, kind)
+})
+
+// R34 (#38), R36 (#40): the unit, not the session row, is the sticky key. A stand-in for the database that answers the four
+// reads and the one write sessionSet makes.
+function fakeDb(slots: Slot[], stored: Record<string, unknown> | null) {
+  const writes: unknown[][] = []
+  const db: any = (strings: TemplateStringsArray, ...values: unknown[]) => {
+    const q = strings.join('?')
+    if (q.includes('from memory.allocation')) return Promise.resolve(slots)
+    if (q.includes('from memory.setting')) return Promise.resolve([{ value: SALT }])
+    if (q.includes('from memory.mcp_session')) return Promise.resolve(stored ? [stored] : [])
+    if (q.includes('from memory.param_set')) return Promise.resolve([{ id: values[0], arm: String(values[0]).split('.')[0], params: V1 }])
+    if (q.includes('insert into memory.mcp_session')) {
+      writes.push(values)
+      return Promise.resolve([])
+    }
+    throw new Error(`the fake database has no answer for: ${q}`)
+  }
+  return { db, writes }
+}
+
+Deno.test('a stored session set serves only the unit it was drawn for: a new day or a session from before units redraws', async () => {
+  const days = [new Date('2026-11-02T12:00:00Z'), new Date('2026-11-03T12:00:00Z')]
+  const control = slots(500, 500)
+  // A device whose two days hash to different sets, so the test can tell a redraw from a kept row.
+  let device = ''
+  for (let i = 0; !device; i++) {
+    const [a, b] = await Promise.all(days.map((d) => assign(SALT, unitOf(null, `box-${i}`, 'http', d), control)))
+    if (a?.param_set !== b?.param_set) device = `box-${i}`
+  }
+  const [unit1, unit2] = days.map((d) => unitOf(null, device, 'http', d))
+  const [draw1, draw2] = await Promise.all([unit1, unit2].map((u) => assign(SALT, u, control)))
+  const stored = { arm: 'hybrid', param_set: draw1!.param_set, propensity: 0.5, unit: unit1 }
+
+  const same = fakeDb(control, stored)
+  assert.equal((await sessionSet(same.db, 'http-global', unit1, 'http')).set.id, draw1!.param_set)
+  assert.equal(same.writes.length, 0, 'the same unit keeps its row')
+
+  const next = fakeDb(control, stored)
+  const day2 = await sessionSet(next.db, 'http-global', unit2, 'http')
+  assert.equal(day2.set.id, draw2!.param_set, 'the next day is drawn from its own bucket')
+  assert.equal(next.writes.length, 1)
+  assert.ok(next.writes[0].includes(unit2), 'and the row now says whose draw it holds')
+
+  // The row production already has: no unit, so it pins nothing.
+  const old = fakeDb(control, { arm: 'index', param_set: null, propensity: null })
+  const drawn = await sessionSet(old.db, 'http-global', unit1, 'http')
+  assert.equal(drawn.set.id, draw1!.param_set)
+  assert.equal(drawn.set.arm, 'hybrid')
+})
+
+Deno.test('the propensity a session logs is the share of the set it was actually drawn', async () => {
+  const quarter = slots(250, 750)
+  for (let i = 0; i < 40; i++) {
+    const unit = unitOf(null, `box-${i}`, 'http', new Date('2026-11-02T12:00:00Z'))
+    const { set, propensity } = await sessionSet(fakeDb(quarter, null).db, 'http-global', unit, 'http')
+    assert.equal(propensity, set.id === 'hybrid.v1' ? 0.75 : 0.25, unit)
+  }
 })

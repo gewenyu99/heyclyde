@@ -5,6 +5,7 @@
  */
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
@@ -67,13 +68,13 @@ async function mcp(token: string, client: string) {
 }
 
 /** A hybrid.split set next to hybrid.v1, served 50/50 on a salt this test fixes, so the split is the same on every run. */
-async function splitHalf() {
+async function splitHalf(control = 500, live = 500) {
   sql(`update memory.setting set value = 'tier3-salt' where name = 'allocation_salt'`)
   const made = await admin('POST', '/param-sets', { id: 'hybrid.split', parent: 'hybrid.v1', params: { tiltBase: 0.8 }, note: 'tier 3 split' })
   assert.ok([201, 409].includes(made.status), made.text)
   json(await admin('PUT', '/allocation', { rows: [
     { param_set: 'index.v1', role: 'off', weight: 0 }, { param_set: 'spreading.v1', role: 'off', weight: 0 },
-    { param_set: 'hybrid.v1', role: 'default', weight: 500 }, { param_set: 'hybrid.split', role: 'live', weight: 500 },
+    { param_set: 'hybrid.v1', role: 'default', weight: control }, { param_set: 'hybrid.split', role: 'live', weight: live },
   ] }))
 }
 
@@ -123,13 +124,18 @@ test('PUT /allocation changes who is served with no deploy, is audited, and refu
     assert.deepEqual(json(await admin('GET', '/allocation')).rows, put.rows)
     const [row] = sql(`select target, before, after from memory.admin_audit where action = 'allocation.put' order by id desc limit 1`)
     assert.equal(row.target, 'allocation')
-    assert.deepEqual(row.before, [])
-    assert.deepEqual(row.after.map((r: any) => [r.param_set, r.role, r.weight]).sort(), [['hybrid.t1', 'live', 250], ['hybrid.v1', 'default', 750], ['index.v1', 'shadow', 0]])
+    assert.deepEqual(row.before, { rows: [] })
+    assert.equal(row.after.by, 'tier3', 'the audit row says who changed it')
+    assert.deepEqual(row.after.rows.map((r: any) => [r.param_set, r.role, r.weight]).sort(), [['hybrid.t1', 'live', 250], ['hybrid.v1', 'default', 750], ['index.v1', 'shadow', 0]])
     // A second PUT keeps what the first said, and the audit row shows the table before it.
     json(await admin('PUT', '/allocation', { rows: [{ param_set: 'hybrid.t1', role: 'off', weight: 0 }] }))
     const [second] = sql(`select before, after from memory.admin_audit where action = 'allocation.put' order by id desc limit 1`)
-    assert.equal(second.before.length, 3)
-    assert.equal(second.after.find((r: any) => r.param_set === 'hybrid.v1').weight, 750)
+    assert.equal(second.before.rows.length, 3)
+    assert.equal(second.after.by, 'admin', 'without a by, the audit row says admin')
+    assert.equal(second.after.rows.find((r: any) => r.param_set === 'hybrid.v1').weight, 750)
+    for (const by of [7, '', 'x'.repeat(65), ['a']]) {
+      assert.equal((await admin('PUT', '/allocation', { by, rows: [{ param_set: 'hybrid.t1', role: 'live', weight: 1 }] })).status, 422, JSON.stringify(by))
+    }
     const nothing = [{ rows: [{ param_set: 'hybrid.v1', role: 'off', weight: 0 }] }, { rows: [{ param_set: 'hybrid.v1', role: 'default', weight: 0 }] },
       { rows: [{ param_set: 'nope.v1', role: 'live', weight: 1 }] }, { rows: [{ param_set: 'hybrid.v1', role: 'sometimes', weight: 1 }] },
       { rows: [{ param_set: 'hybrid.v1', role: 'live', weight: -1 }] }, { rows: [] }, {}]
@@ -164,6 +170,36 @@ test('a live 50/50 split is sticky per unit: 85 to 115 of 200 run units land on 
     assert.equal(Object.keys(before).length, 200)
   } finally {
     clearAllocation()
+  }
+})
+
+// R34 (#38): the unit is the sticky key. Unscoped HTTP recall shares one session row, so the first caller's draw must not pin everyone.
+test('unscoped HTTP recalls from many devices land on their own unit\'s set, with the propensity of their own draw', { skip: SKIP }, async () => {
+  await splitHalf(750, 250)
+  try {
+    // A row left by the code before this one, which drew once for every device and day.
+    sql(`insert into memory.mcp_session (id, arm, param_set) values ('http-global', 'index', null)`)
+    const tokens = Array.from({ length: 60 }, (_, i) => `box-token-${i}`)
+    sql(`insert into memory.device (name, token_sha256) values ${tokens.map((t, i) => `('box-${i}', '${createHash('sha256').update(t).digest('hex')}')`).join(', ')}`)
+    for (const [i, token] of tokens.entries()) assert.equal((await recall(`oolong water temperature box ${i}`, undefined, token)).status, 200)
+    const rows = sql(`select query, param_set, arm, propensity::float as p from memory.retrieval where query like 'oolong water temperature box %'`)
+    assert.equal(rows.length, 60)
+    assert.deepEqual([...new Set(rows.map((r) => r.param_set))].sort(), ['hybrid.split', 'hybrid.v1'], 'not one draw for everyone')
+    for (const r of rows) {
+      assert.equal(r.arm, 'hybrid', 'the old row pinned nothing')
+      assert.equal(r.p, r.param_set === 'hybrid.v1' ? 0.75 : 0.25, `${r.query}: the propensity of the set it was drawn`)
+    }
+    // A device asking again, in another query, is served the same set.
+    const first = Object.fromEntries(rows.map((r) => [r.query, r.param_set]))
+    for (const i of [0, 1, 2, 3, 4, 5]) {
+      await recall(`oolong water temperature box ${i} again`, undefined, tokens[i])
+      const [again] = sql(`select param_set from memory.retrieval where query = 'oolong water temperature box ${i} again'`)
+      assert.equal(again.param_set, first[`oolong water temperature box ${i}`], `box-${i}`)
+    }
+  } finally {
+    clearAllocation()
+    sql(`delete from memory.retrieval where mcp_session = 'http-global'`)
+    sql(`delete from memory.mcp_session where id = 'http-global'`)
   }
 })
 
@@ -325,6 +361,49 @@ test('with the write reserve spent, remember is refused with a clear message, an
   }
 })
 
+// The preview ranks what is serving, unless it is told which sets.
+test('POST /recall/preview defaults to the sets now serving, and takes a param_sets list', { skip: SKIP }, async () => {
+  await splitHalf()
+  try {
+    const serving = json(await admin('POST', '/recall/preview', { query: 'oolong water temperature' }))
+    assert.deepEqual(serving.arms.map((a: any) => a.param_set).sort(), ['hybrid.split', 'hybrid.v1'])
+    assert.ok(serving.arms.every((a: any) => a.arm === 'hybrid' && a.packet.length > 0))
+    const asked = json(await admin('POST', '/recall/preview', { query: 'oolong water temperature', param_sets: ['spreading.v1', 'index.v1'] }))
+    assert.deepEqual(asked.arms.map((a: any) => [a.arm, a.param_set]), [['spreading', 'spreading.v1'], ['index', 'index.v1']])
+    assert.equal((await admin('POST', '/recall/preview', { query: 'oolong', param_sets: ['nope.v1'] })).status, 422)
+    assert.equal((await admin('POST', '/recall/preview', { query: 'oolong', param_sets: 'hybrid.v1' })).status, 422)
+  } finally {
+    clearAllocation()
+  }
+  const fallback = json(await admin('POST', '/recall/preview', { query: 'oolong water temperature' }))
+  assert.deepEqual(fallback.arms.map((a: any) => a.param_set).sort(), ['hybrid.v1', 'index.v1'], 'with no allocation, MEMORY_ARMS\'s sets')
+})
+
+// Restore fidelity: a backup restores into a database whose migration has already seeded v1, and a set is never silently changed.
+const importSets = (rows: Record<string, unknown>[]) =>
+  request('POST', `${memory.url}/api/v1/import`, { headers: bearer(memory.adminToken), body: rows.map((row) => JSON.stringify({ table: 'param_set', row })).join('\n') + '\n', timeoutMs: 30_000 })
+
+test('/import gives a migration-seeded set the exported params, and refuses a set that differs from one anyone made, naming it', { skip: SKIP }, async () => {
+  const v1 = json(await admin('GET', '/param-sets/hybrid.v1'))
+  assert.equal(v1.created_by, 'migration')
+  try {
+    const restored = json(await importSets([{ ...v1, params: { ...v1.params, tiltBase: 0.8 } }]))
+    assert.deepEqual(restored, { imported: { param_set: 1 } })
+    assert.equal(json(await admin('GET', '/param-sets/hybrid.v1')).params.tiltBase, 0.8, 'the backup\'s params won')
+    assert.throws(() => sql(`update memory.param_set set params = '{}' where id = 'hybrid.v1'`), /immutable/, 'the trigger is back on')
+  } finally {
+    json(await importSets([v1]))
+  }
+  assert.deepEqual(json(await admin('GET', '/param-sets/hybrid.v1')).params, v1.params)
+  const made = json(await admin('POST', '/param-sets', { id: 'hybrid.t3', parent: 'hybrid.v1', params: { tiltBase: 0.5 } }), 201)
+  assert.deepEqual(json(await importSets([made])), { imported: { param_set: 0 } }, 'the same set again is skipped')
+  const clash = await importSets([{ ...v1, id: 'hybrid.t4' }, { ...made, params: { ...made.params, tiltBase: 0.6 } }])
+  assert.equal(clash.status, 409, clash.text)
+  assert.match(clash.text, /hybrid\.t3/)
+  assert.equal(json(await admin('GET', '/param-sets/hybrid.t3')).params.tiltBase, 0.5, 'the set is as it was')
+  assert.equal((await admin('GET', '/param-sets/hybrid.t4')).status, 404, 'the refused import wrote nothing')
+})
+
 // R32 (#36): the eval runs any parameter set offline, and the default set gives today's numbers.
 test('retrieval_eval.py --params runs a parameter set by id or from a file, and hybrid.v1 reports what no --params does', { skip: SKIP }, async () => {
   sql(`insert into memory.question (id, text, lang, qtype, split, origin) values
@@ -367,4 +446,36 @@ test('retrieval_eval.py --params runs a parameter set by id or from a file, and 
   const missing = await run('--params', 'nope.v1')
   assert.notEqual(missing.status, 0)
   assert.match(missing.stderr + missing.stdout, /nope\.v1/)
+})
+
+// One owner for the link type weights: a param set. eval/ants.py makes one, and the old route says so.
+test('eval/ants.py makes a spreading param set from its weights and writes no link_type_weight, and PUT /link-type-weights is gone', { skip: SKIP }, async () => {
+  sql(`insert into memory.question (id, text, lang, qtype, split, origin) values
+    ('q-temp', 'what temperature for oolong', 'en', 'lookup', 'train', 'tier3'), ('q-zh', '乌龙茶', 'zh', 'lookup', 'train', 'tier3') on conflict do nothing`)
+  sql(`insert into memory.qrel (question_id, entry_id, grade) values ('q-temp', 'tea-oolong-temp', 2), ('q-zh', 'tea-zh', 2) on conflict do nothing`)
+  const script = join(import.meta.dirname, '..', '..', '..', 'memory', 'eval', 'ants.py')
+  const ran = await new Promise<{ status: number | null; out: string }>((resolve) => {
+    const child = spawn('python3', [script, '--iterations', '2', '--ants', '2', '--id', 'spreading.ants-t3'], {
+      env: { ...process.env, MEMORY_URL: memory.url, MEMORY_ADMIN_TOKEN: memory.adminToken, NO_PROXY: '127.0.0.1', no_proxy: '127.0.0.1' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    let out = ''
+    child.stdout.on('data', (c) => (out += c))
+    child.stderr.on('data', (c) => (out += c))
+    child.on('close', (status) => resolve({ status, out }))
+  })
+  assert.equal(ran.status, 0, ran.out)
+  const set = json(await admin('GET', '/param-sets/spreading.ants-t3'))
+  assert.deepEqual([set.arm, set.parent, set.created_by], ['spreading', 'spreading.v1', 'ants'])
+  const weights = set.params.linkTypeWeights
+  assert.ok(Object.keys(weights).length >= 1, JSON.stringify(weights))
+  for (const [key, w] of Object.entries<number>(weights)) {
+    assert.match(key, /^[a-z-]+\|[a-z_]+\|[a-z-]+$/)
+    assert.ok(w >= 0.2 && w <= 5, `${key}: ${w}`)
+  }
+  assert.deepEqual({ ...set.params, linkTypeWeights: {} }, TODAY, 'everything else is the parent\'s')
+  assert.deepEqual(sql('select * from memory.link_type_weight'), [], 'the table is not written')
+  const gone = await admin('PUT', '/link-type-weights', { rows: [{ src_pattern: 'decisions', link_type: 'supersedes', dst_pattern: 'decisions', weight: 2 }] })
+  assert.equal(gone.status, 410, gone.text)
+  assert.match(gone.text, /param-sets/)
 })
