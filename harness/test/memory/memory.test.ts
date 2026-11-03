@@ -526,23 +526,28 @@ test('/healthz and MCP initialize report the server version, and every answer ca
   assert.match(preflight.headers['access-control-expose-headers'] ?? '', /x-memory-client-latest/)
 })
 
-// R31 fix 1: the server serves each client file's signature, and the baked files are current.
-test('the install route serves every client file with a signature that verifies under the committed public key', { skip: SKIP }, async () => {
+// R31 fix 1: the server serves one signed manifest per release, and the baked files are current.
+test('the install route serves every client file and a signed manifest that lists each one by its hash', { skip: SKIP }, async () => {
   const pub = join(CLIENT_DIR, 'signing-pub.pem')
+  const manifest = await request('GET', `${memory.url}/install/files/manifest`)
+  const sig = await request('GET', `${memory.url}/install/files/manifest.sig`)
+  assert.equal(manifest.status, 200)
+  assert.equal(sig.status, 200)
+  assert.ok(verifies(pub, manifest.text, sig.text), 'manifest.sig verifies under the committed public key')
+  assert.ok(!verifies(pub, `${manifest.text}# changed\n`, sig.text), 'and covers no other bytes')
+  const lines = manifest.text.trimEnd().split('\n')
+  assert.equal(lines[0], `version=${CLIENT_VERSION}`)
   for (const f of ['memory-hook', 'install.sh', 'claude-settings.json', 'codex-hooks.json', 'signing-pub.pem']) {
     const served = await request('GET', `${memory.url}/install/files/${f}`)
-    const sig = await request('GET', `${memory.url}/install/files/${f}.sig`)
     assert.equal(served.status, 200, f)
-    assert.equal(sig.status, 200, `${f}.sig`)
     const local = readFileSync(join(CLIENT_DIR, f), 'utf8')
-    // memory-hook is baked stamped with the client version, so the signature covers the bytes a computer downloads.
+    // memory-hook is baked stamped with the client version, so the manifest hashes the bytes a computer downloads.
     const expected = f === 'memory-hook' ? local.replace('VERSION=@MEMORY_VERSION@', `VERSION=${CLIENT_VERSION}`) : local
-    assert.equal(served.text, expected, `${f} as served is the file in git, so files.ts was baked from it`)
-    assert.ok(verifies(pub, served.text, sig.text), `${f}.sig verifies`)
-    assert.ok(!verifies(pub, `${served.text}\n# changed`, sig.text), `${f}.sig does not cover other bytes`)
+    assert.equal(served.text, expected, `${f} as served is the repo's file, so files.ts was baked from it`)
+    assert.ok(lines.includes(`${f} ${createHash('sha256').update(served.text).digest('hex')}`), `the manifest lists ${f} by its hash`)
+    assert.equal((await request('GET', `${memory.url}/install/files/${f}.sig`)).status, 404, `no signature of ${f} alone`)
   }
-  assert.equal((await request('GET', `${memory.url}/install/files/nothing.sig`)).status, 404)
-  assert.equal((await request('GET', `${memory.url}/install/files/install.sh.sig.sig`)).status, 404)
+  assert.equal((await request('GET', `${memory.url}/install/files/manifest.sig.sig`)).status, 404)
   assert.equal((await request('GET', `${memory.url}/install/files/signing-key.pem`)).status, 404)
   assert.equal((await request('GET', `${memory.url}/install/files/signing-pub.previous.pem`)).status, 404)
 })

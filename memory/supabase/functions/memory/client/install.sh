@@ -26,9 +26,14 @@ DEVICE=${MEMORY_DEVICE:-$(hostname -s 2>/dev/null | tr 'A-Z' 'a-z' | tr -c 'a-z0
 umask 077
 [ -n "$UPDATE" ] || mkdir -p "$DIR" "$HOME/.claude" "$HOME/.codex"
 
-# The files next to this script when run from a checkout, else fetched from the function.
-HERE=$(cd "$(dirname "$0")" 2>/dev/null && pwd || echo /nonexistent)
+# The files next to this script when it was run by path from a checkout (or by memory-hook, from files it verified), else
+# fetched from the function. A script read from stdin, as `curl | sh` does, has no place of its own, and the directory it
+# happens to run in is not to be trusted.
+HERE=/nonexistent
+case ${0##*/} in install.sh) HERE=$(cd "$(dirname "$0")" 2>/dev/null && pwd || echo /nonexistent) ;; esac
 if [ ! -f "$HERE/memory-hook" ]; then
+  # An update installs only the files memory-hook verified and left beside this script, never anything fetched here.
+  [ -z "$UPDATE" ] || { echo "install.sh --update: no memory-hook beside it to install." >&2; exit 1; }
   HERE=$(mktemp -d)
   trap 'rm -rf "$HERE"' EXIT
   for f in memory-hook claude-settings.json codex-hooks.json signing-pub.pem; do
@@ -221,8 +226,13 @@ if [ -n "$UPDATE" ]; then
   fi
   newpub=$DIR/.signing-pub.$$
   cp "$HERE/signing-pub.pem" "$newpub" && chmod 600 "$newpub" || failed=1
-  put_hook || failed=1
-  mv -f "$newpub" "$DIR/signing-pub.pem" || failed=1
+  # The key moves in only after memory-hook did, so a key never arrives without the client that came with it.
+  if put_hook; then
+    mv -f "$newpub" "$DIR/signing-pub.pem" || failed=1
+  else
+    failed=1
+    rm -f "$newpub"
+  fi
   exit "$failed"
 fi
 

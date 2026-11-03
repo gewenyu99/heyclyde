@@ -5,6 +5,7 @@
  */
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -16,18 +17,11 @@ import { otherKey, trustedKey, verifies } from './signing.ts'
 const MEMORY = join(repoRoot(), 'memory')
 const FUNCTION = join('supabase', 'functions', 'memory')
 const CLIENT_FILES = ['memory-hook', 'claude-settings.json', 'codex-hooks.json', 'install.sh', 'signing-pub.pem']
-const PENDING = `
-   Local          | Remote         | Time (UTC)
-  ----------------|----------------|---------------------
-   20261101000900 | 20261101000900 | 2026-11-01 00:09:00
-   20261102120000 |                | 2026-11-02 12:00:00
-`
-const APPLIED = `
-   Local          | Remote         | Time (UTC)
-  ----------------|----------------|---------------------
-   20261101000900 | 20261101000900 | 2026-11-01 00:09:00
-   20261102120000 | 20261102120000 | 2026-11-02 12:00:00
-`
+/** What `supabase migration list --linked` prints (CLI 2.122): JSON, an entry per migration, remote empty while it is pending. */
+const listing = (entries: [string, string][]) => JSON.stringify({ migrations: entries.map(([local, remote]) => ({ local, remote })), message: 'Migrations listed' })
+const APPLIED = listing([['20261101000900', '20261101000900'], ['20261102120000', '20261102120000']])
+const PENDING = listing([['20261101000900', '20261101000900'], ['20261102120000', '']])
+const MIGRATIONS = ['20261101000900_a.sql', '20261102120000_b.sql']
 
 type Tree = { root: string; log: string; env: Record<string, string>; client: string; run: (args?: string[], env?: Record<string, string>) => { status: number | null; out: string } }
 
@@ -39,6 +33,8 @@ function tree(migrations = APPLIED): Tree {
   const client = join(memory, FUNCTION, 'client')
   mkdirSync(bin)
   mkdirSync(client, { recursive: true })
+  mkdirSync(join(memory, 'supabase', 'migrations'))
+  for (const m of MIGRATIONS) writeFileSync(join(memory, 'supabase', 'migrations', m), '-- test migration\n')
   copyFileSync(join(MEMORY, 'deploy.sh'), join(memory, 'deploy.sh'))
   copyFileSync(join(MEMORY, FUNCTION, 'version.ts'), join(memory, FUNCTION, 'version.ts'))
   for (const f of readdirSync(join(MEMORY, FUNCTION, 'client'))) {
@@ -72,21 +68,25 @@ const logged = (t: Tree) => readFileSync(t.log, 'utf8')
 const baked = (t: Tree) => existsSync(join(t.client, 'files.ts'))
 const done = (t: Tree) => rmSync(t.root, { recursive: true, force: true })
 
-test('deploy.sh signs each client file as it bakes files.ts, and the signatures verify under signing-pub.pem', () => {
+test('deploy.sh bakes one manifest of the client files and signs it, and the signature verifies under signing-pub.pem', () => {
   const t = tree()
   try {
     const r = t.run(['--bake'])
     assert.equal(r.status, 0, r.out)
     const baked = files(t)
-    for (const f of CLIENT_FILES) {
-      assert.ok(baked[f], `${f} is baked`)
-      assert.ok(baked[`${f}.sig`], `${f}.sig is baked`)
-      assert.ok(verifies(join(t.client, 'signing-pub.pem'), baked[f], baked[`${f}.sig`]), `${f}.sig verifies`)
-    }
-    // Signed as served: memory-hook carries the client version, since the signature covers exactly these bytes.
+    for (const f of CLIENT_FILES) assert.ok(baked[f], `${f} is baked`)
+    assert.ok(verifies(join(t.client, 'signing-pub.pem'), baked.manifest, baked['manifest.sig']), 'manifest.sig verifies')
+    // Signed as served: memory-hook carries the client version, since the manifest hashes exactly these bytes.
     assert.match(baked['memory-hook'], new RegExp(`^VERSION=${CLIENT_VERSION.replace('.', '\\.')}$`, 'm'))
     assert.ok(!baked['memory-hook'].includes('@MEMORY_VERSION@'))
-    assert.equal(Object.keys(baked).length, CLIENT_FILES.length * 2, 'nothing else is baked')
+    const lines = baked.manifest.trimEnd().split('\n')
+    assert.equal(lines[0], `version=${CLIENT_VERSION}`)
+    assert.deepEqual(lines.slice(1).map((l) => l.split(' ')[0]).sort(), [...CLIENT_FILES].sort(), 'a line for every client file, signing-pub.pem included')
+    for (const l of lines.slice(1)) {
+      const [name, hash] = l.split(' ')
+      assert.equal(hash, createHash('sha256').update(baked[name]).digest('hex'), `${name}'s hash`)
+    }
+    assert.deepEqual(Object.keys(baked).sort(), [...CLIENT_FILES, 'manifest', 'manifest.sig'].sort(), 'no per-file signatures, nothing else')
     assert.ok(!r.out.includes('BEGIN'), 'no key material in the output')
   } finally {
     done(t)
@@ -137,7 +137,8 @@ test('during a key rotation, deploy.sh accepts the old key beside the new signin
     const served = files(t)
     assert.equal(served['signing-pub.pem'], readFileSync(otherKey().pub, 'utf8'))
     assert.ok(!Object.keys(served).some((k) => k.includes('previous')), 'the previous key is not served')
-    assert.ok(verifies(trustedKey().pub, served['signing-pub.pem'], served['signing-pub.pem.sig']), 'the new key is signed by the old')
+    assert.ok(verifies(trustedKey().pub, served.manifest, served['manifest.sig']), 'the manifest, which lists the new key, is signed by the old')
+    assert.ok(served.manifest.includes(createHash('sha256').update(served['signing-pub.pem']).digest('hex')))
   } finally {
     done(t)
   }
@@ -181,6 +182,40 @@ test('deploy.sh stops when it cannot tell whether migrations are pending', () =>
     const r = t.run([], { MIGRATIONS_EXIT: '1' })
     assert.notEqual(r.status, 0)
     assert.ok(!logged(t).includes('functions deploy'))
+  } finally {
+    done(t)
+  }
+})
+
+test('deploy.sh stops on migration output it cannot read, or one that lists nothing while migration files exist', () => {
+  for (const [what, out] of [
+    ['text, not JSON', '   Local | Remote\n   20261102120000 | \n'],
+    ['an error object', '{"_tag":"Error","error":{"code":"ProjectRefNotLinkedError"}}'],
+    ['an empty list', JSON.stringify({ migrations: [], message: 'Migrations listed' })],
+    ['nothing at all', ''],
+    ['a migrations value that is not a list', '{"migrations":{"local":"1","remote":"1"}}'],
+  ]) {
+    const t = tree(out)
+    try {
+      const r = t.run()
+      assert.notEqual(r.status, 0, `${what}: ${r.out}`)
+      assert.ok(!logged(t).includes('functions deploy'), what)
+    } finally {
+      done(t)
+    }
+  }
+})
+
+test('deploy.sh passes the migration guard when every local migration is on the remote, and fails once a new file is added', () => {
+  const t = tree(APPLIED)
+  try {
+    assert.equal(t.run().status, 0)
+    writeFileSync(join(t.root, 'memory', 'supabase', 'migrations', '20261103000000_new.sql'), '-- new\n')
+    // The CLI now lists the new local file with no remote.
+    writeFileSync(join(t.root, 'migrations.txt'), listing([['20261101000900', '20261101000900'], ['20261102120000', '20261102120000'], ['20261103000000', '']]))
+    const r = t.run()
+    assert.notEqual(r.status, 0)
+    assert.match(r.out, /20261103000000/)
   } finally {
     done(t)
   }

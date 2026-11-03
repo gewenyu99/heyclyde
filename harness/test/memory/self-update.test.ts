@@ -7,6 +7,7 @@
  */
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import http from 'node:http'
 import https from 'node:https'
@@ -44,12 +45,18 @@ type Fake = {
   version: string
   /** Per file: the body to serve (and sign) instead of the real one, an HTTP status, or 0 to drop the connection. */
   override: Record<string, string | number>
-  /** Per file: a body served in place of the one that was signed, so the signature no longer fits. */
+  /** Per file (or "manifest"): a body served in place of the one the manifest lists, so its hash no longer fits. */
   tamper: Record<string, string>
-  /** Per file: sign with this key instead of the trusted one. */
+  /** Per file (only "manifest" matters): sign with this key instead of the trusted one. */
   signWith: Record<string, KeyPair>
-  /** Per file: what its .sig answers instead of a signature, as an HTTP status or a body. */
+  /** Per file (only "manifest" matters): what manifest.sig answers instead of a signature, as an HTTP status or a body. */
   noSig: Record<string, number | string>
+  /** The newest client version the server announces in x-memory-client-latest, when it isn't `version`. */
+  latest?: string
+  /** The version line of the manifest, when it isn't `version`. */
+  manifestVersion?: string
+  /** The whole manifest text, instead of the one built from the files served. */
+  manifest?: string
   /** The key that signs. */
   signer: KeyPair
   /** The signing-pub.pem served. */
@@ -65,6 +72,8 @@ type Fake = {
   delayMs: number
   close: () => Promise<void>
 }
+
+const sha256 = (text: string) => createHash('sha256').update(text).digest('hex')
 
 const signed = new Map<string, string>()
 const signature = (key: KeyPair, content: string) => {
@@ -87,7 +96,7 @@ async function fakeServer(version = NEW): Promise<Fake> {
     ;(fake.failed[key] ??= []).push(String(req.headers['x-memory-update-failed'] ?? ''))
     req.resume()
     req.on('end', () => {
-      res.setHeader('x-memory-client-latest', fake.version)
+      res.setHeader('x-memory-client-latest', fake.latest ?? fake.version)
       if (req.method === 'POST' && req.url?.startsWith('/hooks/')) {
         res.setHeader('x-memory-client-status', fake.status)
         const answer = fake.answer[/^\/hooks\/([^/?]+)/.exec(req.url)?.[1] ?? ''] ?? { status: 200, body: '' }
@@ -104,12 +113,12 @@ async function fakeServer(version = NEW): Promise<Fake> {
         res.end('{"jsonrpc":"2.0","id":1,"result":{}}')
         return
       }
-      const m = /^\/install\/files\/([^/]+?)(\.sig)?$/.exec(req.url ?? '')
+      const m = /^\/install\/files\/([^/]+)$/.exec(req.url ?? '')
       if (!m) {
         res.end(req.url === '/healthz' ? JSON.stringify({ ok: true, version: '20260101.1', client_version: fake.version }) : '')
         return
       }
-      const [, file, sig] = m
+      const file = m[1]
       if (fake.redirect) {
         res.statusCode = 302
         res.setHeader('location', `${fake.httpUrl}${req.url}`)
@@ -118,28 +127,38 @@ async function fakeServer(version = NEW): Promise<Fake> {
       }
       setTimeout(() => {
         const over = fake.override[file]
-        if (over === 0 && !sig) {
+        if (over === 0) {
           res.destroy()
           return
         }
-        if (typeof over === 'number' && !sig) {
+        if (typeof over === 'number') {
           res.statusCode = over
           res.end('nope')
           return
         }
-        const stamped = file === 'signing-pub.pem' ? fake.pub : read(file).replace('VERSION=@MEMORY_VERSION@', `VERSION=${fake.version}`)
-        const content = typeof over === 'string' ? over : stamped
-        res.setHeader('content-type', 'text/plain')
-        if (!sig) {
-          res.end(fake.tamper[file] ?? content)
-          return
+        // What the release is: each file as the server bakes it (memory-hook stamped), and one manifest that lists them.
+        const contentOf = (f: string) => {
+          const o = fake.override[f]
+          if (typeof o === 'string') return o
+          return f === 'signing-pub.pem' ? fake.pub : read(f).replace('VERSION=@MEMORY_VERSION@', `VERSION=${fake.version}`)
         }
-        const no = fake.noSig[file]
-        if (typeof no === 'number') {
-          res.statusCode = no
-          res.end('no signature')
+        const manifest = fake.manifest ?? `version=${fake.manifestVersion ?? fake.version}\n${UPDATE_FILES.map((f) => `${f} ${sha256(contentOf(f))}`).join('\n')}\n`
+        res.setHeader('content-type', 'text/plain')
+        if (file === 'manifest') {
+          res.end(fake.tamper.manifest ?? manifest)
+        } else if (file === 'manifest.sig') {
+          const no = fake.noSig.manifest
+          if (typeof no === 'number') {
+            res.statusCode = no
+            res.end('no signature')
+          } else {
+            res.end(no ?? signature(fake.signWith.manifest ?? fake.signer, manifest))
+          }
+        } else if (UPDATE_FILES.includes(file)) {
+          res.end(fake.tamper[file] ?? contentOf(file))
         } else {
-          res.end(no ?? signature(fake.signWith[file] ?? fake.signer, content))
+          res.statusCode = 404
+          res.end('')
         }
       }, fake.delayMs)
     })
@@ -278,9 +297,8 @@ test('a newer client version updates memory-hook and the hook config in the back
     assert.equal(JSON.stringify(settings).split('memory-hook UserPromptSubmit').length, 2, 'ours is there once, not twice')
     assert.ok(JSON.parse(readFileSync(c.codex, 'utf8')).hooks.SessionStart)
     assert.equal(pubOf(c), readFileSync(trustedKey().pub, 'utf8'), 'the public key is kept')
-    for (const f of UPDATE_FILES) {
-      assert.ok(fake.hits.includes(`GET /install/files/${f}`) && fake.hits.includes(`GET /install/files/${f}.sig`), `${f} and its signature were fetched`)
-    }
+    for (const f of [...UPDATE_FILES, 'manifest', 'manifest.sig']) assert.ok(fake.hits.includes(`GET /install/files/${f}`), `${f} was fetched`)
+    assert.deepEqual(fake.hits.filter((h) => h.endsWith('.sig')), ['GET /install/files/manifest.sig'], 'one signature per release, none per file')
     await clean(c)
     // The next call is the new client's, and it finds nothing newer.
     const fetched = files(fake).length
@@ -293,32 +311,98 @@ test('a newer client version updates memory-hook and the hook config in the back
   }
 })
 
-// R31 fix 1: a tampered, an unsigned and a wrong-key file are each rejected, whichever file it is.
-for (const [what, setup] of [
-  ['tampered', (fake: Fake, f: string) => { fake.tamper[f] = `${read(f).replace('VERSION=@MEMORY_VERSION@', `VERSION=${NEW}`)}\n# added in transit\n` }],
-  ['unsigned (the .sig is a 404)', (fake: Fake, f: string) => { fake.noSig[f] = 404 }],
-  ['unsigned (an empty .sig)', (fake: Fake, f: string) => { fake.noSig[f] = '' }],
-  ['unsigned (a .sig that is not a signature)', (fake: Fake, f: string) => { fake.noSig[f] = 'bm90IGEgc2lnbmF0dXJl' }],
-  ['signed by the wrong key', (fake: Fake, f: string) => { fake.signWith[f] = otherKey() }],
-] as [string, (fake: Fake, f: string) => void][]) {
-  test(`a ${what} client file is rejected, and nothing is installed`, async () => {
-    for (const f of UPDATE_FILES) {
-      const fake = await fakeServer(NEW)
-      setup(fake, f)
-      const c = computer(fake.url, OLD)
-      const before = snapshot(c)
-      try {
-        await runHook(c, 'Stop')
-        await waitFor(() => existsSync(join(c.dir, 'update-failed')), 30_000, `${what} ${f} to be refused`)
-        assert.deepEqual(snapshot(c), before, `${what} ${f}: the old client is untouched`)
-        assert.equal(versionOf(c), OLD)
-        await clean(c, `${what} ${f} to leave nothing behind`)
-      } finally {
-        await cleanup(fake, c)()
-      }
-    }
+/** An update run against a server set up to go wrong: it must write update-failed and change nothing on the computer. */
+async function refused(what: string, setup: (fake: Fake) => void, at = OLD): Promise<void> {
+  const fake = await fakeServer(NEW)
+  setup(fake)
+  const c = computer(fake.url, at)
+  const before = snapshot(c)
+  try {
+    await runHook(c, 'Stop')
+    await waitFor(() => existsSync(join(c.dir, 'update-failed')), 30_000, `${what} to be refused`)
+    assert.deepEqual(snapshot(c), before, `${what}: the old client is untouched`)
+    assert.equal(versionOf(c), at)
+    await clean(c, `${what} to leave nothing behind`)
+  } finally {
+    await cleanup(fake, c)()
+  }
+}
+
+// R31 fix 1, now one signed manifest per release: a tampered, an unsigned and a wrong-key release are each rejected.
+for (const f of [...UPDATE_FILES, 'manifest']) {
+  test(`a tampered ${f} is rejected, and nothing is installed`, async () => {
+    const body = f === 'manifest' ? `version=${NEW}\n# a line added in transit\n` : `${read(f).replace('VERSION=@MEMORY_VERSION@', `VERSION=${NEW}`)}\n# added in transit\n`
+    await refused(`tampered ${f}`, (fake) => { fake.tamper[f] = body })
   })
 }
+for (const [what, setup] of [
+  ['an unsigned release (manifest.sig is a 404)', (fake: Fake) => { fake.noSig.manifest = 404 }],
+  ['an unsigned release (an empty manifest.sig)', (fake: Fake) => { fake.noSig.manifest = '' }],
+  ['an unsigned release (a manifest.sig that is not a signature)', (fake: Fake) => { fake.noSig.manifest = 'bm90IGEgc2lnbmF0dXJl' }],
+  ['a release signed by the wrong key', (fake: Fake) => { fake.signWith.manifest = otherKey() }],
+] as [string, (fake: Fake) => void][]) {
+  test(`${what} is rejected, and nothing is installed`, async () => {
+    await refused(what, setup)
+  })
+}
+
+// R31 round 2, fix 2: the manifest ties the files to each other and to one version.
+test('swapping claude-settings.json and codex-hooks.json is rejected, since each file must match its own name in the manifest', async () => {
+  await refused('swapped hook configs', (fake) => {
+    fake.tamper['claude-settings.json'] = read('codex-hooks.json')
+    fake.tamper['codex-hooks.json'] = read('claude-settings.json')
+  })
+})
+
+test('an older signed file mixed into a newer manifest is rejected', async () => {
+  // This file was signed at an earlier release (the manifest of that release listed it). In this release it is another.
+  await refused('an older install.sh', (fake) => { fake.tamper['install.sh'] = `${read('install.sh')}\n# the release before this one\n` })
+  await refused('an older memory-hook', (fake) => { fake.tamper['memory-hook'] = read('memory-hook').replace('VERSION=@MEMORY_VERSION@', `VERSION=${OLD}`) })
+})
+
+test('a manifest that leaves a file out, lists it twice, or disagrees with memory-hook about the version is rejected', async () => {
+  const lines = (omit?: string, extra = '') => `version=${NEW}\n${UPDATE_FILES.filter((f) => f !== omit).map((f) => `${f} ${sha256(f === 'signing-pub.pem' ? readFileSync(trustedKey().pub, 'utf8') : read(f).replace('VERSION=@MEMORY_VERSION@', `VERSION=${NEW}`))}`).join('\n')}\n${extra}`
+  await refused('a manifest with no line for claude-settings.json', (fake) => { fake.manifest = lines('claude-settings.json') })
+  await refused('a manifest with two lines for install.sh', (fake) => { fake.manifest = lines(undefined, `install.sh ${'0'.repeat(64)}\n`) })
+  await refused('a manifest with no version', (fake) => { fake.manifest = lines().replace(/^version=.*\n/, '') })
+  await refused('a manifest whose version is not memory-hook\'s', (fake) => { fake.manifestVersion = '20261103.1' })
+})
+
+test('replaying an older signed manifest installs nothing, since it is not newer than the running client', async () => {
+  const fake = await fakeServer(OLD)
+  // The server claims a newer client is out, but what it serves is the release the computer already has.
+  fake.latest = '20261103.1'
+  const c = computer(fake.url, NEW)
+  const before = snapshot(c)
+  try {
+    await runHook(c, 'Stop')
+    await waitFor(() => fake.hits.includes('GET /install/files/manifest.sig'), 30_000, 'the manifest to be fetched')
+    await clean(c, 'the replay to be dropped')
+    assert.deepEqual(snapshot(c), before)
+    assert.equal(versionOf(c), NEW)
+    assert.equal(existsSync(join(c.dir, 'update-failed')), false, 'a version that is not newer is a no-op, not a failure')
+  } finally {
+    await cleanup(fake, c)()
+  }
+})
+
+test('a computer that has moved to the new key refuses a release signed by the old one', async () => {
+  const fake = await fakeServer(NEW)
+  const next = nextKey()
+  // The computer already trusts the new key. An attacker holding the old key signs a newer release that carries it.
+  const c = computer(fake.url, OLD, { trust: next })
+  const before = snapshot(c)
+  fake.signer = trustedKey()
+  fake.pub = readFileSync(trustedKey().pub, 'utf8')
+  try {
+    await runHook(c, 'Stop')
+    await waitFor(() => existsSync(join(c.dir, 'update-failed')), 30_000, 'the rollback to be refused')
+    assert.deepEqual(snapshot(c), before)
+    assert.equal(pubOf(c), readFileSync(next.pub, 'utf8'))
+  } finally {
+    await cleanup(fake, c)()
+  }
+})
 
 test('with no saved public key, or one that is not a key, an update has nothing to verify against and installs nothing', async () => {
   for (const pub of [null, '', 'not a key\n']) {
@@ -342,8 +426,8 @@ test('a new public key arrives only in a file the old key signed, and then the n
   const fake = await fakeServer(NEW)
   const next = nextKey()
   fake.pub = readFileSync(next.pub, 'utf8')
-  // The new key's own signature on its own public key proves nothing.
-  fake.signWith['signing-pub.pem'] = next
+  // The new key's own signature on a release that carries it proves nothing.
+  fake.signWith.manifest = next
   const c = computer(fake.url, OLD)
   const before = snapshot(c)
   try {
@@ -352,8 +436,8 @@ test('a new public key arrives only in a file the old key signed, and then the n
     assert.deepEqual(snapshot(c), before)
     await clean(c)
 
-    // Signed by the old key, it installs, and the rest of that update was signed by the old key too.
-    delete fake.signWith['signing-pub.pem']
+    // Signed by the old key, the release installs with the new key listed in its manifest.
+    delete fake.signWith.manifest
     rmSync(join(c.dir, 'update-failed'))
     await runHook(c, 'Stop')
     await waitFor(() => versionOf(c) === NEW, 30_000, 'the rotation to land')
@@ -407,16 +491,23 @@ test('install.sh saves the public key beside the token at install', async () => 
 })
 
 // R31 fix 2.
-test('self-update reads its server only from ~/.config/memory/url, never from MEMORY_URL in the environment', async () => {
+test('self-update reads its server only from ~/.config/memory/url, never from MEMORY_URL, and starts only when that server answered', async () => {
   const good = await fakeServer(NEW)
   const evil = await fakeServer(NEW)
   const c = computer(good.url, OLD)
   try {
-    // A project's settings set MEMORY_URL, and the evil server says a newer client is out.
+    // A project's settings set MEMORY_URL, and the evil server says a newer client is out. The answer didn't come from
+    // the pinned server, so nothing is fetched from either.
     await runHook(c, 'Stop', [], c.hook, { MEMORY_URL: evil.url })
-    await waitFor(() => versionOf(c) === NEW, 30_000, 'the update to land')
+    await new Promise((r) => setTimeout(r, 600))
     assert.equal(evil.hits.filter((h) => h.startsWith('GET /install/')).length, 0, 'the evil server was asked for no files')
-    assert.ok(files(good).length >= UPDATE_FILES.length, 'the files came from the configured server')
+    assert.equal(files(good).length, 0, 'and the pinned server was not asked on its say-so')
+    assert.equal(versionOf(c), OLD)
+    assert.equal(existsSync(join(c.dir, 'update-failed')), false)
+    // The pinned server answering, even through MEMORY_URL, is what starts an update.
+    await runHook(c, 'Stop', [], c.hook, { MEMORY_URL: good.url })
+    await waitFor(() => versionOf(c) === NEW, 30_000, 'the update to land')
+    assert.equal(evil.hits.filter((h) => h.startsWith('GET /install/')).length, 0)
     assert.equal(readFileSync(join(c.dir, 'url'), 'utf8'), `${good.url}\n`)
     await clean(c)
     // install.sh --update reads the same file, whatever the environment says.
@@ -781,8 +872,9 @@ test("a hooks file that won't parse blocks only its own client's update", async 
       await waitFor(() => versionOf(c) === NEW, 30_000, `the update to land with ${broken} broken`)
       assert.equal(readFileSync(bad, 'utf8'), '{"hooks": [memory-hook is not json', `${broken}'s own file is left exactly as it was`)
       assert.ok(JSON.parse(readFileSync(good, 'utf8')).hooks.Notification, `the other client's hook config is updated`)
-      await waitFor(() => existsSync(join(c.dir, 'update-failed')), 5000, 'the broken merge to be noted')
       await clean(c)
+      // The client counts as updated when the installed memory-hook carries the new version, whatever one config did.
+      assert.equal(existsSync(join(c.dir, 'update-failed')), false, 'a config that would not merge is not a failed update')
     } finally {
       await cleanup(fake, c)()
     }
@@ -874,6 +966,99 @@ test('merge() writes through a unique temp file in the target\'s directory, so a
     assert.equal(JSON.stringify(settings).split('memory-hook UserPromptSubmit').length, 2, 'ours is there once')
     assert.deepEqual(readdirSync(join(c.home, '.claude')).filter((n) => n !== 'settings.json' && n !== 'settings.json.memory-tmp'), [], 'no temp file left')
     assert.equal(statSync(c.claude).mode & 0o077, 0, 'the merged file is private')
+  } finally {
+    await cleanup(fake, c)()
+    rmSync(set, { recursive: true, force: true })
+  }
+})
+
+// R31 round 2, fix 6.
+test('the rerun-the-installer line names the server in ~/.config/memory/url, never MEMORY_URL', async () => {
+  const good = await fakeServer(NEW)
+  const evil = await fakeServer(NEW)
+  evil.status = 'expired'
+  const c = computer(good.url, '20250101.1')
+  writeFileSync(join(c.dir, 'update-failed'), '')
+  try {
+    const ran = await runHook(c, 'SessionStart', [], c.hook, { MEMORY_URL: evil.url })
+    assert.match(ran.stdout, new RegExp(`Rerun \`curl -fsSL ${good.url.replace(/[.]/g, '\\.')}/install \\| sh\``))
+    assert.ok(!ran.stdout.includes(evil.url), ran.stdout)
+  } finally {
+    await evil.close()
+    await cleanup(good, c)()
+  }
+})
+
+// R31 round 2, fix 7.
+test('update-failed clears once the installed hook is at the newest version', async () => {
+  const fake = await fakeServer(NEW)
+  const c = computer(fake.url, NEW)
+  writeFileSync(join(c.dir, 'update-failed'), '')
+  try {
+    await runHook(c, 'Stop')
+    assert.equal(existsSync(join(c.dir, 'update-failed')), false, 'at the newest version, so nothing is failing any more')
+    // And a hook that is behind keeps it: it has not caught up.
+    const behind = computer(fake.url, OLD)
+    writeFileSync(join(behind.dir, 'update-failed'), '')
+    try {
+      await runHook(behind, 'Stop')
+      assert.equal(existsSync(join(behind.dir, 'update-failed')), true)
+    } finally {
+      rmSync(behind.home, { recursive: true, force: true })
+    }
+  } finally {
+    await cleanup(fake, c)()
+  }
+})
+
+// R31 round 2, fix 4.
+test('a curl | sh install trusts nothing in the directory it runs from, only what the server serves', async () => {
+  const fake = await fakeServer(NEW)
+  const home = tempDir('memory-stdin-')
+  const cwd = tempDir('memory-stdin-cwd-')
+  mkdirSync(join(home, '.config', 'memory'), { recursive: true })
+  writeFileSync(join(home, '.config', 'memory', 'token'), `${TOKEN}\n`, { mode: 0o600 })
+  // What a hostile download folder holds: every file the installer would take from beside itself.
+  writeFileSync(join(cwd, 'memory-hook'), '#!/bin/sh\n# planted\nVERSION=99999999.9\nexit 0\n')
+  writeFileSync(join(cwd, 'claude-settings.json'), '{"hooks":{}}')
+  writeFileSync(join(cwd, 'codex-hooks.json'), '{"hooks":{}}')
+  writeFileSync(join(cwd, 'signing-pub.pem'), readFileSync(otherKey().pub))
+  try {
+    const ran = await new Promise<number | null>((resolve) => {
+      const env = {
+        PATH: '/usr/bin:/bin', HOME: home, MEMORY_URL: fake.url, MEMORY_DEVICE: 'test-mac', CURL_CA_BUNDLE: localTls().certPath, NO_PROXY: '127.0.0.1', no_proxy: '127.0.0.1',
+      }
+      const child = spawn('sh', [], { env, cwd, stdio: ['pipe', 'ignore', 'ignore'] })
+      child.stdin.end(readFileSync(join(CLIENT, 'install.sh')))
+      child.on('close', resolve)
+    })
+    assert.equal(ran, 0)
+    const installed = readFileSync(join(home, '.config', 'memory', 'memory-hook'), 'utf8')
+    assert.ok(!installed.includes('planted'), 'the planted memory-hook was not installed')
+    assert.equal(/^VERSION=(.*)$/m.exec(installed)?.[1], NEW)
+    assert.equal(readFileSync(join(home, '.config', 'memory', 'signing-pub.pem'), 'utf8'), readFileSync(trustedKey().pub, 'utf8'), 'nor the planted key')
+  } finally {
+    await fake.close()
+    rmSync(home, { recursive: true, force: true })
+    rmSync(cwd, { recursive: true, force: true })
+  }
+})
+
+// R31 round 2, fix 3.
+test('the new public key moves into place only when memory-hook was installed', async () => {
+  const fake = await fakeServer(NEW)
+  const c = computer(fake.url, OLD)
+  const set = tempDir('memory-fetched-')
+  for (const f of UPDATE_FILES) writeFileSync(join(set, f), f === 'memory-hook' ? read(f).replace('VERSION=@MEMORY_VERSION@', `VERSION=${NEW}`) : read(f))
+  copyFileSync(nextKey().pub, join(set, 'signing-pub.pem'))
+  // No memory-hook in the fetched set, so putting it in place fails.
+  rmSync(join(set, 'memory-hook'))
+  try {
+    const before = snapshot(c)
+    const ran = await runInstall(join(set, 'install.sh'), ['--update'], c)
+    assert.notEqual(ran.code, 0)
+    assert.deepEqual(snapshot(c), before, 'the old hook and the old key are both still there')
+    assert.deepEqual(readdirSync(c.dir).filter((n) => n.startsWith('.')), [], 'and no half-copied key is left')
   } finally {
     await cleanup(fake, c)()
     rmSync(set, { recursive: true, force: true })

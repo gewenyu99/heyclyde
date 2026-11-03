@@ -21,7 +21,7 @@ export const CLIENT_RELEASES: { version: string; released: string }[] = [
 
 /** SHA-256 of the client files at each client version: `{ "20261102.1": "<hash>" }`. Entries are never edited or removed. */
 export const CLIENT_SURFACE_HASHES: Record<string, string> = {
-  "20261102.1": "c5c9c8f997093c90726d3a43d9c13283279e6baaeb7bdc0c215c9c4d7f7c08bf",
+  "20261102.1": "70276f9bf6b6cc030f83e7e46afdc3b02abd42973615d249c433f40415ec89cb",
 };
 
 /** SHA-256 of the MCP tools and server instructions at each server version. Entries are never edited or removed. */

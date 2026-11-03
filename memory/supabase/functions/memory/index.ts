@@ -128,11 +128,12 @@ async function exportPage(url: URL) {
   return new Response(body, { headers: { "content-type": "application/x-ndjson", "x-rows": String(rows.length) } });
 }
 
-// The files a new computer's installer fetches, and each one's signature as <name>.sig. memory/deploy.sh bakes ./client
-// into ./client/files.ts: it stamps memory-hook with CLIENT_VERSION and signs every file with the offline key, since a
-// signature covers exactly the bytes served. A computer verifies them against the public key it saved at install.
+// The files a new computer's installer fetches, and the release's manifest with its signature (manifest.sig). memory/deploy.sh
+// bakes ./client into ./client/files.ts: it stamps memory-hook with CLIENT_VERSION, writes a manifest of the version and
+// every file's sha256, and signs that manifest with the offline key. A computer verifies the manifest against the public key
+// it saved at install, then each file against its line, so only files of one signed release install.
 const CLIENT_FILES = ["install.sh", "memory-hook", "claude-settings.json", "codex-hooks.json", "signing-pub.pem"];
-const SERVED = new Set([...CLIENT_FILES, ...CLIENT_FILES.map((f) => `${f}.sig`)]);
+const SERVED = new Set([...CLIENT_FILES, "manifest", "manifest.sig"]);
 const CLAIM = /^[A-Za-z0-9_-]{20,100}$/;
 
 function clientFile(name: string) {
