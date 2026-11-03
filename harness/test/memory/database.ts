@@ -3,7 +3,8 @@
  * the made-up tea vault, and stores the SHA-256 of MEMORY_TEST_TOKEN as a device, of MEMORY_TEST_RUNTIME_TOKEN as the
  * runtime token and of MEMORY_TEST_ADMIN_TOKEN as the admin token, the way auth.ts reads them, with
  * MEMORY_TEST_CRON_SECRET in Vault. `drop` removes the schema again. `sql <statement>` prints its rows as JSON, for what
- * no route shows. pg_cron only lives in the postgres database, so the tests reset a schema rather than create a database.
+ * no route shows. `apply <migration file>` runs one migration file again, and `purge` runs memory.purge_messages() and prints
+ * how long it took in ms. pg_cron only lives in the postgres database, so the tests reset a schema rather than create a database.
  */
 import postgres from 'npm:postgres@3.4.7'
 
@@ -33,7 +34,7 @@ const env = (name: string) => Deno.env.get(name) ?? ''
 const sql = postgres(env('SUPABASE_DB_URL'), { max: 1, onnotice: () => {} })
 
 // The migrations schedule these against the real project, with the cron secret. The tests never want them.
-const CRONS = ['memory-embed-sync', 'memory-learn']
+const CRONS = ['memory-embed-sync', 'memory-learn', 'memory-message-purge']
 
 async function unschedule() {
   await sql`select cron.unschedule(jobname) from cron.job where jobname::text = any(${CRONS}::text[])`
@@ -78,7 +79,12 @@ try {
   if (Deno.args[0] === 'reset') await reset()
   else if (Deno.args[0] === 'drop') await drop()
   else if (Deno.args[0] === 'sql') console.log(JSON.stringify(await sql.unsafe(Deno.args[1])))
-  else throw new Error('usage: database.ts reset|drop|sql <statement>')
+  else if (Deno.args[0] === 'apply') await sql.unsafe(await Deno.readTextFile(new URL(Deno.args[1], MIGRATIONS))).simple()
+  else if (Deno.args[0] === 'purge') {
+    const started = performance.now()
+    const [row] = await sql`select memory.purge_messages() as result`
+    console.log(JSON.stringify({ ms: performance.now() - started, result: row.result }))
+  } else throw new Error('usage: database.ts reset|drop|sql <statement>|apply <file>|purge')
 } finally {
   await sql.end()
 }

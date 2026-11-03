@@ -35,6 +35,16 @@ export function sql(statement: string): Record<string, any>[] {
   return JSON.parse(database(['sql', statement]))
 }
 
+/** Runs one migration file from memory/supabase/migrations on the test database again. */
+export function apply(file: string): void {
+  database(['apply', file])
+}
+
+/** Runs memory.purge_messages() and reports how long the database took, in ms. */
+export function purge(): { ms: number; result: unknown } {
+  return JSON.parse(database(['purge']))
+}
+
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const s = net.createServer()

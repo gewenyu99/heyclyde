@@ -23,7 +23,7 @@ import { FAKE_BIN, HARNESS, LV, setup, tempDir, waitFor } from '../helpers.ts'
 import { repoRoot } from '../../src/config.ts'
 import { jwt } from './auth.ts'
 import { FAKE_DOWN, FAKE_REFUSE } from './openai.ts'
-import { SKIP, sql, startRealMemory, type RealMemory } from './server.ts'
+import { apply, purge, SKIP, sql, startRealMemory, type RealMemory } from './server.ts'
 import { verifies } from './signing.ts'
 
 let memory: RealMemory
@@ -645,4 +645,300 @@ test('the real memory-hook against the real server prints nothing for SessionSta
   } finally {
     rmSync(home, { recursive: true, force: true })
   }
+})
+
+// ---------------------------------------------------------------- R39 (#43): the message board is a queue
+// Each test names its own agents (queue1-sender, queue1-reader, ...) so a leftover delivery elsewhere never reaches it.
+
+/** The delivery ids a check_messages reply lists, in order. */
+const deliveryIds = (reply: string) => [...reply.matchAll(/^- #(\d+) from /gm)].map((m) => Number(m[1]))
+
+/** n messages from `sender` to `to`, each with one live delivery for `to`. Returns the delivery ids, oldest first. */
+function enqueue(sender: string, to: string, n: number, tag: string): number[] {
+  return sql(`with m as (insert into memory.message (sender, recipient, body)
+      select '${sender}', '${to}', '${tag} ' || g from generate_series(1, ${n}) g returning id)
+    insert into memory.message_delivery (message_id, recipient) select id, '${to}' from m returning id`)
+    .map((r) => Number(r.id)).sort((a, b) => a - b)
+}
+
+const delivery = (id: number) => sql(`select * from memory.message_delivery where id = ${id}`)[0]
+const countOf = (statement: string) => Number(sql(statement)[0].n)
+const liveCount = (who: string) => countOf(`select count(*) as n from memory.message_delivery
+  where recipient = '${who}' and acked_at is null and dropped_at is null`)
+
+// R39 (#43): claude posts to codex, codex gets it once with an id, and after ack_messages a second check is empty.
+test('queue: deliver then ack', { skip: SKIP }, async () => {
+  sql(`update memory.message_delivery set acked_at = now() where recipient = 'codex' and acked_at is null and dropped_at is null`)
+  const claude = await mcpSession(memory.token, 'claude-code')
+  const codex = await mcpSession(memory.token, 'codex-cli')
+  const body = `Codex, the queue is open ${randomUUID()}.`
+  assert.match(await claude('post_message', { to: 'codex', body }), /^Posted message \d+ to codex\.$/)
+  const first = await codex('check_messages', {})
+  const ids = deliveryIds(first)
+  assert.equal(ids.length, 1, first)
+  assert.equal(first.split(body).length - 1, 1, first)
+  assert.match(await codex('ack_messages', { ids }), /^Acknowledged 1 message\.$/)
+  assert.equal(await codex('check_messages', {}), 'No new messages.')
+  assert.notEqual(delivery(ids[0]).acked_at, null)
+})
+
+// R39 (#43): an unacked delivery comes back after 30 minutes. After 3 deliveries it's dropped and the sender gets 1 note.
+test('queue: redeliver, then drop', { skip: SKIP }, async () => {
+  const sender = await mcpSession(memory.token, 'queue2-sender')
+  const reader = await mcpSession(memory.token, 'queue2-reader')
+  const body = `Please look at run ${randomUUID()}.`
+  assert.match(await sender('post_message', { to: 'queue2-reader', body }), /^Posted message \d+ to queue2-reader\.$/)
+  const [id] = deliveryIds(await reader('check_messages', {}))
+  assert.ok(id, 'the first check delivers it')
+  const out = new Date(delivery(id).visible_after).getTime() - Date.now()
+  assert.ok(Math.abs(out - 30 * 60_000) < 120_000, `visible_after is about 30 minutes out, not ${out} ms`)
+  assert.equal(await reader('check_messages', {}), 'No new messages.', 'it stays hidden for 30 minutes')
+  for (const delivered of [2, 3]) {
+    sql(`update memory.message_delivery set visible_after = now() - interval '1 second' where id = ${id}`)
+    assert.deepEqual(deliveryIds(await reader('check_messages', {})), [id], `delivery ${delivered} brings back the same id`)
+    assert.equal(delivery(id).delivered_count, delivered)
+  }
+  sql(`update memory.message_delivery set visible_after = now() - interval '1 second' where id = ${id}`)
+  assert.equal(await reader('check_messages', {}), 'No new messages.', 'a fourth delivery never comes')
+  const gone = delivery(id)
+  assert.notEqual(gone.dropped_at, null)
+  assert.equal(gone.acked_at, null)
+  assert.equal(gone.delivered_count, 3)
+  const notes = await sender('check_messages', {})
+  assert.equal(deliveryIds(notes).length, 1, notes)
+  assert.match(notes, /not acknowledged/)
+  assert.ok(notes.includes(body.slice(0, 20)), 'the note says which message')
+  assert.equal(await sender('check_messages', {}), 'No new messages.')
+})
+
+// R39 (#43): a message to all reaches every agent seen in the last 30 days once, and the purge deletes it after the acks.
+test('queue: fan-out and purge', { skip: SKIP }, async () => {
+  sql(`delete from memory.message`)
+  sql(`delete from memory.mcp_client`)
+  sql(`delete from memory.event where agent is not null`)
+  sql(`insert into memory.event (event, payload, agent) values ('SessionStart', '{}', 'gemini'), ('SessionStart', '{}', 'opencode')`)
+  sql(`insert into memory.event (event, payload, agent, received_at) values ('SessionStart', '{}', 'oldbot', now() - interval '40 days')`)
+  const claude = await mcpSession(memory.token, 'claude-code')
+  const readers: Record<string, Awaited<ReturnType<typeof mcpSession>>> = {}
+  for (const [name, client] of [['codex', 'codex-cli'], ['gemini', 'gemini'], ['opencode', 'opencode']]) {
+    readers[name] = await mcpSession(memory.token, client)
+  }
+  const body = `Everyone, the gate passed ${randomUUID()}.`
+  const said = await claude('post_message', { to: 'all', body })
+  const id = Number((/^Posted message (\d+) to all\.$/.exec(said) ?? assert.fail(said))[1])
+  assert.deepEqual(sql(`select recipient from memory.message_delivery where message_id = ${id} order by recipient`).map((r) => r.recipient),
+    ['codex', 'gemini', 'opencode'], 'the sender and an agent unseen for 40 days get none')
+  for (const [name, read] of Object.entries(readers)) {
+    const reply = await read('check_messages', {})
+    assert.equal(reply.split(body).length - 1, 1, `${name} saw it exactly once: ${reply}`)
+    assert.match(await read('ack_messages', { ids: deliveryIds(reply) }), /^Acknowledged 1 message\.$/)
+    assert.equal(await read('check_messages', {}), 'No new messages.', name)
+  }
+  assert.equal(countOf(`select count(*) as n from memory.message where id = ${id}`), 1, 'it stays until a purge runs')
+  purge()
+  assert.equal(countOf(`select count(*) as n from memory.message where id = ${id}`), 0, 'the purge deleted it')
+  assert.equal(countOf(`select count(*) as n from memory.message_delivery where message_id = ${id}`), 0)
+})
+
+// R39 (#43): dismiss_messages("all") clears one recipient's deliveries and leaves everyone else's.
+test('queue: dismiss all clears only its own recipient', { skip: SKIP }, async () => {
+  const mine = enqueue('queue4-sender', 'queue4-reader', 5, 'mine')
+  const theirs = enqueue('queue4-sender', 'queue4-other', 3, 'theirs')
+  const reader = await mcpSession(memory.token, 'queue4-reader')
+  assert.match(await reader('dismiss_messages', { ids: 'all' }), /^Dismissed 5 messages\.$/)
+  assert.equal(await reader('check_messages', {}), 'No new messages.')
+  assert.equal(liveCount('queue4-reader'), 0)
+  assert.equal(liveCount('queue4-other'), 3)
+  for (const id of theirs) assert.equal(delivery(id).acked_at, null)
+  for (const id of mine) assert.notEqual(delivery(id).acked_at, null)
+  const other = await mcpSession(memory.token, 'queue4-other')
+  assert.deepEqual(deliveryIds(await other('check_messages', {})), theirs)
+})
+
+// R39 (#43): concurrent check_messages for one recipient never hand out the same delivery twice.
+test('queue: concurrent check_messages never share a delivery', { skip: SKIP }, async () => {
+  const all = enqueue('queue5-sender', 'queue5-reader', 10, 'race')
+  const readers = await Promise.all([1, 2, 3, 4].map(() => mcpSession(memory.token, 'queue5-reader')))
+  const replies = await Promise.all(readers.map((read) => read('check_messages', {})))
+  const seen = replies.flatMap(deliveryIds)
+  assert.equal(new Set(seen).size, seen.length, `an id came back twice: ${replies.join('\n')}`)
+  assert.deepEqual([...seen].sort((a, b) => a - b), all, 'together they got all 10, once each')
+})
+
+// R39 (#43): the purge caps a recipient at the newest 100 live deliveries and sends one note naming the dropped.
+test('queue: the purge caps a recipient at 100 and says what it dropped', { skip: SKIP }, async () => {
+  const all = enqueue('queue6-sender', 'queue6-reader', 150, 'pile')
+  const messageOf = (id: number) => Number(delivery(id).message_id)
+  purge()
+  assert.equal(countOf(`select count(*) as n from memory.message_delivery d join memory.message m on m.id = d.message_id
+    where d.recipient = 'queue6-reader' and d.acked_at is null and d.dropped_at is null and m.sender = 'queue6-sender'`), 100)
+  for (const id of all.slice(50)) assert.equal(delivery(id).dropped_at, null, `the newest stay: ${id}`)
+  for (const id of all.slice(0, 50)) assert.notEqual(delivery(id).dropped_at, null, `the oldest go: ${id}`)
+  const noteRows = () => sql(`select m.body from memory.message m join memory.message_delivery d on d.message_id = m.id
+    where m.sender = 'memory' and d.recipient = 'queue6-reader'`)
+  const notes = noteRows()
+  assert.equal(notes.length, 1)
+  assert.match(notes[0].body, /\b50\b/)
+  const named = new Set([...notes[0].body.matchAll(/#(\d+)/g)].map((m) => Number(m[1])))
+  assert.deepEqual([...named].sort((a, b) => a - b), all.slice(0, 50).map(messageOf), 'the note names the 50 dropped messages and no other')
+  // A second purge finds nothing over the cap, so it adds no note.
+  purge()
+  assert.equal(noteRows().length, 1)
+})
+
+// R39 (#43): the purge removes expired messages and deliveries acked or dropped over 7 days ago, in under 2 s for 10,000 rows.
+test('queue: the purge clears 10,000 old rows in under 2 s and keeps the live ones', { skip: SKIP }, async () => {
+  sql(`with m as (insert into memory.message (sender, recipient, body, created_at, expires_at)
+      select 'queue7-sender', 'queue7-reader', 'expired ' || g, now() - interval '20 days', now() - interval '1 day' from generate_series(1, 5000) g returning id)
+    insert into memory.message_delivery (message_id, recipient) select id, 'queue7-reader' from m`)
+  sql(`with m as (insert into memory.message (sender, recipient, body, created_at)
+      select 'queue7-sender', 'queue7-reader', 'acked ' || g, now() - interval '20 days' from generate_series(1, 5000) g returning id)
+    insert into memory.message_delivery (message_id, recipient, delivered_count, acked_at)
+      select id, 'queue7-reader', 1, now() - interval '8 days' from m`)
+  const [keep] = enqueue('queue7-sender', 'queue7-reader', 1, 'kept')
+  // One message for three readers: acked 8 days ago, acked yesterday, and still waiting.
+  const [shared] = sql(`insert into memory.message (sender, recipient, body) values ('queue7-sender', 'all', 'shared') returning id`)
+  sql(`insert into memory.message_delivery (message_id, recipient, acked_at) values
+    (${shared.id}, 'queue7-old', now() - interval '8 days'), (${shared.id}, 'queue7-new', now() - interval '1 day'), (${shared.id}, 'queue7-wait', null)`)
+  const stale = `select count(*) as n from memory.message where body like 'expired %' or body like 'acked %'`
+  assert.equal(countOf(stale), 10_000)
+  const { ms } = purge()
+  assert.ok(ms < 2000, `the purge took ${ms} ms`)
+  assert.equal(countOf(stale), 0)
+  assert.equal(countOf(`select count(*) as n from memory.message_delivery where acked_at < now() - interval '7 days'`), 0)
+  assert.equal(delivery(keep).dropped_at, null, 'a live delivery stays')
+  assert.deepEqual(sql(`select recipient from memory.message_delivery where message_id = ${shared.id} order by recipient`).map((r) => r.recipient),
+    ['queue7-new', 'queue7-wait'], 'the delivery acked 8 days ago goes, the one acked yesterday stays with the waiting one')
+})
+
+// R39 (#43): a message past expires_at is never delivered.
+test('queue: an expired message is never delivered', { skip: SKIP }, async () => {
+  const [id] = enqueue('queue7b-sender', 'queue7b-reader', 1, 'stale')
+  sql(`update memory.message set expires_at = now() - interval '1 minute' where id = ${delivery(id).message_id}`)
+  const reader = await mcpSession(memory.token, 'queue7b-reader')
+  assert.equal(await reader('check_messages', {}), 'No new messages.')
+})
+
+// R39 (#43): the hook inbox acknowledges exactly what it returns, and prints what it always has.
+test('queue: the hook inbox acknowledges what it prints, in the format hooks already read', { skip: SKIP }, async () => {
+  const sender = await mcpSession(memory.token, 'queue8-sender')
+  const reader = await mcpSession(memory.token, 'queue8-reader')
+  const body = `Hook, take note ${randomUUID()}.`
+  const said = await sender('post_message', { to: 'queue8-reader', body })
+  const messageId = Number((/^Posted message (\d+) to queue8-reader\.$/.exec(said) ?? assert.fail(said))[1])
+  const at = new Date(sql(`select created_at from memory.message where id = ${messageId}`)[0].created_at).toISOString().slice(0, 16).replace('T', ' ')
+  const first = await call('GET', '/messages/queue8-reader', bearer(memory.token))
+  assert.equal(first.status, 200, first.text)
+  assert.equal(first.text,
+    `Messages from your other agents (reply with post_message):\n- #${messageId} from queue8-sender to queue8-reader at ${at} UTC: ${body}\n`)
+  const row = sql(`select acked_at, delivered_count from memory.message_delivery where message_id = ${messageId}`)[0]
+  assert.notEqual(row.acked_at, null, 'what it printed is acknowledged')
+  assert.equal(row.delivered_count, 1)
+  assert.equal((await call('GET', '/messages/queue8-reader', bearer(memory.token))).text, '')
+  assert.equal(await reader('check_messages', {}), 'No new messages.')
+})
+
+// R39 (#43): a recipient can ack or dismiss only its own deliveries.
+test('queue: acking or dismissing another recipient\'s delivery changes nothing and says not yours', { skip: SKIP }, async () => {
+  const [mine] = enqueue('queue9-sender', 'queue9-owner', 1, 'private')
+  const owner = await mcpSession(memory.token, 'queue9-owner')
+  const thief = await mcpSession(memory.token, 'queue9-thief')
+  assert.match(await thief('ack_messages', { ids: [mine] }), /not yours/)
+  assert.equal(delivery(mine).acked_at, null)
+  assert.match(await thief('dismiss_messages', { ids: [mine] }), /not yours/)
+  assert.equal(delivery(mine).acked_at, null)
+  assert.match(await thief('dismiss_messages', { ids: 'all' }), /^Dismissed 0 messages\.$/)
+  assert.equal(delivery(mine).acked_at, null)
+  assert.equal(liveCount('queue9-owner'), 1)
+  assert.deepEqual(deliveryIds(await owner('check_messages', {})), [mine], 'the owner still has it')
+})
+
+// R39 (#43): the tools gain two optional entries, the instructions and descriptions mention ack_messages, and the admin
+// routes, export and import know the delivery table.
+test('queue: the tool surface only grows, and the console API, export and import carry deliveries', { skip: SKIP }, async () => {
+  const init = await call('POST', '/mcp', bearer(memory.token),
+    { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', clientInfo: { name: 'queue10-reader' } } })
+  const session = String(init.headers['mcp-session-id'])
+  assert.match(JSON.parse(init.text).result.instructions, /ack_messages/)
+  const rpc = async (id: number, method: string, params?: unknown) =>
+    JSON.parse((await call('POST', '/mcp', { ...bearer(memory.token), 'mcp-session-id': session }, { jsonrpc: '2.0', id, method, params })).text).result
+  const tools: Record<string, any> = Object.fromEntries((await rpc(2, 'tools/list')).tools.map((t: any) => [t.name, t]))
+  assert.deepEqual(Object.keys(tools).sort(),
+    ['ack_messages', 'check_messages', 'dismiss_messages', 'feedback', 'get_blob', 'get_entry', 'post_message', 'recall', 'remember'])
+  assert.deepEqual(tools.post_message.inputSchema.required, ['to', 'body'])
+  assert.deepEqual(tools.recall.inputSchema.required, ['query'])
+  assert.deepEqual(tools.check_messages.inputSchema.required ?? [], [])
+  assert.match(tools.check_messages.description, /ack_messages/)
+  assert.deepEqual(tools.ack_messages.inputSchema.required, ['ids'])
+  assert.equal(tools.dismiss_messages.inputSchema.required, undefined)
+
+  const admin = bearer(memory.adminToken)
+  const posted = await call('POST', '/api/v1/messages', admin, { to: 'queue10-reader', body: `From the console ${randomUUID()}.` })
+  assert.equal(posted.status, 201, posted.text)
+  const id = JSON.parse(posted.text).id
+  const board = async () => JSON.parse((await call('GET', '/api/v1/messages?limit=200', admin)).text).items.find((m: any) => m.id === id)
+  const waiting = await board()
+  assert.deepEqual([waiting.read_by, waiting.pending], [[], ['queue10-reader']])
+  assert.ok(waiting.expires_at)
+  const ids = deliveryIds((await rpc(3, 'tools/call', { name: 'check_messages', arguments: {} })).content[0].text)
+  await rpc(4, 'tools/call', { name: 'ack_messages', arguments: { ids } })
+  const done = await board()
+  assert.deepEqual([done.read_by, done.pending], [['queue10-reader'], []])
+  const overview = JSON.parse((await call('GET', '/api/v1/overview', admin)).text)
+  assert.equal(typeof overview.counts.unread.claude, 'number')
+
+  sql(`insert into memory.setting (name, value) values ('backup_token_sha256', encode(sha256('queue-backup'::bytea), 'hex'))
+    on conflict (name) do update set value = excluded.value`)
+  const tables = JSON.parse((await call('GET', '/export', bearer('queue-backup'))).text).tables.map((t: any) => t.table)
+  assert.ok(tables.indexOf('message_delivery') > tables.indexOf('message'), 'deliveries export after their messages')
+  const page = await call('GET', '/export?table=message_delivery&offset=0', bearer('queue-backup'))
+  assert.equal(page.status, 200, page.text)
+  assert.ok(page.text.includes(`"message_id":${id}`))
+  sql(`delete from memory.setting where name = 'backup_token_sha256'`)
+
+  // An old backup's message rows carry read_by. Import turns each name into an acked delivery.
+  const old = (n: number, readBy: string[]) => JSON.stringify({ table: 'message', row: {
+    id: n, sender: 'claude', recipient: 'codex', body: `imported ${n}`, read_by: readBy, created_at: '2026-10-10T00:00:00Z' } })
+  const lines = [old(990001, ['codex']), old(990002, []), JSON.stringify({ table: 'message_delivery', row: {
+    id: 990100, message_id: 990002, recipient: 'codex', delivered_count: 1, visible_after: '2026-10-10T00:00:00Z', acked_at: null, dropped_at: null } })]
+  const imported = await call('POST', '/api/v1/import', admin, lines.join('\n'))
+  assert.equal(imported.status, 200, imported.text)
+  assert.equal(JSON.parse(imported.text).imported.message, 2)
+  assert.deepEqual(sql(`select message_id::int as message_id, recipient, acked_at is not null as acked from memory.message_delivery
+    where message_id in (990001, 990002) order by message_id`), [
+    { message_id: 990001, recipient: 'codex', acked: true }, { message_id: 990002, recipient: 'codex', acked: false }])
+})
+
+// R39 (#43): the migration turns legacy rows into deliveries, acked for every name in read_by, drops read_by, and
+// schedules memory-message-purge daily. It runs last, since it rebuilds the board.
+test('queue: the migration moves legacy messages into deliveries and drops read_by', { skip: SKIP }, async () => {
+  const readByColumns = `select count(*) as n from information_schema.columns
+    where table_schema = 'memory' and table_name = 'message' and column_name = 'read_by'`
+  assert.equal(countOf(readByColumns), 0, 'the migrations dropped it')
+  sql(`delete from memory.message`)
+  sql(`alter table memory.message add column read_by text[] not null default '{}'`)
+  sql(`insert into memory.event (event, payload, agent) values ('SessionStart', '{}', 'gemini')`)
+  sql(`insert into memory.message (sender, recipient, body, read_by, created_at)
+    select 'claude', 'queue11-reader', 'legacy ' || g, case when g <= 10 then array['queue11-reader'] else '{}' end, '2026-10-10'
+    from generate_series(1, 17) g`)
+  sql(`insert into memory.message (sender, recipient, body, read_by, created_at)
+    values ('codex', 'all', 'legacy all', array['claude', 'gemini'], '2026-10-11')`)
+  apply('20261102000000_message_queue.sql')
+  assert.equal(countOf(readByColumns), 1, 'the expand step keeps read_by, so the old function still works')
+  assert.equal(countOf(`select count(*) as n from memory.message_delivery d join memory.message m on m.id = d.message_id
+    where m.recipient = 'queue11-reader'`), 17)
+  apply('20261102000100_message_queue_contract.sql')
+  assert.equal(countOf(readByColumns), 0)
+  assert.equal(countOf(`select count(*) as n from memory.message`), 18)
+  assert.deepEqual(sql(`select (count(*) filter (where d.acked_at is not null))::int as acked, (count(*) filter (where d.acked_at is null))::int as live
+    from memory.message_delivery d join memory.message m on m.id = d.message_id where m.recipient = 'queue11-reader'`), [{ acked: 10, live: 7 }])
+  const all = sql(`select d.recipient, d.acked_at is not null as acked from memory.message_delivery d join memory.message m on m.id = d.message_id
+    where m.body = 'legacy all' and d.recipient in ('claude', 'gemini', 'codex') order by d.recipient`)
+  assert.deepEqual(all, [{ recipient: 'claude', acked: true }, { recipient: 'gemini', acked: true }], 'the sender gets none')
+  assert.equal(countOf(`select count(*) as n from memory.message where expires_at <= now()`), 0)
+  const job = sql(`select schedule, command from cron.job where jobname = 'memory-message-purge'`)
+  assert.equal(job.length, 1, 'the migration schedules the purge')
+  assert.match(job[0].schedule, /^\d+ \d+ \* \* \*$/, 'daily')
+  assert.match(job[0].command, /memory\.purge_messages\(\)/)
+  sql(`select cron.unschedule('memory-message-purge')`)
 })
