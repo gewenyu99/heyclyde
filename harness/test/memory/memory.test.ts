@@ -6,7 +6,7 @@
  */
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { randomBytes, randomUUID } from 'node:crypto'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { chmodSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
@@ -17,19 +17,22 @@ import { workListEntry } from '../../src/flow/memory.ts'
 import type { Run } from '../../src/flow/types.ts'
 import { Memory } from '../../src/memory.ts'
 import { request } from '../../src/request.ts'
-import { SERVER_VERSION } from '../../../memory/supabase/functions/memory/version.ts'
+import { CLIENT_VERSION, SERVER_VERSION } from '../../../memory/supabase/functions/memory/version.ts'
 import { formatList, type WorkList } from '../../src/lists.ts'
 import { FAKE_BIN, HARNESS, LV, setup, tempDir, waitFor } from '../helpers.ts'
 import { repoRoot } from '../../src/config.ts'
 import { jwt } from './auth.ts'
 import { FAKE_DOWN, FAKE_REFUSE } from './openai.ts'
 import { SKIP, sql, startRealMemory, type RealMemory } from './server.ts'
+import { verifies } from './signing.ts'
 
 let memory: RealMemory
 const SEED = ['tea-oolong-temp', 'tea-oolong-old', 'tea-draft-cold', 'tea-supplier', 'tea-zh', 'proj-tea']
 
 before(async () => {
-  if (!SKIP) memory = await startRealMemory()
+  // A zero day cutoff, so any client behind the newest release counts as expired and the R31 tests can see that status.
+  // version.test.ts covers the 30 days with a clock it sets.
+  if (!SKIP) memory = await startRealMemory({ MEMORY_CLIENT_CUTOFF_DAYS: '0' })
 })
 
 after(async () => {
@@ -462,44 +465,83 @@ test('agents leave each other messages: codex reads claude\'s once, and a messag
   assert.deepEqual(sql(`select id from memory.message where body like '%${FAKE_REFUSE}%'`), [])
 })
 
-/** An MCP call as the device, JSON-RPC over HTTP, answered as a parsed object. */
-async function mcp(method: string, params: Record<string, unknown> = {}): Promise<any> {
+
+// ---------------------------------------------------------------- R31, clients update themselves (#35)
+
+const CLIENT_DIR = join(repoRoot(), 'memory', 'supabase', 'functions', 'memory', 'client')
+const NOTE = /Rerun `curl -fsSL https:\/\/memory\.heyclyde\.me\/install \| sh`/
+
+/** A new computer's device row and its token, for a test that needs a computer no other test has touched. */
+function newDevice(name: string): string {
+  const token = `device-${randomBytes(8).toString('hex')}`
+  sql(`insert into memory.device (name, token_sha256) values ('${name}', '${createHash('sha256').update(token).digest('hex')}')`)
+  return token
+}
+
+/** An MCP call, JSON-RPC over HTTP, answered as a parsed object. */
+async function mcp(method: string, params: Record<string, unknown> = {}, token = memory.token): Promise<any> {
   const r = await request('POST', `${memory.url}/mcp`, {
-    headers: { authorization: `Bearer ${memory.token}`, accept: 'application/json, text/event-stream' },
+    headers: { authorization: `Bearer ${token}`, accept: 'application/json, text/event-stream' },
     body: { jsonrpc: '2.0', id: 1, method, params },
   })
   assert.equal(r.status, 200, r.text)
   return JSON.parse(r.text).result
 }
 
-/** A hook call that sends this client version (or none), answered with its status and headers. */
-function hook(version: string | null, event = 'Stop') {
-  const headers: Record<string, string> = { authorization: `Bearer ${memory.token}` }
+const checkMessages = async (token: string): Promise<string> => (await mcp('tools/call', { name: 'check_messages', arguments: {} }, token)).content[0].text
+
+/** A hook call from this computer: the client version it sends (or none), and whether it says its last update failed. */
+function hook(version: string | null, event = 'Stop', token = memory.token, failed = false) {
+  const headers: Record<string, string> = { authorization: `Bearer ${token}` }
   if (version) headers['x-memory-client-version'] = version
+  if (failed) headers['x-memory-update-failed'] = '1'
   return request('POST', `${memory.url}/hooks/${event}?agent=claude`, { headers, body: { session_id: 'r31', cwd: '/tmp' } })
 }
 
-function messages(version: string | null) {
-  const headers: Record<string, string> = { authorization: `Bearer ${memory.token}` }
+function messages(version: string | null, token = memory.token) {
+  const headers: Record<string, string> = { authorization: `Bearer ${token}` }
   if (version) headers['x-memory-client-version'] = version
   return request('GET', `${memory.url}/messages/claude`, { headers })
 }
 
-test('/healthz and MCP initialize report the one server version, and every answer carries it', { skip: SKIP }, async () => {
+// R31 fix 6: two versions, one for each surface.
+test('/healthz and MCP initialize report the server version, and every answer carries it with the newest client version', { skip: SKIP }, async () => {
   const health = await request('GET', `${memory.url}/healthz`)
   assert.equal(JSON.parse(health.text).version, SERVER_VERSION)
-  assert.equal(health.headers['x-memory-version'], SERVER_VERSION)
+  assert.equal(JSON.parse(health.text).client_version, CLIENT_VERSION)
   assert.equal((await mcp('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'claude-code' } })).serverInfo.version, SERVER_VERSION)
-  assert.equal((await hook(null)).headers['x-memory-version'], SERVER_VERSION)
-  assert.equal((await request('GET', `${memory.url}/nothing-here`, { headers: { authorization: `Bearer ${memory.token}` } })).headers['x-memory-version'], SERVER_VERSION)
+  for (const r of [health, await hook(null), await request('GET', `${memory.url}/nothing-here`, { headers: bearer(memory.token) })]) {
+    assert.equal(r.headers['x-memory-version'], SERVER_VERSION)
+    assert.equal(r.headers['x-memory-client-latest'], CLIENT_VERSION, 'the version hooks update to')
+  }
+  // R31 fix 11: no header names a computer; the token does.
+  const preflight = await request('OPTIONS', `${memory.url}/hooks/Stop`, { headers: { origin: 'https://example.com', 'access-control-request-method': 'POST' } })
+  const allowed = preflight.headers['access-control-allow-headers'] ?? ''
+  assert.match(allowed, /x-memory-client-version/)
+  assert.match(allowed, /x-memory-update-failed/)
+  assert.doesNotMatch(allowed, /x-memory-device/)
+  assert.match(preflight.headers['access-control-expose-headers'] ?? '', /x-memory-client-latest/)
 })
 
-test('the install route serves memory-hook stamped with the server version', { skip: SKIP }, async () => {
-  const served = await request('GET', `${memory.url}/install/files/memory-hook`)
-  assert.equal(served.status, 200)
-  assert.match(served.text, new RegExp(`^VERSION=${SERVER_VERSION.replace('.', '\\.')}$`, 'm'))
-  assert.ok(!served.text.includes('VERSION=@MEMORY_VERSION@'))
-  for (const f of ['install.sh', 'claude-settings.json', 'codex-hooks.json']) assert.equal((await request('GET', `${memory.url}/install/files/${f}`)).status, 200, f)
+// R31 fix 1: the server serves each client file's signature, and the baked files are current.
+test('the install route serves every client file with a signature that verifies under the committed public key', { skip: SKIP }, async () => {
+  const pub = join(CLIENT_DIR, 'signing-pub.pem')
+  for (const f of ['memory-hook', 'install.sh', 'claude-settings.json', 'codex-hooks.json', 'signing-pub.pem']) {
+    const served = await request('GET', `${memory.url}/install/files/${f}`)
+    const sig = await request('GET', `${memory.url}/install/files/${f}.sig`)
+    assert.equal(served.status, 200, f)
+    assert.equal(sig.status, 200, `${f}.sig`)
+    const local = readFileSync(join(CLIENT_DIR, f), 'utf8')
+    // memory-hook is baked stamped with the client version, so the signature covers the bytes a computer downloads.
+    const expected = f === 'memory-hook' ? local.replace('VERSION=@MEMORY_VERSION@', `VERSION=${CLIENT_VERSION}`) : local
+    assert.equal(served.text, expected, `${f} as served is the file in git, so files.ts was baked from it`)
+    assert.ok(verifies(pub, served.text, sig.text), `${f}.sig verifies`)
+    assert.ok(!verifies(pub, `${served.text}\n# changed`, sig.text), `${f}.sig does not cover other bytes`)
+  }
+  assert.equal((await request('GET', `${memory.url}/install/files/nothing.sig`)).status, 404)
+  assert.equal((await request('GET', `${memory.url}/install/files/install.sh.sig.sig`)).status, 404)
+  assert.equal((await request('GET', `${memory.url}/install/files/signing-key.pem`)).status, 404)
+  assert.equal((await request('GET', `${memory.url}/install/files/signing-pub.previous.pem`)).status, 404)
 })
 
 test('hooks tell a client where it stands, and an older client keeps working', { skip: SKIP }, async () => {
@@ -508,40 +550,81 @@ test('hooks tell a client where it stands, and an older client keeps working', {
     assert.equal(r.status, 200, `${v}: ${r.text}`)
     return r.headers['x-memory-client-status'] ?? null
   }
-  assert.equal((await hook(SERVER_VERSION)).text, '', 'a hook call answers with an empty body, so memory-hook prints nothing')
-  assert.equal(await status(SERVER_VERSION), 'current')
+  assert.equal((await hook(CLIENT_VERSION)).text, '', 'a hook call answers with an empty body, so memory-hook prints nothing')
+  assert.equal(await status(CLIENT_VERSION), 'current')
   assert.equal(await status('29991231.1'), 'current')
   assert.equal(await status('dev'), 'current')
-  assert.equal(await status('20200101.1'), 'expired', 'past the 30 day cutoff')
+  // This server runs with a 0 day cutoff, so a client behind the newest release is past it. version.test.ts has the 30.
+  assert.equal(await status('20200101.1'), 'expired')
   assert.equal(await status('nonsense'), 'unknown')
   assert.equal(await status(null), null, 'a hook that sends no version gets no status')
-  // N-1: the day before the server's version, still answered in full.
-  assert.ok(['behind', 'expired'].includes((await status('20261101.1')) ?? ''))
 })
 
-test('a client with no version or past the cutoff is told to rerun the installer, in its messages and in check_messages', { skip: SKIP }, async () => {
-  const note = /Rerun `curl -fsSL https:\/\/memory\.heyclyde\.me\/install \| sh`/
-  // An old hook sends no version: the inbox carries the note, so the old hook prints it.
-  assert.match((await messages(null)).text, note)
-  // One that sends a version prints its own line, so the server adds nothing.
-  assert.doesNotMatch((await messages(SERVER_VERSION)).text, note)
-  assert.doesNotMatch((await messages('20200101.1')).text, note)
-  // The MCP tool knows the computer by its last reported version.
-  await hook('20200101.1')
-  const stale = await mcp('tools/call', { name: 'check_messages', arguments: {} })
-  assert.match(stale.content[0].text, note)
-  await hook(SERVER_VERSION)
-  const fresh = await mcp('tools/call', { name: 'check_messages', arguments: {} })
-  assert.doesNotMatch(fresh.content[0].text, note)
+// R31 fix 5 and 8.
+test('a hook with no version gets the installer note in its inbox; one that sends a version does not', { skip: SKIP }, async () => {
+  const token = newDevice('old-hook')
+  assert.match((await messages(null, token)).text, NOTE, "an old hook sends no version and can't print its own line")
+  assert.doesNotMatch((await messages(CLIENT_VERSION, token)).text, NOTE)
+  assert.doesNotMatch((await messages('20200101.1', token)).text, NOTE, 'an expired one prints its own line, and only when its update failed')
 })
 
-test("the real memory-hook against the real server prints nothing for SessionStart, UserPromptSubmit and Stop", { skip: SKIP }, async () => {
+test('check_messages shows the installer note only to a computer with hooks that is too old and cannot update itself', { skip: SKIP }, async () => {
+  // A computer that only uses MCP: no hook ever called, no version ever reported.
+  const mcpOnly = newDevice('mcp-only')
+  assert.doesNotMatch(await checkMessages(mcpOnly), NOTE, 'no hooks, so no hook to rerun the installer for')
+  // claude.ai and the like come in on an OAuth token, and have no hooks at all.
+  const oauth = jwt({ email: ownerEmail(), client_id: 'claude-ai-client', jti: randomUUID() })
+  assert.doesNotMatch(await checkMessages(oauth), NOTE)
+  // An old hook: it has called the server but never sent a version.
+  const old = newDevice('old-hook-mcp')
+  await hook(null, 'Stop', old)
+  assert.match(await checkMessages(old), NOTE)
+  // A hook client that reports an expired version, with its last update not failed: it may well update on its own.
+  const stale = newDevice('stale-hook')
+  await hook('20200101.1', 'Stop', stale)
+  assert.doesNotMatch(await checkMessages(stale), NOTE)
+  // The same, reporting that its update failed: only a rerun fixes it.
+  await hook('20200101.1', 'Stop', stale, true)
+  assert.match(await checkMessages(stale), NOTE)
+  // Once it has updated, the note is gone.
+  await hook(CLIENT_VERSION, 'Stop', stale)
+  assert.doesNotMatch(await checkMessages(stale), NOTE)
+  // A current client's failed update (it is inside the cutoff) says nothing either.
+  await hook(CLIENT_VERSION, 'Stop', stale, true)
+  assert.doesNotMatch(await checkMessages(stale), NOTE)
+  // The version a computer reports lands on its device row.
+  assert.deepEqual(sql(`select client_version, client_update_failed, hook_seen from memory.device where name = 'stale-hook'`), [
+    { client_version: CLIENT_VERSION, client_update_failed: true, hook_seen: true },
+  ])
+  assert.deepEqual(sql(`select hook_seen, client_version from memory.device where name = 'mcp-only'`), [{ hook_seen: false, client_version: null }])
+})
+
+// R31 fix 4.
+test("auth works while the device columns of R31 do not exist yet, so a deploy before its migration can't lock a computer out", { skip: SKIP }, async () => {
+  sql('alter table memory.device drop column client_version, drop column client_update_failed, drop column hook_seen')
+  try {
+    const token = newDevice('before-migration')
+    const sent = await hook(CLIENT_VERSION, 'Stop', token, true)
+    assert.equal(sent.status, 200, sent.text)
+    assert.equal((await hook(null, 'Stop', token)).status, 200)
+    assert.equal((await messages(null, token)).status, 200)
+    assert.equal((await mcp('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'claude-code' } }, token)).serverInfo.version, SERVER_VERSION)
+    assert.equal(typeof (await checkMessages(token)), 'string', 'check_messages answers too')
+    assert.ok(sql(`select last_seen from memory.device where name = 'before-migration'`)[0].last_seen, 'last_seen still moves')
+    // A wrong token is still refused: the fallback is not a way around the check.
+    assert.equal((await hook(CLIENT_VERSION, 'Stop', 'device-not-a-token')).status, 401)
+  } finally {
+    sql('alter table memory.device add column client_version text, add column client_update_failed boolean not null default false, add column hook_seen boolean not null default false')
+  }
+})
+
+test('the real memory-hook against the real server prints nothing for SessionStart, UserPromptSubmit and Stop', { skip: SKIP }, async () => {
   const home = tempDir('memory-hook-real-')
   try {
     for (const event of ['SessionStart', 'UserPromptSubmit', 'Stop']) {
       const ran = await new Promise<{ code: number | null; stdout: string }>((resolve) => {
         const env = { PATH: process.env.PATH ?? '', HOME: home, MEMORY_URL: memory.url, MEMORY_TOKEN: memory.token, NO_PROXY: '127.0.0.1', no_proxy: '127.0.0.1' }
-        const child = spawn(join(repoRoot(), 'memory', 'supabase', 'functions', 'memory', 'client', 'memory-hook'), [event], { env, stdio: ['pipe', 'pipe', 'ignore'] })
+        const child = spawn(join(CLIENT_DIR, 'memory-hook'), [event], { env, stdio: ['pipe', 'pipe', 'ignore'] })
         let stdout = ''
         child.stdout.on('data', (d) => (stdout += d))
         child.stdin.end('{"session_id":"r31-real","cwd":"/tmp"}')

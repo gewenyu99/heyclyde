@@ -5,7 +5,7 @@ import type { Principal } from "./auth.ts";
 import { config } from "./config.ts";
 import { sql } from "./db.ts";
 import * as service from "./service.ts";
-import { clientStatus, needsInstaller, SERVER_VERSION, UPDATE_NOTE } from "./version.ts";
+import { clientStatus, installerNote, SERVER_VERSION } from "./version.ts";
 import { Refused, remember } from "./write.ts";
 
 const VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
@@ -87,10 +87,12 @@ export const TOOLS = [
   },
 ];
 
-/** The note for a computer whose hook is too old to update itself, or "" for everyone else. A claude.ai connector has no hook. */
+/** The note for a computer whose hook is too old to update itself, or "" for everyone else. A claude.ai connector (oauth:)
+ * has no hook, and neither does a computer that only uses MCP: it has never called a hook and reported no version. */
 function installNote(who: Principal) {
   if (who.role !== "device" || who.device?.startsWith("oauth:")) return "";
-  return needsInstaller(clientStatus(who.clientVersion, config.clientCutoffDays)) ? UPDATE_NOTE : "";
+  if (!who.hookSeen && !who.clientVersion) return "";
+  return installerNote(clientStatus(who.clientVersion, config.clientCutoffDays), Boolean(who.updateFailed));
 }
 
 type Call = { session: string; client: string | null; args: Record<string, any>; note: string };
