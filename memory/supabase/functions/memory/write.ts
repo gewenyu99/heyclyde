@@ -3,6 +3,7 @@
 import { OverBudget } from "./budget.ts";
 import { type Row, type Sql, sql } from "./db.ts";
 import { sha256 } from "./embed.ts";
+import { MIN_QUOTE, squash, verifyEvidence } from "./evidence.ts";
 import { redactText } from "./redact.ts";
 import { screen } from "./judge.ts";
 
@@ -19,7 +20,17 @@ const RANK: Record<string, number> = { draft: 0, observed: 1, approved: 2 };
 // part_of comes from `project` and supersedes from `supersedes`, so `links` takes the other types.
 const FREE_LINKS = new Set([...LINK_TYPES].filter((t) => t !== "part_of" && t !== "supersedes"));
 const FIELDS = new Set(["id", "pattern", "title", "body", "authority", "scope", "sensitivity", "lang", "valid_from",
-  "source", "evidence_kind", "evidence", "project", "links", "supersedes", "blobs"]);
+  "source", "evidence_kind", "evidence", "evidence_event", "kind", "project", "links", "supersedes", "blobs"]);
+// What a note claims. A fact is checkable against an event memory holds, wen is Wen's own words, an observation is an
+// agent's inference or summary, and a plan says what someone means to do.
+const KINDS = ["fact", "wen", "observation", "plan"];
+/** Where a kind of note starts: its confidence, and how many showings it has to prove itself. A fact whose quote checked
+ * out against its event starts settled and high. Everything else is on trial for its first 3 showings. */
+export const START: Record<string, { confidence: number; chances: number }> = {
+  fact: { confidence: 0.9, chances: 0 }, wen: { confidence: 0.7, chances: 3 },
+  observation: { confidence: 0.5, chances: 3 }, plan: { confidence: 0.5, chances: 3 },
+};
+const AGENT_NAME = /^[a-z0-9_-]{1,40}$/;
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
 const MEDIA_TYPE_RE = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/;
 const SURROGATE = /[\ud800-\udfff]/;
@@ -29,8 +40,9 @@ const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[
 const MAX_CHARS: Record<string, number> = { title: 300, body: 4000, evidence: 20000 };
 export const MAX_BLOBS = 16, MAX_BLOB_BYTES = 4 * 1024 * 1024, MAX_BLOBS_BYTES = 8 * 1024 * 1024;
 
-// The most each caller may write. Every agent session holds a device token, so an agent writes drafts in a run scope, under
-// AGENT_SOURCE, with an id memory generates. Only clyde-flow holds the runtime token.
+// The most each caller may write. Every agent session holds a device token, so an agent writes drafts under AGENT_SOURCE,
+// with an id memory generates. A draft hides from no one: authority is a label, and visibility never waits on review. Only
+// clyde-flow holds the runtime token.
 const CALLERS: Record<string, string> = { agent: "draft", runtime: "approved" };
 const AGENT_SOURCE = { kind: "session", title: "An agent session, through remember" };
 
@@ -92,7 +104,7 @@ const isDate = (v: unknown) =>
 
 // ---------------------------------------------------------------- checks that need no database
 /** Every check that needs no database. Returns the entry with its defaults filled in, or throws Refused. */
-export async function validate(payload: unknown, caller: string): Promise<Row> {
+export async function validate(payload: unknown, caller: string, agentName = "agent"): Promise<Row> {
   if (!(caller in CALLERS)) throw new Error(`caller ${caller} must be agent or runtime`);
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Refused("An entry is a JSON object.");
   const raw = payload as Row;
@@ -102,7 +114,8 @@ export async function validate(payload: unknown, caller: string): Promise<Row> {
   const maxAuthority = CALLERS[caller], agent = caller === "agent";
   const p: Row = Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== null && v !== undefined));
   const e: Row = {
-    pattern: p.pattern, title: text(p.title), body: text(p.body), authority: p.authority, scope: p.scope,
+    pattern: p.pattern, title: text(p.title), body: text(p.body), authority: p.authority ?? (agent ? "draft" : undefined),
+    scope: p.scope ?? "global", kind: p.kind,
     sensitivity: p.sensitivity ?? "normal", lang: text(p.lang ?? "en"), evidence_kind: p.evidence_kind,
     evidence: text(p.evidence), project: p.project || null,
   };
@@ -121,8 +134,14 @@ export async function validate(payload: unknown, caller: string): Promise<Row> {
   }
   if (!(typeof e.scope === "string" && SCOPE_RE.test(e.scope))) {
     errs.push(`scope ${JSON.stringify(e.scope ?? null)} must be global, domain:<x>, repo:<x> or run:<id>.`);
-  } else if (agent && !e.scope.startsWith("run:")) {
-    errs.push(`An agent writes only in a run scope, run:<id>, not ${e.scope}. Wen or clyde-flow promotes notes wider.`);
+  }
+  if (e.kind !== undefined && !oneOf(e.kind, new Set(KINDS))) {
+    errs.push(`kind ${JSON.stringify(e.kind)} must be one of ${KINDS.join(", ")}.`);
+  }
+  e.evidence_event = null;
+  if ("evidence_event" in p) {
+    if (/^\d{1,18}$/.test(String(p.evidence_event)) && Number(p.evidence_event) > 0) e.evidence_event = String(p.evidence_event);
+    else errs.push("evidence_event must be an event id.");
   }
   if (!oneOf(e.sensitivity, SENSITIVITY)) errs.push("sensitivity must be normal, private or confidential.");
   if (!e.lang) errs.push("lang must be a language code like en.");
@@ -137,8 +156,14 @@ export async function validate(payload: unknown, caller: string): Promise<Row> {
 
   if (e.project !== null && typeof e.project !== "string") errs.push("project must be an entry id.");
   else if (e.project === null && e.pattern !== "projects") {
-    errs.push("project is required unless pattern is projects. It's the id of the projects entry this belongs to." +
-      (String(e.scope).startsWith("run:") ? ` For a run, create its projects entry in scope ${e.scope} first.` : ""));
+    if (agent) {
+      // An agent that names no project gets its own notes project, made the first time it's needed.
+      e.project = `notes-${AGENT_NAME.test(agentName) ? agentName : "agent"}`;
+      e.notesProject = true;
+    } else {
+      errs.push("project is required unless pattern is projects. It's the id of the projects entry this belongs to." +
+        (String(e.scope).startsWith("run:") ? ` For a run, create its projects entry in scope ${e.scope} first.` : ""));
+    }
   }
 
   const explicitId = (p.id ?? "") !== "";
@@ -311,6 +336,39 @@ async function landed(db: Sql, e: Row) {
   return true;
 }
 
+/** The kind a note is stored as, with its starting strength. A claimed fact is stored as one only when its evidence quote
+ * is in the event it cites, and an agent's claim to quote Wen only when the event is one of his prompts. A claim that fails
+ * the check becomes an observation, and `verified` says it failed. With no claim, the writer's evidence decides: a quote of
+ * Wen is wen, and anything else an observation. */
+export async function classify(db: Sql, e: Row, caller: string) {
+  const claimed: string = e.kind ?? (caller === "runtime" && e.evidence_kind === "quote" ? "wen" : "observation");
+  let kind = claimed, verified: boolean | null = null;
+  // The runtime token (the groomer, clyde-flow) may name Wen's words without an event. An agent has to cite one.
+  if (claimed === "fact" || (claimed === "wen" && (caller === "agent" || e.evidence_event !== null))) {
+    // Redaction markers prove nothing, so a quote that is mostly markers can't verify.
+    const bare = squash(e.evidence.replace(/\[redacted:[^\]]*\]/g, ""));
+    const verdict = bare.length < MIN_QUOTE ? null : await verifyEvidence(db, e.evidence_event, e.evidence);
+    verified = Boolean(verdict?.ok && (claimed !== "wen" || verdict.event.event === "UserPromptSubmit"));
+    if (!verified) kind = "observation";
+  }
+  return { kind, verified, ...START[kind] };
+}
+
+/** The projects entry an agent's notes hang off when it names none. Made once, and settled: it isn't a claim. */
+async function ensureNotesProject(db: Sql, e: Row) {
+  if (!e.notesProject) return;
+  const s = e.source, who = e.project.slice("notes-".length);
+  const evidence = `memory made this the first time ${who} remembered a note with no project of its own.`;
+  await db`insert into memory.source (id, kind, title, uri, date) values (${s.id}, ${s.kind}, ${s.title}, ${s.uri}, current_date)
+    on conflict (id) do nothing`;
+  await db`insert into memory.entry (id, pattern, title, body, authority, scope, sensitivity, lang, valid_from, source_id,
+      evidence_kind, evidence, evidence_sha256, project, origin, kind, confidence, chances_left)
+    values (${e.project}, 'projects', ${`Notes by ${who}`}, ${`Notes ${who} wrote through remember with no project of their own.`},
+      'draft', 'global', 'normal', 'en', ${today()}, ${s.id}, 'summary', ${evidence}, ${await sha256(evidence)}, ${e.project},
+      'runtime', 'observation', ${START.observation.confidence}, 0)
+    on conflict (id) do nothing`;
+}
+
 /** Insert every row. False when another write took the id first. */
 async function insert(db: Sql, e: Row) {
   const s = e.source;
@@ -322,10 +380,11 @@ async function insert(db: Sql, e: Row) {
       values (${b.sha256}, ${b.media_type}, ${b.content.length}, ${b.content}) on conflict (sha256) do nothing`;
   }
   const inserted = await db`insert into memory.entry (id, pattern, title, body, authority, scope, sensitivity, lang, valid_from,
-      source_id, evidence_kind, evidence, evidence_sha256, project, origin, payload_sha256)
+      source_id, evidence_kind, evidence, evidence_sha256, project, origin, payload_sha256, kind, confidence, chances_left,
+      evidence_event, verified)
     values (${e.id}, ${e.pattern}, ${e.title}, ${e.body}, ${e.authority}, ${e.scope}, ${e.sensitivity}, ${e.lang},
       ${e.valid_from}, ${s.id}, ${e.evidence_kind}, ${e.evidence}, ${await sha256(e.evidence)}, ${e.project ?? e.id},
-      'runtime', ${e.digest})
+      'runtime', ${e.digest}, ${e.kind}, ${e.confidence}, ${e.chances}, ${e.evidence_event}, ${e.verified})
     on conflict (id) do nothing returning id`;
   if (!inserted.length) return false;
   const all: [string, string][] = [
@@ -345,12 +404,15 @@ class Retry extends Error {}
 /** Write one entry as `caller`, agent or runtime. Returns {id, blobs, embedded}. Throws Refused, having written
  * nothing, when the payload breaks an invariant. Sending the same payload again returns its entry. The embedding
  * sync picks the entry up after the response. */
-export async function remember(payload: unknown, caller: string) {
-  const e = await validate(payload, caller);
+export async function remember(payload: unknown, caller: string, agentName = "agent") {
+  const e = await validate(payload, caller, agentName);
   // Secrets and identifiers come out first. Then the judge reads what would be stored and can refuse it. A judge that
   // can't answer refuses too: memory fails closed. A private or confidential entry reaches a third-party model by its
   // title alone, so the judge reads only that, and its body rests on redaction.
   for (const f of ["title", "body", "evidence"]) e[f] = redactText(e[f])[0];
+  // The quote check reads the redacted evidence, since the event it cites was stored redacted.
+  const { chances, ...start } = await classify(sql, e, caller);
+  Object.assign(e, start, { chances });
   const titleOnly = e.sensitivity === "private" || e.sensitivity === "confidential";
   let why: string | null;
   try {
@@ -364,6 +426,7 @@ export async function remember(payload: unknown, caller: string) {
   try {
     await sql.begin(async (tx) => {
       if (await landed(tx, e)) return;
+      await ensureNotesProject(tx, e);
       await check(tx, e);
       if (!(await insert(tx, e))) throw new Retry();
     });

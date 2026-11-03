@@ -45,11 +45,8 @@ export function estimateTokens(text: string) {
   return cjk + Math.floor((text.length - cjk) / 4);
 }
 
-// ---------------------------------------------------------------- scope: a run's entries reach only that run's recalls
-/** Leave out run: entries unless they're in the asked-for scope. Every arm's SQL takes this. */
-function scopeFilter(db: Sql, scope: string | null, alias = "") {
-  return db`(${db.unsafe(alias)}scope not like 'run:%' or ${db.unsafe(alias)}scope = ${scope})`;
-}
+// ---------------------------------------------------------------- scope: a recall's own run leads, and no run is hidden
+// No arm leaves an entry out for its scope. A recall that names a run:<id> scope boosts that run's entries.
 
 const byScore = (a: Ranked, b: Ranked) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
 
@@ -60,18 +57,22 @@ export function boost(scores: Ranked[], ids: Set<string>, factor: number): Ranke
 
 // ---------------------------------------------------------------- index: grep the index map
 /** The INDEX.md map, one line per entry, superseded entries struck through, as build.py writes it. */
-export async function indexLines(db: Sql, scope: string | null = null) {
-  const rows = await db`select e.id, e.title, e.authority, e.scope, e.sensitivity, e.pattern, p.title as project_title,
+export async function indexLines(db: Sql) {
+  const rows = await db`select e.id, e.title, e.authority, e.scope, e.sensitivity, e.pattern, e.kind, e.confidence, e.verified,
+      p.title as project_title,
       (select string_agg(l.src, ', ' order by l.src) from memory.link l where l.dst = e.id and l.type = 'supersedes') as superseded_by
     from memory.entry e left join memory.entry p on p.id = e.project
-    where e.pattern <> 'projects' and ${scopeFilter(db, scope, "e.")}
+    where e.pattern <> 'projects'
     order by e.project, e.pattern, e.id`;
   return rows.map((r) => {
     const title = r.superseded_by ? `~~${r.title}~~ → ${r.superseded_by}` : r.title;
     const lock = r.sensitivity === "private" ? " 🔒" : "";
+    // Ranking reads `line`, as it was before kinds. `shown` is what the packet prints: kind, confidence, and a draft marked unreviewed.
+    const line = `- \`${r.id}\` ${title} [${r.authority}, ${r.scope}]${lock} (${r.project_title})`;
     return {
       id: r.id as string,
-      line: `- \`${r.id}\` ${title} [${r.authority}, ${r.scope}]${lock} (${r.project_title})`,
+      line,
+      shown: `- \`${r.id}\` ${title} [${kindLabel(r, ", ")}, ${r.authority}${r.authority === "draft" ? ", unreviewed" : ""}, ${r.scope}]${lock} (${r.project_title})`,
       authority: r.authority as string,
       scope: r.scope as string,
       superseded: Boolean(r.superseded_by),
@@ -86,12 +87,12 @@ export async function indexLines(db: Sql, scope: string | null = null) {
 export async function indexSearch(db: Sql, query: string, scope: string | null, p: Params): Promise<ArmResult> {
   const q = tokens(query);
   const hits: Ranked[] = [], scoped = new Set<string>();
-  for (const l of await indexLines(db, scope)) {
+  for (const l of await indexLines(db)) {
     const words = tokens(l.line + " " + l.id.replaceAll("-", " "));
     let hit = 0;
     for (const t of q) if (words.has(t)) hit++;
     if (hit) {
-      hits.push([l.id, hit * (l.authority === "draft" ? p.indexDraftFactor : 1), l.line]);
+      hits.push([l.id, hit * (l.authority === "draft" ? p.indexDraftFactor : 1), l.shown]);
       if (scope && l.scope === scope && !l.superseded) scoped.add(l.id);
     }
   }
@@ -100,18 +101,18 @@ export async function indexSearch(db: Sql, query: string, scope: string | null, 
 }
 
 // ---------------------------------------------------------------- hybrid: keyword plus vector search
-async function englishRanks(db: Sql, query: string, scope: string | null, limit: number): Promise<string[]> {
+async function englishRanks(db: Sql, query: string, limit: number): Promise<string[]> {
   // plainto_tsquery ANDs every term, which a natural-language question rarely satisfies. OR them instead.
   const rows = await db`select id, ts_rank_cd(tsv_en, t.q) as score from memory.entry_current
     cross join (select nullif(replace(plainto_tsquery('english', ${query})::text, ' & ', ' | '), '')::tsquery as q) t
-    where t.q is not null and tsv_en @@ t.q and ${scopeFilter(db, scope)}
+    where t.q is not null and tsv_en @@ t.q
     order by score desc, id limit ${limit}`;
   return rows.map((r) => r.id);
 }
 
 /** PGroonga over search_text, indexed as bigrams. The query's 中文 bigrams are OR'ed, the way the English ranker ORs
  * its terms. pgroonga_score only counts when the index runs, so the scan is forced onto it. */
-async function chineseRanks(db: Sql, query: string, scope: string | null, limit: number): Promise<string[]> {
+async function chineseRanks(db: Sql, query: string, limit: number): Promise<string[]> {
   const terms = [...new Set(bigrams(query))];
   if (!terms.length) return [];
   const run = async (tx: Sql) => {
@@ -119,7 +120,6 @@ async function chineseRanks(db: Sql, query: string, scope: string | null, limit:
     return await tx`select e.id, extensions.pgroonga_score(e.tableoid, e.ctid) as score from memory.entry e
       where e.search_text operator(extensions.&@~) ${terms.join(" OR ")}
         and not exists (select 1 from memory.link l where l.dst = e.id and l.type = 'supersedes')
-        and ${scopeFilter(tx, scope, "e.")}
       order by score desc, e.id limit ${limit}`;
   };
   const rows = "begin" in db ? await (db as any).begin(run) : await run(db);
@@ -138,19 +138,18 @@ async function queryVector(query: string) {
   return queryVectors.get(key)!;
 }
 
-async function vectorRanks(db: Sql, query: string, scope: string | null, limit: number): Promise<[string[], string | null]> {
+async function vectorRanks(db: Sql, query: string, limit: number): Promise<[string[], string | null]> {
   let vec: number[];
   try {
     vec = await queryVector(query);
   } catch (e) { // OpenAI down, no key or over budget: keyword ranks still answer.
     return [[], `embed-failed: ${(e as Error).name}`];
   }
-  // The HNSW scan stops at hnsw.ef_search (40) candidates, and the scope and superseded filters run after it. When run
-  // notes crowd those 40, few or none survive. An iterative scan keeps going until the limit is met. pgvector 0.8+.
+  // The HNSW scan stops at hnsw.ef_search (40) candidates, and the superseded filter runs after it. When superseded
+  // entries crowd those 40, few or none survive. An iterative scan keeps going until the limit is met. pgvector 0.8+.
   const run = async (tx: Sql) => {
     await tx`set local hnsw.iterative_scan = strict_order`;
     return await tx`select x.entry_id as id from memory.entry_embedding x join memory.entry_current e on e.id = x.entry_id
-      where ${scopeFilter(tx, scope, "e.")}
       order by x.embedding <=> ${toPgvector(vec)}::extensions.vector limit ${limit}`;
   };
   const rows = "begin" in db ? await (db as any).begin(run) : await run(db);
@@ -168,19 +167,19 @@ export function rrf(rankings: string[][], weights: number[] | undefined, k: numb
 
 /** Each ranker's list on its own, so an eval can tell which one lost an entry. The 中文 ranker only runs on queries
  * with 中文 in them, so English keyword evidence never counts twice. */
-export async function hybridComponents(db: Sql, query: string, scope: string | null, p: Params) {
-  const [vec, degraded] = await vectorRanks(db, query, scope, p.candidates);
-  const en = await englishRanks(db, query, scope, p.candidates);
+export async function hybridComponents(db: Sql, query: string, p: Params) {
+  const [vec, degraded] = await vectorRanks(db, query, p.candidates);
+  const en = await englishRanks(db, query, p.candidates);
   let zh: string[] = [], keyword = en;
   if (CJK.test(query)) {
-    zh = await chineseRanks(db, query, scope, p.candidates);
+    zh = await chineseRanks(db, query, p.candidates);
     keyword = rrf([en, zh], undefined, p.rrfK).map(([id]) => id);
   }
   return { parts: { en, zh, keyword, vec }, degraded };
 }
 
 export async function hybridSearch(db: Sql, query: string, scope: string | null, p: Params): Promise<ArmResult> {
-  const { parts, degraded } = await hybridComponents(db, query, scope, p);
+  const { parts, degraded } = await hybridComponents(db, query, p);
   let fused = rrf([parts.keyword, parts.vec], [1, p.vecWeight], p.rrfK).map(([id, s]): Ranked => [id, s, null]);
   if (scope && fused.length) {
     const rows = await db`select id from memory.entry where id = any(${fused.map(([id]) => id)}::text[]) and scope = ${scope}`;
@@ -197,21 +196,19 @@ export async function hybridSearch(db: Sql, query: string, scope: string | null,
 // matches an outdated note reaches what replaced it. Replaced entries keep supersededFactor of what they gather.
 type Edges = Map<string, [string, number][]>;
 type Graph = {
-  links: Row[]; scope: Map<string, string>; superseded: Set<string>; at: number;
+  links: Row[]; superseded: Set<string>; at: number;
   /** The edges under one set's link type weights, built once per distinct weights. */
   edges: Map<string, Edges>;
 };
 let graphCache: Graph | null = null;
 
-/** The links and scopes, cached per isolate for a minute. */
+/** The links, cached per isolate for a minute. */
 async function graph(db: Sql): Promise<Graph> {
   if (graphCache && Date.now() - graphCache.at < 60_000) return graphCache;
-  const [links, entries] = await Promise.all([
-    db`select l.src, l.dst, l.type, coalesce(l.weight, 1) as weight, s.pattern as sp, d.pattern as dp
-       from memory.link l join memory.entry s on s.id = l.src join memory.entry d on d.id = l.dst`,
-    db`select id, scope from memory.entry`]);
+  const links = await db`select l.src, l.dst, l.type, coalesce(l.weight, 1) as weight, s.pattern as sp, d.pattern as dp
+       from memory.link l join memory.entry s on s.id = l.src join memory.entry d on d.id = l.dst`;
   graphCache = {
-    links: [...links], scope: new Map(entries.map((e) => [e.id, e.scope])), at: Date.now(), edges: new Map(),
+    links: [...links], at: Date.now(), edges: new Map(),
     superseded: new Set(links.filter((l) => l.type === "supersedes").map((l) => l.dst as string)),
   };
   return graphCache;
@@ -260,9 +257,7 @@ export async function spreadingSearch(db: Sql, query: string, scope: string | nu
   const [seedsRanked, degraded, seedTrace] = await hybridSearch(db, query, scope, p);
   const g = await graph(db);
   const activation = spread(edgesUnder(g, p.linkTypeWeights), new Map(seedsRanked.map(([id, s]) => [id, s])), p.restart, p.iterations);
-  const visible = (id: string) => { const sc = g.scope.get(id) ?? ""; return !sc.startsWith("run:") || sc === scope; };
   const ranked = [...activation]
-    .filter(([id]) => visible(id))
     .map(([id, a]): Ranked => [id, g.superseded.has(id) ? a * p.supersededFactor : a, null])
     .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
     .slice(0, p.candidates);
@@ -289,9 +284,17 @@ export function redact(row: Row): Row {
   return row.sensitivity !== "private" ? row : { ...row, body: "[private entry: ask Wen]", evidence: "" };
 }
 
+/** What a note claims and how far it is trusted: "fact", "observation unverified" with a failed check, joined to the
+ * confidence by `sep`. */
+export function kindLabel(row: Row, sep: string) {
+  return `${row.kind ?? "observation"}${row.verified === false ? sep === ", " ? " unverified" : " · unverified" : ""}${sep}${
+    Number(row.confidence ?? 0).toFixed(2)}`;
+}
+
 export function renderItem(n: number, row: Row) {
   row = redact(row);
-  let meta = `    ${row.authority} · ${row.scope} · ${row.valid_from}`;
+  // A draft is a note nobody has reviewed. It's served all the same.
+  let meta = `    ${kindLabel(row, " · confidence ")} · ${row.authority}${row.authority === "draft" ? " · unreviewed" : ""} · ${row.scope} · ${row.valid_from}`;
   if (row.superseded_by) meta += ` · replaced by ${row.superseded_by}`;
   const parts = [`[${n}] ${row.id}: ${row.title}`, meta, `    ${row.body}`];
   if (row.evidence && row.evidence_kind === "quote") parts.push(`    Wen: “${row.evidence}”`);
@@ -337,6 +340,7 @@ export function renderEntry(row: Row, links: Row[], blobs: Row[] = []) {
   row = redact(row);
   const out = [`${row.id}: ${row.title}`,
     `pattern ${row.pattern} · ${row.authority} · ${row.scope} · valid from ${row.valid_from} · project ${row.project}`,
+    `kind ${row.kind ?? "observation"} · confidence ${Number(row.confidence ?? 0).toFixed(2)}${row.verified === false ? " · unverified" : ""}`,
     "", row.body];
   if (row.evidence) {
     const who = row.evidence_kind === "quote" ? "Wen" : row.evidence_kind;

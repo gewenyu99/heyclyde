@@ -11,6 +11,7 @@ import { ARMS, hybridComponents } from "./search.ts";
 import * as service from "./service.ts";
 import { redact, redactText } from "./redact.ts";
 import { screen } from "./judge.ts";
+import { MIN_QUOTE, squash, verifyEvidence } from "./evidence.ts";
 import { canonical, remember, Refused } from "./write.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
@@ -880,7 +881,7 @@ async function evalRank(data: Row) {
   if (!query || (typeof data.param_set !== "string" && !(data.arm in ARMS))) throw new ApiError(422, "Need a query, and an arm or a param_set.");
   const set = await evalSet(data);
   const r = await service.rankAndPack(sql, set, query, "", null, data.filter !== false);
-  const parts = set.arm === "hybrid" ? (await hybridComponents(sql, query, null, set.params)).parts : null;
+  const parts = set.arm === "hybrid" ? (await hybridComponents(sql, query, set.params)).parts : null;
   return { param_set: set.id, candidates: r.ranked.map(([id]) => id), delivered: r.delivered, rejected: r.rejected, degraded: r.degraded, parts };
 }
 
@@ -929,17 +930,15 @@ async function judgeBackfill(data: Row) {
 // its quote came from, and the quote has to appear in that event's prompt word for word, so the groomer can't put
 // words in his mouth. Drafts start at confidence 0.6 and earn the rest through the learner.
 
-const squash = (t: string) => t.toLowerCase().replace(/\s+/g, " ").trim();
-
-/** The event's prompt, when `quote` appears in it word for word, else a 422. */
-async function quoted(eventId: unknown, quote: unknown) {
-  if (typeof quote !== "string" || squash(quote).length < 8) throw new ApiError(422, "quote must be Wen's words, at least 8 characters.");
+/** The cited prompt event, when `quote` appears in it word for word at a token boundary, else a 422. */
+async function citedPrompt(eventId: unknown, quote: unknown) {
+  if (typeof quote !== "string" || squash(quote).length < MIN_QUOTE) throw new ApiError(422, "quote must be Wen's words, at least 8 characters.");
   if (!/^\d+$/.test(String(eventId))) throw new ApiError(422, "event_id must be the hook event the quote came from.");
-  const [ev] = await sql`select id, session_id, payload->>'prompt' as prompt from memory.event
-    where id = ${String(eventId)} and event = 'UserPromptSubmit'`;
-  if (!ev?.prompt) throw new ApiError(422, `Event ${eventId} isn't one of Wen's prompts.`);
-  if (!squash(ev.prompt).includes(squash(quote))) throw new ApiError(422, `That quote isn't in event ${eventId} word for word.`);
-  return ev;
+  const [ev] = await sql`select event from memory.event where id = ${String(eventId)}`;
+  if (ev?.event !== "UserPromptSubmit") throw new ApiError(422, `Event ${eventId} isn't one of Wen's prompts.`);
+  const verdict = await verifyEvidence(sql, eventId, quote);
+  if (!verdict.ok) throw new ApiError(422, `That quote isn't in event ${eventId} word for word.`);
+  return verdict.event;
 }
 
 /** Wen's prompts since the last groom, grouped by session, oldest first, up to 300 prompts. */
@@ -971,7 +970,7 @@ async function groomCheckpoint(data: Row) {
 
 /** A new entry from Wen's words. It goes through remember()'s rules, redaction and judge like any other write. */
 async function groomDraft(data: Row) {
-  const ev = await quoted(data.event_id, data.quote);
+  const ev = await citedPrompt(data.event_id, data.quote);
   let r;
   try {
     r = await remember({
@@ -996,7 +995,7 @@ async function groomDraft(data: Row) {
 
 /** Wen said it again in a new session: +0.15, once per event. */
 async function groomReinforce(data: Row) {
-  const ev = await quoted(data.event_id, data.quote);
+  const ev = await citedPrompt(data.event_id, data.quote);
   const id = String(data.entry_id ?? "");
   const [e] = await sql`select confidence from memory.entry where id = ${id}`;
   if (!e) throw new ApiError(404, `No entry ${id}.`);

@@ -12,7 +12,8 @@ const VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 export const INSTRUCTIONS = "Wen's memory. Call recall before acting on anything that depends on Wen's decisions, " +
   "preferences or history. Wen's other agents leave you messages. Call check_messages when you start a task, " +
   "and post_message to reach them. check_messages numbers each message: call ack_messages with those ids once you've " +
-  "handled them, or they come back.";
+  "handled them, or they come back. To keep what you learn, call remember: it needs only pattern, title, body and " +
+  "evidence, and every other agent can recall the note at once.";
 
 const str = (description: string) => ({ type: "string", description });
 const int = (description: string) => ({ type: "integer", description });
@@ -23,7 +24,7 @@ export const TOOLS = [
     description: "Search Wen's memory: his decisions, preferences, observations and past reactions.\n\n" +
       "query: what you need to know, in English or 中文.\n" +
       "task: optional one-line description of what you are doing, to sharpen the search.\n" +
-      "scope: optional run scope like run:abc. That run's notes join the search and rank first.\n" +
+      "scope: optional run scope like run:abc. That run's notes rank first. Other runs' notes are searched too.\n" +
       "Results start with a retrieval id. Pass it to feedback() if the results helped or misled you.",
     inputSchema: {
       type: "object", required: ["query"],
@@ -45,23 +46,32 @@ export const TOOLS = [
   },
   {
     name: "remember",
-    description: "Write one note to Wen's memory. It's a draft in a run scope until Wen or clyde-flow promotes it.\n\n" +
+    description: "Write one note to Wen's memory. Every other agent can recall it at once, labelled by its kind and marked " +
+      "unreviewed until Wen or clyde-flow reviews it.\n\n" +
       "pattern: projects, decisions, observations, preferences, recommendations, references or reactions.\n" +
       "title, body: a one-line title, and the summary recall ranks on.\n" +
-      "scope: run:<id>, the run this note hands off within.\n" +
-      "evidence: what backs it. evidence_kind: summary, assistant or memory.\n" +
-      "project: id of the run's projects entry. Required unless pattern is projects.\n" +
+      "evidence: what backs it.\n" +
+      "kind: observation (default: your inference or summary), fact, wen or plan. A fact starts high only when its " +
+      "evidence is a line from a tool's output that memory holds. Pass evidence_event, the id the hook printed as " +
+      "'memory event <n>', and put that line word for word in evidence. If it isn't in that event, the note is stored as " +
+      "an observation. wen is Wen's own words, from a prompt event. plan is what you mean to do.\n" +
+      "evidence_event: the id of the hook event that holds the evidence line.\n" +
+      "scope: optional, default global. run:<id> hands a note off within a run, and that run's recalls rank it first.\n" +
+      "evidence_kind: summary, assistant or memory.\n" +
+      "project: optional, default your own notes project. Give the id of a projects entry to file the note under it.\n" +
       'links: [{"type": "supports|contradicts|derived_from|relates|corrects", "to": "<id>"}].\n' +
-      "supersedes: ids of drafts in the same run that this note replaces. Hybrid recall stops serving them, and the " +
+      "supersedes: ids of notes in the same run that this note replaces. Hybrid recall stops serving them, and the " +
       "index arm lists them struck through.\n" +
       'blobs: [{"name": "gate-evidence", "media_type": "text/markdown", "text": "..."}] for long evidence.\n' +
       "Returns the entry's id and each blob's sha256.",
     inputSchema: {
-      type: "object", required: ["pattern", "title", "body", "scope", "evidence"],
+      type: "object", required: ["pattern", "title", "body", "evidence"],
       properties: {
         pattern: str("Entry pattern"), title: str("One-line title"), body: str("Summary recall ranks on"),
-        scope: str("run:<id>"), evidence: str("What backs it"), project: str("The run's projects entry id"),
-        evidence_kind: str("summary, assistant or memory"), authority: str("draft"), sensitivity: str("normal, private (title only for everyone) or confidential (work: title only for outside models)"),
+        evidence: str("What backs it"), kind: str("observation (default), fact, wen or plan"),
+        evidence_event: { type: "integer", description: "The hook event id that holds the evidence line" },
+        scope: str("global (default) or run:<id>"), project: str("A projects entry id, default your notes project"),
+        evidence_kind: str("summary, assistant or memory"), authority: str("Leave out"), sensitivity: str("normal, private (title only for everyone) or confidential (work: title only for outside models)"),
         lang: str("Language code, default en"), valid_from: str("YYYY-MM-DD"),
         links: { type: "array", items: { type: "object" } }, supersedes: { type: "array", items: { type: "string" } },
         blobs: { type: "array", items: { type: "object" } },
@@ -128,14 +138,15 @@ const RUN: Record<string, (c: Call) => Promise<string>> = {
     service.recall(session, s(args.query), s(args.task), client, s(args.scope) || null, principal),
   get_entry: async ({ session, args }) => (await service.getEntry(session, s(args.id))) ?? `No entry ${s(args.id)}.`,
   get_blob: ({ args }) => service.getBlob(s(args.sha256), Number(args.offset ?? 0), Number(args.limit ?? 20000)),
-  remember: async ({ args }) => {
+  remember: async ({ args, client }) => {
     const payload = {
-      pattern: args.pattern, title: args.title, body: args.body, scope: args.scope, evidence: args.evidence,
+      pattern: args.pattern, title: args.title, body: args.body, scope: args.scope || null, evidence: args.evidence,
+      kind: args.kind || null, evidence_event: args.evidence_event ?? null,
       evidence_kind: args.evidence_kind ?? "summary", authority: args.authority ?? "draft",
       sensitivity: args.sensitivity ?? "normal", lang: args.lang ?? "en", project: args.project || null,
       valid_from: args.valid_from || null, links: args.links ?? [], supersedes: args.supersedes ?? [], blobs: args.blobs ?? [],
     };
-    const r = await remember(payload, "agent");
+    const r = await remember(payload, "agent", service.agentName(client));
     return [`Remembered ${r.id}.`, ...r.blobs.map((b: { name: string; sha256: string }) => `Blob ${b.name}: ${b.sha256}`),
       "Keyword search finds it now. Vector search finds it after the next embedding sync."].join("\n");
   },

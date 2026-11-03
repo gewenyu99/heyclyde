@@ -20,7 +20,8 @@ Deno.test('a quote must start and end on a token boundary', () => {
   assert.ok(!quoteIn('memory.heyclyde.me. 300 IN A 104.21.32.123', DIG), 'a longer address is not the same address')
   assert.ok(!quoteIn(DIG, 'emory.heyclyde.me. 300 IN A 104.21.32.1'), 'a quote cannot start inside a word')
   assert.ok(!quoteIn('host-memory.heyclyde.me. 300 IN A 104.21.32.1', DIG), 'a hyphen joins words')
-  assert.ok(quoteIn(`result: ${DIG}.`, DIG), 'a sentence stop after it is a boundary')
+  assert.ok(!quoteIn(`result: ${DIG}.5`, DIG), 'a dot can continue an address')
+  assert.ok(quoteIn(`result: (${DIG}), done`, DIG), 'brackets and commas are boundaries')
   assert.ok(quoteIn(`x ${DIG} y ${DIG}.99`, DIG), 'one good match is enough')
 })
 

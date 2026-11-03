@@ -36,7 +36,7 @@ function itemText(line: string | null, row: Row | undefined) {
 }
 
 /** One parameter set's ranking and the packet recall delivers from it. Writes nothing, so the console can preview a set.
- * With a scope like run:abc, that run's entries are candidates too and rank first.
+ * Every run's entries are candidates. With a scope like run:abc, that run's rank first.
  *
  * Every arm's candidates pass the same relevance filter before packing, so the arms stay comparable. The judge reads the
  * top filterK and drops what it calls irrelevant. When it drops them all, recall says nothing matches rather than
@@ -80,7 +80,7 @@ export function packetText(chunks: string[], lines: boolean, degraded: string | 
   return head + chunks.join("\n\n");
 }
 
-/** Search memory. With a scope like run:abc, that run's entries are candidates too and rank first. */
+/** Search memory. Every run's entries are candidates. With a scope like run:abc, that run's rank first. */
 export async function recall(session: string, query: string, task = "", client: string | null = null,
   scope: string | null = null, principal = "anyone") {
   if (scope && !SCOPE_RE.test(scope)) throw new Refused(`scope ${JSON.stringify(scope)} must look like run:<id>, or be left out.`);

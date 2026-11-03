@@ -50,18 +50,19 @@ The first pass found an implementation bug, not a design limit. Hybrid's fusion 
 
 ## The tools
 
-- **`recall(query, task, scope)`.** Searches memory. The packet starts with a retrieval id. A `run:<id>` scope adds that run's entries.
+- **`recall(query, task, scope)`.** Searches memory. The packet starts with a retrieval id. Every note an agent wrote is a candidate, whatever its run. A `run:<id>` scope boosts that run's notes.
 - **`get_entry(id)`.** Opens one entry with its evidence, source, links and blobs.
 - **`get_blob(sha256, offset, limit)`.** Reads a blob as text, 20,000 characters a page. Each page says how to get the next.
-- **`remember(...)`.** Writes one note in a `run:<id>` scope. An agent's writes are always drafts, under its own session as the source, with an id memory generates.
+- **`remember(...)`.** Writes one note. It needs only `pattern`, `title`, `body` and `evidence`. The scope defaults to `global` and the project to the agent's own notes project, made the first time. An agent's writes are labelled drafts, under its own session as the source, with an id memory generates, and every recall serves them at once.
 - **`feedback(retrieval_id, verdict)`.** The agent's own report. Logged, never moves weights alone.
 
 ## Runs and blobs
 
 Each clyde-flow run gets its own scope, `run:<id>`. Its stages leave notes there, and the next stage recalls them.
 
-- **Runs stay out of normal recalls.** A recall without a scope never sees `run:` entries. With `scope="run:abc"`, that run's entries join the candidates and their scores are multiplied by the parameter set's `scopeBoost`, 3 in the v1 sets. Other runs stay hidden. Both arms filter and boost the same way.
-- **A run's project comes first.** Write a `projects` entry in scope `run:<id>`, then point every note at it with `project`.
+- **No run is hidden.** A recall without a scope serves `run:` notes like any other. With `scope="run:abc"`, that run's entries have their scores multiplied by the parameter set's `scopeBoost`, 3 in the v1 sets. Every arm boosts the same way and filters by nothing.
+- **A run's project comes first.** To file notes under a run, write a `projects` entry in scope `run:<id>`, then point every note at it with `project`. Left out, a note files under its agent's notes project.
+- **A note has a kind.** `fact`, `wen`, `observation` or `plan`. A fact is stored as one only when its `evidence` is word for word in the tool output of the hook event named by `evidence_event` (the quote check the groom API uses). Otherwise it's an observation marked unverified. A fact starts at confidence 0.9 and settled, `wen` at 0.7, and an observation or plan at 0.5, each with 3 chances to prove itself. The packet shows each item's kind and confidence, and marks a draft unreviewed.
 - **Writes keep the seed's rules.** `remember` checks each entry against the `seed/build.py` invariants and writes it in one transaction. Title, body and evidence stop at 300, 4,000 and 20,000 characters.
 - **A replacement reaches every recall the old entry did.** An entry supersedes only entries at or below its own authority, and a `run:` entry only entries in its run. Hybrid stops serving a superseded entry. The index arm lists it struck through and never boosts it.
 - **A resend lands on its entry.** The same payload sent again returns the entry it made, with or without an `id`. A different payload under a taken id is refused.
