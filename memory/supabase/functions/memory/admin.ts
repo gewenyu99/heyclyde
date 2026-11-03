@@ -802,13 +802,11 @@ async function importRows(req: Request) {
     }
     if (!IMPORTABLE.has(rec.table) || !rec.row || typeof rec.row !== "object") throw new ApiError(422, `Can't import ${rec.table}.`);
     const { tsv_en: _, ...row } = redact(rec.row);
-    // A backup from before the queue carries read_by on its messages. Each name becomes an acknowledged delivery.
+    // A backup from before the queue carries read_by on its messages and no deliveries. They're made after the load.
     if (rec.table === "message" && "read_by" in row) {
       const readBy = Array.isArray(row.read_by) ? row.read_by.filter((n: unknown) => typeof n === "string") : [];
       delete row.read_by;
-      for (const recipient of readBy) {
-        legacy.push({ message_id: row.id, recipient, delivered_count: 1, acked_at: row.created_at ?? new Date().toISOString() });
-      }
+      legacy.push({ id: row.id, read_by: readBy });
     }
     for (const [k, v] of Object.entries(row)) {
       if (v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 1 && "base64" in v) {
@@ -818,7 +816,6 @@ async function importRows(req: Request) {
     if (groups.at(-1)?.[0] !== rec.table) groups.push([rec.table, []]);
     groups.at(-1)![1].push(row);
   }
-  if (legacy.length) groups.push(["message_delivery", legacy]);
   const counts: Record<string, number> = {};
   await sql.begin(async (tx) => {
     for (const [table, rows] of groups) {
@@ -834,6 +831,12 @@ async function importRows(req: Request) {
         const done = await tx`insert into ${tx("memory." + table)} ${tx(chunk, ...cols)} on conflict do nothing returning 1`;
         counts[table] = (counts[table] ?? 0) + done.length;
       }
+    }
+    // memory.deliver_legacy gives each its recipient's delivery, or every agent seen lately for all, acked for the names in
+    // read_by, the way the migration does. A message that came with deliveries is left alone.
+    if (legacy.length) {
+      await tx`select memory.deliver_legacy(l.id, array(select jsonb_array_elements_text(l.read_by)))
+        from jsonb_to_recordset(${tx.json(legacy)}) as l(id bigint, read_by jsonb)`;
     }
     for (const t of SERIAL) {
       await tx`select setval(${`memory.${t}_id_seq`}, greatest(coalesce((select max(id) from ${tx("memory." + t)}), 1), 1))`;

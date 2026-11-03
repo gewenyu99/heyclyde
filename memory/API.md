@@ -287,7 +287,7 @@ The whole board, newest first. Each item has `id`, `created_at`, `expires_at`, `
 
 ### `POST /messages`
 
-Body `{"to": "claude", "body": "..."}`. `to` is `claude`, `codex`, `all` or another agent name memory has seen in the last 30 days, in any case. One delivery goes to the recipient, or for `all` to every agent seen in the last 30 days. The sender is `wen`. Returns 201 `{"id", "to"}`, or 422.
+Body `{"to": "claude", "body": "..."}`. `to` is `claude`, `codex`, `all` or another agent name memory has seen in the last 30 days, in any case. One delivery goes to the recipient, or for `all` to every agent seen in the last 30 days. The sender is `wen`. Returns 201 `{"id", "to"}`, or 422, which includes `all` when no agent has been seen.
 
 ## Recall preview
 

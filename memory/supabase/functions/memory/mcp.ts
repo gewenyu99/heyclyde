@@ -78,8 +78,9 @@ export const TOOLS = [
   },
   {
     name: "post_message",
-    description: "Leave a message for Wen's other agents. to: claude, codex, or all. They see it at their next check or prompt.",
-    inputSchema: { type: "object", required: ["to", "body"], properties: { to: str("claude, codex or all"), body: str("The message") } },
+    description: "Leave a message for Wen's other agents. to: claude, codex, all, or another agent memory has seen in the last " +
+      "30 days. They see it at their next check or prompt. A message to all that no other agent could receive isn't posted.",
+    inputSchema: { type: "object", required: ["to", "body"], properties: { to: str("claude, codex, all or another agent's name"), body: str("The message") } },
   },
   {
     name: "check_messages",
@@ -90,7 +91,7 @@ export const TOOLS = [
   },
   {
     name: "ack_messages",
-    description: "Mark messages handled, by the ids check_messages listed. Only your own can be acknowledged.",
+    description: "Mark messages handled, by the ids check_messages listed (the hook prints the same ids). Only your own can be acknowledged.",
     inputSchema: {
       type: "object", required: ["ids"],
       properties: { ids: { type: "array", items: { type: "integer" }, description: "Message ids from check_messages" } },

@@ -180,10 +180,13 @@ export async function hook(event: string, payload: Row, agent: string | null = n
   }
 }
 
-/** claude or codex from an MCP client name like claude-code or codex-mcp-client. Anything else keeps its own name. */
+/** claude or codex from an MCP client name like claude-code or codex-mcp-client. Anything else keeps its own name, with
+ * anything outside a-z, 0-9, _ and - turned into a hyphen, at most 40 characters. memory.agent_name() in the queue
+ * migration is the same rule in sql, and it's what 'all' fans out by. */
 export function agentName(client: string | null) {
   const c = (client ?? "").toLowerCase();
-  return c.includes("claude") ? "claude" : c.includes("codex") ? "codex" : c || "agent";
+  return c.includes("claude") ? "claude" : c.includes("codex") ? "codex"
+    : c.replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "agent";
 }
 
 const AGENTS = ["claude", "codex", "all"];
@@ -212,15 +215,15 @@ export async function postMessage(db: Sql, sender: string, to: string, body: str
     if (why) return `Not posted: ${why}`;
   }
   // One statement, so a message never exists without its deliveries. All fans out to every agent name seen lately but
-  // the sender's own.
-  const [row] = await db`with m as (insert into memory.message (sender, recipient, body)
-      values (${sender}, ${to}, ${body}) returning id),
-    d as (insert into memory.message_delivery (message_id, recipient)
-      select m.id, r.name from m, (
-        select a as name from memory.agent_names() a where ${to}::text = 'all' and a <> ${sender}::text
-        union select ${to}::text where ${to}::text <> 'all') r
-      returning 1)
+  // the sender's own, and when that's no one, nothing is posted.
+  const [row] = await db`with r as (
+      select a as name from memory.agent_names() a where ${to}::text = 'all' and a <> ${sender}::text
+      union select ${to}::text where ${to}::text <> 'all'),
+    m as (insert into memory.message (sender, recipient, body)
+      select ${sender}::text, ${to}::text, ${body}::text where exists (select 1 from r) returning id),
+    d as (insert into memory.message_delivery (message_id, recipient) select m.id, r.name from m, r returning 1)
     select id from m`;
+  if (!row) return "No other agent has been seen in the last 30 days, so nobody got it.";
   return `Posted message ${row.id} to ${to}.`;
 }
 
@@ -258,47 +261,48 @@ export async function readMessages(me: string) {
   return "Messages from your other agents (reply with post_message):\n" + rows.map((r) => line(r, r.message_id)).join("\n") + "\n";
 }
 
-/** check_messages: the same list, numbered by delivery, left waiting until ack_messages or a dismiss. */
+/** check_messages: the same list, numbered by message id the same way, left waiting until ack_messages or a dismiss. */
 export async function checkMessages(me: string) {
   const rows = await claimMessages(me, false);
   if (!rows.length) return "";
-  return "Messages from your other agents (reply with post_message):\n" + rows.map((r) => line(r, r.id)).join("\n") + "\n" +
-    `Call ack_messages with ids [${rows.map((r) => r.id).join(", ")}] once you've handled them. A message you don't ` +
+  return "Messages from your other agents (reply with post_message):\n" + rows.map((r) => line(r, r.message_id)).join("\n") + "\n" +
+    `Call ack_messages with ids [${rows.map((r) => r.message_id).join(", ")}] once you've handled them. A message you don't ` +
     `acknowledge comes back in ${REDELIVER_MINUTES} minutes, up to 3 times.\n`;
 }
 
-/** Delivery ids from a tool argument: a list of whole numbers or numeric strings, or one of them. */
-function deliveryIds(raw: unknown): number[] | null {
+/** Message ids from a tool argument: a list of whole numbers or numeric strings, or one of them. */
+function messageIds(raw: unknown): number[] | null {
   const list = Array.isArray(raw) ? raw : raw === undefined || raw === null ? [] : [raw];
   const ids = list.map((v) => typeof v === "string" && /^\d+$/.test(v.trim()) ? Number(v) : v);
   return ids.length && ids.every((v) => Number.isSafeInteger(v) && (v as number) > 0) ? ids as number[] : null;
 }
 
-/** Closes my deliveries, by acknowledging or dismissing them. Only mine count: any other id, taken or made up, changes
- * nothing and comes back as "not yours". */
+/** Closes my deliveries of these messages, by acknowledging or dismissing them. A message and a recipient have one
+ * delivery, so the id check_messages and the hook inbox print picks it out. Only mine count: any other id, taken or made
+ * up, changes nothing and comes back as "not yours". */
 async function closeDeliveries(me: string, raw: unknown, verb: string, everything: boolean) {
-  const ids = everything ? null : deliveryIds(raw);
+  const ids = everything ? null : messageIds(raw);
   if (!everything && !ids) return "Need the ids check_messages listed, like [12, 13].";
   const done = everything
     ? await sql`update memory.message_delivery set acked_at = now()
         where recipient = ${me}::text and acked_at is null and dropped_at is null returning id`
     : await sql`update memory.message_delivery set acked_at = now()
-        where id = any(${ids}::bigint[]) and recipient = ${me}::text and acked_at is null and dropped_at is null returning id`;
+        where message_id = any(${ids}::bigint[]) and recipient = ${me}::text and acked_at is null and dropped_at is null returning id`;
   let said = `${verb} ${count(done.length, "message")}.`;
   if (ids) {
     const mine = new Set(
-      (await sql`select id from memory.message_delivery where id = any(${ids}::bigint[]) and recipient = ${me}::text`)
-        .map((r) => Number(r.id)),
+      (await sql`select message_id from memory.message_delivery where message_id = any(${ids}::bigint[]) and recipient = ${me}::text`)
+        .map((r) => Number(r.message_id)),
     );
-    said += [...new Set(ids)].filter((id) => !mine.has(id)).map((id) => ` Delivery ${id}: not yours.`).join("");
+    said += [...new Set(ids)].filter((id) => !mine.has(id)).map((id) => ` Message ${id}: not yours.`).join("");
   }
   return said;
 }
 
-/** ack_messages: I've handled these deliveries. */
+/** ack_messages: I've handled these messages. */
 export const ackMessages = (me: string, ids: unknown) => closeDeliveries(me, ids, "Acknowledged", false);
 
-/** dismiss_messages: clear these deliveries, or all of mine, unread. */
+/** dismiss_messages: clear these messages, or all of mine, unread. */
 export function dismissMessages(me: string, ids: unknown) {
   const all = ids === "all" || (Array.isArray(ids) && ids.includes("all"));
   return closeDeliveries(me, ids, "Dismissed", all);

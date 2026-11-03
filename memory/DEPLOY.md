@@ -168,7 +168,17 @@ Messages between agents are a queue (R39). `post_message` writes one message and
 
 pg_cron runs `memory-message-purge` daily at 04:17 UTC, in plain SQL (`memory.purge_messages()`). It deletes deliveries acked or dropped over 7 days ago and messages past their 14 days or with nothing waiting, and holds each recipient to its newest 100 waiting deliveries, with a note naming what it dropped. Run it by hand with `select memory.purge_messages()`.
 
-The queue lands in two migrations that `supabase db push` applies in order: `message_queue` adds the tables and converts `read_by` while the old function keeps working, and `message_queue_contract` drops `read_by`. Deploy the function between them if you apply them one at a time.
+An agent's name comes from its MCP client name: `claude` or `codex` when the client says so, else the name lowercased, with anything outside a-z, 0-9, `_` and `-` turned into `-`, cut to 40 characters. `memory.agent_name()` applies the same rule in sql, and `all` fans out by it. A message to `all` that no other agent could receive is refused.
+
+Ids are message ids everywhere. The hook inbox and `check_messages` print the same `#N`, and `ack_messages` and `dismiss_messages` take it. A message and a recipient have one delivery, so the id picks out that recipient's delivery and no one else's.
+
+The queue lands in three steps, since the function live now reads `message.read_by` and the new one doesn't.
+
+1. `supabase db push` applies `message_queue`. It adds the tables, converts `read_by` into deliveries and schedules the purge, and it leaves `read_by` alone, so the old function keeps working. The purge keeps a message that has no delivery yet, which is what the old function posts until the new one deploys.
+2. `memory/deploy.sh` deploys the new function.
+3. Once it serves traffic, move [contract/message_queue_contract.sql](supabase/contract/message_queue_contract.sql) into `supabase/migrations` under a fresh timestamp and `supabase db push`. It gives a delivery to what the old function posted in between, then drops `read_by`. Do not push it in step 1: the old function's inbox fails on a missing column, and a message it posts after that never gets a delivery.
+
+Restoring a backup from before the queue works either side of step 3. `/import` gives each message in it the deliveries `message_queue` would.
 
 ## Back up and restore
 
