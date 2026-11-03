@@ -408,16 +408,16 @@ test('private bodies never reach OpenAI: the judge reads a private note\'s title
 
 // R13 (#16): with the budget exhausted, recall still answers, and says it's degraded.
 test('with the month\'s OpenAI budget spent, recall still answers by keyword, and says it is degraded', { skip: SKIP }, async () => {
-  sql(`insert into memory.embed_usage (month, tokens) values (date_trunc('month', now())::date, 1000000000)
-    on conflict (month) do update set tokens = excluded.tokens`)
+  sql(`insert into memory.openai_usage (month, kind, tokens) values (date_trunc('month', now())::date, 'embed', 1000000000)
+    on conflict (month, kind) do update set tokens = excluded.tokens`)
   try {
     const r = await call('POST', '/recall', bearer(memory.token), { query: 'oolong water temperature over budget' })
     assert.equal(r.status, 200, r.text)
     assert.match(r.text, /^Degraded: .*OverBudget.*; results are .+\.$/m)
     assert.match(r.text, /tea-oolong-temp/, r.text)
   } finally {
-    // The judge spends the same budget, so every later write would be refused.
-    sql('update memory.embed_usage set tokens = 0')
+    // The recall judge spends the same budget, so every later recall would be degraded.
+    sql('update memory.openai_usage set tokens = 0')
   }
 })
 

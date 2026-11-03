@@ -1,0 +1,1878 @@
+{
+ "pass1": {
+  "recalls": {
+   "index/0": {
+    "candidates": [
+     {
+      "id": "tea-oolong-temp",
+      "score": 0.995
+     },
+     {
+      "id": "tea-supplier",
+      "score": 0.97
+     },
+     {
+      "id": "tea-draft-cold",
+      "score": 0.47000000000000003
+     }
+    ],
+    "delivered": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "packet": "Index lines that match. Open any with get_entry(id).\n- `tea-oolong-temp` Brew oolong at 90C [approved, domain:tea] (Tea brewing)\n- `tea-supplier` Buys oolong from a private supplier [observed, domain:tea] 🔒 (Tea brewing)\n- `tea-draft-cold` Try cold-brew oolong [draft, domain:tea] (Tea brewing)"
+   },
+   "index/1": {
+    "candidates": [
+     {
+      "id": "tea-oolong-temp",
+      "score": 2.985
+     },
+     {
+      "id": "tea-supplier",
+      "score": 0.97
+     },
+     {
+      "id": "tea-draft-cold",
+      "score": 0.47000000000000003
+     }
+    ],
+    "delivered": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "packet": "Index lines that match. Open any with get_entry(id).\n- `tea-oolong-temp` Brew oolong at 90C [approved, domain:tea] (Tea brewing)\n- `tea-supplier` Buys oolong from a private supplier [observed, domain:tea] 🔒 (Tea brewing)\n- `tea-draft-cold` Try cold-brew oolong [draft, domain:tea] (Tea brewing)"
+   },
+   "index/2": {
+    "candidates": [
+     {
+      "id": "tea-oolong-temp",
+      "score": 0.995
+     },
+     {
+      "id": "tea-supplier",
+      "score": 0.97
+     },
+     {
+      "id": "tea-zh",
+      "score": 0.95
+     },
+     {
+      "id": "tea-draft-cold",
+      "score": 0.9400000000000001
+     }
+    ],
+    "delivered": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-zh",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "packet": "Index lines that match. Open any with get_entry(id).\n- `tea-oolong-temp` Brew oolong at 90C [approved, domain:tea] (Tea brewing)\n- `tea-supplier` Buys oolong from a private supplier [observed, domain:tea] 🔒 (Tea brewing)\n- `tea-zh` 喜欢乌龙茶 [approved, domain:tea] (Tea brewing)\n- `tea-draft-cold` Try cold-brew oolong [draft, domain:tea] (Tea brewing)"
+   },
+   "index/3": {
+    "candidates": [
+     {
+      "id": "tea-zh",
+      "score": 1.9
+     }
+    ],
+    "delivered": [
+     "tea-zh"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "packet": "Index lines that match. Open any with get_entry(id).\n- `tea-zh` 喜欢乌龙茶 [approved, domain:tea] (Tea brewing)"
+   },
+   "index/4": {
+    "candidates": [
+     {
+      "id": "tea-supplier",
+      "score": 1.94
+     },
+     {
+      "id": "tea-oolong-temp",
+      "score": 0.995
+     },
+     {
+      "id": "tea-draft-cold",
+      "score": 0.47000000000000003
+     }
+    ],
+    "delivered": [
+     "tea-supplier",
+     "tea-oolong-temp",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "packet": "Index lines that match. Open any with get_entry(id).\n- `tea-supplier` Buys oolong from a private supplier [observed, domain:tea] 🔒 (Tea brewing)\n- `tea-oolong-temp` Brew oolong at 90C [approved, domain:tea] (Tea brewing)\n- `tea-draft-cold` Try cold-brew oolong [draft, domain:tea] (Tea brewing)"
+   },
+   "index/5": {
+    "candidates": [
+     {
+      "id": "tea-oolong-temp",
+      "score": 0.995
+     },
+     {
+      "id": "tea-supplier",
+      "score": 0.97
+     },
+     {
+      "id": "tea-zh",
+      "score": 0.95
+     },
+     {
+      "id": "tea-draft-cold",
+      "score": 0.47000000000000003
+     }
+    ],
+    "delivered": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-zh",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "packet": "Index lines that match. Open any with get_entry(id).\n- `tea-oolong-temp` Brew oolong at 90C [approved, domain:tea] (Tea brewing)\n- `tea-supplier` Buys oolong from a private supplier [observed, domain:tea] 🔒 (Tea brewing)\n- `tea-zh` 喜欢乌龙茶 [approved, domain:tea] (Tea brewing)\n- `tea-draft-cold` Try cold-brew oolong [draft, domain:tea] (Tea brewing)"
+   },
+   "hybrid/0": {
+    "candidates": [
+     {
+      "id": "tea-oolong-temp",
+      "score": 0.22613636363636364
+     },
+     {
+      "id": "tea-supplier",
+      "score": 0.1958653846153846
+     },
+     {
+      "id": "tea-draft-cold",
+      "score": 0.1867948717948718
+     },
+     {
+      "id": "tea-zh",
+      "score": 0.10178571428571427
+     },
+     {
+      "id": "proj-tea",
+      "score": 0.097
+     }
+    ],
+    "delivered": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-draft-cold",
+     "tea-zh",
+     "proj-tea"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "packet": "[1] tea-oolong-temp: Brew oolong at 90C\n    approved · domain:tea · 2026-09-01\n    Oolong water temperature is 90C.\n    Wen: “oolong at 90 from now on”\n\n[2] tea-supplier: Buys oolong from a private supplier\n    observed · domain:tea · 2026-09-01\n    [private entry: ask Wen]\n\n[3] tea-draft-cold: Try cold-brew oolong\n    draft · domain:tea · 2026-09-01\n    Claude suggested cold brew; never confirmed.\n\n[4] tea-zh: 喜欢乌龙茶\n    approved · domain:tea · 2026-09-01\n    偏好乌龙茶，不加糖。\n    Wen: “我最喜欢乌龙茶”\n\n[5] proj-tea: Tea brewing\n    approved · domain:tea · 2026-09-01\n    Daily tea brewing.\n    Wen: “i brew tea every morning”"
+   },
+   "hybrid/1": {
+    "candidates": [
+     {
+      "id": "tea-oolong-temp",
+      "score": 0.22613636363636364
+     },
+     {
+      "id": "tea-draft-cold",
+      "score": 0.19583333333333333
+     },
+     {
+      "id": "tea-supplier",
+      "score": 0.18120879120879121
+     },
+     {
+      "id": "proj-tea",
+      "score": 0.17854395604395606
+     },
+     {
+      "id": "tea-zh",
+      "score": 0.15833333333333335
+     }
+    ],
+    "delivered": [
+     "tea-oolong-temp",
+     "tea-draft-cold",
+     "tea-supplier",
+     "proj-tea",
+     "tea-zh"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "packet": "[1] tea-oolong-temp: Brew oolong at 90C\n    approved · domain:tea · 2026-09-01\n    Oolong water temperature is 90C.\n    Wen: “oolong at 90 from now on”\n\n[2] tea-draft-cold: Try cold-brew oolong\n    draft · domain:tea · 2026-09-01\n    Claude suggested cold brew; never confirmed.\n\n[3] tea-supplier: Buys oolong from a private supplier\n    observed · domain:tea · 2026-09-01\n    [private entry: ask Wen]\n\n[4] proj-tea: Tea brewing\n    approved · domain:tea · 2026-09-01\n    Daily tea brewing.\n    Wen: “i brew tea every morning”\n\n[5] tea-zh: 喜欢乌龙茶\n    approved · domain:tea · 2026-09-01\n    偏好乌龙茶，不加糖。\n    Wen: “我最喜欢乌龙茶”"
+   },
+   "hybrid/2": {
+    "candidates": [
+     {
+      "id": "tea-draft-cold",
+      "score": 0.21363636363636365
+     },
+     {
+      "id": "proj-tea",
+      "score": 0.2020833333333333
+     },
+     {
+      "id": "tea-oolong-temp",
+      "score": 0.1831456043956044
+     },
+     {
+      "id": "tea-zh",
+      "score": 0.17294871794871797
+     },
+     {
+      "id": "tea-supplier",
+      "score": 0.1662857142857143
+     }
+    ],
+    "delivered": [
+     "tea-draft-cold",
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "packet": "[1] tea-draft-cold: Try cold-brew oolong\n    draft · domain:tea · 2026-09-01\n    Claude suggested cold brew; never confirmed.\n\n[2] proj-tea: Tea brewing\n    approved · domain:tea · 2026-09-01\n    Daily tea brewing.\n    Wen: “i brew tea every morning”\n\n[3] tea-oolong-temp: Brew oolong at 90C\n    approved · domain:tea · 2026-09-01\n    Oolong water temperature is 90C.\n    Wen: “oolong at 90 from now on”\n\n[4] tea-zh: 喜欢乌龙茶\n    approved · domain:tea · 2026-09-01\n    偏好乌龙茶，不加糖。\n    Wen: “我最喜欢乌龙茶”\n\n[5] tea-supplier: Buys oolong from a private supplier\n    observed · domain:tea · 2026-09-01\n    [private entry: ask Wen]"
+   },
+   "hybrid/3": {
+    "candidates": [
+     {
+      "id": "tea-zh",
+      "score": 0.20511363636363636
+     },
+     {
+      "id": "tea-oolong-temp",
+      "score": 0.13568181818181818
+     },
+     {
+      "id": "tea-draft-cold",
+      "score": 0.10846153846153847
+     },
+     {
+      "id": "tea-supplier",
+      "score": 0.10392857142857143
+     },
+     {
+      "id": "proj-tea",
+      "score": 0.097
+     }
+    ],
+    "delivered": [
+     "tea-zh",
+     "tea-oolong-temp",
+     "tea-draft-cold",
+     "tea-supplier",
+     "proj-tea"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "packet": "[1] tea-zh: 喜欢乌龙茶\n    approved · domain:tea · 2026-09-01\n    偏好乌龙茶，不加糖。\n    Wen: “我最喜欢乌龙茶”\n\n[2] tea-oolong-temp: Brew oolong at 90C\n    approved · domain:tea · 2026-09-01\n    Oolong water temperature is 90C.\n    Wen: “oolong at 90 from now on”\n\n[3] tea-draft-cold: Try cold-brew oolong\n    draft · domain:tea · 2026-09-01\n    Claude suggested cold brew; never confirmed.\n\n[4] tea-supplier: Buys oolong from a private supplier\n    observed · domain:tea · 2026-09-01\n    [private entry: ask Wen]\n\n[5] proj-tea: Tea brewing\n    approved · domain:tea · 2026-09-01\n    Daily tea brewing.\n    Wen: “i brew tea every morning”"
+   },
+   "hybrid/4": {
+    "candidates": [
+     {
+      "id": "tea-supplier",
+      "score": 0.22045454545454543
+     },
+     {
+      "id": "tea-oolong-temp",
+      "score": 0.20729166666666665
+     },
+     {
+      "id": "tea-draft-cold",
+      "score": 0.1807692307692308
+     },
+     {
+      "id": "tea-zh",
+      "score": 0.10178571428571427
+     },
+     {
+      "id": "proj-tea",
+      "score": 0.097
+     }
+    ],
+    "delivered": [
+     "tea-supplier",
+     "tea-oolong-temp",
+     "tea-draft-cold",
+     "tea-zh",
+     "proj-tea"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "packet": "[1] tea-supplier: Buys oolong from a private supplier\n    observed · domain:tea · 2026-09-01\n    [private entry: ask Wen]\n\n[2] tea-oolong-temp: Brew oolong at 90C\n    approved · domain:tea · 2026-09-01\n    Oolong water temperature is 90C.\n    Wen: “oolong at 90 from now on”\n\n[3] tea-draft-cold: Try cold-brew oolong\n    draft · domain:tea · 2026-09-01\n    Claude suggested cold brew; never confirmed.\n\n[4] tea-zh: 喜欢乌龙茶\n    approved · domain:tea · 2026-09-01\n    偏好乌龙茶，不加糖。\n    Wen: “我最喜欢乌龙茶”\n\n[5] proj-tea: Tea brewing\n    approved · domain:tea · 2026-09-01\n    Daily tea brewing.\n    Wen: “i brew tea every morning”"
+   },
+   "hybrid/5": {
+    "candidates": [
+     {
+      "id": "proj-tea",
+      "score": 0.22045454545454543
+     },
+     {
+      "id": "tea-oolong-temp",
+      "score": 0.19134615384615386
+     },
+     {
+      "id": "tea-zh",
+      "score": 0.18208333333333332
+     },
+     {
+      "id": "tea-draft-cold",
+      "score": 0.17904761904761904
+     },
+     {
+      "id": "tea-supplier",
+      "score": 0.1662857142857143
+     }
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "packet": "[1] proj-tea: Tea brewing\n    approved · domain:tea · 2026-09-01\n    Daily tea brewing.\n    Wen: “i brew tea every morning”\n\n[2] tea-oolong-temp: Brew oolong at 90C\n    approved · domain:tea · 2026-09-01\n    Oolong water temperature is 90C.\n    Wen: “oolong at 90 from now on”\n\n[3] tea-zh: 喜欢乌龙茶\n    approved · domain:tea · 2026-09-01\n    偏好乌龙茶，不加糖。\n    Wen: “我最喜欢乌龙茶”\n\n[4] tea-draft-cold: Try cold-brew oolong\n    draft · domain:tea · 2026-09-01\n    Claude suggested cold brew; never confirmed.\n\n[5] tea-supplier: Buys oolong from a private supplier\n    observed · domain:tea · 2026-09-01\n    [private entry: ask Wen]"
+   },
+   "spreading/0": {
+    "candidates": [
+     {
+      "id": "proj-tea",
+      "score": 0.2569535918956374
+     },
+     {
+      "id": "tea-oolong-temp",
+      "score": 0.23525241042513007
+     },
+     {
+      "id": "tea-zh",
+      "score": 0.1703407767908916
+     },
+     {
+      "id": "tea-supplier",
+      "score": 0.14297206981376254
+     },
+     {
+      "id": "tea-draft-cold",
+      "score": 0.1367462913844244
+     }
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "packet": "[1] proj-tea: Tea brewing\n    approved · domain:tea · 2026-09-01\n    Daily tea brewing.\n    Wen: “i brew tea every morning”\n\n[2] tea-oolong-temp: Brew oolong at 90C\n    approved · domain:tea · 2026-09-01\n    Oolong water temperature is 90C.\n    Wen: “oolong at 90 from now on”\n\n[3] tea-zh: 喜欢乌龙茶\n    approved · domain:tea · 2026-09-01\n    偏好乌龙茶，不加糖。\n    Wen: “我最喜欢乌龙茶”\n\n[4] tea-supplier: Buys oolong from a private supplier\n    observed · domain:tea · 2026-09-01\n    [private entry: ask Wen]\n\n[5] tea-draft-cold: Try cold-brew oolong\n    draft · domain:tea · 2026-09-01\n    Claude suggested cold brew; never confirmed."
+   },
+   "spreading/1": {
+    "candidates": [
+     {
+      "id": "proj-tea",
+      "score": 0.2764673731661219
+     },
+     {
+      "id": "tea-oolong-temp",
+      "score": 0.22600497859003388
+     },
+     {
+      "id": "tea-zh",
+      "score": 0.189346355022689
+     },
+     {
+      "id": "tea-draft-cold",
+      "score": 0.12740975972380877
+     },
+     {
+      "id": "tea-supplier",
+      "score": 0.12075080515999709
+     }
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "packet": "[1] proj-tea: Tea brewing\n    approved · domain:tea · 2026-09-01\n    Daily tea brewing.\n    Wen: “i brew tea every morning”\n\n[2] tea-oolong-temp: Brew oolong at 90C\n    approved · domain:tea · 2026-09-01\n    Oolong water temperature is 90C.\n    Wen: “oolong at 90 from now on”\n\n[3] tea-zh: 喜欢乌龙茶\n    approved · domain:tea · 2026-09-01\n    偏好乌龙茶，不加糖。\n    Wen: “我最喜欢乌龙茶”\n\n[4] tea-draft-cold: Try cold-brew oolong\n    draft · domain:tea · 2026-09-01\n    Claude suggested cold brew; never confirmed.\n\n[5] tea-supplier: Buys oolong from a private supplier\n    observed · domain:tea · 2026-09-01\n    [private entry: ask Wen]"
+   },
+   "spreading/2": {
+    "candidates": [
+     {
+      "id": "proj-tea",
+      "score": 0.2887649762702414
+     },
+     {
+      "id": "tea-oolong-temp",
+      "score": 0.20611939847204439
+     },
+     {
+      "id": "tea-zh",
+      "score": 0.19094022559751667
+     },
+     {
+      "id": "tea-draft-cold",
+      "score": 0.13774858402804938
+     },
+     {
+      "id": "tea-supplier",
+      "score": 0.11431317165031782
+     }
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "packet": "[1] proj-tea: Tea brewing\n    approved · domain:tea · 2026-09-01\n    Daily tea brewing.\n    Wen: “i brew tea every morning”\n\n[2] tea-oolong-temp: Brew oolong at 90C\n    approved · domain:tea · 2026-09-01\n    Oolong water temperature is 90C.\n    Wen: “oolong at 90 from now on”\n\n[3] tea-zh: 喜欢乌龙茶\n    approved · domain:tea · 2026-09-01\n    偏好乌龙茶，不加糖。\n    Wen: “我最喜欢乌龙茶”\n\n[4] tea-draft-cold: Try cold-brew oolong\n    draft · domain:tea · 2026-09-01\n    Claude suggested cold brew; never confirmed.\n\n[5] tea-supplier: Buys oolong from a private supplier\n    observed · domain:tea · 2026-09-01\n    [private entry: ask Wen]"
+   },
+   "spreading/3": {
+    "candidates": [
+     {
+      "id": "tea-zh",
+      "score": 0.25957017771457036
+     },
+     {
+      "id": "proj-tea",
+      "score": 0.24395148951999016
+     },
+     {
+      "id": "tea-oolong-temp",
+      "score": 0.23376427312149378
+     },
+     {
+      "id": "tea-draft-cold",
+      "score": 0.1040063284914182
+     },
+     {
+      "id": "tea-supplier",
+      "score": 0.10140207008875311
+     }
+    ],
+    "delivered": [
+     "tea-zh",
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "packet": "[1] tea-zh: 喜欢乌龙茶\n    approved · domain:tea · 2026-09-01\n    偏好乌龙茶，不加糖。\n    Wen: “我最喜欢乌龙茶”\n\n[2] proj-tea: Tea brewing\n    approved · domain:tea · 2026-09-01\n    Daily tea brewing.\n    Wen: “i brew tea every morning”\n\n[3] tea-oolong-temp: Brew oolong at 90C\n    approved · domain:tea · 2026-09-01\n    Oolong water temperature is 90C.\n    Wen: “oolong at 90 from now on”\n\n[4] tea-draft-cold: Try cold-brew oolong\n    draft · domain:tea · 2026-09-01\n    Claude suggested cold brew; never confirmed.\n\n[5] tea-supplier: Buys oolong from a private supplier\n    observed · domain:tea · 2026-09-01\n    [private entry: ask Wen]"
+   },
+   "spreading/4": {
+    "candidates": [
+     {
+      "id": "proj-tea",
+      "score": 0.2609294882882155
+     },
+     {
+      "id": "tea-oolong-temp",
+      "score": 0.22289371956838483
+     },
+     {
+      "id": "tea-zh",
+      "score": 0.16630526062346637
+     },
+     {
+      "id": "tea-supplier",
+      "score": 0.15809270969444245
+     },
+     {
+      "id": "tea-draft-cold",
+      "score": 0.13352366076805255
+     }
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "packet": "[1] proj-tea: Tea brewing\n    approved · domain:tea · 2026-09-01\n    Daily tea brewing.\n    Wen: “i brew tea every morning”\n\n[2] tea-oolong-temp: Brew oolong at 90C\n    approved · domain:tea · 2026-09-01\n    Oolong water temperature is 90C.\n    Wen: “oolong at 90 from now on”\n\n[3] tea-zh: 喜欢乌龙茶\n    approved · domain:tea · 2026-09-01\n    偏好乌龙茶，不加糖。\n    Wen: “我最喜欢乌龙茶”\n\n[4] tea-supplier: Buys oolong from a private supplier\n    observed · domain:tea · 2026-09-01\n    [private entry: ask Wen]\n\n[5] tea-draft-cold: Try cold-brew oolong\n    draft · domain:tea · 2026-09-01\n    Claude suggested cold brew; never confirmed."
+   },
+   "spreading/5": {
+    "candidates": [
+     {
+      "id": "proj-tea",
+      "score": 0.2912343945945132
+     },
+     {
+      "id": "tea-oolong-temp",
+      "score": 0.21364624122532047
+     },
+     {
+      "id": "tea-zh",
+      "score": 0.19857030253054225
+     },
+     {
+      "id": "tea-draft-cold",
+      "score": 0.12021638412902438
+     },
+     {
+      "id": "tea-supplier",
+      "score": 0.11456011346861963
+     }
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "packet": "[1] proj-tea: Tea brewing\n    approved · domain:tea · 2026-09-01\n    Daily tea brewing.\n    Wen: “i brew tea every morning”\n\n[2] tea-oolong-temp: Brew oolong at 90C\n    approved · domain:tea · 2026-09-01\n    Oolong water temperature is 90C.\n    Wen: “oolong at 90 from now on”\n\n[3] tea-zh: 喜欢乌龙茶\n    approved · domain:tea · 2026-09-01\n    偏好乌龙茶，不加糖。\n    Wen: “我最喜欢乌龙茶”\n\n[4] tea-draft-cold: Try cold-brew oolong\n    draft · domain:tea · 2026-09-01\n    Claude suggested cold brew; never confirmed.\n\n[5] tea-supplier: Buys oolong from a private supplier\n    observed · domain:tea · 2026-09-01\n    [private entry: ask Wen]"
+   }
+  },
+  "ranks": {
+   "index/0/filter": {
+    "candidates": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "delivered": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "index/0/raw": {
+    "candidates": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "delivered": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "index/1/filter": {
+    "candidates": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "delivered": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "index/1/raw": {
+    "candidates": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "delivered": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "index/2/filter": {
+    "candidates": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-zh",
+     "tea-draft-cold"
+    ],
+    "delivered": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-zh",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "index/2/raw": {
+    "candidates": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-zh",
+     "tea-draft-cold"
+    ],
+    "delivered": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-zh",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "index/3/filter": {
+    "candidates": [
+     "tea-zh"
+    ],
+    "delivered": [
+     "tea-zh"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "index/3/raw": {
+    "candidates": [
+     "tea-zh"
+    ],
+    "delivered": [
+     "tea-zh"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "index/4/filter": {
+    "candidates": [
+     "tea-supplier",
+     "tea-oolong-temp",
+     "tea-draft-cold"
+    ],
+    "delivered": [
+     "tea-supplier",
+     "tea-oolong-temp",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "index/4/raw": {
+    "candidates": [
+     "tea-supplier",
+     "tea-oolong-temp",
+     "tea-draft-cold"
+    ],
+    "delivered": [
+     "tea-supplier",
+     "tea-oolong-temp",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "index/5/filter": {
+    "candidates": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-zh",
+     "tea-draft-cold"
+    ],
+    "delivered": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-zh",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "index/5/raw": {
+    "candidates": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-zh",
+     "tea-draft-cold"
+    ],
+    "delivered": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-zh",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "hybrid/0/filter": {
+    "candidates": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-draft-cold",
+     "tea-zh",
+     "proj-tea"
+    ],
+    "delivered": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-draft-cold",
+     "tea-zh",
+     "proj-tea"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": {
+     "en": [
+      "tea-oolong-temp",
+      "tea-draft-cold",
+      "tea-supplier"
+     ],
+     "zh": [],
+     "keyword": [
+      "tea-oolong-temp",
+      "tea-draft-cold",
+      "tea-supplier"
+     ],
+     "vec": [
+      "tea-oolong-temp",
+      "tea-supplier",
+      "tea-draft-cold",
+      "tea-zh",
+      "proj-tea"
+     ]
+    }
+   },
+   "hybrid/0/raw": {
+    "candidates": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-draft-cold",
+     "tea-zh",
+     "proj-tea"
+    ],
+    "delivered": [
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-draft-cold",
+     "tea-zh",
+     "proj-tea"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": {
+     "en": [
+      "tea-oolong-temp",
+      "tea-draft-cold",
+      "tea-supplier"
+     ],
+     "zh": [],
+     "keyword": [
+      "tea-oolong-temp",
+      "tea-draft-cold",
+      "tea-supplier"
+     ],
+     "vec": [
+      "tea-oolong-temp",
+      "tea-supplier",
+      "tea-draft-cold",
+      "tea-zh",
+      "proj-tea"
+     ]
+    }
+   },
+   "hybrid/1/filter": {
+    "candidates": [
+     "tea-oolong-temp",
+     "tea-draft-cold",
+     "tea-supplier",
+     "proj-tea",
+     "tea-zh"
+    ],
+    "delivered": [
+     "tea-oolong-temp",
+     "tea-draft-cold",
+     "tea-supplier",
+     "proj-tea",
+     "tea-zh"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": {
+     "en": [
+      "tea-oolong-temp",
+      "tea-draft-cold",
+      "proj-tea",
+      "tea-supplier",
+      "tea-zh"
+     ],
+     "zh": [],
+     "keyword": [
+      "tea-oolong-temp",
+      "tea-draft-cold",
+      "proj-tea",
+      "tea-supplier",
+      "tea-zh"
+     ],
+     "vec": [
+      "tea-oolong-temp",
+      "tea-draft-cold",
+      "tea-supplier",
+      "proj-tea",
+      "tea-zh"
+     ]
+    }
+   },
+   "hybrid/1/raw": {
+    "candidates": [
+     "tea-oolong-temp",
+     "tea-draft-cold",
+     "tea-supplier",
+     "proj-tea",
+     "tea-zh"
+    ],
+    "delivered": [
+     "tea-oolong-temp",
+     "tea-draft-cold",
+     "tea-supplier",
+     "proj-tea",
+     "tea-zh"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": {
+     "en": [
+      "tea-oolong-temp",
+      "tea-draft-cold",
+      "proj-tea",
+      "tea-supplier",
+      "tea-zh"
+     ],
+     "zh": [],
+     "keyword": [
+      "tea-oolong-temp",
+      "tea-draft-cold",
+      "proj-tea",
+      "tea-supplier",
+      "tea-zh"
+     ],
+     "vec": [
+      "tea-oolong-temp",
+      "tea-draft-cold",
+      "tea-supplier",
+      "proj-tea",
+      "tea-zh"
+     ]
+    }
+   },
+   "hybrid/2/filter": {
+    "candidates": [
+     "tea-draft-cold",
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-supplier"
+    ],
+    "delivered": [
+     "tea-draft-cold",
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": {
+     "en": [
+      "tea-draft-cold",
+      "proj-tea",
+      "tea-oolong-temp",
+      "tea-supplier",
+      "tea-zh"
+     ],
+     "zh": [],
+     "keyword": [
+      "tea-draft-cold",
+      "proj-tea",
+      "tea-oolong-temp",
+      "tea-supplier",
+      "tea-zh"
+     ],
+     "vec": [
+      "tea-draft-cold",
+      "proj-tea",
+      "tea-zh",
+      "tea-oolong-temp",
+      "tea-supplier"
+     ]
+    }
+   },
+   "hybrid/2/raw": {
+    "candidates": [
+     "tea-draft-cold",
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-supplier"
+    ],
+    "delivered": [
+     "tea-draft-cold",
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": {
+     "en": [
+      "tea-draft-cold",
+      "proj-tea",
+      "tea-oolong-temp",
+      "tea-supplier",
+      "tea-zh"
+     ],
+     "zh": [],
+     "keyword": [
+      "tea-draft-cold",
+      "proj-tea",
+      "tea-oolong-temp",
+      "tea-supplier",
+      "tea-zh"
+     ],
+     "vec": [
+      "tea-draft-cold",
+      "proj-tea",
+      "tea-zh",
+      "tea-oolong-temp",
+      "tea-supplier"
+     ]
+    }
+   },
+   "hybrid/3/filter": {
+    "candidates": [
+     "tea-zh",
+     "tea-oolong-temp",
+     "tea-draft-cold",
+     "tea-supplier",
+     "proj-tea"
+    ],
+    "delivered": [
+     "tea-zh",
+     "tea-oolong-temp",
+     "tea-draft-cold",
+     "tea-supplier",
+     "proj-tea"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": {
+     "en": [],
+     "zh": [
+      "tea-zh"
+     ],
+     "keyword": [
+      "tea-zh"
+     ],
+     "vec": [
+      "tea-oolong-temp",
+      "tea-zh",
+      "tea-draft-cold",
+      "tea-supplier",
+      "proj-tea"
+     ]
+    }
+   },
+   "hybrid/3/raw": {
+    "candidates": [
+     "tea-zh",
+     "tea-oolong-temp",
+     "tea-draft-cold",
+     "tea-supplier",
+     "proj-tea"
+    ],
+    "delivered": [
+     "tea-zh",
+     "tea-oolong-temp",
+     "tea-draft-cold",
+     "tea-supplier",
+     "proj-tea"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": {
+     "en": [],
+     "zh": [
+      "tea-zh"
+     ],
+     "keyword": [
+      "tea-zh"
+     ],
+     "vec": [
+      "tea-oolong-temp",
+      "tea-zh",
+      "tea-draft-cold",
+      "tea-supplier",
+      "proj-tea"
+     ]
+    }
+   },
+   "hybrid/4/filter": {
+    "candidates": [
+     "tea-supplier",
+     "tea-oolong-temp",
+     "tea-draft-cold",
+     "tea-zh",
+     "proj-tea"
+    ],
+    "delivered": [
+     "tea-supplier",
+     "tea-oolong-temp",
+     "tea-draft-cold",
+     "tea-zh",
+     "proj-tea"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": {
+     "en": [
+      "tea-supplier",
+      "tea-oolong-temp",
+      "tea-draft-cold"
+     ],
+     "zh": [],
+     "keyword": [
+      "tea-supplier",
+      "tea-oolong-temp",
+      "tea-draft-cold"
+     ],
+     "vec": [
+      "tea-supplier",
+      "tea-oolong-temp",
+      "tea-draft-cold",
+      "tea-zh",
+      "proj-tea"
+     ]
+    }
+   },
+   "hybrid/4/raw": {
+    "candidates": [
+     "tea-supplier",
+     "tea-oolong-temp",
+     "tea-draft-cold",
+     "tea-zh",
+     "proj-tea"
+    ],
+    "delivered": [
+     "tea-supplier",
+     "tea-oolong-temp",
+     "tea-draft-cold",
+     "tea-zh",
+     "proj-tea"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": {
+     "en": [
+      "tea-supplier",
+      "tea-oolong-temp",
+      "tea-draft-cold"
+     ],
+     "zh": [],
+     "keyword": [
+      "tea-supplier",
+      "tea-oolong-temp",
+      "tea-draft-cold"
+     ],
+     "vec": [
+      "tea-supplier",
+      "tea-oolong-temp",
+      "tea-draft-cold",
+      "tea-zh",
+      "proj-tea"
+     ]
+    }
+   },
+   "hybrid/5/filter": {
+    "candidates": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": {
+     "en": [
+      "proj-tea",
+      "tea-draft-cold",
+      "tea-oolong-temp",
+      "tea-supplier",
+      "tea-zh"
+     ],
+     "zh": [],
+     "keyword": [
+      "proj-tea",
+      "tea-draft-cold",
+      "tea-oolong-temp",
+      "tea-supplier",
+      "tea-zh"
+     ],
+     "vec": [
+      "proj-tea",
+      "tea-zh",
+      "tea-oolong-temp",
+      "tea-draft-cold",
+      "tea-supplier"
+     ]
+    }
+   },
+   "hybrid/5/raw": {
+    "candidates": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": {
+     "en": [
+      "proj-tea",
+      "tea-draft-cold",
+      "tea-oolong-temp",
+      "tea-supplier",
+      "tea-zh"
+     ],
+     "zh": [],
+     "keyword": [
+      "proj-tea",
+      "tea-draft-cold",
+      "tea-oolong-temp",
+      "tea-supplier",
+      "tea-zh"
+     ],
+     "vec": [
+      "proj-tea",
+      "tea-zh",
+      "tea-oolong-temp",
+      "tea-draft-cold",
+      "tea-supplier"
+     ]
+    }
+   },
+   "spreading/0/filter": {
+    "candidates": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "spreading/0/raw": {
+    "candidates": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "spreading/1/filter": {
+    "candidates": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "spreading/1/raw": {
+    "candidates": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "spreading/2/filter": {
+    "candidates": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "spreading/2/raw": {
+    "candidates": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "spreading/3/filter": {
+    "candidates": [
+     "tea-zh",
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "delivered": [
+     "tea-zh",
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "spreading/3/raw": {
+    "candidates": [
+     "tea-zh",
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "delivered": [
+     "tea-zh",
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "spreading/4/filter": {
+    "candidates": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "spreading/4/raw": {
+    "candidates": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "spreading/5/filter": {
+    "candidates": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "spreading/5/raw": {
+    "candidates": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   }
+  }
+ },
+ "pass2": {
+  "recalls": {
+   "spreading/0": {
+    "candidates": [
+     {
+      "id": "proj-tea",
+      "score": 0.2845700959104375
+     },
+     {
+      "id": "tea-oolong-temp",
+      "score": 0.22159074874547452
+     },
+     {
+      "id": "tea-zh",
+      "score": 0.1482233554847048
+     },
+     {
+      "id": "tea-supplier",
+      "score": 0.14573372016780603
+     },
+     {
+      "id": "tea-draft-cold",
+      "score": 0.13942252987184803
+     }
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "packet": "[1] proj-tea: Tea brewing\n    approved · domain:tea · 2026-09-01\n    Daily tea brewing.\n    Wen: “i brew tea every morning”\n\n[2] tea-oolong-temp: Brew oolong at 90C\n    approved · domain:tea · 2026-09-01\n    Oolong water temperature is 90C.\n    Wen: “oolong at 90 from now on”\n\n[3] tea-zh: 喜欢乌龙茶\n    approved · domain:tea · 2026-09-01\n    偏好乌龙茶，不加糖。\n    Wen: “我最喜欢乌龙茶”\n\n[4] tea-supplier: Buys oolong from a private supplier\n    observed · domain:tea · 2026-09-01\n    [private entry: ask Wen]\n\n[5] tea-draft-cold: Try cold-brew oolong\n    draft · domain:tea · 2026-09-01\n    Claude suggested cold brew; never confirmed."
+   },
+   "spreading/1": {
+    "candidates": [
+     {
+      "id": "proj-tea",
+      "score": 0.3009606339970936
+     },
+     {
+      "id": "tea-oolong-temp",
+      "score": 0.21198654118169358
+     },
+     {
+      "id": "tea-zh",
+      "score": 0.17154607415357814
+     },
+     {
+      "id": "tea-draft-cold",
+      "score": 0.12978333342374412
+     },
+     {
+      "id": "tea-supplier",
+      "score": 0.12320013121205806
+     }
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "packet": "[1] proj-tea: Tea brewing\n    approved · domain:tea · 2026-09-01\n    Daily tea brewing.\n    Wen: “i brew tea every morning”\n\n[2] tea-oolong-temp: Brew oolong at 90C\n    approved · domain:tea · 2026-09-01\n    Oolong water temperature is 90C.\n    Wen: “oolong at 90 from now on”\n\n[3] tea-zh: 喜欢乌龙茶\n    approved · domain:tea · 2026-09-01\n    偏好乌龙茶，不加糖。\n    Wen: “我最喜欢乌龙茶”\n\n[4] tea-draft-cold: Try cold-brew oolong\n    draft · domain:tea · 2026-09-01\n    Claude suggested cold brew; never confirmed.\n\n[5] tea-supplier: Buys oolong from a private supplier\n    observed · domain:tea · 2026-09-01\n    [private entry: ask Wen]"
+   },
+   "spreading/2": {
+    "candidates": [
+     {
+      "id": "proj-tea",
+      "score": 0.31198073815746336
+     },
+     {
+      "id": "tea-oolong-temp",
+      "score": 0.19236494211810137
+     },
+     {
+      "id": "tea-zh",
+      "score": 0.1745144088974924
+     },
+     {
+      "id": "tea-draft-cold",
+      "score": 0.13999835886302475
+     },
+     {
+      "id": "tea-supplier",
+      "score": 0.11663474780981367
+     }
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "packet": "[1] proj-tea: Tea brewing\n    approved · domain:tea · 2026-09-01\n    Daily tea brewing.\n    Wen: “i brew tea every morning”\n\n[2] tea-oolong-temp: Brew oolong at 90C\n    approved · domain:tea · 2026-09-01\n    Oolong water temperature is 90C.\n    Wen: “oolong at 90 from now on”\n\n[3] tea-zh: 喜欢乌龙茶\n    approved · domain:tea · 2026-09-01\n    偏好乌龙茶，不加糖。\n    Wen: “我最喜欢乌龙茶”\n\n[4] tea-draft-cold: Try cold-brew oolong\n    draft · domain:tea · 2026-09-01\n    Claude suggested cold brew; never confirmed.\n\n[5] tea-supplier: Buys oolong from a private supplier\n    observed · domain:tea · 2026-09-01\n    [private entry: ask Wen]"
+   },
+   "spreading/3": {
+    "candidates": [
+     {
+      "id": "proj-tea",
+      "score": 0.2875370004621719
+     },
+     {
+      "id": "tea-zh",
+      "score": 0.22022663680640522
+     },
+     {
+      "id": "tea-oolong-temp",
+      "score": 0.20138305834173217
+     },
+     {
+      "id": "tea-supplier",
+      "score": 0.12676250871854378
+     },
+     {
+      "id": "tea-draft-cold",
+      "score": 0.1024896741118165
+     }
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-zh",
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "packet": "[1] proj-tea: Tea brewing\n    approved · domain:tea · 2026-09-01\n    Daily tea brewing.\n    Wen: “i brew tea every morning”\n\n[2] tea-zh: 喜欢乌龙茶\n    approved · domain:tea · 2026-09-01\n    偏好乌龙茶，不加糖。\n    Wen: “我最喜欢乌龙茶”\n\n[3] tea-oolong-temp: Brew oolong at 90C\n    approved · domain:tea · 2026-09-01\n    Oolong water temperature is 90C.\n    Wen: “oolong at 90 from now on”\n\n[4] tea-supplier: Buys oolong from a private supplier\n    observed · domain:tea · 2026-09-01\n    [private entry: ask Wen]\n\n[5] tea-draft-cold: Try cold-brew oolong\n    draft · domain:tea · 2026-09-01\n    Claude suggested cold brew; never confirmed."
+   },
+   "spreading/4": {
+    "candidates": [
+     {
+      "id": "proj-tea",
+      "score": 0.2874503899337874
+     },
+     {
+      "id": "tea-oolong-temp",
+      "score": 0.20972934529225754
+     },
+     {
+      "id": "tea-supplier",
+      "score": 0.16074479980884246
+     },
+     {
+      "id": "tea-zh",
+      "score": 0.14510795872538287
+     },
+     {
+      "id": "tea-draft-cold",
+      "score": 0.13609372747685253
+     }
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-zh",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "packet": "[1] proj-tea: Tea brewing\n    approved · domain:tea · 2026-09-01\n    Daily tea brewing.\n    Wen: “i brew tea every morning”\n\n[2] tea-oolong-temp: Brew oolong at 90C\n    approved · domain:tea · 2026-09-01\n    Oolong water temperature is 90C.\n    Wen: “oolong at 90 from now on”\n\n[3] tea-supplier: Buys oolong from a private supplier\n    observed · domain:tea · 2026-09-01\n    [private entry: ask Wen]\n\n[4] tea-zh: 喜欢乌龙茶\n    approved · domain:tea · 2026-09-01\n    偏好乌龙茶，不加糖。\n    Wen: “我最喜欢乌龙茶”\n\n[5] tea-draft-cold: Try cold-brew oolong\n    draft · domain:tea · 2026-09-01\n    Claude suggested cold brew; never confirmed."
+   },
+   "spreading/5": {
+    "candidates": [
+     {
+      "id": "proj-tea",
+      "score": 0.3154173912093645
+     },
+     {
+      "id": "tea-oolong-temp",
+      "score": 0.1992575419850792
+     },
+     {
+      "id": "tea-zh",
+      "score": 0.18151856508007178
+     },
+     {
+      "id": "tea-draft-cold",
+      "score": 0.12255989099524726
+     },
+     {
+      "id": "tea-supplier",
+      "score": 0.11697841310716879
+     }
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "packet": "[1] proj-tea: Tea brewing\n    approved · domain:tea · 2026-09-01\n    Daily tea brewing.\n    Wen: “i brew tea every morning”\n\n[2] tea-oolong-temp: Brew oolong at 90C\n    approved · domain:tea · 2026-09-01\n    Oolong water temperature is 90C.\n    Wen: “oolong at 90 from now on”\n\n[3] tea-zh: 喜欢乌龙茶\n    approved · domain:tea · 2026-09-01\n    偏好乌龙茶，不加糖。\n    Wen: “我最喜欢乌龙茶”\n\n[4] tea-draft-cold: Try cold-brew oolong\n    draft · domain:tea · 2026-09-01\n    Claude suggested cold brew; never confirmed.\n\n[5] tea-supplier: Buys oolong from a private supplier\n    observed · domain:tea · 2026-09-01\n    [private entry: ask Wen]"
+   }
+  },
+  "ranks": {
+   "spreading/0/filter": {
+    "candidates": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "spreading/0/raw": {
+    "candidates": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "spreading/1/filter": {
+    "candidates": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "spreading/1/raw": {
+    "candidates": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "spreading/2/filter": {
+    "candidates": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "spreading/2/raw": {
+    "candidates": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "spreading/3/filter": {
+    "candidates": [
+     "proj-tea",
+     "tea-zh",
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-zh",
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "spreading/3/raw": {
+    "candidates": [
+     "proj-tea",
+     "tea-zh",
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-zh",
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "spreading/4/filter": {
+    "candidates": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-zh",
+     "tea-draft-cold"
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-zh",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "spreading/4/raw": {
+    "candidates": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-zh",
+     "tea-draft-cold"
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-supplier",
+     "tea-zh",
+     "tea-draft-cold"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "spreading/5/filter": {
+    "candidates": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   },
+   "spreading/5/raw": {
+    "candidates": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "delivered": [
+     "proj-tea",
+     "tea-oolong-temp",
+     "tea-zh",
+     "tea-draft-cold",
+     "tea-supplier"
+    ],
+    "rejected": [],
+    "degraded": null,
+    "parts": null
+   }
+  }
+ }
+}
