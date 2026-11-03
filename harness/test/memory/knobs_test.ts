@@ -73,10 +73,11 @@ export function numbersIn(code: string): number[] {
 }
 
 // The numbers each file may still hold. They are structure, not knobs: array positions, 1 as a neutral weight or an
-// offset, halving a range, a character count per token, a cache size and lifetime, a page size, a timestamp's width.
+// offset, halving a range, a character count per token, a cache size and lifetime, a page size, a timestamp's width, and
+// the message queue's agent-name length (40) and redelivery minutes (30).
 const ALLOWED: Record<string, number[]> = {
   'search.ts': [0, 1, 2, 4, 512, 60000],
-  'service.ts': [0, 1, 16, 20000, 100000],
+  'service.ts': [0, 1, 16, 30, 40, 20000, 100000],
 }
 // The names of the knobs that used to be constants or config, and the env vars that used to set them.
 const KNOBS = [
