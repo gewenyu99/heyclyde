@@ -144,7 +144,7 @@ async function exportBlobs(offset: number) {
       if (running !== null && running <= store.EXPORT_STORED_TOTAL && store.storageOn()) content = await store.get(r.sha256);
       if (!content) missing++;
     }
-    lines.push(JSON.stringify({ table: "blob", row: { ...row, content: content ? { base64: encodeBase64(content) } : null } }) + "\n");
+    lines.push(JSON.stringify({ table: "blob", row: { ...row, content: content ? { base64: encodeBase64(new Uint8Array(content)) } : null } }) + "\n");
   }
   const headers: Record<string, string> = { "content-type": "application/x-ndjson", "x-rows": String(page.length), "x-missing-blobs": String(missing) };
   if (truncated) headers["x-truncated"] = "1";
