@@ -36,12 +36,13 @@ const sql = postgres(env('SUPABASE_DB_URL'), { max: 1, onnotice: () => {} })
 // The migrations schedule these against the real project, with the cron secret. The tests never want them.
 const CRONS = ['memory-embed-sync', 'memory-learn', 'memory-message-purge']
 
-async function unschedule() {
-  await sql`select cron.unschedule(jobname) from cron.job where jobname::text = any(${CRONS}::text[])`
+// memory-blob-sweep stays scheduled after a reset, since a test checks the migration made it. drop removes it.
+async function unschedule(names = CRONS) {
+  await sql`select cron.unschedule(jobname) from cron.job where jobname::text = any(${names}::text[])`
 }
 
 async function drop() {
-  await unschedule().catch(() => {})
+  await unschedule([...CRONS, 'memory-blob-sweep']).catch(() => {})
   await sql`drop schema if exists memory cascade`
 }
 

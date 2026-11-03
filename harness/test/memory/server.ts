@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { request } from '../../src/request.ts'
 import { type FakeAuth, startFakeAuth } from './auth.ts'
 import { type FakeOpenAI, startFakeOpenAI } from './openai.ts'
+import { FakeStorage } from './storage.ts'
 
 export const DATABASE_URL = process.env.MEMORY_TEST_DATABASE_URL ?? ''
 export const SKIP = DATABASE_URL ? false : 'set MEMORY_TEST_DATABASE_URL to the postgres database of a supabase/postgres container to run the memory tests'
@@ -18,6 +19,7 @@ const DATABASE = join(import.meta.dirname, 'database.ts')
 const NO_NODE_MODULES = '--node-modules-dir=none'
 
 export type RealMemory = {
+  storage?: FakeStorage; serviceKey?: string
   url: string; token: string; runtimeToken: string; adminToken: string; cronSecret: string; openai: FakeOpenAI; auth: FakeAuth
   close: () => Promise<void>
 }
@@ -73,7 +75,7 @@ async function waitHealthy(url: string, child: ChildProcess, log: () => string):
 
 /** A fresh schema memory and the function on it, with a device token, the runtime and admin tokens, and the cron secret.
  * close() stops the function and drops the schema. extraEnv is added to the function's environment. */
-export async function startRealMemory(extraEnv: Record<string, string> = {}): Promise<RealMemory> {
+export async function startRealMemory(extraEnv: Record<string, string> = {}, options: { storage?: boolean } = {}): Promise<RealMemory> {
   const token = `device-${randomBytes(8).toString('hex')}`
   const runtimeToken = `runtime-${randomBytes(8).toString('hex')}`
   const adminToken = `admin-${randomBytes(8).toString('hex')}`
@@ -85,10 +87,15 @@ export async function startRealMemory(extraEnv: Record<string, string> = {}): Pr
   // Embeddings, the write judge and the recall filter all go to the fake OpenAI, and sign-ins to the fake Supabase Auth,
   // so nothing leaves the machine.
   const openai = await startFakeOpenAI()
-  const auth = await startFakeAuth()
+  // With storage, a fake Supabase Storage answers under /storage/v1 on the same origin as SUPABASE_URL, and the function is
+  // given a service role key, which is what switches its Storage on.
+  const serviceKey = options.storage ? randomBytes(20).toString('hex') : undefined
+  const storage = serviceKey ? new FakeStorage(serviceKey) : undefined
+  const auth = await startFakeAuth(storage?.handle)
   const env = {
     ...process.env, SUPABASE_DB_URL: DATABASE_URL, DENO_SERVE_ADDRESS: `tcp:127.0.0.1:${port}`, MEMORY_OPENAI_URL: openai.url,
-    SUPABASE_URL: auth.url, SUPABASE_ANON_KEY: 'fake-anon-key', NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost', ...extraEnv,
+    SUPABASE_URL: auth.url, SUPABASE_ANON_KEY: 'fake-anon-key', NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost',
+    ...(serviceKey ? { SUPABASE_SERVICE_ROLE_KEY: serviceKey, MEMORY_STORAGE_TIMEOUT_MS: '2000' } : {}), ...extraEnv,
   }
   const child = spawn(DENO, ['run', '-A', NO_NODE_MODULES, FUNCTION], { env, stdio: ['ignore', 'pipe', 'pipe'] })
   let output = ''
@@ -111,5 +118,8 @@ export async function startRealMemory(extraEnv: Record<string, string> = {}): Pr
     await close()
     throw err
   }
-  return { url, token, runtimeToken, adminToken, cronSecret, openai, auth, close }
+  return { url, token, runtimeToken, adminToken, cronSecret, openai, auth, close, storage, serviceKey }
 }
+
+/** startRealMemory with a fake Supabase Storage (storage.ts) and a service role key, so the function's Storage is on. */
+export const startStorageBed = (extraEnv: Record<string, string> = {}) => startRealMemory(extraEnv, { storage: true })

@@ -23,12 +23,14 @@ function claimsOf(header: string): Record<string, any> | null {
   }
 }
 
-export async function startFakeAuth(): Promise<FakeAuth> {
+/** extra answers first: a route table mounted on the same origin, like the fake Storage under /storage/v1. */
+export async function startFakeAuth(extra?: (req: http.IncomingMessage, res: http.ServerResponse, body: Buffer) => boolean): Promise<FakeAuth> {
   const calls: FakeAuth['calls'] = []
   const server = http.createServer((req, res) => {
     const chunks: Buffer[] = []
     req.on('data', (c) => chunks.push(c))
     req.on('end', () => {
+      if (extra?.(req, res, Buffer.concat(chunks))) return
       const path = new URL(req.url ?? '/', 'http://fake').pathname
       let body: any = null
       try {
