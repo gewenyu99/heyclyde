@@ -87,6 +87,22 @@ async function syncStatus() {
   return row ? JSON.parse(row.value) : null;
 }
 
+/** The share of the last 7 days' MCP recalls that got agent feedback (R33), and the same per client, keyed by the client's own
+ * name with none as "unknown". Recalls over HTTP have no feedback path, so they stay out. A share is null with no recalls. */
+async function feedbackCoverage() {
+  const rows = await sql`select coalesce(s.client, 'unknown') as client, count(*) as recalls,
+      count(*) filter (where exists (select 1 from memory.feedback f where f.retrieval_id = r.id and f.source = 'agent')) as with_feedback
+    from memory.retrieval r left join memory.mcp_session s on s.id = r.mcp_session
+    where r.created_at > now() - interval '7 days' and s.client is distinct from 'http' group by 1 order by 1`;
+  const share = (withFeedback: number, recalls: number) => recalls ? Math.round(withFeedback / recalls * 100) / 100 : null;
+  const total = rows.reduce((n, r) => ({ recalls: n.recalls + r.recalls, with_feedback: n.with_feedback + r.with_feedback }),
+    { recalls: 0, with_feedback: 0 });
+  return {
+    ...total, share: share(total.with_feedback, total.recalls),
+    by_client: Object.fromEntries(rows.map((r) => [r.client, { recalls: r.recalls, with_feedback: r.with_feedback, share: share(r.with_feedback, r.recalls) }])),
+  };
+}
+
 async function overview() {
   const [c] = await sql`select (select count(*) from memory.entry_current) as entries,
       (select count(*) from memory.entry e where ${u(SUPERSEDED)}) as superseded,
@@ -113,7 +129,7 @@ async function overview() {
   }
   return {
     health: { db: true, arms: await servingArms(sql), embedding_model: config.embedModel, vector: true, sync: await syncStatus(),
-      budget: await budget() },
+      budget: await budget(), feedback_coverage_7d: await feedbackCoverage() },
     counts: { ...c, unread: Object.fromEntries(unread.map((r) => [r.name, r.n])) },
     embeddings: await embeddingCounts(sql), last,
   };
@@ -754,7 +770,7 @@ const IMPORTABLE = new Set(["source", "entry", "link", "question", "qrel", "blob
   "allocation", "openai_usage"]);
 const SERIAL = ["event", "feedback", "message", "message_delivery", "admin_audit", "device"];
 // jsonb columns go in through sql.json, or a list of strings would be sent as text[].
-const JSONB = new Set(["payload", "candidates", "delivered", "rejected", "context", "before", "after", "params"]);
+const JSONB = new Set(["payload", "candidates", "delivered", "rejected", "on_trial", "context", "before", "after", "params"]);
 const MAX_IMPORT = 8 * 1024 * 1024;
 
 /** Parameter sets never change, so a restore can't just overwrite one. A set that's there with the same params is skipped. A set

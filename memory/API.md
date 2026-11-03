@@ -59,7 +59,9 @@ The console, in [console/](console/), is static files with no data in them. It a
 ```json
 {"health": {"db": true, "arms": ["index", "hybrid"], "embedding_model": "bge-m3", "vector": true,
             "sync": {"running": false, "trigger": "startup", "started_at": "...", "finished_at": "...",
-                     "embedded": 5, "error": null}},
+                     "embedded": 5, "error": null},
+            "feedback_coverage_7d": {"recalls": 7, "with_feedback": 3, "share": 0.43,
+                                     "by_client": {"claude-code": {"recalls": 4, "with_feedback": 2, "share": 0.5}}}},
  "counts": {"entries": 5, "superseded": 1, "private": 1, "links": 7, "sources": 2, "projects": 1,
             "events": 0, "client_sessions": 0, "mcp_sessions": 0, "recalls": 0, "feedback": 0, "messages": 0,
             "unread": {"claude": 0, "codex": 0}, "unread_messages": 0},
@@ -68,6 +70,7 @@ The console, in [console/](console/), is static files with no data in them. It a
 ```
 
 - `arms` are the arms live sessions draw from. `vector` says whether pgvector is installed.
+- `feedback_coverage_7d` is the share of the last 7 days' MCP recalls that got at least one `agent` feedback row (Wen's rows and recalls over HTTP don't count). `by_client` is keyed by the client's own name, `unknown` for none, and a `share` is null with no recalls.
 - `sync` is the latest embedding sync, running or done, or null before the first. `trigger` is `startup` for the server's own sync at start, or `console`. A finished sync has `embedded` or `error`. The server keeps it in memory, so a restart starts over with the startup sync.
 - `entries` counts current entries. `superseded` and `private` count every entry.
 - `events` counts every event row, `get_entry` opens included. `client_sessions` counts distinct client session ids among the hook events only, since a `get_entry` row carries the MCP session id.
@@ -277,7 +280,9 @@ Newest first. Each item has `id`, `retrieval_id`, `source`, `verdict`, `entry_id
 
 ### `POST /feedback`
 
-Body `{"retrieval_id", "verdict", "entry_id"?, "note"?}`. It goes through the same path as the agent's `feedback` tool, with source `wen`. Returns 201 `{"ok": true}`, or 422 with the tool's own message, like `verdict must be helpful, irrelevant or wrong.`
+Body `{"retrieval_id", "verdict", "entry_id"?, "note"?}`, with a verdict of helpful, used, irrelevant, wrong or nothing_useful. It goes through the same path as the agent's one-verdict call, with source `wen`. Returns 201 `{"ok": true}`, or 422 with the tool's own message, like `Not logged: verdict must be helpful, used, irrelevant, wrong or nothing_useful.`
+
+The agent's `feedback` tool takes `retrieval_id` and then `entries: [{"entry_id", "verdict": "used"|"irrelevant"|"wrong"}]` (`items` is the same list), or `nothing_useful: true`, plus an optional overall `verdict` and a `note` of up to 4,000 characters. A call is all or nothing, comes only from the MCP session that made the recall, and each recall takes one. Every MCP packet ends with the line asking for it, and the next tool reply in the session carries a reminder while it's missing.
 
 ## Messages
 

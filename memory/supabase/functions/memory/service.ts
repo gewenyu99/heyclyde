@@ -7,24 +7,28 @@ import { ARMS, fetchEntries, pack, type Ranked, redact as redactPrivate, renderE
 import { Refused, SCOPE_RE } from "./write.ts";
 import { redact, redactText } from "./redact.ts";
 import { relevance, screen } from "./judge.ts";
+import { BAD_VERDICT, checkFeedback, feedbackFooter, REMIND_MAX, reminderLine, VERDICTS } from "./feedback.ts";
+import { renderTrialItem, TRIAL_CHANCES } from "./trial.ts";
 
 const RID = /retrieval ([0-9a-f-]{36})/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const PRIVATE_BLOB = "[private blob: ask Wen]";
 const PAGE_MAX = 100_000;
 
-/** The arm's ranking with dormant entries dropped and every score tilted by its entry's confidence, and the confidences
- * the tilt read. Confidence tilts the ranking without overriding it: score × (tiltBase + (1 - tiltBase) × confidence). */
-async function tilt(db: Sql, ranked: Ranked[], p: Params): Promise<[Ranked[], Map<string, number>]> {
+/** The arm's ranking with dormant entries dropped and every score tilted by its entry's confidence, the confidences the tilt
+ * read, and the chances each entry has left. Confidence tilts the ranking without overriding it:
+ * score × (tiltBase + (1 - tiltBase) × confidence). */
+async function tilt(db: Sql, ranked: Ranked[], p: Params): Promise<[Ranked[], Map<string, number>, Map<string, number>]> {
   const ids = ranked.slice(0, p.tiltWindow).map(([id]) => id);
-  if (!ids.length) return [ranked, new Map()];
-  const conf = new Map((await db`select id, confidence from memory.entry where id = any(${ids}::text[])`)
-    .map((r) => [r.id, r.confidence as number]));
+  if (!ids.length) return [ranked, new Map(), new Map()];
+  const found = await db`select id, confidence, chances_left from memory.entry where id = any(${ids}::text[])`;
+  const conf = new Map(found.map((r) => [r.id, r.confidence as number]));
+  const chances = new Map(found.map((r) => [r.id, r.chances_left as number]));
   const tilted = ranked
     .filter(([id]) => (conf.get(id) ?? 1) >= p.dormant)
     .map(([id, score, line]): Ranked => [id, score * (p.tiltBase + (1 - p.tiltBase) * (conf.get(id) ?? p.tiltUnknownConfidence)), line])
     .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
-  return [tilted, conf];
+  return [tilted, conf, chances];
 }
 
 /** What the filter shows the judge for one candidate. Private and confidential entries go by title alone, since their
@@ -40,30 +44,40 @@ function itemText(line: string | null, row: Row | undefined) {
  *
  * Every arm's candidates pass the same relevance filter before packing, so the arms stay comparable. The judge reads the
  * top filterK and drops what it calls irrelevant. When it drops them all, recall says nothing matches rather than
- * serving noise. When it can't answer, the ranking goes out unfiltered and `degraded` says so. */
-export async function rankAndPack(db: Sql, set: ParamSet, query: string, task = "", scope: string | null = null, filter = true) {
+ * serving noise. When it can't answer, the ranking goes out unfiltered and `degraded` says so.
+ *
+ * With `lane` and a set whose trialItems is above 0, entries that still have chances left leave the main list. The best
+ * trialItems of them that the judge rates at or above trialFloor come back in `trial`, ranked by the same arm, for recall
+ * to spend a chance on. Previews and the eval pass no lane, so they spend nothing and rank every entry in one list. */
+export async function rankAndPack(db: Sql, set: ParamSet, query: string, task = "", scope: string | null = null, filter = true, lane = false) {
   const p = set.params;
   const request = task ? `${task}\n${query}`.trim() : query;
   const [armRanked, armDegraded, trace] = await ARMS[set.arm](db, request, scope || null, p);
-  const [ranked, confidence] = await tilt(db, armRanked, p);
+  const [ranked, confidence, chances] = await tilt(db, armRanked, p);
+  const split = lane && (p.trialItems ?? 0) > 0 && set.arm !== "index";
+  const onTrial = ([id]: Ranked) => split && (chances.get(id) ?? 0) > 0;
+  const settled = ranked.filter((r) => !onTrial(r)), waiting = ranked.filter(onTrial);
   const lines = ranked.every(([, , line]) => line !== null);
-  const rows = lines ? {} : await fetchEntries(db, ranked.slice(0, p.rowWindow).map(([id]) => id));
-  let candidates = ranked, rejected: string[] = [], filterDegraded: string | null = null;
+  const window = (list: Ranked[]) => list.slice(0, p.rowWindow).map(([id]) => id);
+  const rows = lines ? {} : await fetchEntries(db, [...window(settled), ...window(waiting)]);
+  let candidates = settled, rejected: string[] = [], filterDegraded: string | null = null, trial: string[] = [];
   const judged = new Map<string, number>();
   if (filter && ranked.length) {
-    const top = ranked.filter(([id, , line]) => line !== null || id in rows).slice(0, p.filterK);
+    const loaded = ([id, , line]: Ranked) => line !== null || id in rows;
+    const top = settled.filter(loaded).slice(0, p.filterK), trialTop = waiting.filter(loaded).slice(0, p.filterK);
     try {
-      const odds = await relevance(request, top.map(([id, , line]) => itemText(line, rows[id])));
-      top.forEach(([id], i) => judged.set(id, odds[i]));
-      candidates = top.filter((_, i) => odds[i] >= p.filterThreshold);
-      rejected = top.filter((_, i) => odds[i] < p.filterThreshold).map(([id]) => id);
+      const odds = await relevance(request, [...top, ...trialTop].map(([id, , line]) => itemText(line, rows[id])));
+      [...top, ...trialTop].forEach(([id], i) => judged.set(id, odds[i]));
+      candidates = top.filter(([id]) => judged.get(id)! >= p.filterThreshold);
+      rejected = top.filter(([id]) => judged.get(id)! < p.filterThreshold).map(([id]) => id);
+      trial = trialTop.filter(([id]) => judged.get(id)! >= (p.trialFloor ?? p.filterThreshold)).slice(0, p.trialItems).map(([id]) => id);
     } catch (e) {
       filterDegraded = `filter-failed: ${(e as Error).name}`;
     }
   }
   const [delivered, chunks] = pack(candidates, rows, p);
   const degraded = [armDegraded, filterDegraded].filter(Boolean).join("; ") || null;
-  return { ranked, degraded, delivered, chunks, lines, rejected, features: features(ranked, trace, confidence, judged) };
+  return { ranked, degraded, delivered, chunks, lines, rejected, trial, rows, features: features(ranked, trace, confidence, judged) };
 }
 
 /** The line a degraded recall leads with, so the caller knows the results are weaker than usual. */
@@ -72,15 +86,22 @@ function degradedLine(degraded: string) {
   return `Degraded: ${degraded}; results are ${how.filter(Boolean).join(" and ") || "partial"}.`;
 }
 
-/** What the agent reads under the retrieval id. The console's preview shows the same text. */
-export function packetText(chunks: string[], lines: boolean, degraded: string | null = null) {
+/** What the agent reads under the retrieval id. The console's preview shows the same text. Entries on trial come last, under
+ * a line that is exactly "On trial". */
+export function packetText(chunks: string[], lines: boolean, degraded: string | null = null, trial: string[] = []) {
   const head = degraded ? degradedLine(degraded) + "\n\n" : "";
-  if (!chunks.length) return head + "Nothing in memory matches. Ask Wen rather than guessing.";
-  if (lines) return head + "Index lines that match. Open any with get_entry(id).\n" + chunks.join("\n");
-  return head + chunks.join("\n\n");
+  if (!chunks.length && !trial.length) return head + "Nothing in memory matches. Ask Wen rather than guessing.";
+  const main = !chunks.length ? "" : lines ? "Index lines that match. Open any with get_entry(id).\n" + chunks.join("\n") : chunks.join("\n\n");
+  if (!trial.length) return head + main;
+  return head + (main ? main + "\n\n" : "") + "On trial\n" + trial.join("\n\n");
 }
 
-/** Search memory. Every run's entries are candidates. With a scope like run:abc, that run's rank first. */
+/** Search memory. Every run's entries are candidates. With a scope like run:abc, that run's rank first.
+ *
+ * An MCP recall without a scope also serves the trial lane of a set that has one: entries with chances left come under "On
+ * trial", and each one shown spends a chance. The spend, the packet and the retrieval row are one transaction, so a recall that
+ * fails spends nothing, and an entry whose last chance a concurrent recall took is dropped from this packet. A scoped recall
+ * serves its run's notes in the main list, and an HTTP recall (clyde-flow) has no way to give feedback or see a trial list. */
 export async function recall(session: string, query: string, task = "", client: string | null = null,
   scope: string | null = null, principal = "anyone") {
   if (scope && !SCOPE_RE.test(scope)) throw new Refused(`scope ${JSON.stringify(scope)} must look like run:<id>, or be left out.`);
@@ -88,16 +109,31 @@ export async function recall(session: string, query: string, task = "", client: 
   task = redactText(task)[0];
   const started = performance.now();
   const { set, propensity } = await sessionSet(sql, session, unitOf(scope, principal, client), client);
-  const { ranked, degraded, delivered, chunks, lines, rejected, features: logged } = await rankAndPack(sql, set, query, task, scope);
-  const rid = crypto.randomUUID(), text = packetText(chunks, lines, degraded);
+  const mcp = client !== "http";
+  const { ranked, degraded, delivered, chunks, lines, rejected, trial, rows, features: logged } =
+    await rankAndPack(sql, set, query, task, scope, true, mcp && !scope);
+  const rid = crypto.randomUUID();
   // Only a whole recall ticks the clock, so a degraded one takes no seq.
   const seq = degraded ? null : sql`nextval('memory.retrieval_seq')`;
-  await sql`insert into memory.retrieval (id, mcp_session, arm, query, task, scope, candidates, delivered, rejected, latency_ms,
-      degraded, packet, param_set, propensity, seq, context)
-    values (${rid}, ${session}, ${set.arm}, ${query}, ${task || null}, ${scope || null},
-      ${sql.json(ranked.map(([id, score]: Ranked) => ({ id, score })))}, ${sql.json(delivered)}, ${sql.json(rejected)},
-      ${Math.round(performance.now() - started)}, ${degraded}, ${text}, ${set.id}, ${propensity}, ${seq},
-      ${sql.json({ param_set: set.id, candidates: logged })})`;
+  const text = await sql.begin(async (tx) => {
+    const left = trial.length
+      ? new Map((await tx`update memory.entry set chances_left = chances_left - 1
+          where id in (select id from memory.entry where id = any(${trial}::text[]) and chances_left > 0 order by id for update)
+          returning id, chances_left`).map((r) => [r.id as string, r.chances_left as number]))
+      : new Map<string, number>();
+    const shown = trial.filter((id) => left.has(id));
+    const packet = packetText(chunks, lines, degraded, shown.map((id, i) => renderTrialItem(i + 1, rows[id], left.get(id)!)));
+    const text = mcp ? `${packet}\n${feedbackFooter(rid)}` : packet;
+    const context: Row = { param_set: set.id, candidates: logged };
+    if (shown.length) context.trial = shown.map((id) => ({ id, chance: TRIAL_CHANCES - left.get(id)! }));
+    await tx`insert into memory.retrieval (id, mcp_session, arm, query, task, scope, candidates, delivered, rejected, on_trial, latency_ms,
+        degraded, packet, param_set, propensity, seq, context)
+      values (${rid}, ${session}, ${set.arm}, ${query}, ${task || null}, ${scope || null},
+        ${tx.json(ranked.map(([id, score]: Ranked) => ({ id, score })))}, ${tx.json(delivered)}, ${tx.json(rejected)}, ${tx.json(shown)},
+        ${Math.round(performance.now() - started)}, ${degraded}, ${text}, ${set.id}, ${propensity}, ${seq},
+        ${tx.json(context)})`;
+    return text;
+  });
   return `retrieval ${rid}\n\n${text}`;
 }
 
@@ -145,15 +181,47 @@ export async function getBlob(sha: string, offset = 0, limit = 20000) {
   return `${head}\n\n${text.slice(offset, end)}`;
 }
 
-/** The agent's own report is logged and never moves weights alone. */
+/** One verdict, logged under this source: Wen's, from the console, or an agent's older one-verdict call. */
 export async function feedback(db: Sql, retrievalId: string, verdict: string, entryId: string | null = null,
   note: string | null = null, source = "agent") {
-  if (!["helpful", "irrelevant", "wrong"].includes(verdict)) return "verdict must be helpful, irrelevant or wrong.";
+  if (!VERDICTS.includes(verdict)) return BAD_VERDICT;
   if (!UUID.test(retrievalId)) return `No retrieval ${retrievalId}.`;
   if (!(await db`select 1 from memory.retrieval where id = ${retrievalId}`).length) return `No retrieval ${retrievalId}.`;
   await db`insert into memory.feedback (retrieval_id, source, verdict, entry_id, note)
     values (${retrievalId}, ${source}, ${verdict}, ${entryId}, ${note})`;
   return "Logged.";
+}
+
+/** The agent's report on one of its own recalls (R33), all or nothing: a verdict per entry the recall showed, or
+ * nothing_useful for the packet, or the older single verdict. Only the MCP session that made the recall may give it, and a
+ * recall takes one such call. It is logged, and the learner reads it with the recall's other signals. */
+export async function agentFeedback(session: string, args: Record<string, unknown>) {
+  const id = typeof args.retrieval_id === "string" ? args.retrieval_id : "";
+  if (!UUID.test(id)) return `No retrieval ${id}.`;
+  const [r] = await sql`select delivered, on_trial from memory.retrieval where id = ${id} and mcp_session = ${session}`;
+  if (!r) return `No retrieval ${id}.`;
+  const checked = checkFeedback(args, [...(r.delivered ?? []), ...(r.on_trial ?? [])]);
+  return await sql.begin(async (tx) => {
+    // One call at a time per retrieval, so two at once can't both log.
+    await tx`select pg_advisory_xact_lock(hashtext(${id}))`;
+    if ((await tx`select 1 from memory.feedback where retrieval_id = ${id} and source = 'agent' limit 1`).length) return `Already logged for ${id}.`;
+    if ("error" in checked) return checked.error;
+    const note = typeof args.note === "string" && args.note ? redactText(args.note)[0] : null;
+    for (const [i, row] of checked.rows.entries()) {
+      await tx`insert into memory.feedback (retrieval_id, source, verdict, entry_id, note)
+        values (${id}, 'agent', ${row.verdict}, ${row.entry_id}, ${i === 0 ? note : null})`;
+    }
+    return "Logged.";
+  });
+}
+
+/** The line that ends a tool reply while this session has recalls with no agent feedback, naming the newest few, or "". It
+ * reads the database, so it holds across isolates. `exclude` is the recall this reply is for. */
+export async function reminder(session: string, exclude: string | null) {
+  const rows = await sql`select retrieval_id from memory.unanswered_recall
+    where mcp_session = ${session} and retrieval_id is distinct from ${exclude}::uuid
+    order by created_at desc limit ${REMIND_MAX}`;
+  return rows.length ? reminderLine(rows.map((r) => r.retrieval_id as string)) : "";
 }
 
 /** Postgres text and jsonb refuse NUL, and one in a prompt or tool output would lose the whole event. Drop them. */

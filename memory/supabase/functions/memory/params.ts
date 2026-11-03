@@ -30,6 +30,14 @@ export type Params = {
    * has its score multiplied by otherRunFactor, a draft in a non-run scope by globalAgentDraftFactor. Both are in (0, 1]. */
   otherRunFactor?: number;
   globalAgentDraftFactor?: number;
+  /** The trial lane (R28), optional and off when a set doesn't carry it. trialItems is how many entries still on trial a
+   * recall lists apart, under "On trial", from the settled main list; 0 serves every entry in one list as before. They must
+   * rate at or above trialFloor. trialStep and settledStep are how far one outcome moves an entry's confidence while it is
+   * in trial and once it has settled (learn.ts step). */
+  trialItems?: number;
+  trialFloor?: number;
+  trialStep?: number;
+  settledStep?: number;
   /** Spreading: personalized PageRank's restart share and iteration count, what a replaced entry keeps, and each link
    * type's weight, keyed "src_pattern|link_type|dst_pattern" (1 for a type not named). */
   restart: number;
@@ -43,8 +51,9 @@ export type Params = {
 };
 
 type Spec = { min: number; max: number; int?: boolean; above?: boolean };
+type OptionalKnob = "otherRunFactor" | "globalAgentDraftFactor" | "trialItems" | "trialFloor" | "trialStep" | "settledStep";
 const WEIGHT: Spec = { min: -10, max: 10 };
-const KNOBS: Record<Exclude<keyof Params, "linkTypeWeights" | "otherRunFactor" | "globalAgentDraftFactor">, Spec> = {
+const KNOBS: Record<Exclude<keyof Params, "linkTypeWeights" | OptionalKnob>, Spec> = {
   candidates: { min: 1, max: 200, int: true }, packetItems: { min: 1, max: 50, int: true }, packetTokens: { min: 100, max: 20000, int: true },
   filterK: { min: 1, max: 50, int: true }, filterThreshold: { min: 0, max: 1 }, tiltBase: { min: 0, max: 1 },
   tiltUnknownConfidence: { min: 0, max: 1 }, tiltWindow: { min: 1, max: 200, int: true }, rowWindow: { min: 1, max: 200, int: true },
@@ -53,8 +62,10 @@ const KNOBS: Record<Exclude<keyof Params, "linkTypeWeights" | "otherRunFactor" |
   supersededFactor: { min: 0, max: 1 }, wTemperature: WEIGHT, wAge: WEIGHT, wKind: WEIGHT,
 };
 // Knobs a set may leave out: the v1 sets predate them, and a set without one ranks as before.
-const OPTIONAL: Record<"otherRunFactor" | "globalAgentDraftFactor", Spec> = {
+const OPTIONAL: Record<OptionalKnob, Spec> = {
   otherRunFactor: { min: 0, max: 1, above: true }, globalAgentDraftFactor: { min: 0, max: 1, above: true },
+  trialItems: { min: 0, max: 10, int: true }, trialFloor: { min: 0, max: 1 },
+  trialStep: { min: 0, max: 0.5, above: true }, settledStep: { min: 0, max: 0.5, above: true },
 };
 const LINK_KEY = /^[a-z][a-z_-]{1,40}\|[a-z_]{2,40}\|[a-z][a-z_-]{1,40}$/;
 // The range eval/ants.py keeps link type weights in.

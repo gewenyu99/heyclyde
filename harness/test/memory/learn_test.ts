@@ -74,7 +74,7 @@ Deno.test('outcomesOf: the strongest signal per entry wins, ignored needs feedba
   const got = outcomesOf({ shown, named: new Map([['a', 'used'], ['b', 'irrelevant']]), opened: new Set(['c']), blamed: null })
   assert.deepEqual([...got], [['a', 'used'], ['b', 'irrelevant'], ['c', 'opened'], ['d', 'ignored'], ['e', 'ignored']])
   // Opened and named: the bigger weight wins, and a tie goes to the negative one.
-  assert.equal(outcomesOf({ shown, named: new Map([['a', 'irrelevant']]), opened: new Set(['a']), blamed: null }).get('a'), 'opened')
+  assert.equal(outcomesOf({ shown, named: new Map([['a', 'irrelevant']]), opened: new Set(['a']), blamed: null }).get('a'), 'irrelevant')
   assert.equal(outcomesOf({ shown, named: new Map([['a', 'used']]), opened: new Set(), blamed: 'a' }).get('a'), 'wrong')
   assert.equal(outcomesOf({ shown, named: new Map([['a', 'wrong']]), opened: new Set(['a']), blamed: null }).get('a'), 'wrong')
   assert.equal(outcomesOf({ shown, named: new Map([['a', 'used']]), opened: new Set(['a']), blamed: null }).get('a'), 'used')

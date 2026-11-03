@@ -8,12 +8,15 @@ import * as service from "./service.ts";
 import { clientStatus, installerNote, SERVER_VERSION } from "./version.ts";
 import { Refused, remember } from "./write.ts";
 
-const VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
+const RID = /^retrieval ([0-9a-f-]{36})/;
+const VERSIONS =["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 export const INSTRUCTIONS = "Wen's memory. Call recall before acting on anything that depends on Wen's decisions, " +
   "preferences or history. Wen's other agents leave you messages. Call check_messages when you start a task, " +
   "and post_message to reach them. check_messages numbers each message: call ack_messages with those ids once you've " +
   "handled them, or they come back. To keep what you learn, call remember: it needs only pattern, title, body and " +
-  "evidence, and every other agent can recall the note at once.";
+  "evidence, and every other agent can recall the note at once. Give feedback after every recall: one feedback call " +
+  "with a verdict (used, irrelevant or wrong) for each result, or nothing_useful when none helped. The packet shows " +
+  "some results under On trial, new notes still earning their place, so judge those too.";
 
 const str = (description: string) => ({ type: "string", description });
 const int = (description: string) => ({ type: "integer", description });
@@ -25,7 +28,8 @@ export const TOOLS = [
       "query: what you need to know, in English or 中文.\n" +
       "task: optional one-line description of what you are doing, to sharpen the search.\n" +
       "scope: optional run scope like run:abc. That run's notes rank first. Other runs' notes are searched too.\n" +
-      "Results start with a retrieval id. Pass it to feedback() if the results helped or misled you.",
+      "Results start with a retrieval id and end with the feedback call to make. Give feedback after every recall, one call " +
+      "for the whole packet, so memory learns which results to keep.",
     inputSchema: {
       type: "object", required: ["query"],
       properties: { query: str("What you need to know"), task: str("What you are doing"), scope: str("run:<id>") },
@@ -80,10 +84,26 @@ export const TOOLS = [
   },
   {
     name: "feedback",
-    description: "Report how a recall went. verdict: helpful, irrelevant or wrong. entry_id narrows it to one item.",
+    description: "Report how a recall went, once per recall, after every recall. Name each result you were shown, including " +
+      "those under On trial: entries: [{entry_id, verdict}] with verdict used, irrelevant or wrong. Say nothing_useful: true " +
+      "when none helped. A result you leave out counts as not used. Only the session that made the recall can give feedback, " +
+      "and only once. The older form still works: verdict (helpful, used, irrelevant, wrong), with entry_id for one result.",
     inputSchema: {
-      type: "object", required: ["retrieval_id", "verdict"],
-      properties: { retrieval_id: str("From the packet"), verdict: str("helpful, irrelevant or wrong"), entry_id: str("One item"), note: str("Why") },
+      type: "object", required: ["retrieval_id"],
+      properties: {
+        retrieval_id: str("From the packet"),
+        entries: {
+          type: "array", description: "A verdict for each result you were shown",
+          items: {
+            type: "object", required: ["entry_id", "verdict"],
+            properties: { entry_id: str("A result's id"), verdict: { type: "string", enum: ["used", "irrelevant", "wrong"] } },
+          },
+        },
+        items: { type: "array", description: "Same as entries", items: { type: "object" } },
+        nothing_useful: { type: "boolean", description: "True when no result helped. Don't send it with entries." },
+        verdict: str("Overall, or for entry_id: helpful, used, irrelevant, wrong or nothing_useful"), entry_id: str("One result, with verdict"),
+        note: str("Why, up to 4,000 characters"),
+      },
     },
   },
   {
@@ -150,7 +170,7 @@ const RUN: Record<string, (c: Call) => Promise<string>> = {
     return [`Remembered ${r.id}.`, ...r.blobs.map((b: { name: string; sha256: string }) => `Blob ${b.name}: ${b.sha256}`),
       "Keyword search finds it now. Vector search finds it after the next embedding sync."].join("\n");
   },
-  feedback: ({ args }) => service.feedback(sql, s(args.retrieval_id), s(args.verdict), s(args.entry_id) || null, s(args.note) || null),
+  feedback: ({ session, args }) => service.agentFeedback(session, args),
   post_message: ({ client, args }) => service.postMessage(sql, service.agentName(client), s(args.to), s(args.body)),
   check_messages: async ({ client, note }) =>
     ((await service.checkMessages(service.agentName(client))) || "No new messages.") + (note ? `\n${note}` : ""),
@@ -192,14 +212,27 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
       const name = msg.params?.name, run = RUN[name];
       if (!run) return error(id, -32602, `Unknown tool ${name}`);
       const sid = session ?? `anon-${crypto.randomUUID()}`;
+      // Every reply, errors included, ends with a reminder while a recall in this MCP session has no feedback. A call with no
+      // session header has no recalls of its own to be reminded of.
+      const remind = async (text: string) => {
+        if (!session) return text;
+        try {
+          const own = name === "recall" ? RID.exec(text)?.[1] ?? null : null;
+          const line = await service.reminder(session, own);
+          return line ? `${text}\n${line}` : text;
+        } catch (e) {
+          console.error(e);
+          return text;
+        }
+      };
       try {
         const principal = who.device ?? who.role;
         const text = await run({ session: sid, client: await clientOf(session), principal, args: msg.params?.arguments ?? {}, note: installNote(who) });
-        return result(id, { content: [{ type: "text", text }] });
+        return result(id, { content: [{ type: "text", text: await remind(text) }] });
       } catch (e) {
         if (!(e instanceof Refused)) console.error(e);
         const text = e instanceof Refused ? e.message : `Error: ${(e as Error).message}`;
-        return result(id, { content: [{ type: "text", text }], isError: true });
+        return result(id, { content: [{ type: "text", text: await remind(text) }], isError: true });
       }
     }
     default:
