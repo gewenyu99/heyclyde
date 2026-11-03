@@ -11,9 +11,14 @@ alter table memory.blob add column if not exists stored text not null default 'd
 do $$
 begin
   if to_regclass('storage.buckets') is not null then
-    insert into storage.buckets (id, name, public, file_size_limit)
-      values ('memory-blobs', 'memory-blobs', false, 524288000)
-      on conflict (id) do update set public = false, file_size_limit = 524288000;
+    insert into storage.buckets (id, name) values ('memory-blobs', 'memory-blobs') on conflict (id) do nothing;
+    -- Supabase's own schema has these columns. A bare image's may not, and there Storage is off anyway.
+    if exists (select 1 from information_schema.columns where table_schema = 'storage' and table_name = 'buckets' and column_name = 'public') then
+      update storage.buckets set public = false where id = 'memory-blobs';
+    end if;
+    if exists (select 1 from information_schema.columns where table_schema = 'storage' and table_name = 'buckets' and column_name = 'file_size_limit') then
+      update storage.buckets set file_size_limit = 524288000 where id = 'memory-blobs';
+    end if;
   end if;
 end $$;
 
