@@ -94,8 +94,15 @@ async function allocate(serve: string) {
 async function learnNow() {
   sql(`update memory.retrieval set created_at = created_at - interval '31 minutes' where learned_at is null`)
   sql(`update memory.event set received_at = received_at - interval '31 minutes'`)
-  const r = await request('POST', `${memory.url}/learn`, { headers: bearer(memory.cronSecret), timeoutMs: 120_000 })
-  return json(r)
+  // 40 recalls a pass, oldest first, and earlier tests left some, so go on until a pass learns nothing.
+  const total = { learned: 0, failed: 0 }
+  for (let pass = 0; pass < 50; pass++) {
+    const done = json(await request('POST', `${memory.url}/learn`, { headers: bearer(memory.cronSecret), timeoutMs: 120_000 }))
+    total.learned += done.learned
+    total.failed += done.failed
+    if (!done.learned && !done.failed) break
+  }
+  return total
 }
 
 // ---------------------------------------------------------------------------------------------------- R28: two lists
@@ -260,10 +267,13 @@ test('R28: a trial entry the judge cuts is not shown and keeps its chances; a de
   const { tool } = await mcp()
   for (let i = 0; i < 3; i++) assert.equal(count(await tool('recall', { query: `${w} cut kept` }), `${w}-cut`), 0)
   assert.equal(entry(`${w}-cut`).chances_left, 3)
+  const before = entry(`${w}-ok`).chances_left
+  assert.equal(before, 0, 'three healthy recalls spent its three')
+  seed(`${w}-ok2`, { title: `${w} kept again` })
   const down = await tool('recall', { query: `${w} kept ${FAKE_DOWN}` })
   assert.match(down, /Degraded:/)
   assert.equal(lists(down).has, false)
-  assert.equal(entry(`${w}-ok`).chances_left, 2, 'only the first, healthy recall spent one')
+  assert.equal(entry(`${w}-ok2`).chances_left, 3, 'a degraded recall cannot judge relevance, so it shows no trial and spends nothing')
 })
 
 test('R28: a failed recall spends no chance', { skip: SKIP }, async () => {
@@ -290,7 +300,7 @@ test('R28: the retrieval row keeps the On trial ids apart from delivered', { ski
   seed(`${w}-n1`, { title: `${w} trial one` })
   seed(`${w}-n2`, { title: `${w} trial two` })
   const { tool } = await mcp()
-  const text = await tool('recall', { query: `${w} main trial one two` })
+  const text = await tool('recall', { query: w })
   const [r] = sql(`select on_trial, delivered,
       (select count(*)::int from jsonb_array_elements_text(delivered) d where d in (select jsonb_array_elements_text(on_trial))) as overlap
     from memory.retrieval where id = '${rid(text)}'`)
@@ -305,8 +315,7 @@ test('R28: each On trial item renders in at most 400 characters', { skip: SKIP }
   for (let i = 0; i < 3; i++) seed(`${w}-l${i}`, { title: `${w} long ${i}`, body: `${w} long ${'padding '.repeat(500)}` })
   const { tool } = await mcp()
   const { trial } = lists(await tool('recall', { query: `${w} long` }))
-  const items = trial.split(/\n(?=\[T\d\])/).slice(0)
-  items[0] = items[0].replace(/^On trial\n/, '')
+  const items = trial.split(/\n(?=\[T\d\])/).filter((part) => part.startsWith('[T'))
   assert.equal(items.length, 3)
   for (const item of items) assert.ok(item.length <= 400, String(item.length))
 })
@@ -572,7 +581,7 @@ test('R28: three used verdicts take a trial observation from 0.50 to 0.86 and in
     assert.match(await s.tool('feedback', { retrieval_id: rid(text), entries: [{ entry_id: `${w}-u`, verdict: 'used' }] }), /^Logged/)
   }
   const done = await learnNow()
-  assert.equal(done.learned, 3)
+  assert.ok(done.learned >= 3 && done.failed === 0, JSON.stringify(done))
   const e = entry(`${w}-u`)
   assert.ok(Math.abs(e.confidence - 0.86) < 0.005, String(e.confidence))
   assert.equal(e.chances_left, 0)
@@ -626,12 +635,13 @@ test('R28: a shown entry that feedback never names fades by 0.05 a showing in tr
 test('R28: a recall with no feedback and no opens moves nothing, and a shown entry never takes two steps in one recall', { skip: SKIP }, async () => {
   await serveV3()
   const w = word()
+  const v = word()
   seed(`${w}-q`, { title: `${w} quiet note` })
-  seed(`${w}-r`, { title: `${w} loud note` })
+  seed(`${w}-r`, { title: `${v} loud note` })
   const s = await mcp()
   const quiet = await s.tool('recall', { query: `${w} quiet note` })
   assert.equal(count(lists(quiet).trial, `${w}-q`), 1)
-  const loud = await s.tool('recall', { query: `${w} loud note` })
+  const loud = await s.tool('recall', { query: `${v} loud note` })
   await s.tool('get_entry', { id: `${w}-r` })
   await s.tool('feedback', { retrieval_id: rid(loud), entries: [{ entry_id: `${w}-r`, verdict: 'wrong' }] })
   await learnNow()
@@ -662,7 +672,7 @@ test('R28: feedback names only what the recall showed, so a verdict on another e
   await serveV3()
   const w = word()
   seed(`${w}-in`, { title: `${w} shown` })
-  seed(`${w}-out`, { title: `${w} never shown ${word()}`, body: 'unrelated text', confidence: 0.7, chances: 0 })
+  seed(`${w}-out`, { title: `${word()} elsewhere`, body: 'unrelated text', confidence: 0.7, chances: 0 })
   const s = await mcp()
   const text = await s.tool('recall', { query: `${w} shown` })
   assert.match(await s.tool('feedback', { retrieval_id: rid(text), entries: [{ entry_id: `${w}-out`, verdict: 'wrong' }] }), /^Not logged/)
