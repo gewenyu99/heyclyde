@@ -19,7 +19,7 @@ const DATABASE = join(import.meta.dirname, 'database.ts')
 const NO_NODE_MODULES = '--node-modules-dir=none'
 
 export type RealMemory = {
-  storage?: FakeStorage; serviceKey?: string
+  storage?: FakeStorage; serviceKey?: string; log?: () => string
   url: string; token: string; runtimeToken: string; adminToken: string; cronSecret: string; openai: FakeOpenAI; auth: FakeAuth
   close: () => Promise<void>
 }
@@ -118,7 +118,7 @@ export async function startRealMemory(extraEnv: Record<string, string> = {}, opt
     await close()
     throw err
   }
-  return { url, token, runtimeToken, adminToken, cronSecret, openai, auth, close, storage, serviceKey }
+  return { url, token, runtimeToken, adminToken, cronSecret, openai, auth, close, storage, serviceKey, log: () => output }
 }
 
 /** startRealMemory with a fake Supabase Storage (storage.ts) and a service role key, so the function's Storage is on. */

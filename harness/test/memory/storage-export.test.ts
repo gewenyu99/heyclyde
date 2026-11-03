@@ -162,7 +162,7 @@ test('R20 storage: exporting 19,100 blob rows takes 100 requests or fewer', { sk
       })
       child.on('close', resolve)
     })
-    assert.equal(code, 0)
+    assert.equal(code, 0, memory.log!().slice(-3000))
     assert.ok(counted.length <= 100, `${counted.length} requests`)
     assert.ok(Date.now() - started <= 120_000)
     assert.ok(countOf('blob', 'true') >= 19_100)

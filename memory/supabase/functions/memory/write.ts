@@ -544,6 +544,7 @@ export async function remember(payload: unknown, caller: string, agentName = "ag
   const present = async (db: Sql) => new Set((await db`select sha256 from memory.blob where sha256 = any(${e.blobs.map((b: Row) => b.sha256)}::text[])`)
     .map((r) => r.sha256 as string));
   const settle = async (db: Sql) => {
+    if (!e.blobs.length) return;
     const have = await present(db);
     for (const b of e.blobs) b.existing = Boolean(b.existing) || have.has(b.sha256);
     const need = e.blobs.filter((b: Row) => !b.existing).reduce((n: number, b: Row) => n + b.size, 0);
@@ -555,15 +556,19 @@ export async function remember(payload: unknown, caller: string, agentName = "ag
   await settle(sql);
   // Inline bytes bound for Storage go up first. The note commits only if they did.
   const put: Row[] = e.blobs.filter((b: Row) => !b.cited && !b.existing && b.stored === "storage");
+  const sent: Row[] = [];
   try {
-    for (const b of put) await store.put(b.sha256, b.media_type, b.content);
+    for (const b of put) {
+      await store.put(b.sha256, b.media_type, b.content);
+      sent.push(b);
+    }
     try {
       await sql.begin(async (tx) => {
         if (await landed(tx, e)) return;
         await ensureNotesProject(tx, e);
         await check(tx, e);
         // One cap for the whole memory: the check and the insert take turns.
-        await tx`select pg_advisory_xact_lock(hashtext('memory-blob-quota'))`;
+        if (e.blobs.some((b: Row) => !b.existing)) await tx`select pg_advisory_xact_lock(hashtext('memory-blob-quota'))`;
         await settle(tx);
         if (!(await insert(tx, e))) throw new Retry();
       });
@@ -574,7 +579,7 @@ export async function remember(payload: unknown, caller: string, agentName = "ag
     }
   } catch (err) {
     // Bytes this write put in Storage that no row holds go again. The uploads it cited stay in incoming/ for a retry.
-    for (const b of put) {
+    for (const b of sent) {
       if (!(await sql`select 1 from memory.blob where sha256 = ${b.sha256}`).length) await store.remove(b.sha256, "final").catch(() => {});
     }
     throw err;

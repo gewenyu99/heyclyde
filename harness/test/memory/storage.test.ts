@@ -493,7 +493,7 @@ test('R20 storage: /entries with a Storage blob past the write deadline ends wit
   const runtime = bearer(memory.runtimeToken)
   const project = { id: 'run-r55', pattern: 'projects', title: 'Run r55', body: 'The r55 run.', authority: 'observed', scope: 'run:r55', evidence_kind: 'summary', evidence: 'Tier 3 made it.', source }
   assert.equal((await bed.call('POST', '/entries', runtime, project)).status, 200)
-  const bytes = randomBytes(4_194_305), title = `late ${nonce()}`, sha = sha256(bytes)
+  const bytes = randomBytes(4_194_304), title = `late ${nonce()}`, sha = sha256(bytes)
   const entry = { pattern: 'observations', title, body: 'A body.', authority: 'observed', scope: 'run:r55', evidence_kind: 'summary', evidence: 'Tier 3 made it.', project: 'run-r55', source, artifacts: [{ name: 'big.bin', base64: bytes.toString('base64') }] }
   const started = Date.now()
   const late = await bed.call('POST', '/entries', runtime, entry)
