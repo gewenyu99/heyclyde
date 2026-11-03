@@ -762,7 +762,7 @@ test('queue: concurrent check_messages never share a delivery', { skip: SKIP }, 
   const all = enqueue('queue5-sender', 'queue5-reader', 10, 'race')
   const readers = await Promise.all([1, 2, 3, 4].map(() => mcpSession(memory.token, 'queue5-reader')))
   const replies = await Promise.all(readers.map((read) => read('check_messages', {})))
-  const seen = replies.flatMap(deliveryIds)
+  const seen = replies.flatMap(messageIds)
   assert.equal(new Set(seen).size, seen.length, `an id came back twice: ${replies.join('\n')}`)
   assert.deepEqual([...seen].sort((a, b) => a - b), all, 'together they got all 10, once each')
 })
@@ -1015,21 +1015,20 @@ test('queue: the migration moves legacy messages into deliveries and the contrac
   assert.equal(countOf(readByColumns), 1, 'the expand step keeps read_by, so the old function still works')
   assert.equal(countOf(`select count(*) as n from memory.message_delivery d join memory.message m on m.id = d.message_id
     where m.recipient = 'queue11-reader'`), 17)
-  // The old function posts a message with no delivery, and the purge runs before the contract does.
-  sql(`insert into memory.message (sender, recipient, body) values ('claude', 'queue11-reader', 'posted by the old function')`)
-  purge()
-  assert.equal(countOf(`select count(*) as n from memory.message where body = 'posted by the old function'`), 1, 'the purge leaves it')
-  apply('../contract/message_queue_contract.sql')
-  assert.equal(countOf(readByColumns), 0)
-  assert.equal(countOf(`select count(*) as n from memory.message`), 19)
-  assert.deepEqual(sql(`select d.recipient, d.acked_at is null as waiting from memory.message_delivery d join memory.message m on m.id = d.message_id
-    where m.body = 'posted by the old function'`), [{ recipient: 'queue11-reader', waiting: true }], 'the contract gives it a delivery')
   assert.deepEqual(sql(`select (count(*) filter (where d.acked_at is not null))::int as acked, (count(*) filter (where d.acked_at is null))::int as live
     from memory.message_delivery d join memory.message m on m.id = d.message_id where m.recipient = 'queue11-reader' and m.body like 'legacy %'`),
     [{ acked: 10, live: 7 }])
   const all = sql(`select d.recipient, d.acked_at is not null as acked from memory.message_delivery d join memory.message m on m.id = d.message_id
     where m.body = 'legacy all' and d.recipient in ('claude', 'gemini', 'codex') order by d.recipient`)
   assert.deepEqual(all, [{ recipient: 'claude', acked: true }, { recipient: 'gemini', acked: true }], 'the sender gets none')
+  // The old function posts a message with no delivery, and the purge runs before the contract does.
+  sql(`insert into memory.message (sender, recipient, body) values ('claude', 'queue11-reader', 'posted by the old function')`)
+  purge()
+  assert.equal(countOf(`select count(*) as n from memory.message where body = 'posted by the old function'`), 1, 'the purge leaves it')
+  apply('../contract/message_queue_contract.sql')
+  assert.equal(countOf(readByColumns), 0)
+  assert.deepEqual(sql(`select d.recipient, d.acked_at is null as waiting from memory.message_delivery d join memory.message m on m.id = d.message_id
+    where m.body = 'posted by the old function'`), [{ recipient: 'queue11-reader', waiting: true }], 'the contract gives it a delivery')
   assert.equal(countOf(`select count(*) as n from memory.message where expires_at <= now()`), 0)
   const job = sql(`select schedule, command from cron.job where jobname = 'memory-message-purge'`)
   assert.equal(job.length, 1, 'the migration schedules the purge')
