@@ -2,19 +2,21 @@
 // name, so a later call in any isolate knows claude from codex and keeps the arm its session drew. GET gets 405, which
 // the spec allows a server that offers no stream.
 import type { Principal } from "./auth.ts";
+import { config } from "./config.ts";
 import { sql } from "./db.ts";
 import * as service from "./service.ts";
+import { clientStatus, installerNote, SERVER_VERSION } from "./version.ts";
 import { Refused, remember } from "./write.ts";
 
 const VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
-const INSTRUCTIONS = "Wen's memory. Call recall before acting on anything that depends on Wen's decisions, " +
+export const INSTRUCTIONS = "Wen's memory. Call recall before acting on anything that depends on Wen's decisions, " +
   "preferences or history. Wen's other agents leave you messages. Call check_messages when you start a task, " +
   "and post_message to reach them.";
 
 const str = (description: string) => ({ type: "string", description });
 const int = (description: string) => ({ type: "integer", description });
 
-const TOOLS = [
+export const TOOLS = [
   {
     name: "recall",
     description: "Search Wen's memory: his decisions, preferences, observations and past reactions.\n\n" +
@@ -85,7 +87,15 @@ const TOOLS = [
   },
 ];
 
-type Call = { session: string; client: string | null; principal: string; args: Record<string, any> };
+/** The note for a computer whose hook is too old to update itself, or "" for everyone else. A claude.ai connector (oauth:)
+ * has no hook, and neither does a computer that only uses MCP: it has never called a hook and reported no version. */
+function installNote(who: Principal) {
+  if (who.role !== "device" || who.device?.startsWith("oauth:")) return "";
+  if (!who.hookSeen && !who.clientVersion) return "";
+  return installerNote(clientStatus(who.clientVersion, config.clientCutoffDays), Boolean(who.updateFailed));
+}
+
+type Call = { session: string; client: string | null; principal: string; args: Record<string, any>; note: string };
 const s = (v: unknown, fallback = "") => typeof v === "string" ? v : fallback;
 
 const RUN: Record<string, (c: Call) => Promise<string>> = {
@@ -106,7 +116,8 @@ const RUN: Record<string, (c: Call) => Promise<string>> = {
   },
   feedback: ({ args }) => service.feedback(sql, s(args.retrieval_id), s(args.verdict), s(args.entry_id) || null, s(args.note) || null),
   post_message: ({ client, args }) => service.postMessage(sql, service.agentName(client), s(args.to), s(args.body)),
-  check_messages: async ({ client }) => (await service.readMessages(service.agentName(client))) || "No new messages.",
+  check_messages: async ({ client, note }) =>
+    ((await service.readMessages(service.agentName(client))) || "No new messages.") + (note ? `\n${note}` : ""),
 };
 
 type RpcMessage = { jsonrpc?: string; id?: string | number | null; method?: string; params?: any };
@@ -131,7 +142,7 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
       return result(id, {
         protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0],
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: "memory", version: "2.0.0" },
+        serverInfo: { name: "memory", version: SERVER_VERSION },
         instructions: INSTRUCTIONS,
       });
     }
@@ -145,7 +156,7 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
       const sid = session ?? `anon-${crypto.randomUUID()}`;
       try {
         const principal = who.device ?? who.role;
-        const text = await run({ session: sid, client: await clientOf(session), principal, args: msg.params?.arguments ?? {} });
+        const text = await run({ session: sid, client: await clientOf(session), principal, args: msg.params?.arguments ?? {}, note: installNote(who) });
         return result(id, { content: [{ type: "text", text }] });
       } catch (e) {
         if (!(e instanceof Refused)) console.error(e);

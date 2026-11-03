@@ -10,6 +10,7 @@ import { learn } from "./learn.ts";
 import * as mcp from "./mcp.ts";
 import * as oauth from "./oauth.ts";
 import * as service from "./service.ts";
+import { CLIENT_VERSION, clientStatus, installerNote, SERVER_VERSION } from "./version.ts";
 import { Refused, remember } from "./write.ts";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { FILES } from "./client/files.ts";
@@ -59,7 +60,8 @@ async function hooks(req: Request, event: string, url: URL, who: Principal) {
   let body = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : { body: payload };
   if (who.hooks === "metadata") body = Object.fromEntries(HOOK_METADATA.filter((k) => k in body).map((k) => [k, body[k]]));
   await service.hook(event, body, AGENT.test(agent) ? agent : null);
-  return json({ ok: true });
+  // Empty on purpose: memory-hook prints whatever comes back into the agent's context, so an answer is a decision to make.
+  return new Response("");
 }
 
 /** clyde-flow's write, with the runtime token, up to approved. A device token writes as remember does. */
@@ -127,8 +129,12 @@ async function exportPage(url: URL) {
   return new Response(body, { headers: { "content-type": "application/x-ndjson", "x-rows": String(rows.length) } });
 }
 
-// The files a new computer's installer fetches. memory/deploy.sh bakes ./client into ./client/files.ts.
-const CLIENT_FILES = ["install.sh", "memory-hook", "claude-settings.json", "codex-hooks.json"];
+// The files a new computer's installer fetches, and the release's manifest with its signature (manifest.sig). memory/deploy.sh
+// bakes ./client into ./client/files.ts: it stamps memory-hook with CLIENT_VERSION, writes a manifest of the version and
+// every file's sha256, and signs that manifest with the offline key. A computer verifies the manifest against the public key
+// it saved at install, then each file against its line, so only files of one signed release install.
+const CLIENT_FILES = ["install.sh", "memory-hook", "claude-settings.json", "codex-hooks.json", "signing-pub.pem"];
+const SERVED = new Set([...CLIENT_FILES, "manifest", "manifest.sig"]);
 const CLAIM = /^[A-Za-z0-9_-]{20,100}$/;
 
 function clientFile(name: string) {
@@ -149,7 +155,7 @@ async function install(req: Request, path: string, url: URL) {
     return json({ auth: `${Deno.env.get("SUPABASE_URL")}/auth/v1`, key: Deno.env.get("SUPABASE_ANON_KEY") });
   }
   let m;
-  if ((m = /^\/install\/files\/([^/]+)$/.exec(path)) && CLIENT_FILES.includes(m[1])) return text(clientFile(m[1]));
+  if ((m = /^\/install\/files\/([^/]+)$/.exec(path)) && SERVED.has(m[1]) && clientFile(m[1])) return text(clientFile(m[1]));
   if (path === "/install/approve") {
     const claim = url.searchParams.get("claim") ?? "", code = url.searchParams.get("code") ?? "";
     if (!CLAIM.test(claim) || !code) {
@@ -175,7 +181,7 @@ async function route(req: Request): Promise<Response> {
 
   if (path === "/healthz") {
     await sql`select 1`;
-    return json({ ok: true, arms: await servingArms(sql).catch(() => config.arms) });
+    return json({ ok: true, arms: await servingArms(sql).catch(() => config.arms), version: SERVER_VERSION, client_version: CLIENT_VERSION });
   }
   if (path === "/mcp" || path === "/mcp/") return mcp.handle(req, who);
   if (path.startsWith("/.well-known/oauth-protected-resource")) return oauth.resourceMetadata(await baseOf(req));
@@ -187,7 +193,13 @@ async function route(req: Request): Promise<Response> {
   let match;
   if (m === "POST" && (match = /^\/hooks\/([^/]+)$/.exec(path))) return hooks(req, decodeURIComponent(match[1]), url, who);
   if (m === "GET" && (match = /^\/messages\/([^/]+)$/.exec(path))) {
-    return text(await service.readMessages(decodeURIComponent(match[1]).toLowerCase()));
+    const messages = await service.readMessages(decodeURIComponent(match[1]).toLowerCase());
+    // A hook that sends no version predates self-update and can't fix itself or print its own line, so it hears it here.
+    // One that does send a version prints its own, when its update has failed.
+    const note = who.role === "device" && !who.device?.startsWith("oauth:")
+      ? installerNote(clientStatus(req.headers.get("x-memory-client-version"), config.clientCutoffDays), false)
+      : "";
+    return text(note ? `${messages}${note}\n` : messages);
   }
   if (m === "POST" && path === "/entries") return httpRemember(req, who);
   if (m === "GET" && (match = /^\/entries\/([^/]+)$/.exec(path))) {
@@ -214,9 +226,9 @@ async function route(req: Request): Promise<Response> {
 // runs on another origin.
 const CORS = {
   "access-control-allow-origin": "*",
-  "access-control-allow-headers": "authorization, content-type, mcp-session-id, mcp-protocol-version",
+  "access-control-allow-headers": "authorization, content-type, mcp-session-id, mcp-protocol-version, x-memory-client-version, x-memory-update-failed",
   "access-control-allow-methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  "access-control-expose-headers": "mcp-session-id, retry-after, x-rows, www-authenticate",
+  "access-control-expose-headers": "mcp-session-id, retry-after, x-rows, www-authenticate, x-memory-version, x-memory-client-latest, x-memory-client-status",
 };
 
 Deno.serve(async (req) => {
@@ -232,5 +244,11 @@ Deno.serve(async (req) => {
     }
   }
   for (const [k, v] of Object.entries(CORS)) res.headers.set(k, v);
+  // Every answer carries the server's version and the newest client version, the one a hook updates itself to. A client
+  // that sent its own also hears where it stands (R31).
+  res.headers.set("x-memory-version", SERVER_VERSION);
+  res.headers.set("x-memory-client-latest", CLIENT_VERSION);
+  const sent = req.headers.get("x-memory-client-version");
+  if (sent) res.headers.set("x-memory-client-status", clientStatus(sent, config.clientCutoffDays));
   return res;
 });

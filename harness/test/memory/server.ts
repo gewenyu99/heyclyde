@@ -62,8 +62,8 @@ async function waitHealthy(url: string, child: ChildProcess, log: () => string):
 }
 
 /** A fresh schema memory and the function on it, with a device token, the runtime and admin tokens, and the cron secret.
- * close() stops the function and drops the schema. */
-export async function startRealMemory(): Promise<RealMemory> {
+ * close() stops the function and drops the schema. extraEnv is added to the function's environment. */
+export async function startRealMemory(extraEnv: Record<string, string> = {}): Promise<RealMemory> {
   const token = `device-${randomBytes(8).toString('hex')}`
   const runtimeToken = `runtime-${randomBytes(8).toString('hex')}`
   const adminToken = `admin-${randomBytes(8).toString('hex')}`
@@ -78,7 +78,7 @@ export async function startRealMemory(): Promise<RealMemory> {
   const auth = await startFakeAuth()
   const env = {
     ...process.env, SUPABASE_DB_URL: DATABASE_URL, DENO_SERVE_ADDRESS: `tcp:127.0.0.1:${port}`, MEMORY_OPENAI_URL: openai.url,
-    SUPABASE_URL: auth.url, SUPABASE_ANON_KEY: 'fake-anon-key', NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost',
+    SUPABASE_URL: auth.url, SUPABASE_ANON_KEY: 'fake-anon-key', NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost', ...extraEnv,
   }
   const child = spawn(DENO, ['run', '-A', NO_NODE_MODULES, FUNCTION], { env, stdio: ['ignore', 'pipe', 'pipe'] })
   let output = ''

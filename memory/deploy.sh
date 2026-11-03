@@ -1,16 +1,126 @@
 #!/bin/sh
-# Deploy the memory function. It first bakes the installer's files into client/files.ts, since the CLI's --use-api
-# bundling (the one that needs no Docker) ships no static files.
+# Deploy the memory function. In order:
+#   1. the version guard (harness/test/memory/version.test.ts), which fails a change to the client files, tools or
+#      instructions that did not bump its version;
+#   2. bake the installer's files into client/files.ts, since the CLI's --use-api bundling (the one that needs no Docker)
+#      ships no static files. memory-hook is stamped with CLIENT_VERSION, a `manifest` is written (version=<CLIENT_VERSION>,
+#      then a `<name> <sha256>` line for every client file, signing-pub.pem included), and only the manifest is signed with
+#      the offline key, as manifest.sig. A computer verifies that one signature, then each file against its line, so files
+#      from different releases can't be mixed. Nothing deploys without a signature that verifies;
+#   3. a check that no migration is pending, since the function expects the schema to be there;
+#   4. the deploy.
+# `deploy.sh --bake` stops after step 2. The signing key is MEMORY_SIGNING_KEY, else ~/.config/memory/signing-key.pem. It
+# never leaves this computer and is never printed. Its public half is client/signing-pub.pem in git.
 set -eu
 cd "$(dirname "$0")"
-python3 - <<'PY'
-import json
+ROOT=$(cd .. && pwd)
+FUNCTION=supabase/functions/memory
+CLIENT=$FUNCTION/client
+KEY=${MEMORY_SIGNING_KEY:-$HOME/.config/memory/signing-key.pem}
+PROJECT=wlhlncmgjqyidosunugv
+if [ "${1:-}" = --bake ]; then BAKE_ONLY=1; else BAKE_ONLY=; fi
+
+if [ -z "$BAKE_ONLY" ]; then
+  # deno must be there for the half of the guard that hashes the tools, so a computer without it can't skip it.
+  MEMORY_REQUIRE_DENO=1 node --test "$ROOT/harness/test/memory/version.test.ts" ||
+    { echo "deploy.sh: the version guard failed. Bump the version it names in $FUNCTION/version.ts." >&2; exit 1; }
+fi
+
+if [ ! -r "$KEY" ]; then
+  echo "deploy.sh: no signing key at $KEY. Client files are signed by an offline RSA-3072 key, and computers install nothing else." >&2
+  echo "  Make one with: (umask 077; openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out $KEY)" >&2
+  echo "  then commit its public half as $CLIENT/signing-pub.pem (openssl pkey -in $KEY -pubout)." >&2
+  exit 1
+fi
+# The key must be the one the computers trust: signing-pub.pem, or during a rotation the old key's signing-pub.previous.pem.
+derived=$(openssl pkey -in "$KEY" -pubout 2>/dev/null) || { echo "deploy.sh: $KEY is not a private key." >&2; exit 1; }
+trusted=
+for pub in "$CLIENT/signing-pub.pem" "$CLIENT/signing-pub.previous.pem"; do
+  if [ -r "$pub" ] && [ "$derived" = "$(cat "$pub")" ]; then trusted=$pub; fi
+done
+[ -n "$trusted" ] ||
+  { echo "deploy.sh: $KEY is not the key that $CLIENT/signing-pub.pem names, so no computer would accept what it signs." >&2; exit 1; }
+
+MEMORY_SIGNING_KEY=$KEY MEMORY_TRUSTED_PUB=$trusted FUNCTION=$FUNCTION python3 - <<'PY'
+import base64, hashlib, json, os, re, subprocess, sys, tempfile
 from pathlib import Path
-client = Path("supabase/functions/memory/client")
-files = {p.name: p.read_text() for p in sorted(client.iterdir()) if p.name != "files.ts" and p.is_file()}
+
+client = Path(os.environ["FUNCTION"]) / "client"
+key, trusted = os.environ["MEMORY_SIGNING_KEY"], os.environ["MEMORY_TRUSTED_PUB"]
+FILES = ["memory-hook", "claude-settings.json", "codex-hooks.json", "install.sh", "signing-pub.pem"]
+
+def fail(why):
+    sys.exit(f"deploy.sh: {why}")
+
+version = re.search(r'CLIENT_VERSION = "(\d{8}\.\d+)"', (Path(os.environ["FUNCTION"]) / "version.ts").read_text())
+if not version:
+    fail("version.ts has no CLIENT_VERSION.")
+files = {}
+for name in FILES:
+    text = (client / name).read_text()
+    if name == "memory-hook":
+        if "VERSION=@MEMORY_VERSION@" not in text:
+            fail("memory-hook has no VERSION=@MEMORY_VERSION@ line to stamp.")
+        text = text.replace("VERSION=@MEMORY_VERSION@", f"VERSION={version.group(1)}")
+    files[name] = text
+
+# One manifest per release: its version, then the hash of every file as it is served. The signature covers all of it.
+manifest = f"version={version.group(1)}\n" + "".join(
+    f"{name} {hashlib.sha256(files[name].encode()).hexdigest()}\n" for name in FILES)
+with tempfile.TemporaryDirectory() as tmp:
+    body, sig = Path(tmp, "manifest"), Path(tmp, "sig")
+    body.write_text(manifest)
+    subprocess.run(["openssl", "dgst", "-sha256", "-sign", key, "-out", str(sig), str(body)], check=True, stdout=subprocess.DEVNULL)
+    # Nothing ships on trust: the signature has to verify under the key the computers have.
+    raw = sig.read_bytes() if sig.exists() else b""
+    ok = raw and subprocess.run(
+        ["openssl", "dgst", "-sha256", "-verify", trusted, "-signature", str(sig), str(body)],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+    if not ok:
+        fail("the manifest has no valid signature, so it will not be deployed.")
+files["manifest"] = manifest
+files["manifest.sig"] = base64.b64encode(raw).decode()
+
 body = json.dumps(files, indent=2, ensure_ascii=False)
-(client / "files.ts").write_text(
-    "// Generated by memory/deploy.sh from the files beside it. Edit those, not this.\n"
+out = client / "files.ts"
+tmp_out = out.with_name("files.ts.new")
+tmp_out.write_text(
+    "// Generated by memory/deploy.sh from the files beside it, with a signed manifest of them. Edit those, not this.\n"
     f"export const FILES: Record<string, string> = {body};\n")
+tmp_out.replace(out)
 PY
-supabase functions deploy memory --project-ref wlhlncmgjqyidosunugv --no-verify-jwt --use-api
+[ -z "$BAKE_ONLY" ] || exit 0
+
+# Migrations go before the function. A deploy that expects a column the database lacks, or the reverse, is what this stops.
+# The CLI lists them as JSON, {"migrations":[{"local":"<version>","remote":"<version>"}, ...]}, remote empty while pending.
+errors=$(mktemp)
+listing=$(supabase migration list --linked --output-format json 2>"$errors") || {
+  echo "$listing" >&2
+  cat "$errors" >&2
+  rm -f "$errors"
+  echo "deploy.sh: couldn't read the migration list. Run: supabase login && supabase link --project-ref $PROJECT" >&2
+  exit 1
+}
+rm -f "$errors"
+pending=$(printf '%s' "$listing" | python3 -c '
+import json, sys
+from pathlib import Path
+try:
+    entries = json.load(sys.stdin)["migrations"]
+    assert isinstance(entries, list)
+except Exception:
+    sys.exit("deploy.sh: the migration list is not the JSON the CLI prints, so it cannot be trusted.")
+if not entries and any(Path("supabase/migrations").glob("*.sql")):
+    sys.exit("deploy.sh: the migration list is empty but supabase/migrations holds files, so it cannot be trusted.")
+for e in entries:
+    if isinstance(e, dict) and e.get("local") and not e.get("remote"):
+        print(e["local"])
+') || exit 1
+if [ -n "$pending" ]; then
+  echo "deploy.sh: these migrations are not applied yet:" >&2
+  printf '  %s\n' $pending >&2
+  echo "Apply them first with: supabase db push --linked" >&2
+  exit 1
+fi
+
+supabase functions deploy memory --project-ref "$PROJECT" --no-verify-jwt --use-api

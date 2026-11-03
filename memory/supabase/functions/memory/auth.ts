@@ -4,6 +4,7 @@
 import { secret, setting, sql } from "./db.ts";
 import { sha256 } from "./embed.ts";
 import { resourceMetadataUrl } from "./oauth.ts";
+import { reportable } from "./version.ts";
 
 export type Kind = "open" | "agent" | "admin" | "backup" | "cron" | "owner";
 export type Principal = {
@@ -11,6 +12,12 @@ export type Principal = {
   device?: string;
   /** For a device: "full" keeps hook payloads, "metadata" keeps only the event, session, folder and tool name. */
   hooks?: string;
+  /** For a device: the memory-hook version it last reported (R31), or null for a hook that predates versions. */
+  clientVersion?: string | null;
+  /** For a device: whether its hook said, on its last call, that its last self-update failed. */
+  updateFailed?: boolean;
+  /** For a device: whether a hook has ever called. A computer that only uses MCP never has. */
+  hookSeen?: boolean;
 };
 
 /** Which credential a path takes. /healthz and the console's files take none. Any path not named takes none of them
@@ -79,7 +86,31 @@ async function miss(kind: Kind, client: string) {
     where kind = ${kind} and client = ${client}`;
 }
 
-async function resolve(kind: Kind, token: string): Promise<Principal | null> {
+/** What a request tells the server about the computer's hook (R31). */
+type Seen = { version: string | null; failed: boolean; hook: boolean };
+
+/** Stamps a computer as seen, with what its hook reported, and returns its row. The migration that adds the R31 columns
+ * (client_version, client_update_failed, hook_seen) may not have run yet; then Postgres says 42703, and the plain update
+ * of before it stands in, so auth never depends on a new column. */
+async function touchDevice(hash: string, seen: Seen) {
+  try {
+    const [d] = await sql`update memory.device set last_seen = now(),
+        client_version = coalesce(${seen.version}, client_version),
+        client_update_failed = case when ${seen.version}::text is null then client_update_failed else ${seen.failed} end,
+        hook_seen = hook_seen or ${seen.hook}
+      where token_sha256 = ${hash} and revoked_at is null and coalesce(last_seen, created_at) > now() - interval '90 days'
+      returning name, hooks, client_version, client_update_failed, hook_seen`;
+    return d;
+  } catch (e) {
+    if ((e as { code?: string }).code !== "42703") throw e;
+    const [d] = await sql`update memory.device set last_seen = now()
+      where token_sha256 = ${hash} and revoked_at is null and coalesce(last_seen, created_at) > now() - interval '90 days'
+      returning name, hooks`;
+    return d;
+  }
+}
+
+async function resolve(kind: Kind, token: string, seen: Seen): Promise<Principal | null> {
   const hash = await sha256(token);
   if (kind === "agent") {
     if (same(hash, await setting("runtime_token_sha256"))) return { role: "runtime" };
@@ -89,10 +120,11 @@ async function resolve(kind: Kind, token: string): Promise<Principal | null> {
       return claims?.client_id ? { role: "device", device: `oauth:${claims.client_id}`, hooks: "metadata" } : null;
     }
     // A computer's token lapses after 90 days unused. Rerunning the installer signs it in again.
-    const [d] = await sql`update memory.device set last_seen = now()
-      where token_sha256 = ${hash} and revoked_at is null and coalesce(last_seen, created_at) > now() - interval '90 days'
-      returning name, hooks`;
-    return d ? { role: "device", device: d.name, hooks: d.hooks } : null;
+    // What a hook reports rides on the same write, so every computer's version is on its row.
+    const d = await touchDevice(hash, seen);
+    return d
+      ? { role: "device", device: d.name, hooks: d.hooks, clientVersion: d.client_version, updateFailed: d.client_update_failed, hookSeen: d.hook_seen }
+      : null;
   }
   if (kind === "admin") return same(hash, await setting("admin_token_sha256")) ? { role: "admin" } : null;
   if (kind === "backup") {
@@ -163,7 +195,15 @@ export async function authenticate(req: Request, path: string): Promise<Principa
   }
   const header = req.headers.get("authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const who = token ? await resolve(kind, token) : null;
+  const reported = req.headers.get("x-memory-client-version");
+  const seen: Seen = {
+    version: reportable(reported) ? reported : null,
+    // Only the literal 1 counts.
+    failed: req.headers.get("x-memory-update-failed") === "1",
+    // The routes a hook calls: its events and its inbox.
+    hook: /^\/(hooks|messages)\//.test(path),
+  };
+  const who = token ? await resolve(kind, token, seen) : null;
   if (!who) {
     // A JWT can't be guessed, and an expired one is how an OAuth client learns to refresh, so it costs no miss.
     if (token && !isJwt(token)) await miss(kind, client);
