@@ -134,23 +134,25 @@ test('the Memory class writes as the runtime: a project, an approved entry with 
   await rt.hook('SessionStart', { session_id: 'clyde-memory-test', run_id: 'k1' })
 })
 
-test('the agent token writes only drafts in a run scope, with no id or source, and a bad token gets nothing', { skip: SKIP }, async () => {
+test('the agent token writes only drafts, with no id or source, and a bad token gets nothing', { skip: SKIP }, async () => {
   await new Memory(memory.url, memory.runtimeToken).remember(project('k2'))
   const agent = new Memory(memory.url, memory.token)
   const note = { pattern: 'observations', title: 'A note', body: 'A body.', scope: 'run:k2', evidence_kind: 'assistant', evidence: 'ok', project: 'run-k2' }
   await assert.rejects(agent.remember({ ...note, authority: 'observed' }), /memory refused the entry \(400\): .*authority observed is above draft/)
   await assert.rejects(agent.remember({ ...note, authority: 'approved' }), /above draft/)
-  await assert.rejects(agent.remember({ ...note, authority: 'draft', scope: 'global' }), /only in a run scope/)
   await assert.rejects(agent.remember({ ...note, authority: 'draft', id: 'mine' }), /\(400\)/)
   await assert.rejects(agent.remember({ ...note, authority: 'draft', source: { kind: 'run', title: 'x' } }), /\(400\)/)
   await assert.rejects(new Memory(memory.url, 'not-a-token').remember({ ...note, authority: 'draft' }), /\(401\)/)
   assert.match((await agent.remember({ ...note, authority: 'draft' })).id, /^run-k2-a-note-/)
+  // A draft is no longer kept to a run: global is a scope an agent may write.
+  const wide = await agent.remember({ ...note, authority: 'draft', scope: 'global', title: 'A global note' })
+  assert.equal(sql(`select scope from memory.entry where id = '${wide.id}'`)[0].scope, 'global')
   // Every note passes the judge, here the fake OpenAI, before it's stored.
   await assert.rejects(agent.remember({ ...note, authority: 'draft', body: `A body. ${FAKE_REFUSE}` }), /steer the assistants/)
   assert.ok(memory.openai.calls.some((c) => c.path === '/decisions'))
 })
 
-test('clyde remember and clyde recall as an agent: a draft in the run that only a scoped recall serves, first', { skip: SKIP }, async () => {
+test('clyde remember and clyde recall as an agent: a draft in the run leads a scoped recall and reaches unscoped and other-run recalls', { skip: SKIP }, async () => {
   setup([])
   await new Memory(memory.url, memory.runtimeToken).remember(project('k3'))
   const env = { MEMORY_URL: memory.url, MEMORY_TOKEN: memory.token, CLYDE_RUN_ID: 'k3', CLYDE_MEMORY_SCOPE: 'run:k3' }
@@ -168,9 +170,9 @@ test('clyde remember and clyde recall as an agent: a draft in the run that only 
   assert.equal(scoped.code, 0, scoped.stderr)
   assert.ok(leads(scoped.stdout, id), `the run's note leads a scoped recall:\n${scoped.stdout}`)
   const unscoped = await clyde(['recall', 'oolong temperature'], { ...env, CLYDE_MEMORY_SCOPE: '' })
-  assert.ok(!unscoped.stdout.includes(id), `an unscoped recall leaves run entries out:\n${unscoped.stdout}`)
+  assert.ok(unscoped.stdout.includes(id), `an unscoped recall serves another run's draft:\n${unscoped.stdout}`)
   const other = await clyde(['recall', 'oolong temperature', '--scope', 'run:k9'], env)
-  assert.ok(!other.stdout.includes(id), 'another run never sees it')
+  assert.ok(other.stdout.includes(id), `a recall scoped to another run serves it too:\n${other.stdout}`)
   // clyde remember spools a note and memory judges it on delivery, so a run with no project is refused there.
   const orphan = { pattern: 'observations', title: 'x', body: 'x', authority: 'draft', scope: 'run:no-project', evidence_kind: 'assistant', evidence: 'x', project: 'run-no-project' }
   await assert.rejects(new Memory(memory.url, memory.token).remember(orphan), /memory refused the entry \(400\): Project run-no-project doesn't exist/)

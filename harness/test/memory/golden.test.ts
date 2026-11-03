@@ -10,6 +10,14 @@ import { test } from 'node:test'
 import { call, LINK_TYPE_WEIGHTS, scenario } from './golden.ts'
 import { SKIP, sql } from './server.ts'
 
+/** The packet without the labels R27 and R15 added (kind, confidence, unverified, unreviewed), which the golden capture
+ * predates. Everything else in it, the order, the ids, the titles and the text, must be the old packet. */
+const unlabeled = (packet: string) => packet
+  .replace(/^( {4})(?:fact|wen|observation|plan)(?: · unverified)? · confidence [01]\.\d\d · /gm, '$1')
+  .replace(/\[(?:fact|wen|observation|plan)(?: unverified)?, [01]\.\d\d, /g, '[')
+  .replaceAll(' · unreviewed', '')
+  .replaceAll(', unreviewed', '')
+
 test('v1 ranks exactly like today on every arm: same candidates and scores, same order, same delivered list, same packet', { skip: SKIP }, async () => {
   const golden = JSON.parse(readFileSync(join(import.meta.dirname, 'golden-v1.json'), 'utf8'))
   const ants = Object.fromEntries(LINK_TYPE_WEIGHTS.map(([s, t, d, w]) => [`${s}|${t}|${d}`, w]))
@@ -27,7 +35,10 @@ test('v1 ranks exactly like today on every arm: same candidates and scores, same
   }, (pass) => (pass === 2 ? { param_set: 'spreading.ants' } : {}))
   for (const pass of ['pass1', 'pass2']) {
     assert.deepEqual(Object.keys(actual[pass].recalls), Object.keys(golden[pass].recalls))
-    for (const [key, want] of Object.entries<any>(golden[pass].recalls)) assert.deepEqual(actual[pass].recalls[key], want, `${pass} recall ${key}`)
+    for (const [key, want] of Object.entries<any>(golden[pass].recalls)) {
+      const got = actual[pass].recalls[key]
+      assert.deepEqual({ ...got, packet: unlabeled(got.packet) }, want, `${pass} recall ${key}`)
+    }
     for (const [key, want] of Object.entries<any>(golden[pass].ranks)) assert.deepEqual(actual[pass].ranks[key], want, `${pass} eval rank ${key}`)
   }
 })
