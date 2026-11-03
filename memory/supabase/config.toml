@@ -32,3 +32,7 @@ allow_dynamic_registration = true
 [auth.email.template.magic_link]
 subject = "memory: approve a new connection?"
 content_path = "./supabase/templates/magic_link.html"
+
+# Pro: Storage files up to 500 MB, for memory-blobs (R20).
+[storage]
+file_size_limit = "500MiB"
