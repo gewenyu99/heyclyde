@@ -132,7 +132,7 @@ The new parts are the second project, the domain with its proxy and consent page
 
 ## L2: tenancy
 
-**Owner.** Every row a user creates carries `owner_id uuid not null references auth.users(id)`. That covers `entry`, `link`, `blob`, `entry_blob`, `entry_embedding`, `source`, `mcp_session`, `mcp_client`, `retrieval`, `event`, `feedback`, `message`, `device`, `confidence_log` and `admin_audit`. Shared tables stay without it: `link_type_weight`, `auth_miss`, `setting`, `question` and `qrel`.
+**Owner.** Every row a user creates carries `owner_id uuid not null references auth.users(id)`. That covers `entry`, `link`, `blob`, `entry_blob`, `entry_embedding`, `source`, `mcp_session`, `mcp_client`, `retrieval`, `event`, `feedback`, `message`, `device`, `confidence_log`, `admin_audit`, `agent`, `agent_binding` and `entry_provenance`. Shared tables stay without it: `link_type_weight`, `auth_miss`, `setting`, `question` and `qrel`.
 
 **Keys.** `entry.id` is free text today, like `proj-pkg`, so two users would collide. It becomes `primary key (owner_id, id)`, and `link`, `entry_blob` and `entry_embedding` reference `(owner_id, id)`. `blob.sha256` is content-addressed today, so one user could learn another holds a file by storing it. It becomes `primary key (owner_id, sha256)`.
 

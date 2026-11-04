@@ -105,6 +105,8 @@ async function feedbackCoverage() {
 }
 
 async function overview() {
+  // claude and codex, and every registered agent (R19): a message waits for a name, not only for the two.
+  const names = [...AGENTS, ...(await sql`select name from memory.agent order by name`).map((r) => r.name as string)];
   const [c] = await sql`select (select count(*) from memory.entry_current) as entries,
       (select count(*) from memory.entry e where ${u(SUPERSEDED)}) as superseded,
       (select count(*) from memory.entry where sensitivity = 'private') as private,
@@ -119,8 +121,8 @@ async function overview() {
       (select max(created_at) from memory.retrieval) as last_recall,
       (select max(created_at) from memory.message) as last_message, (select max(created_at) from memory.feedback) as last_feedback,
       (select count(*) from memory.message m where m.expires_at > now() and exists (select 1 from memory.message_delivery d
-        where d.message_id = m.id and d.recipient = any(${AGENTS}::text[]) and ${u(LIVE)})) as unread_messages`;
-  const unread = await sql`select a.name, count(m.id) as n from unnest(${AGENTS}::text[]) a(name)
+        where d.message_id = m.id and d.recipient = any(${names}::text[]) and ${u(LIVE)})) as unread_messages`;
+  const unread = await sql`select a.name, count(m.id) as n from unnest(${names}::text[]) a(name)
     left join memory.message_delivery d on d.recipient = a.name and ${u(LIVE)}
     left join memory.message m on m.id = d.message_id and m.expires_at > now() group by a.name`;
   const last: Row = {};
@@ -855,7 +857,7 @@ async function putSecret(name: string, data: Row) {
 }
 
 // Tables /import fills, the same set /export writes, and the serial columns whose sequences follow the rows in.
-const IMPORTABLE = new Set(["source", "entry", "link", "question", "qrel", "blob", "entry_blob", "mcp_session", "mcp_client",
+const IMPORTABLE = new Set(["source", "entry", "link", "question", "qrel", "blob", "entry_blob", "entry_provenance", "agent", "agent_binding", "mcp_session", "mcp_client",
   "retrieval", "event", "feedback", "message", "message_delivery", "admin_audit", "link_type_weight", "device", "embed_usage", "param_set",
   "allocation", "openai_usage"]);
 const SERIAL = ["event", "feedback", "message", "message_delivery", "admin_audit", "device"];
@@ -961,7 +963,7 @@ async function importRows(req: Request) {
       const cols = [...new Set(rows.flatMap((r) => Object.keys(r)))];
       for (let i = 0; i < rows.length; i += 500) {
         const chunk = rows.slice(i, i + 500).map((r) =>
-          Object.fromEntries(cols.map((c) => [c, r[c] == null ? null : JSONB.has(c) ? tx.json(r[c]) : r[c]]))
+          Object.fromEntries(cols.map((c) => [c, r[c] == null ? null : JSONB.has(c) && !(table === "agent" && c === "context") ? tx.json(r[c]) : r[c]]))
         );
         const done = await tx`insert into ${tx("memory." + table)} ${tx(chunk, ...cols)} on conflict do nothing returning 1`;
         counts[table] = (counts[table] ?? 0) + done.length;

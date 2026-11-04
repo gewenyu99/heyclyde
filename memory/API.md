@@ -66,6 +66,14 @@ An agent's memory is short, and its details are **artifacts**: documents, logs, 
 - **POST /blobs/sweep** takes the cron secret and deletes uploads under `incoming/` older than 7200 seconds.
 - /mcp refuses a body over 12582912 bytes with 413.
 
+## Agent profiles and provenance (R19, R41)
+
+- **register_agent** takes `name` (2 to 40 lowercase letters, digits and dashes), `context` (work, personal or both), `surface` (up to 40 characters) and `description` (up to 500). It makes or updates the profile in `memory.agent` and binds it to the credential and the MCP client name in `memory.agent_binding`, so the next session with the same token and client starts registered. A name belongs to the credential that registered it; another credential's attempt is refused. claude, codex, all, wen and memory are reserved.
+- **Registration is gentle.** An unregistered session works. Every tool reply except register_agent's carries one more content block, `memory: you haven't registered yet. Call register_agent ...`, so the tool's own text is never changed. A session registered under one credential is no one under another. Deleting an agent unbinds it, and its sessions hear the block again.
+- **Names.** A registered agent's notes have the source `<name>, a <context> agent on <surface>, through remember`, its messages are sent as `<name>`, and it reads messages to its name, plus to claude or codex when its client is one of those.
+- **Provenance.** Every write records, in `memory.entry_provenance`, the device (the token's), the agent (its profile, else its client name; `http` over HTTP), the agent's context, the repo and folder the session's hook reported, the MCP session and the run scope. Nothing in the payload sets any of it, and an unknown field is refused. Recall packets, the On trial list, index lines and get_entry show one line, `from codex on mac-mini in repo:posthog (work)`, at most 60 characters, with `(you wrote this)` on the reader's own notes. Nothing is filtered by it.
+- **/export and /import** carry `entry_provenance`, `agent` and `agent_binding`. `/overview` counts unread messages for registered agents too.
+
 ## Dashboard
 
 ### `GET /overview`

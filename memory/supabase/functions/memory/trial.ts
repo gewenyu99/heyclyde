@@ -16,6 +16,8 @@ export function renderTrialItem(n: number, row: Row, chancesLeft: number) {
   row = redact(row);
   const head = `[T${n}] ${row.id}: ${clip(String(row.title), TITLE_CHARS)}`;
   const label = `    new · ${kindLabel(row, " · ")} · chance ${TRIAL_CHANCES - chancesLeft} of ${TRIAL_CHANCES}`;
-  const room = TRIAL_ITEM_CHARS - head.length - label.length - 6;
-  return [head, label, `    ${clip(String(row.body ?? "").replace(/\s+/g, " ").trim(), Math.max(room, 1))}`].join("\n");
+  // R41: the line provenance.ts worded, when memory recorded where the note came from.
+  const origin = row.provenance ? `    ${row.provenance}` : "";
+  const room = TRIAL_ITEM_CHARS - head.length - label.length - origin.length - (origin ? 1 : 0) - 6;
+  return [head, label, ...(origin ? [origin] : []), `    ${clip(String(row.body ?? "").replace(/\s+/g, " ").trim(), Math.max(room, 1))}`].join("\n");
 }
