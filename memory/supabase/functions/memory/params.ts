@@ -51,12 +51,31 @@ export type Params = {
   wTemperature: number;
   wAge: number;
   wKind: number;
+  /** Best-first spreading (R44), optional. spreadMode picks the expansion: "ppr" (the default) or "bestfirst", which expands
+   * the strongest path first. maxHops and minPath stop the initial spread; wPath weighs the best path strength in the score.
+   * A set without them spreads as before. See SPREAD for what an absent knob means. */
+  spreadMode?: "ppr" | "bestfirst";
+  maxHops?: number;
+  minPath?: number;
+  wPath?: number;
 };
 
+/** What a set that doesn't carry the best-first knobs means by them, and the two sizes of the best-first code that no set
+ * changes: the phrase lengths seeds are matched in, and how many frontier nodes a recall keeps for recall_more. */
+export const SPREAD = { mode: "ppr", maxHops: 3, minPath: 0.05, wPath: 1, phraseWords: [2, 3], frontierCap: 50 } as const;
+
+/** The best-first knobs of a set, with the defaults filled in. */
+export function spreadKnobs(p: Params) {
+  return {
+    mode: p.spreadMode ?? SPREAD.mode, maxHops: p.maxHops ?? SPREAD.maxHops, minPath: p.minPath ?? SPREAD.minPath,
+    wPath: p.wPath ?? SPREAD.wPath,
+  };
+}
+
 type Spec = { min: number; max: number; int?: boolean; above?: boolean };
-type OptionalKnob = "otherRunFactor" | "globalAgentDraftFactor" | "trialItems" | "trialFloor" | "trialStep" | "settledStep" | "itemChars";
+type OptionalKnob = "otherRunFactor" | "globalAgentDraftFactor" | "trialItems" | "trialFloor" | "trialStep" | "settledStep" | "itemChars" | "maxHops" | "minPath" | "wPath";
 const WEIGHT: Spec = { min: -10, max: 10 };
-const KNOBS: Record<Exclude<keyof Params, "linkTypeWeights" | OptionalKnob>, Spec> = {
+const KNOBS: Record<Exclude<keyof Params, "linkTypeWeights" | "spreadMode" | OptionalKnob>, Spec> = {
   candidates: { min: 1, max: 200, int: true }, packetItems: { min: 1, max: 50, int: true }, packetTokens: { min: 100, max: 20000, int: true },
   filterK: { min: 1, max: 50, int: true }, filterThreshold: { min: 0, max: 1 }, tiltBase: { min: 0, max: 1 },
   tiltUnknownConfidence: { min: 0, max: 1 }, tiltWindow: { min: 1, max: 200, int: true }, rowWindow: { min: 1, max: 200, int: true },
@@ -70,6 +89,7 @@ const OPTIONAL: Record<OptionalKnob, Spec> = {
   trialItems: { min: 0, max: 10, int: true }, trialFloor: { min: 0, max: 1 },
   trialStep: { min: 0, max: 0.5, above: true }, settledStep: { min: 0, max: 0.5, above: true },
   itemChars: { min: 50, max: 4000, int: true },
+  maxHops: { min: 1, max: 10, int: true }, minPath: { min: 0, max: 1 }, wPath: { min: 0, max: 10 },
 };
 const LINK_KEY = /^[a-z][a-z_-]{1,40}\|[a-z_]{2,40}\|[a-z][a-z_-]{1,40}$/;
 // The range eval/ants.py keeps link type weights in.
@@ -86,7 +106,7 @@ export function resolveParams(base: Params | null, overrides: unknown): Params {
   if (!overrides || typeof overrides !== "object" || Array.isArray(overrides)) throw new ParamError("params must be an object of knobs.");
   const merged: Record<string, unknown> = { ...base, ...overrides };
   for (const name of Object.keys(overrides)) {
-    if (name !== "linkTypeWeights" && !(name in KNOBS) && !(name in OPTIONAL)) throw new ParamError(`unknown knob ${name}.`);
+    if (name !== "linkTypeWeights" && name !== "spreadMode" && !(name in KNOBS) && !(name in OPTIONAL)) throw new ParamError(`unknown knob ${name}.`);
   }
   for (const [name, spec] of [...Object.entries(KNOBS), ...Object.entries(OPTIONAL)]) {
     const v = merged[name];
@@ -96,6 +116,9 @@ export function resolveParams(base: Params | null, overrides: unknown): Params {
     if (typeof v !== "number" || !Number.isFinite(v) || !low || v > spec.max || (spec.int && !Number.isInteger(v))) {
       throw new ParamError(`${name} must be ${spec.int ? "a whole number" : "a number"} ${spec.above ? "above" : "from"} ${spec.min} to ${spec.max}.`);
     }
+  }
+  if (merged.spreadMode !== undefined && merged.spreadMode !== "ppr" && merged.spreadMode !== "bestfirst") {
+    throw new ParamError('spreadMode must be "ppr" or "bestfirst".');
   }
   const weights = merged.linkTypeWeights;
   if (weights === undefined) throw new ParamError("linkTypeWeights is missing. A set with no parent must say every knob.");
