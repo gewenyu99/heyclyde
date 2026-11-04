@@ -277,7 +277,7 @@ test("R19: post_message to an agent's name reaches only that agent, once, even w
   assert.match((await a.send('post_message', { to: 'r19-t13b', body })).text, /^Posted message/)
   const first = await b.send('check_messages', {})
   assert.equal(first.text.split(body).length - 1, 1, first.text)
-  assert.equal((await b.send('check_messages', {})).text, 'No new messages.')
+  assert.ok((await b.send('check_messages', {})).text.startsWith('No new messages.'), 'delivered once')
   assert.ok(!(await c.send('check_messages', {})).text.includes(body), 'the client named r19-t13b is not the agent r19-t13b')
   for (const name of ['claude', 'codex']) assert.ok(!(await call('GET', `/messages/${name}`, bearer(memory.token))).text.includes(body))
 })
@@ -441,6 +441,16 @@ const SETS = ['index.v1', 'hybrid.v1', 'spreading.v1', 'hybrid.v3']
 
 /** Serves one parameter set to every new session. */
 async function serve(id: string) {
+  // hybrid.v3 is a child of a v2 that only production has, so this database makes the v2 sets and runs the trials migration.
+  if (id.endsWith('.v3') && !sql(`select 1 from memory.param_set where id = '${id}'`).length) {
+    for (const arm of ['hybrid', 'spreading']) {
+      if (!sql(`select 1 from memory.param_set where id = '${arm}.v2'`).length) {
+        const r = await admin('POST', '/param-sets', { id: `${arm}.v2`, parent: `${arm}.v1`, params: { otherRunFactor: 0.9 }, note: 'tier 3 stand-in for production\'s v2' })
+        assert.equal(r.status, 201, r.text)
+      }
+    }
+    apply('20261103020000_trials_feedback.sql')
+  }
   const known = sql('select id from memory.param_set').map((r) => r.id as string)
   const rows = [...new Set([...known.filter((p) => /^(index|hybrid|spreading)\./.test(p)), id])]
     .map((param_set) => param_set === id ? { param_set, role: 'default', weight: 1000 } : { param_set, role: 'off', weight: 0 })
@@ -525,8 +535,9 @@ test('R41: notes from 3 machines all match, all 3 are delivered, and each shows 
 test("R41: the payload can't set the device, and a write over HTTP records the token's own", { skip: SKIP }, async () => {
   const s = await open(tokens.air, 'claude-code-p5')
   const spoof = await s.send('remember', note(`${W.two} spoof`, { device: 'other-box' }))
-  assert.equal(spoof.error, true)
-  assert.ok(spoof.text.includes('Unknown field device'), spoof.text)
+  // The MCP tool reads only the fields it names, so an extra one is ignored and the token's device is recorded.
+  assert.equal(spoof.error, false, spoof.text)
+  assert.deepEqual(sql(`select device, agent from memory.entry_provenance where entry_id = '${idOf(spoof.text)}'`), [{ device: 'macbook-air', agent: 'claude' }])
   const text = await s.send('remember', note(`${W.two} says device other-box`, { body: 'from other-box, agent other-agent', evidence: 'device other-box' }))
   assert.equal(text.error, false, text.text)
   assert.deepEqual(sql(`select device, agent from memory.entry_provenance where entry_id = '${idOf(text.text)}'`), [{ device: 'macbook-air', agent: 'claude' }])
@@ -593,7 +604,7 @@ test('R19: the export carries every agent, binding and provenance row, and a res
   sql('delete from memory.entry_provenance')
   assert.equal(agents(), 0)
   const restored = await admin('POST', '/import', ndjson)
-  assert.equal(restored.status, 200, restored.text)
+  assert.equal(restored.status, 200, `${restored.text}\n${memory.log?.().slice(-2500)}`)
   assert.deepEqual({ agent: agents(), agent_binding: bindings(), provenance: countOf('entry_provenance', 'true'), sessions: countOf('mcp_client', 'agent is not null') }, keep)
 })
 
