@@ -231,7 +231,7 @@ It keeps `seed/build.py`'s two rules.
 
 Body `{"name": "tea-oolong-temp-detail.md", "kind": "document", "media_type": "text/markdown", "text": "..."}`, or `base64` in place of `text`. Attaches one artifact to an entry that exists, so a long entry keeps its full text in an artifact while `PATCH` shortens its body (R42). Returns 201 `{"entry_id", "name", "sha256", "kind", "media_type", "size", "stored"}`; `stored` is `db`, `storage` or `existing` (memory already had those bytes).
 
-- The bytes are stored exactly as sent. Text with a secret or identifier in it gets 422 instead of being redacted, so the artifact is always an exact copy.
+- The bytes are stored exactly as sent. Text with a secret or identifier in it gets 422 instead of being redacted, so the artifact is always an exact copy. A `[redacted:<kind>]` placeholder from an earlier redaction doesn't count.
 - `kind` is one of image, video, audio, document, skill, artifact, data, other, or derived from the media type and name. `media_type` defaults to text/plain for text and application/octet-stream for base64.
 - 768 KiB at most. Text up to 262144 bytes stays in Postgres, the rest goes to Storage, and `blob_quota_bytes` caps it, the same as remember. A full quota gets 422.
 - 404 for no such entry, 409 when the entry already has an artifact of that name. Audited as `entry.artifact`.

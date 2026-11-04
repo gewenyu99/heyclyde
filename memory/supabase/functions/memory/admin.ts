@@ -457,7 +457,7 @@ const ARTIFACT_MAX = 768 * 1024;
 
 /** Attach one artifact to an entry that exists, so a long entry can keep its full text in an artifact while PATCH shortens
  * its body (R42). The bytes are stored as given, never rewritten: text with a secret in it is refused, not redacted, so
- * the artifact is always an exact copy. The quota and the Postgres-or-Storage rule are remember's. */
+ * the artifact is always an exact copy. A placeholder an earlier redaction left is not a secret. The quota and the Postgres-or-Storage rule are remember's. */
 async function addArtifact(id: string, data: Row) {
   const unknown = Object.keys(data).filter((k) => !ARTIFACT_FIELDS.includes(k)).sort();
   if (unknown.length) throw new ApiError(422, `Unknown fields: ${unknown.join(", ")}.`);
@@ -492,7 +492,9 @@ async function addArtifact(id: string, data: Row) {
   if (bytes.length > ARTIFACT_MAX) throw new ApiError(422, `The artifact is ${bytes.length} bytes. The limit here is ${ARTIFACT_MAX}.`);
   const text = store.isText(mediaType) ? store.utf8(bytes) : null;
   if (text !== null) {
-    const found = redactText(text)[1];
+    // A [redacted:<kind>] placeholder left by an earlier redaction isn't a secret, though "token: [redacted:secret]" looks like
+    // one. Each becomes "]", a character no rule's value takes, so the words after it aren't read as the value either.
+    const found = redactText(text.replace(/\[redacted:[a-z-]+\]/g, "]"))[1];
     if (found.length) throw new ApiError(422, `The text has secrets or identifiers in it (${[...new Set(found)].join(", ")}). Take them out first.`);
   }
   const kind = kindGiven ?? store.kindOf(mediaType, name);
