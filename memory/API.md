@@ -227,6 +227,19 @@ It keeps `seed/build.py`'s two rules.
 
 422 when `by` is missing, unknown or `{id}` itself. 409 when the link exists.
 
+### `POST /entries/{id}/artifacts`
+
+Body `{"name": "tea-oolong-temp-detail.md", "kind": "document", "media_type": "text/markdown", "text": "..."}`, or `base64` in place of `text`. Attaches one artifact to an entry that exists, so a long entry keeps its full text in an artifact while `PATCH` shortens its body (R42). Returns 201 `{"entry_id", "name", "sha256", "kind", "media_type", "size", "stored"}`; `stored` is `db`, `storage` or `existing` (memory already had those bytes).
+
+- The bytes are stored exactly as sent. Text with a secret or identifier in it gets 422 instead of being redacted, so the artifact is always an exact copy.
+- `kind` is one of image, video, audio, document, skill, artifact, data, other, or derived from the media type and name. `media_type` defaults to text/plain for text and application/octet-stream for base64.
+- 768 KiB at most. Text up to 262144 bytes stays in Postgres, the rest goes to Storage, and `blob_quota_bytes` caps it, the same as remember. A full quota gets 422.
+- 404 for no such entry, 409 when the entry already has an artifact of that name. Audited as `entry.artifact`.
+
+### `POST /entries/{id}/confidence`
+
+Body `{"confidence": 0.3, "note": "stale: memory moved to Supabase"}`. Sets the entry's confidence (0 to 1) by hand, for a groom that marks a stale fact without deleting it (R17). Returns 200 `{"id", "confidence"}`. The move goes into `confidence_log` with the note as its reason, and into the audit as `entry.confidence`. 422 for a value outside 0 to 1 or no note, 404 for no such entry.
+
 ### `GET /graph?project=&include_superseded=false`
 
 ```json
@@ -377,6 +390,8 @@ Newest first. Each item has `id`, `at`, `action`, `target`, `before` and `after`
 | `entry.update` | `entry:<id>` | Changed fields | Changed fields |
 | `entry.delete` | `entry:<id>` | The row | null |
 | `entry.supersede` | `entry:<id>`, the replaced one | null | The new link, from `/supersede` or a `supersedes` link |
+| `entry.artifact` | `entry:<id>` | null | `name`, `sha256`, `kind`, `media_type`, `size`, `stored` |
+| `entry.confidence` | `entry:<id>` | `confidence` | `confidence`, `note` |
 | `link.create` | `entry:<src>` | null | The link |
 | `link.delete` | `entry:<src>` | The link | null |
 | `feedback.create` | `retrieval:<id>` | null | `verdict`, `entry_id`, `note` |

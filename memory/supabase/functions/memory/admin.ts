@@ -13,7 +13,7 @@ import * as service from "./service.ts";
 import { redact, redactText } from "./redact.ts";
 import { screen } from "./judge.ts";
 import { MIN_QUOTE, squash, verifyEvidence } from "./evidence.ts";
-import { canonical, remember, Refused } from "./write.ts";
+import { canonical, MEDIA_TYPE_RE, remember, Refused } from "./write.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 
@@ -449,6 +449,93 @@ async function supersede(id: string, by: unknown) {
     }
     await audit(tx, "entry.supersede", `entry:${id}`, null, { src: by, dst: id, type: "supersedes" });
     return await entry(tx, id);
+  });
+}
+
+const ARTIFACT_FIELDS = ["name", "kind", "media_type", "text", "base64"];
+const ARTIFACT_MAX = 768 * 1024;
+
+/** Attach one artifact to an entry that exists, so a long entry can keep its full text in an artifact while PATCH shortens
+ * its body (R42). The bytes are stored as given, never rewritten: text with a secret in it is refused, not redacted, so
+ * the artifact is always an exact copy. The quota and the Postgres-or-Storage rule are remember's. */
+async function addArtifact(id: string, data: Row) {
+  const unknown = Object.keys(data).filter((k) => !ARTIFACT_FIELDS.includes(k)).sort();
+  if (unknown.length) throw new ApiError(422, `Unknown fields: ${unknown.join(", ")}.`);
+  const name = data.name;
+  if (typeof name !== "string" || !name.trim() || name.length > 200) throw new ApiError(422, "name must be 1 to 200 characters.");
+  const kindGiven = data.kind ?? null;
+  if (kindGiven !== null && !(typeof kindGiven === "string" && store.KINDS.has(kindGiven))) {
+    throw new ApiError(422, `kind must be one of ${store.KIND_LIST}.`);
+  }
+  const given = ["text", "base64"].filter((k) => k in data);
+  if (given.length !== 1) throw new ApiError(422, "Send text or base64, not both or neither.");
+  let mediaType = data.media_type ?? null;
+  if (mediaType !== null) {
+    if (typeof mediaType !== "string" || !MEDIA_TYPE_RE.test(mediaType.toLowerCase())) {
+      throw new ApiError(422, "media_type must look like text/markdown.");
+    }
+    mediaType = mediaType.toLowerCase();
+  }
+  let bytes: Uint8Array;
+  if (given[0] === "text") {
+    if (typeof data.text !== "string" || !data.text) throw new ApiError(422, "text must be a string that isn't empty.");
+    bytes = new TextEncoder().encode(data.text);
+    mediaType ??= "text/plain";
+  } else {
+    const b64 = data.base64;
+    if (typeof b64 !== "string" || !b64 || b64.length % 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(b64)) {
+      throw new ApiError(422, "base64 doesn't decode.");
+    }
+    bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    mediaType ??= "application/octet-stream";
+  }
+  if (bytes.length > ARTIFACT_MAX) throw new ApiError(422, `The artifact is ${bytes.length} bytes. The limit here is ${ARTIFACT_MAX}.`);
+  const text = store.isText(mediaType) ? store.utf8(bytes) : null;
+  if (text !== null) {
+    const found = redactText(text)[1];
+    if (found.length) throw new ApiError(422, `The text has secrets or identifiers in it (${[...new Set(found)].join(", ")}). Take them out first.`);
+  }
+  const kind = kindGiven ?? store.kindOf(mediaType, name);
+  const sha = await sha256(bytes);
+  const stored = store.storageOn() && (text === null || bytes.length > store.INLINE_MAX) ? "storage" : "db";
+  return await sql.begin(async (tx) => {
+    await row(tx, id);
+    if ((await tx`select 1 from memory.entry_blob where entry_id = ${id} and name = ${name}`).length) {
+      throw new ApiError(409, `${id} already has an artifact named ${name}.`);
+    }
+    const have = (await tx`select 1 from memory.blob where sha256 = ${sha}`).length > 0;
+    if (!have) {
+      const { used, cap } = await store.quota(tx);
+      if (used + bytes.length > cap) {
+        throw new ApiError(422, `This artifact needs ${bytes.length} bytes, and memory holds ${used} of its ${cap}. Free some space or raise blob_quota_bytes.`);
+      }
+      if (stored === "storage") await store.put(sha, mediaType, bytes);
+      await tx`insert into memory.blob (sha256, media_type, size, content, stored)
+        values (${sha}, ${mediaType}, ${bytes.length}, ${stored === "db" ? bytes : null}, ${stored}) on conflict (sha256) do nothing`;
+    }
+    await tx`insert into memory.entry_blob (entry_id, name, sha256, kind) values (${id}, ${name}, ${sha}, ${kind})`;
+    const after = { name, sha256: sha, kind, media_type: mediaType, size: bytes.length, stored: have ? "existing" : stored };
+    await audit(tx, "entry.artifact", `entry:${id}`, null, after);
+    return { entry_id: id, ...after };
+  });
+}
+
+/** Set an entry's confidence by hand, with the reason, for a groom that marks a stale fact without deleting it (R17). The
+ * learner's own log, confidence_log, gets the move, and the audit gets it too. */
+async function setConfidence(id: string, data: Row) {
+  const unknown = Object.keys(data).filter((k) => !["confidence", "note"].includes(k)).sort();
+  if (unknown.length) throw new ApiError(422, `Unknown fields: ${unknown.join(", ")}.`);
+  const c = data.confidence;
+  if (typeof c !== "number" || !Number.isFinite(c) || c < 0 || c > 1) throw new ApiError(422, "confidence must be a number from 0 to 1.");
+  const note = data.note;
+  if (typeof note !== "string" || !note.trim()) throw new ApiError(422, "note must say why.");
+  shortEnough("note", note);
+  return await sql.begin(async (tx) => {
+    const before = await row(tx, id);
+    await tx`update memory.entry set confidence = ${c} where id = ${id}`;
+    await tx`insert into memory.confidence_log (target, before, after, reason) values (${"entry:" + id}, ${before.confidence}, ${c}, ${note})`;
+    await audit(tx, "entry.confidence", `entry:${id}`, { confidence: before.confidence }, { confidence: c, note });
+    return { id, confidence: c };
   });
 }
 
@@ -1249,6 +1336,8 @@ const ROUTES: Route[] = [
   ["DELETE", /^\/entries\/([^/]+)\/links\/([^/]+)\/([^/]+)$/, 200,
     (_r, m) => deleteLink(id(m[1]), id(m[2], "type"), id(m[3], "dst"))],
   ["POST", /^\/entries\/([^/]+)\/supersede$/, 201, async (r, m) => supersede(id(m[1]), (await body(r)).by)],
+  ["POST", /^\/entries\/([^/]+)\/artifacts$/, 201, async (r, m) => addArtifact(id(m[1]), await body(r))],
+  ["POST", /^\/entries\/([^/]+)\/confidence$/, 200, async (r, m) => setConfidence(id(m[1]), await body(r))],
   ["GET", /^\/graph$/, 200, (_r, _m, q) => graph(q.text("project"), q.flag("include_superseded"))],
   ["GET", /^\/sessions$/, 200, (_r, _m, q) => sessions({ client: q.text("client"), arm: q.text("arm"), ...q.page() })],
   ["GET", /^\/sessions\/([^/]+)$/, 200, (_r, m) => session(id(m[1]))],
