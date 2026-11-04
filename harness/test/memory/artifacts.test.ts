@@ -194,3 +194,99 @@ test('R20 no Storage: blobs stay in Postgres under the 4 MiB limit', { skip: SKI
   const small = await tool('remember', note(`db ${nonce()}`, { artifacts: [{ name: 'n.txt', text }] }))
   assert.ok((await tool('get_blob', { sha256: shaIn(small.text) })).text.includes(text))
 })
+
+// ---------------------------------------------------------------------------------------------------- R42 admin route
+// POST /api/v1/entries/{id}/artifacts attaches one artifact to an existing entry, so a long entry can keep its full text
+// in an artifact while PATCH shortens its body. POST /api/v1/entries/{id}/confidence sets confidence with a note (R17).
+async function adminEntry(body: string) {
+  const id = `adm-${nonce()}`
+  const r = await admin('POST', '/entries', { id, title: `admin artifact ${id}`, body, pattern: 'decisions', authority: 'approved', scope: 'global' })
+  assert.equal(r.status, 201, r.text)
+  return id
+}
+const blobsOf = (id: string) => countOf('entry_blob', `entry_id = '${id}'`)
+
+test('admin artifacts: attach the original body, then shorten it', { skip: SKIP }, async () => {
+  const b = `${marker()} ` + words(867)
+  assert.equal(b.length, 900)
+  const id = await adminEntry(b)
+  const r = await admin('POST', `/entries/${id}/artifacts`, { name: `${id}-detail.md`, kind: 'document', media_type: 'text/markdown', text: b })
+  assert.equal(r.status, 201, r.text)
+  const p = await admin('PATCH', `/entries/${id}`, { body: words(300) })
+  assert.equal(p.status, 200, p.text)
+  assert.equal(countOf('entry_blob', `entry_id = '${id}' and name = '${id}-detail.md' and kind = 'document'`), 1)
+  const [row] = sql(`select convert_from(b.content, 'UTF8') as text, b.media_type from memory.entry_blob x join memory.blob b using (sha256)
+    where x.entry_id = '${id}'`)
+  assert.equal(row.text, b)
+  assert.equal(row.media_type, 'text/markdown')
+  assert.equal(sql(`select length(body)::int as n from memory.entry where id = '${id}'`)[0].n, 300)
+  assert.equal(countOf('admin_audit', `action = 'entry.artifact' and target = 'entry:${id}' and after->>'name' = '${id}-detail.md' and after->>'sha256' = '${sha256(b)}'`), 1)
+  const big = `${marker()} ` + words(200_000 - 33)
+  const t0 = Date.now()
+  const r2 = await admin('POST', `/entries/${id}/artifacts`, { name: 'big.md', kind: 'document', media_type: 'text/markdown', text: big })
+  assert.equal(r2.status, 201, r2.text)
+  assert.ok(Date.now() - t0 <= 3000, `took ${Date.now() - t0} ms`)
+})
+
+test('admin artifacts: refuse a taken name, a bad kind, two contents and a missing entry', { skip: SKIP }, async () => {
+  const id = await adminEntry(words(600))
+  const name = `${id}-detail.md`
+  assert.equal((await admin('POST', `/entries/${id}/artifacts`, { name, kind: 'document', text: words(600) })).status, 201)
+  assert.equal((await admin('POST', `/entries/${id}/artifacts`, { name, kind: 'document', text: words(50) })).status, 409)
+  assert.equal((await admin('POST', `/entries/${id}/artifacts`, { name: 'n.md', kind: 'notes', text: words(50) })).status, 422)
+  assert.equal((await admin('POST', `/entries/${id}/artifacts`, { name: 'n.md', text: 'a', base64: 'YQ==' })).status, 422)
+  assert.equal((await admin('POST', '/entries/no-such-entry-k7/artifacts', { name, kind: 'document', text: 'a' })).status, 404)
+  assert.equal(blobsOf(id), 1)
+})
+
+test('admin artifacts: only the admin token, and never a secret', { skip: SKIP }, async () => {
+  const id = await adminEntry(words(600))
+  const path = `${memory.url}/api/v1/entries/${id}/artifacts`, body = { name: 'a.md', kind: 'document', text: words(100) }
+  assert.equal((await request('POST', path, { headers: bearer(memory.token), body, timeoutMs: 30_000 })).status, 401)
+  assert.equal((await request('POST', path, { body, timeoutMs: 30_000 })).status, 401)
+  const secret = await admin('POST', `/entries/${id}/artifacts`, { ...body, text: `key sk-proj-${'A1b2C3d4E5'.repeat(4)} here` })
+  assert.equal(secret.status, 422, secret.text)
+  assert.match(secret.text, /secret/)
+  assert.equal(blobsOf(id), 0)
+})
+
+test('admin artifacts: a full quota writes nothing', { skip: SKIP }, async () => {
+  const id = await adminEntry(words(600))
+  const prior = sql(`select value from memory.setting where name = 'blob_quota_bytes'`)
+  sql(`insert into memory.setting (name, value) values ('blob_quota_bytes', '0') on conflict (name) do update set value = excluded.value`)
+  try {
+    const text = `${marker()} ` + words(967)
+    const r = await admin('POST', `/entries/${id}/artifacts`, { name: 'q.md', kind: 'document', text })
+    assert.equal(r.status, 422, r.text)
+    assert.match(r.text, /blob_quota_bytes/)
+    assert.equal(countOf('blob', `sha256 = '${sha256(text)}'`), 0)
+    assert.equal(blobsOf(id), 0)
+  } finally {
+    if (prior.length) sql(`update memory.setting set value = '${prior[0].value}' where name = 'blob_quota_bytes'`)
+    else sql(`delete from memory.setting where name = 'blob_quota_bytes'`)
+  }
+})
+
+test('admin confidence: set with a note, logged and audited', { skip: SKIP }, async () => {
+  const id = await adminEntry(words(100))
+  const c = Number(sql(`select confidence from memory.entry where id = '${id}'`)[0].confidence)
+  const note = 'stale: superseded by the Supabase move'
+  const r = await admin('POST', `/entries/${id}/confidence`, { confidence: 0.3, note })
+  assert.equal(r.status, 200, r.text)
+  assert.equal(JSON.parse(r.text).confidence, 0.3)
+  assert.equal(sql(`select round(confidence::numeric, 2)::text as c from memory.entry where id = '${id}'`)[0].c, '0.30')
+  assert.equal(countOf('confidence_log', `target = 'entry:${id}' and round(before::numeric, 2) = round(${c}::numeric, 2) and round(after::numeric, 2) = 0.30 and reason = '${note}'`), 1)
+  assert.equal(countOf('admin_audit', `action = 'entry.confidence' and target = 'entry:${id}'`), 1)
+})
+
+test('admin confidence: refuse out-of-range values, a missing note and a missing entry', { skip: SKIP }, async () => {
+  const id = await adminEntry(words(100))
+  const before = sql(`select confidence::text as c from memory.entry where id = '${id}'`)[0].c
+  assert.equal((await admin('POST', `/entries/${id}/confidence`, { confidence: 1.5, note: 'x' })).status, 422)
+  assert.equal((await admin('POST', `/entries/${id}/confidence`, { confidence: -0.1, note: 'x' })).status, 422)
+  assert.equal((await admin('POST', `/entries/${id}/confidence`, { confidence: 0.5 })).status, 422)
+  assert.equal((await admin('POST', '/entries/no-such-entry-k7/confidence', { confidence: 0.5, note: 'x' })).status, 404)
+  const agent = await request('POST', `${memory.url}/api/v1/entries/${id}/confidence`, { headers: bearer(memory.token), body: { confidence: 0.1, note: 'x' }, timeoutMs: 30_000 })
+  assert.equal(agent.status, 401)
+  assert.equal(sql(`select confidence::text as c from memory.entry where id = '${id}'`)[0].c, before)
+})
