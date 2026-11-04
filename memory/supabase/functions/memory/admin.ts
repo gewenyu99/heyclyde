@@ -874,7 +874,7 @@ async function importRows(req: Request) {
       const cols = [...new Set(rows.flatMap((r) => Object.keys(r)))];
       for (let i = 0; i < rows.length; i += 500) {
         const chunk = rows.slice(i, i + 500).map((r) =>
-          Object.fromEntries(cols.map((c) => [c, r[c] == null ? null : JSONB.has(c) ? tx.json(r[c]) : r[c]]))
+          Object.fromEntries(cols.map((c) => [c, r[c] == null ? null : JSONB.has(c) && !(table === "agent" && c === "context") ? tx.json(r[c]) : r[c]]))
         );
         const done = await tx`insert into ${tx("memory." + table)} ${tx(chunk, ...cols)} on conflict do nothing returning 1`;
         counts[table] = (counts[table] ?? 0) + done.length;
