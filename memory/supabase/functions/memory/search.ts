@@ -334,7 +334,8 @@ export function renderItem(n: number, row: Row, itemChars?: number) {
   let meta = `    ${kindLabel(row, " · confidence ")} · ${row.authority}${row.authority === "draft" ? " · unreviewed" : ""} · ${row.scope} · ${row.valid_from}`;
   if (row.superseded_by) meta += ` · replaced by ${row.superseded_by}`;
   const body = itemChars && String(row.body).length > itemChars ? `${String(row.body).slice(0, itemChars)}${MORE}` : row.body;
-  const parts = [`[${n}] ${row.id}: ${row.title}`, meta, `    ${body}`];
+  // R41: where the note came from, in the line provenance.ts worded. A note with no record of it has no line.
+  const parts = [`[${n}] ${row.id}: ${row.title}`, meta, ...(row.provenance ? [`    ${row.provenance}`] : []), `    ${body}`];
   if (row.evidence && row.evidence_kind === "quote") parts.push(`    Wen: “${row.evidence}”`);
   const artifacts = artifactsLine(row);
   if (artifacts) parts.push(`    ${artifacts}`);
@@ -381,7 +382,7 @@ export function renderEntry(row: Row, links: Row[], blobs: Row[] = []) {
   const out = [`${row.id}: ${row.title}`,
     `pattern ${row.pattern} · ${row.authority} · ${row.scope} · valid from ${row.valid_from} · project ${row.project}`,
     `kind ${row.kind ?? "observation"} · confidence ${Number(row.confidence ?? 0).toFixed(2)}${row.verified === false ? " · unverified" : ""}`,
-    "", row.body];
+    ...(row.provenance ? [`provenance ${row.provenance}`] : []), "", row.body];
   if (row.evidence) {
     const who = row.evidence_kind === "quote" ? "Wen" : row.evidence_kind;
     out.push("", `Evidence (${who}): “${row.evidence}”`);

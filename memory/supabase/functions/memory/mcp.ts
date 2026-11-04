@@ -11,7 +11,9 @@ import { Refused, remember } from "./write.ts";
 export const MAX_MCP_BODY = 12 * 1024 * 1024;
 const RID = /^retrieval ([0-9a-f-]{36})/;
 const VERSIONS =["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
-export const INSTRUCTIONS = "Wen's memory. Call recall before acting on anything that depends on Wen's decisions, " +
+export const INSTRUCTIONS = "Wen's memory. Register once with register_agent (name, context work, personal or both, surface, " +
+  "description): memory remembers it for this token and app, and your notes and messages then carry your name. You can use " +
+  "memory before you have, and each reply reminds you until you do. Call recall before acting on anything that depends on Wen's decisions, " +
   "preferences or history. Wen's other agents leave you messages. Call check_messages when you start a task, " +
   "and post_message to reach them. check_messages numbers each message: call ack_messages with those ids once you've " +
   "handled them, or they come back. To keep what you learn, call remember: it needs only pattern, title, body and " +
@@ -26,6 +28,22 @@ const str = (description: string) => ({ type: "string", description });
 const int = (description: string) => ({ type: "integer", description });
 
 export const TOOLS = [
+  {
+    name: "register_agent",
+    description: "Say which of Wen's agents you are, once. memory remembers it for this token and app, so later sessions start " +
+      "registered, and your notes' source and your messages carry your name. Until you do, every reply reminds you.\n\n" +
+      "name: a short lowercase handle, like clyde-work or journeymate-ios. Reuse your name if you have one.\n" +
+      "context: work, personal or both. What part of Wen's life you work on.\n" +
+      "surface: where you run, like claude-code, claude.ai, cowork, codex or a script.\n" +
+      "description: one or two sentences on what you do for Wen.",
+    inputSchema: {
+      type: "object", required: ["name", "context", "surface", "description"],
+      properties: {
+        name: str("Lowercase handle, letters, digits and dashes"), context: str("work, personal or both"),
+        surface: str("Where you run"), description: str("What you do for Wen"),
+      },
+    },
+  },
   {
     name: "recall",
     description: "Search Wen's memory: his decisions, preferences, observations and past reactions.\n\n" +
@@ -173,16 +191,71 @@ function installNote(who: Principal) {
   return installerNote(clientStatus(who.clientVersion, config.clientCutoffDays), Boolean(who.updateFailed));
 }
 
-type Call = { session: string; client: string | null; principal: string; args: Record<string, any>; note: string };
+/** The profile a session is registered as, or null. */
+type Profile = { name: string; context: string; surface: string };
+type Call = { session: string; client: string | null; agent: Profile | null; principal: string; args: Record<string, any>; note: string };
 const s = (v: unknown, fallback = "") => typeof v === "string" ? v : fallback;
 
+/** The one line every reply of an unregistered session ends with, as a content block of its own so the tool's text is never
+ * changed. Registration is gentle: nothing is refused for lack of it. */
+export const NUDGE = "memory: you haven't registered yet. Call register_agent {name, context, surface, description} once: " +
+  "context is work, personal or both. memory remembers it for this token and app, and your notes and messages then carry your name.";
+
+const AGENT_NAME = /^[a-z0-9][a-z0-9-]{1,39}$/;
+const CONTEXTS = ["work", "personal", "both"];
+const RESERVED = ["claude", "codex", "all", "wen", "memory"];
+// Control characters, NUL included, would reach a note's source line, and Postgres refuses NUL.
+// deno-lint-ignore no-control-regex
+const CONTROL = /[\u0000-\u001f\u007f-\u009f]+/g;
+const plain = (v: unknown, max: number) => s(v).replace(CONTROL, " ").trim().slice(0, max).trim();
+
+/** Make or update the agent's profile, and bind this session, and this credential's app, to it. A name belongs to the credential
+ * that registered it first: another credential's attempt is refused and changes nothing. */
+async function register({ session, client, principal, args }: Call) {
+  const name = s(args.name).trim().toLowerCase(), context = s(args.context).trim().toLowerCase();
+  const surface = plain(args.surface, 40), description = plain(args.description, 500);
+  const errs = [
+    AGENT_NAME.test(name) ? "" : "name must be 2 to 40 lowercase letters, digits and dashes, starting with a letter or digit.",
+    CONTEXTS.includes(context) ? "" : "context must be work, personal or both.",
+    surface ? "" : "surface is required: where you run, like claude-code or claude.ai.",
+    description ? "" : "description is required: what you do for Wen.",
+    RESERVED.includes(name) ? `${name} is reserved. Pick a name of your own.` : "",
+  ].filter(Boolean);
+  if (errs.length) throw new Refused(errs.join("\n"));
+  // One statement, so two credentials racing for a new name leave one owner. The where keeps a name with the credential that took it.
+  const [agent] = await sql`insert into memory.agent (name, context, surface, description, registered_by)
+    values (${name}, ${context}, ${surface}, ${description}, ${principal})
+    on conflict (name) do update set context = excluded.context, surface = excluded.surface,
+      description = excluded.description, last_seen = now()
+      where memory.agent.registered_by is not distinct from excluded.registered_by
+    returning name, (xmax = 0) as created`;
+  if (!agent) throw new Refused(`${name} is already registered by another credential. Pick a name of your own.`);
+  await sql`update memory.mcp_client set agent = ${name} where session_id = ${session} and principal = ${principal}`;
+  if (client) {
+    await sql`insert into memory.agent_binding (principal, client, agent) values (${principal}, ${client}, ${name})
+      on conflict (principal, client) do update set agent = excluded.agent, updated_at = now()`;
+  }
+  return `${agent.created ? "Registered" : "Welcome back,"} ${name}: a ${context} agent on ${surface}. ` +
+    "memory remembers this for this token and app, so your next session starts registered. Your notes and messages carry your name.";
+}
+
+/** The name a registered agent writes and posts under, else the one its client name gives. */
+const nameOf = (c: Pick<Call, "agent" | "client">) => c.agent?.name ?? service.agentName(c.client);
+
+/** The mailboxes an agent reads: its own name, and claude or codex when its client is one of those. */
+function mailboxes(c: Pick<Call, "agent" | "client">): string[] {
+  const own = service.agentName(c.client);
+  return c.agent ? [c.agent.name, ...(own === "claude" || own === "codex" ? [own] : [])] : [own];
+}
+
 const RUN: Record<string, (c: Call) => Promise<string>> = {
-  recall: ({ session, client, principal, args }) =>
-    service.recall(session, s(args.query), s(args.task), client, s(args.scope) || null, principal),
-  get_entry: async ({ session, args }) => (await service.getEntry(session, s(args.id))) ?? `No entry ${s(args.id)}.`,
+  register_agent: register,
+  recall: (c) => service.recall(c.session, s(c.args.query), s(c.args.task), c.client, s(c.args.scope) || null, c.principal, nameOf(c)),
+  get_entry: async (c) => (await service.getEntry(c.session, s(c.args.id), { device: c.principal, agent: nameOf(c) })) ?? `No entry ${s(c.args.id)}.`,
   get_blob: ({ args }) => service.getBlob(s(args.sha256), Number(args.offset ?? 0), Number(args.limit ?? 20000)),
   upload_blob: ({ principal, args }) => service.uploadBlob(principal, args),
-  remember: async ({ args, client, principal }) => {
+  remember: async (c) => {
+    const { args } = c;
     const payload = {
       pattern: args.pattern, title: args.title, body: args.body, scope: args.scope || null, evidence: args.evidence,
       kind: args.kind || null, evidence_event: args.evidence_event ?? null,
@@ -192,27 +265,34 @@ const RUN: Record<string, (c: Call) => Promise<string>> = {
       // Only when sent, so a write without them keeps the id and digest it always had.
       ...(args.artifacts !== undefined ? { artifacts: args.artifacts } : {}), ...(args.long !== undefined ? { long: args.long } : {}),
     };
-    const r = await remember(payload, "agent", service.agentName(client), principal);
+    const me = nameOf(c);
+    const r = await remember(payload, "agent", me, c.principal, {
+      agent: me, context: c.agent?.context ?? null, session: c.session,
+      profile: c.agent ? `${c.agent.name}, a ${c.agent.context} agent on ${c.agent.surface}` : null,
+    });
     return [`Remembered ${r.id}.`,
       ...r.blobs.map((b: { name: string; sha256: string; kind: string; size: number }) => `Blob ${b.name}: ${b.sha256} (${b.kind}, ${b.size} bytes)`),
       "Keyword search finds it now. Vector search finds it after the next embedding sync."].join("\n");
   },
   feedback: ({ session, args }) => service.agentFeedback(session, args),
-  post_message: ({ client, args }) => service.postMessage(sql, service.agentName(client), s(args.to), s(args.body)),
-  check_messages: async ({ client, note }) =>
-    ((await service.checkMessages(service.agentName(client))) || "No new messages.") + (note ? `\n${note}` : ""),
-  ack_messages: ({ client, args }) => service.ackMessages(service.agentName(client), args.ids),
-  dismiss_messages: ({ client, args }) => service.dismissMessages(service.agentName(client), args.ids),
+  post_message: (c) => service.postMessage(sql, nameOf(c), s(c.args.to), s(c.args.body)),
+  check_messages: async (c) => ((await service.checkMessages(mailboxes(c))) || "No new messages.") + (c.note ? `\n${c.note}` : ""),
+  ack_messages: (c) => service.ackMessages(mailboxes(c), c.args.ids),
+  dismiss_messages: (c) => service.dismissMessages(mailboxes(c), c.args.ids),
 };
 
 type RpcMessage = { jsonrpc?: string; id?: string | number | null; method?: string; params?: any };
 const result = (id: RpcMessage["id"], value: unknown) => ({ jsonrpc: "2.0", id, result: value });
 const error = (id: RpcMessage["id"], code: number, message: string) => ({ jsonrpc: "2.0", id: id ?? null, error: { code, message } });
 
-async function clientOf(session: string | null): Promise<string | null> {
-  if (!session) return null;
-  const [row] = await sql`select client from memory.mcp_client where session_id = ${session}`;
-  return row?.client ?? null;
+/** The client name a session gave at initialize, and the agent it is. A session opened under another credential is no one:
+ * its id is not a bearer token. */
+async function sessionOf(session: string | null, principal: string): Promise<{ client: string | null; agent: Profile | null }> {
+  if (!session) return { client: null, agent: null };
+  const [row] = await sql`select c.client, c.principal, a.name, a.context, a.surface from memory.mcp_client c
+    left join memory.agent a on a.name = c.agent where c.session_id = ${session}`;
+  const mine = row?.principal === principal && row?.name;
+  return { client: row?.client ?? null, agent: mine ? { name: row.name, context: row.context, surface: row.surface } : null };
 }
 
 async function answer(msg: RpcMessage, session: string | null, minted: { id?: string }, who: Principal) {
@@ -222,8 +302,12 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
       const asked = msg.params?.protocolVersion;
       const sid = crypto.randomUUID();
       minted.id = sid;
-      const client = msg.params?.clientInfo?.name ?? null;
-      await sql`insert into memory.mcp_client (session_id, client) values (${sid}, ${client}) on conflict do nothing`;
+      const client = typeof msg.params?.clientInfo?.name === "string" ? msg.params.clientInfo.name : null;
+      const principal = who.device ?? who.role;
+      // A credential and app that registered before start as that agent.
+      await sql`insert into memory.mcp_client (session_id, client, principal, agent)
+        values (${sid}, ${client}, ${principal}, (select agent from memory.agent_binding where principal = ${principal} and client = ${client}))
+        on conflict do nothing`;
       return result(id, {
         protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0],
         capabilities: { tools: { listChanged: false } },
@@ -252,14 +336,21 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
           return text;
         }
       };
+      const principal = who.device ?? who.role;
+      let nudge: { type: string; text: string }[] = [];
       try {
-        const principal = who.device ?? who.role;
-        const text = await run({ session: sid, client: await clientOf(session), principal, args: msg.params?.arguments ?? {}, note: installNote(who) });
-        return result(id, { content: [{ type: "text", text: await remind(text) }] });
+        const known = await sessionOf(session, principal);
+        // Registration is gentle: an unregistered session works, and hears this after every reply until it registers.
+        if (!known.agent && name !== "register_agent") nudge = [{ type: "text", text: NUDGE }];
+        if (known.agent) {
+          await sql`update memory.agent set last_seen = now() where name = ${known.agent.name} and last_seen < now() - interval '1 minute'`;
+        }
+        const text = await run({ session: sid, client: known.client, agent: known.agent, principal, args: msg.params?.arguments ?? {}, note: installNote(who) });
+        return result(id, { content: [{ type: "text", text: await remind(text) }, ...nudge] });
       } catch (e) {
         if (!(e instanceof Refused)) console.error(e);
         const text = e instanceof Refused ? e.message : `Error: ${(e as Error).message}`;
-        return result(id, { content: [{ type: "text", text: await remind(text) }], isError: true });
+        return result(id, { content: [{ type: "text", text: await remind(text) }, ...nudge], isError: true });
       }
     }
     default:

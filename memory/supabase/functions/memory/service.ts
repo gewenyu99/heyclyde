@@ -10,6 +10,7 @@ import { redact, redactText } from "./redact.ts";
 import { relevance, screen } from "./judge.ts";
 import { BAD_VERDICT, checkFeedback, feedbackFooter, REMIND_MAX, reminderLine, VERDICTS } from "./feedback.ts";
 import { renderTrialItem, TRIAL_CHANCES } from "./trial.ts";
+import { provenanceLines, type Viewer } from "./provenance.ts";
 
 const RID = /retrieval ([0-9a-f-]{36})/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -50,7 +51,8 @@ function itemText(line: string | null, row: Row | undefined) {
  * With `lane` and a set whose trialItems is above 0, entries that still have chances left leave the main list. The best
  * trialItems of them that the judge rates at or above trialFloor come back in `trial`, ranked by the same arm, for recall
  * to spend a chance on. Previews and the eval pass no lane, so they spend nothing and rank every entry in one list. */
-export async function rankAndPack(db: Sql, set: ParamSet, query: string, task = "", scope: string | null = null, filter = true, lane = false) {
+export async function rankAndPack(db: Sql, set: ParamSet, query: string, task = "", scope: string | null = null, filter = true, lane = false,
+  viewer: Viewer = null) {
   const p = set.params;
   const request = task ? `${task}\n${query}`.trim() : query;
   const [armRanked, armDegraded, trace] = await ARMS[set.arm](db, request, scope || null, p);
@@ -76,6 +78,10 @@ export async function rankAndPack(db: Sql, set: ParamSet, query: string, task = 
       filterDegraded = `filter-failed: ${(e as Error).name}`;
     }
   }
+  // R41: each item says where it came from. Nothing is filtered by it. An index line is its own item, so the line goes on its end.
+  const tagged = await provenanceLines(db, [...candidates.map(([id]) => id), ...trial], viewer);
+  for (const [id, line] of tagged) if (id in rows) rows[id] = { ...rows[id], provenance: line };
+  candidates = candidates.map(([id, score, line]): Ranked => line !== null && tagged.has(id) ? [id, score, `${line} · ${tagged.get(id)}`] : [id, score, line]);
   const [delivered, chunks] = pack(candidates, rows, p);
   const degraded = [armDegraded, filterDegraded].filter(Boolean).join("; ") || null;
   return { ranked, degraded, delivered, chunks, lines, rejected, trial, rows, features: features(ranked, trace, confidence, judged) };
@@ -104,7 +110,7 @@ export function packetText(chunks: string[], lines: boolean, degraded: string | 
  * fails spends nothing, and an entry whose last chance a concurrent recall took is dropped from this packet. A scoped recall
  * serves its run's notes in the main list, and an HTTP recall (clyde-flow) has no way to give feedback or see a trial list. */
 export async function recall(session: string, query: string, task = "", client: string | null = null,
-  scope: string | null = null, principal = "anyone") {
+  scope: string | null = null, principal = "anyone", agent: string = agentName(client)) {
   if (scope && !SCOPE_RE.test(scope)) throw new Refused(`scope ${JSON.stringify(scope)} must look like run:<id>, or be left out.`);
   query = redactText(query)[0];
   task = redactText(task)[0];
@@ -112,7 +118,7 @@ export async function recall(session: string, query: string, task = "", client: 
   const { set, propensity } = await sessionSet(sql, session, unitOf(scope, principal, client), client);
   const mcp = client !== "http";
   const { ranked, degraded, delivered, chunks, lines, rejected, trial, rows, features: logged } =
-    await rankAndPack(sql, set, query, task, scope, true, mcp && !scope);
+    await rankAndPack(sql, set, query, task, scope, true, mcp && !scope, { device: principal, agent });
   const rid = crypto.randomUUID();
   // Only a whole recall ticks the clock, so a degraded one takes no seq.
   const seq = degraded ? null : sql`nextval('memory.retrieval_seq')`;
@@ -139,9 +145,11 @@ export async function recall(session: string, query: string, task = "", client: 
 }
 
 /** The entry rendered for an agent, with its links and blobs. null when there is no such entry. */
-export async function getEntry(session: string, id: string): Promise<string | null> {
+export async function getEntry(session: string, id: string, viewer: Viewer = null): Promise<string | null> {
   const rows = await fetchEntries(sql, [id]);
   if (!(id in rows)) return null;
+  const provenance = (await provenanceLines(sql, [id], viewer)).get(id);
+  if (provenance) rows[id].provenance = provenance;
   const links = await sql`select 'to' as dir, l.type, l.dst as other, e.title from memory.link l
       join memory.entry e on e.id = l.dst where l.src = ${id}
     union all select 'from', l.type, l.src, e.title from memory.link l join memory.entry e on e.id = l.src where l.dst = ${id}
@@ -285,8 +293,17 @@ export async function hook(event: string, payload: Row, agent: string | null = n
   if (event === "PostToolUse" && String(payload.tool_name ?? "").endsWith("recall") && sessionId) {
     const m = RID.exec(JSON.stringify(payload.tool_response ?? ""));
     if (m) {
-      await sql`update memory.mcp_session set claude_session_id = ${sessionId}
-        where id = (select mcp_session from memory.retrieval where id = ${m[1]})`;
+      // The folder the client reports is the MCP session's, so a note it writes records where it was written.
+      const cwd = typeof payload.cwd === "string" && payload.cwd.trim() ? payload.cwd.trim() : null;
+      const [tied] = await sql`update memory.mcp_session set claude_session_id = ${sessionId},
+          cwd = coalesce(${cwd}::text, cwd), repo = coalesce(memory.repo_of(${cwd}::text), repo),
+          cwd_from = case when ${cwd}::text is not null then 'hook' else cwd_from end
+        where id = (select mcp_session from memory.retrieval where id = ${m[1]}) returning id`;
+      // A note written before the hook arrived gets the folder now.
+      if (tied && cwd) {
+        await sql`update memory.entry_provenance set cwd = ${cwd}::text, repo = memory.repo_of(${cwd}::text)
+          where session = ${tied.id} and cwd is null`;
+      }
     }
   }
 }
@@ -311,7 +328,7 @@ export async function postMessage(db: Sql, sender: string, to: string, body: str
   // claude, codex and all, or any other agent memory has seen in the last 30 days.
   const known = AGENTS.includes(to) ||
     (AGENT.test(to) && (await db`select exists (select 1 from memory.agent_names() a where a = ${to}::text) as known`)[0].known);
-  if (!known || !body) return "Need a recipient (claude, codex or all) and a body.";
+  if (!known || !body) return "Need a recipient (claude, codex, all, or a registered agent's name) and a body.";
   if (to === sender) return "That's you. Message another agent, or all.";
   body = redactText(body)[0];
   // Messages land straight in another agent's context, so they pass the same judge as notes. Wen's own, from the
@@ -344,16 +361,17 @@ const count = (k: number, one: string) => `${k} ${one}${k === 1 ? "" : "s"}`;
 /** Up to 20 of my waiting deliveries, oldest first, claimed in one statement: each is hidden for 30 minutes and counted
  * as delivered, and with `ack` it's acknowledged on the spot. skip locked keeps two readers at once from claiming the
  * same one. A delivery already out three times without an ack is dropped here first, with a note to its sender. */
-async function claimMessages(me: string, ack: boolean) {
+async function claimMessages(mine: string | string[], ack: boolean) {
+  const me = Array.isArray(mine) ? mine : [mine];
   return await sql.begin(async (tx) => {
-    await tx`select memory.drop_exhausted(${me}::text)`;
+    for (const name of me) await tx`select memory.drop_exhausted(${name}::text)`;
     return await tx`with picked as (
         update memory.message_delivery d set delivered_count = d.delivered_count + 1,
           visible_after = now() + make_interval(mins => ${REDELIVER_MINUTES}::int),
           acked_at = case when ${ack}::boolean then now() end
         where d.id in (
           select d2.id from memory.message_delivery d2 join memory.message m on m.id = d2.message_id
-          where d2.recipient = ${me}::text and d2.acked_at is null and d2.dropped_at is null and d2.visible_after <= now()
+          where d2.recipient = any(${me}::text[]) and d2.acked_at is null and d2.dropped_at is null and d2.visible_after <= now()
             and m.expires_at > now()
           order by d2.id limit 20 for update of d2 skip locked)
         returning d.id, d.message_id)
@@ -362,19 +380,25 @@ async function claimMessages(me: string, ack: boolean) {
   });
 }
 
+/** A message that reached two of one agent's mailboxes, its own name and claude, is listed once. */
+function once(rows: Row[]) {
+  const seen = new Set<string>();
+  return rows.filter((r) => !seen.has(String(r.message_id)) && seen.add(String(r.message_id)));
+}
+
 const line = (r: Row, id: number) => `- #${id} from ${r.sender} to ${r.recipient} at ${stamp(r.created_at)} UTC: ${r.body}`;
 
 /** The hook inbox: my waiting messages as text, acknowledged as they print, since the agent sees them in its context.
  * Hooks have read this format since before the queue, message ids and all. */
-export async function readMessages(me: string) {
-  const rows = await claimMessages(me, true);
+export async function readMessages(me: string | string[]) {
+  const rows = once(await claimMessages(me, true));
   if (!rows.length) return "";
   return "Messages from your other agents (reply with post_message):\n" + rows.map((r) => line(r, r.message_id)).join("\n") + "\n";
 }
 
 /** check_messages: the same list, numbered by message id the same way, left waiting until ack_messages or a dismiss. */
-export async function checkMessages(me: string) {
-  const rows = await claimMessages(me, false);
+export async function checkMessages(me: string | string[]) {
+  const rows = once(await claimMessages(me, false));
   if (!rows.length) return "";
   return "Messages from your other agents (reply with post_message):\n" + rows.map((r) => line(r, r.message_id)).join("\n") + "\n" +
     `Call ack_messages with ids [${rows.map((r) => r.message_id).join(", ")}] once you've handled them. A message you don't ` +
@@ -391,18 +415,19 @@ function messageIds(raw: unknown): number[] | null {
 /** Closes my deliveries of these messages, by acknowledging or dismissing them. A message and a recipient have one
  * delivery, so the id check_messages and the hook inbox print picks it out. Only mine count: any other id, taken or made
  * up, changes nothing and comes back as "not yours". */
-async function closeDeliveries(me: string, raw: unknown, verb: string, everything: boolean) {
+async function closeDeliveries(mine: string | string[], raw: unknown, verb: string, everything: boolean) {
+  const me = Array.isArray(mine) ? mine : [mine];
   const ids = everything ? null : messageIds(raw);
   if (!everything && !ids) return "Need the ids check_messages listed, like [12, 13].";
   const done = everything
     ? await sql`update memory.message_delivery set acked_at = now()
-        where recipient = ${me}::text and acked_at is null and dropped_at is null returning id`
+        where recipient = any(${me}::text[]) and acked_at is null and dropped_at is null returning id`
     : await sql`update memory.message_delivery set acked_at = now()
-        where message_id = any(${ids}::bigint[]) and recipient = ${me}::text and acked_at is null and dropped_at is null returning id`;
+        where message_id = any(${ids}::bigint[]) and recipient = any(${me}::text[]) and acked_at is null and dropped_at is null returning id`;
   let said = `${verb} ${count(done.length, "message")}.`;
   if (ids) {
     const mine = new Set(
-      (await sql`select message_id from memory.message_delivery where message_id = any(${ids}::bigint[]) and recipient = ${me}::text`)
+      (await sql`select message_id from memory.message_delivery where message_id = any(${ids}::bigint[]) and recipient = any(${me}::text[])`)
         .map((r) => Number(r.message_id)),
     );
     said += [...new Set(ids)].filter((id) => !mine.has(id)).map((id) => ` Message ${id}: not yours.`).join("");
@@ -411,10 +436,10 @@ async function closeDeliveries(me: string, raw: unknown, verb: string, everythin
 }
 
 /** ack_messages: I've handled these messages. */
-export const ackMessages = (me: string, ids: unknown) => closeDeliveries(me, ids, "Acknowledged", false);
+export const ackMessages = (me: string | string[], ids: unknown) => closeDeliveries(me, ids, "Acknowledged", false);
 
 /** dismiss_messages: clear these messages, or all of mine, unread. */
-export function dismissMessages(me: string, ids: unknown) {
+export function dismissMessages(me: string | string[], ids: unknown) {
   const all = ids === "all" || (Array.isArray(ids) && ids.includes("all"));
   return closeDeliveries(me, ids, "Dismissed", all);
 }

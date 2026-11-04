@@ -107,7 +107,7 @@ const isDate = (v: unknown) =>
 
 // ---------------------------------------------------------------- checks that need no database
 /** Every check that needs no database. Returns the entry with its defaults filled in, or throws Refused. */
-export async function validate(payload: unknown, caller: string, agentName = "agent"): Promise<Row> {
+export async function validate(payload: unknown, caller: string, agentName = "agent", profile: string | null = null): Promise<Row> {
   if (!(caller in CALLERS)) throw new Error(`caller ${caller} must be agent or runtime`);
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Refused("An entry is a JSON object.");
   const raw = payload as Row;
@@ -176,7 +176,8 @@ export async function validate(payload: unknown, caller: string, agentName = "ag
   const explicitId = (p.id ?? "") !== "";
   if (agent && "source" in p) errs.push("An agent can't name a source. memory records the write as an agent session.");
   if (agent && explicitId) errs.push("An agent can't choose an id. memory generates one from the payload.");
-  e.source = await source(agent ? AGENT_SOURCE : p.source, errs);
+  // A registered agent's notes name it (R19): "r19-a, a work agent on claude-code, through remember".
+  e.source = await source(agent ? (profile ? { ...AGENT_SOURCE, title: `${profile}, through remember` } : AGENT_SOURCE) : p.source, errs);
   e.links = links(p.links ?? [], errs);
   e.supersedes = ids(p.supersedes ?? [], "supersedes", errs);
   e.blobs = await artifacts([...(Array.isArray(p.artifacts) ? p.artifacts : p.artifacts === undefined ? [] : [p.artifacts]),
@@ -434,6 +435,14 @@ async function insert(db: Sql, e: Row) {
   for (const b of e.blobs) {
     await db`insert into memory.entry_blob (entry_id, name, sha256, kind) values (${e.id}, ${b.name}, ${b.sha256}, ${b.kind})`;
   }
+  // R41: where it came from. The folder and repo are the ones the session's hook reported, if it has.
+  if (e.prov) {
+    await db`insert into memory.entry_provenance (entry_id, device, agent, agent_context, repo, cwd, session, run_scope)
+      select ${e.id}::text, ${e.prov.device}::text, ${e.prov.agent}::text, ${e.prov.context}::text, s.repo, s.cwd, ${e.prov.session}::text,
+        ${String(e.scope).startsWith("run:") ? e.scope : null}::text
+      from (select 1) one left join memory.mcp_session s on s.id = ${e.prov.session}::text
+      on conflict (entry_id) do nothing`;
+  }
   for (const b of e.blobs) if (b.uploaded && !b.existing) await store.claim(b.sha256);
   return true;
 }
@@ -504,8 +513,14 @@ async function blobsOf(id: string) {
 /** Write one entry as `caller`, agent or runtime. Returns {id, blobs, embedded}. Throws Refused, having written
  * nothing, when the payload breaks an invariant. Sending the same payload again returns its entry. The embedding
  * sync picks the entry up after the response. `principal` is the device that cites an upload_blob file. */
-export async function remember(payload: unknown, caller: string, agentName = "agent", principal = "anyone") {
-  const e = await validate(payload, caller, agentName);
+/** What memory knows about a write besides the payload (R41): the agent that made it, that agent's work context, the MCP session,
+ * and `profile`, the registered agent's one-line description for the note's source. The device is the principal. None of it
+ * comes from the caller's payload. */
+export type Origin = { agent: string; context: string | null; session: string | null; profile?: string | null };
+
+export async function remember(payload: unknown, caller: string, agentName = "agent", principal = "anyone", origin: Origin | null = null) {
+  const e = await validate(payload, caller, agentName, origin?.profile ?? null);
+  e.prov = { device: principal, agent: origin?.agent ?? agentName, context: origin?.context ?? null, session: origin?.session ?? null };
   if (await landed(sql, e)) return { id: e.id, blobs: await blobsOf(e.id), embedded: false };
   // Secrets and identifiers come out first. Then the judge reads what would be stored and can refuse it. A judge that
   // can't answer refuses too: memory fails closed. A private or confidential entry reaches a third-party model by its
