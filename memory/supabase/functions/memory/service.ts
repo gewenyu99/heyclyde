@@ -53,7 +53,7 @@ function itemText(line: string | null, row: Row | undefined) {
 export async function rankAndPack(db: Sql, set: ParamSet, query: string, task = "", scope: string | null = null, filter = true, lane = false) {
   const p = set.params;
   const request = task ? `${task}\n${query}`.trim() : query;
-  const [armRanked, armDegraded, trace] = await ARMS[set.arm](db, request, scope || null, p);
+  const [armRanked, armDegraded, trace, frontier] = await ARMS[set.arm](db, request, scope || null, p);
   const [ranked, confidence, chances] = await tilt(db, armRanked, p);
   const split = lane && (p.trialItems ?? 0) > 0 && set.arm !== "index";
   const onTrial = ([id]: Ranked) => split && (chances.get(id) ?? 0) > 0;
@@ -78,7 +78,7 @@ export async function rankAndPack(db: Sql, set: ParamSet, query: string, task = 
   }
   const [delivered, chunks] = pack(candidates, rows, p);
   const degraded = [armDegraded, filterDegraded].filter(Boolean).join("; ") || null;
-  return { ranked, degraded, delivered, chunks, lines, rejected, trial, rows, features: features(ranked, trace, confidence, judged) };
+  return { ranked, degraded, delivered, chunks, lines, rejected, trial, rows, frontier, features: features(ranked, trace, confidence, judged) };
 }
 
 /** The line a degraded recall leads with, so the caller knows the results are weaker than usual. */
@@ -111,7 +111,7 @@ export async function recall(session: string, query: string, task = "", client: 
   const started = performance.now();
   const { set, propensity } = await sessionSet(sql, session, unitOf(scope, principal, client), client);
   const mcp = client !== "http";
-  const { ranked, degraded, delivered, chunks, lines, rejected, trial, rows, features: logged } =
+  const { ranked, degraded, delivered, chunks, lines, rejected, trial, rows, frontier, features: logged } =
     await rankAndPack(sql, set, query, task, scope, true, mcp && !scope);
   const rid = crypto.randomUUID();
   // Only a whole recall ticks the clock, so a degraded one takes no seq.
@@ -126,6 +126,8 @@ export async function recall(session: string, query: string, task = "", client: 
     const packet = packetText(chunks, lines, degraded, shown.map((id, i) => renderTrialItem(i + 1, rows[id], left.get(id)!)));
     const text = mcp ? `${packet}\n${feedbackFooter(rid)}` : packet;
     const context: Row = { param_set: set.id, candidates: logged };
+    // Best-first spreading's frontier (R44), for recall_more to resume the same queue from.
+    if (frontier?.length) context.frontier = frontier.map(([id, strength]) => ({ id, strength }));
     if (shown.length) context.trial = shown.map((id) => ({ id, chance: TRIAL_CHANCES - left.get(id)! }));
     await tx`insert into memory.retrieval (id, mcp_session, arm, query, task, scope, candidates, delivered, rejected, on_trial, latency_ms,
         degraded, packet, param_set, propensity, seq, context)

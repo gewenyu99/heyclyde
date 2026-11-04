@@ -2,12 +2,15 @@
 import { config } from "./config.ts";
 import { type Row, type Sql } from "./db.ts";
 import { embed, toPgvector } from "./embed.ts";
-import type { Params } from "./params.ts";
+import { type Params, SPREAD, spreadKnobs } from "./params.ts";
 
 export type Ranked = [id: string, score: number, line: string | null];
 /** Each ranker's own list, by name, for the features a recall logs. A ranker with no score of its own gives null. */
 export type Trace = Record<string, [id: string, score: number | null][]>;
-export type ArmResult = [Ranked[], string | null, Trace];
+/** Best-first spreading's continuation (R44): the nodes the initial spread stopped at, each with the path strength it
+ * reached them with, strongest first, at most SPREAD.frontierCap. recall logs it in retrieval.context.frontier. */
+export type Frontier = [id: string, strength: number][];
+export type ArmResult = [Ranked[], string | null, Trace, Frontier?];
 const scored = (ranked: Ranked[]): Trace[string] => ranked.map(([id, score]) => [id, score]);
 const unscored = (ids: string[]): Trace[string] => ids.map((id) => [id, null]);
 
@@ -275,10 +278,142 @@ export function spread(out: Edges, seeds: Map<string, number>, restart: number, 
   return r;
 }
 
+// ---- best-first (R44): `spreadMode: "bestfirst"`
+// Seeds are the same ones PPR uses plus exact 2- and 3-word phrases of the query found in a title or body. A seed's strength is
+// its score over the best seed's, so the top seed is 1 and every phrase seed is at least as strong as any keyword seed. A priority
+// queue then expands the strongest path first: a path's strength is its seed's strength times, along its links, the link's weight
+// and its link type's weight. It stops at maxHops links or when a path falls below minPath, so something strongly connected but far
+// beats something weakly connected and near. What it stopped at is the frontier, for a later recall_more to continue from.
+
+/** The query's runs of 2 and 3 words in order, as case-insensitive patterns that match the words whole and whitespace-separated. */
+export function phrasePatterns(query: string, limit: number): string[] {
+  const words = (query.toLowerCase().match(WORD) ?? []).map((w) => w.replace(/^[.+-]+|[.+-]+$/g, "")).filter(Boolean);
+  const out = new Set<string>();
+  for (const size of SPREAD.phraseWords) {
+    for (let i = 0; i + size <= words.length; i++) {
+      const run = words.slice(i, i + size);
+      if (run.every((w) => STOP.has(w))) continue;
+      out.add("(^|[^a-z0-9])" + run.map((w) => w.replace(/[.+*?^${}()|[\]\\-]/g, "\\$&")).join("\\s+") + "([^a-z0-9]|$)");
+    }
+  }
+  return [...out].slice(0, limit);
+}
+
+/** Entries whose title or body holds one of the query's phrases, titles first. */
+async function phraseHits(db: Sql, query: string, p: Params): Promise<string[]> {
+  const patterns = phrasePatterns(query, p.candidates * 2);
+  if (!patterns.length) return [];
+  const rows = await db`select id from memory.entry_current where title ~* any(${patterns}::text[]) or body ~* any(${patterns}::text[])
+    order by (title ~* any(${patterns}::text[])) desc, id limit ${p.candidates}`;
+  return rows.map((r) => r.id);
+}
+
+/** The seeds every spreading mode starts from: hybrid's top candidates. Under bestfirst, entries holding a phrase of the query
+ * join them at the best seed's score, so a phrase seed is never weaker than a keyword or vector one. */
+async function spreadSeeds(db: Sql, query: string, scope: string | null, p: Params): Promise<ArmResult> {
+  const [ranked, degraded, trace] = await hybridSearch(db, query, scope, p);
+  if (spreadKnobs(p).mode !== "bestfirst") return [ranked, degraded, trace];
+  const hits = await phraseHits(db, query, p);
+  if (!hits.length) return [ranked, degraded, trace];
+  const top = ranked.reduce((a, [, s]) => Math.max(a, s), 0) || 1;
+  const seeds = new Map(ranked.map(([id, s]) => [id, s]));
+  for (const id of hits) seeds.set(id, Math.max(seeds.get(id) ?? 0, top));
+  const merged = [...seeds].map(([id, s]): Ranked => [id, s, null]).sort(byScore);
+  return [merged, degraded, { ...trace, phrase: unscored(hits) }];
+}
+
+type Step = [strength: number, id: string, hops: number];
+const stronger = (a: Step, b: Step) => a[0] > b[0] || (a[0] === b[0] && a[1] < b[1]);
+
+function push(heap: Step[], item: Step) {
+  heap.push(item);
+  for (let i = heap.length - 1; i > 0;) {
+    const up = (i - 1) >> 1;
+    if (!stronger(heap[i], heap[up])) break;
+    [heap[i], heap[up]] = [heap[up], heap[i]];
+    i = up;
+  }
+}
+
+function pop(heap: Step[]): Step {
+  const top = heap[0], last = heap.pop()!;
+  if (heap.length) {
+    heap[0] = last;
+    for (let i = 0;;) {
+      let big = i;
+      for (const c of [2 * i + 1, 2 * i + 2]) if (c < heap.length && stronger(heap[c], heap[big])) big = c;
+      if (big === i) break;
+      [heap[i], heap[big]] = [heap[big], heap[i]];
+      i = big;
+    }
+  }
+  return top;
+}
+
+/** Expand best-first from `seeds` (id → strength). Returns the best path strength of every node reached, seeds included, and the
+ * frontier: nodes held at maxHops, and nodes a link reached below minPath, which a later pass with looser limits can expand.
+ * A node keeps its strongest path, even when a weaker one would have more hops left. */
+export function bestFirst(out: Edges, seeds: Map<string, number>, maxHops: number, minPath: number, cap: number) {
+  const best = new Map(seeds), held = new Map<string, number>(), expanded = new Set<string>(), heap: Step[] = [];
+  for (const [id, s] of seeds) push(heap, [s, id, 0]);
+  while (heap.length) {
+    const [s, id, hops] = pop(heap);
+    const edges = out.get(id);
+    if (s < best.get(id)! || !edges?.length || s < minPath) continue;
+    if (hops >= maxHops) {
+      held.set(id, Math.max(held.get(id) ?? 0, s));
+      continue;
+    }
+    expanded.add(id);
+    for (const [to, w] of edges) {
+      const next = s * w;
+      if (next <= (best.get(to) ?? 0)) continue;
+      if (next < minPath) {
+        held.set(to, Math.max(held.get(to) ?? 0, next));
+        continue;
+      }
+      best.set(to, next);
+      push(heap, [next, to, hops + 1]);
+    }
+  }
+  const frontier: Frontier = [...held].filter(([id]) => !expanded.has(id) && out.get(id)?.length)
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, cap);
+  return { best, frontier };
+}
+
+/** The hook for recall_more: pick the same queue up from a recall's logged frontier, with limits of the caller's choosing (the
+ * set's, when it names none). Gives every node reached with its path strength, frontier nodes included; the caller keeps the
+ * ones it hasn't delivered. */
+export async function spreadMore(db: Sql, frontier: Frontier, p: Params, limits: { maxHops?: number; minPath?: number } = {}) {
+  const k = spreadKnobs(p);
+  return bestFirst(edgesUnder(await graph(db), p.linkTypeWeights), new Map(frontier), limits.maxHops ?? k.maxHops,
+    limits.minPath ?? k.minPath, SPREAD.frontierCap);
+}
+
+/** Seed score plus wPath × best path strength, replaced entries discounted like PPR's. */
+export function bestFirstRanked(out: Edges, seeds: Ranked[], superseded: Set<string>, p: Params): [Ranked[], Frontier] {
+  const k = spreadKnobs(p);
+  const top = seeds.reduce((a, [, s]) => Math.max(a, s), 0);
+  const strength = new Map(seeds.filter(([, s]) => s > 0).map(([id, s]) => [id, s / top]));
+  const { best, frontier } = bestFirst(out, strength, k.maxHops, k.minPath, SPREAD.frontierCap);
+  const ranked = [...best]
+    .map(([id, path]): Ranked => {
+      const score = (strength.get(id) ?? 0) + k.wPath * path;
+      return [id, superseded.has(id) ? score * p.supersededFactor : score, null];
+    })
+    .sort(byScore).slice(0, p.candidates);
+  return [ranked, frontier];
+}
+
 export async function spreadingSearch(db: Sql, query: string, scope: string | null, p: Params): Promise<ArmResult> {
-  const [seedsRanked, degraded, seedTrace] = await hybridSearch(db, query, scope, p);
+  const [seedsRanked, degraded, seedTrace] = await spreadSeeds(db, query, scope, p);
   const g = await graph(db);
-  const activation = spread(edgesUnder(g, p.linkTypeWeights), new Map(seedsRanked.map(([id, s]) => [id, s])), p.restart, p.iterations);
+  const out = edgesUnder(g, p.linkTypeWeights);
+  if (spreadKnobs(p).mode === "bestfirst") {
+    const [ranked, frontier] = bestFirstRanked(out, seedsRanked, g.superseded, p);
+    return [ranked, degraded, { ...seedTrace, spreading: scored(ranked) }, frontier];
+  }
+  const activation = spread(out, new Map(seedsRanked.map(([id, s]) => [id, s])), p.restart, p.iterations);
   const ranked = [...activation]
     .map(([id, a]): Ranked => [id, g.superseded.has(id) ? a * p.supersededFactor : a, null])
     .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
