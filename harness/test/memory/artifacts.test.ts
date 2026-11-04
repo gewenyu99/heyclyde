@@ -248,6 +248,10 @@ test('admin artifacts: only the admin token, and never a secret', { skip: SKIP }
   assert.equal(secret.status, 422, secret.text)
   assert.match(secret.text, /secret/)
   assert.equal(blobsOf(id), 0)
+  // Text that already went through redaction keeps its placeholders, and they are not secrets.
+  const placeholder = await admin('POST', `/entries/${id}/artifacts`, { ...body, text: 'doctor reports the machine token: [redacted:secret] or not' })
+  assert.equal(placeholder.status, 201, placeholder.text)
+  assert.equal(blobsOf(id), 1)
 })
 
 test('admin artifacts: a full quota writes nothing', { skip: SKIP }, async () => {
