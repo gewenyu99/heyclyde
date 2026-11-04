@@ -425,8 +425,8 @@ test('R19: the overview counts a registered agent\'s unread messages', { skip: S
 
 // #23 criterion 33 and 34, with R41's table.
 test('R19: the agent schema is idempotent and keyed and cascades as designed', { skip: SKIP }, async () => {
-  apply('20261103040000_identity.sql')
-  apply('20261103040000_identity.sql')
+  apply('20261103050000_identity.sql')
+  apply('20261103050000_identity.sql')
   const defs = (table: string) => sql(`select pg_get_constraintdef(c.oid) as def from pg_constraint c where c.conrelid = 'memory.${table}'::regclass`).map((r) => r.def as string).join('\n')
   for (const part of ['PRIMARY KEY (name)', '^[a-z0-9][a-z0-9-]{1,39}$', "'work'::text"]) assert.ok(defs('agent').includes(part), `agent: ${part}\n${defs('agent')}`)
   for (const part of ['PRIMARY KEY (principal, client)', 'REFERENCES memory.agent(name) ON DELETE CASCADE']) assert.ok(defs('agent_binding').includes(part), part)
