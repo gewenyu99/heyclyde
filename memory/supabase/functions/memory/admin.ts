@@ -1073,11 +1073,11 @@ async function evalReplay(data: Row) {
  * what it would have delivered overlaps what was served, since nothing else of its was seen; `overlap` is the share of its
  * deliveries that the served recall delivered too. Every rate's denominator is `judged`. */
 async function compareVariants(days: number) {
-  const since = sql`now() - make_interval(days => ${days})`;
+  const since = () => sql`now() - make_interval(days => ${days})`;
   const rows = await sql`
     with recent as (
       select r.id, r.param_set, r.delivered, r.reaction from memory.retrieval r
-      where r.parent_id is null and r.created_at >= ${since}),
+      where r.parent_id is null and r.created_at >= ${since()}),
     outcome as (
       select f.retrieval_id, f.entry_id, bool_or(f.verdict in ('used', 'helpful')) as used,
         bool_or(f.verdict = 'irrelevant') as irrelevant, bool_or(f.verdict = 'wrong') as wrong
@@ -1102,11 +1102,11 @@ async function compareVariants(days: number) {
     from items group by param_set, source`;
   const recalls = await sql`
     select param_set, 'served' as source, count(*) as recalls, 0 as skipped from memory.retrieval
-      where parent_id is null and created_at >= ${since} group by param_set
+      where parent_id is null and created_at >= ${since()} group by param_set
     union all
     select s.param_set, 'shadow', count(*) filter (where s.status = 'ranked'), count(*) filter (where s.status <> 'ranked')
       from memory.shadow_retrieval s join memory.retrieval r on r.id = s.retrieval_id
-      where r.parent_id is null and r.created_at >= ${since} group by s.param_set`;
+      where r.parent_id is null and r.created_at >= ${since()} group by s.param_set`;
   const roles = new Map((await sql`select param_set, role from memory.allocation`).map((a) => [a.param_set as string, a.role as string]));
   const key = (r: Row) => `${r.source} ${r.param_set}`;
   const counts = new Map(rows.map((r) => [key(r), r]));

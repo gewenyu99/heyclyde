@@ -157,7 +157,7 @@ test('R34: shadows tick no clock, and the learner moves nothing only a shadow wo
     const done = json(await request('POST', `${memory.url}/learn`, { headers: bearer(memory.cronSecret), timeoutMs: 120_000 }))
     if (!done.learned && !done.failed) break
   }
-  assert.equal(sql(`select count(*)::int as n from memory.confidence_log where id > ${logs} and entry_id in (${list(onlyShadow)})`)[0].n, 0)
+  assert.equal(sql(`select count(*)::int as n from memory.confidence_log where id > ${logs} and target in (${list(onlyShadow.map((id) => `entry:${id}`))})`)[0].n, 0)
   const now = snapshot()
   for (const id of onlyShadow) assert.deepEqual(now[id], before[id], id)
   await allocate({})
