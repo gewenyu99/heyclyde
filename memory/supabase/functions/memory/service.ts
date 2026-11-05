@@ -1,7 +1,8 @@
 // What the MCP tools and hook endpoints do, independent of transport, so tests can call it directly.
 import { sessionSet, unitOf } from "./allocation.ts";
 import { type Row, type Sql, sql } from "./db.ts";
-import { features } from "./features.ts";
+import { type Clocked, clocked, features, finalScore, relevanceOf } from "./features.ts";
+import { background, runShadows } from "./shadow.ts";
 import { type Params, type ParamSet, paramSet } from "./params.ts";
 import { ARMS, fetchEntries, type Frontier, pack, type Ranked, redact as redactPrivate, renderEntry } from "./search.ts";
 import { closingLine, deepPool, DEPTHS, nextPage, PAGE_HEAD } from "./deep.ts";
@@ -18,21 +19,37 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const PRIVATE_BLOB = "[private blob: ask Wen]";
 const PAGE_MAX = 100_000;
 
-/** The arm's ranking with dormant entries dropped and every score tilted by its entry's confidence, the confidences the tilt
- * read, and the chances each entry has left. Confidence tilts the ranking without overriding it:
- * score × (tiltBase + (1 - tiltBase) × confidence). */
-async function tilt(db: Sql, ranked: Ranked[], p: Params): Promise<[Ranked[], Map<string, number>, Map<string, number>]> {
+/** The arm's ranking with dormant entries dropped and every candidate given its final score under the set's score form
+ * (features.ts finalScore): by default score × (tiltBase + (1 - tiltBase) × confidence), which tilts the ranking without
+ * overriding it. Also the confidences the tilt read, the chances each entry has left, each candidate's relevance, and its
+ * temperature and age as of the clock reading `asOf` (the clock now when null). When the feature query fails, the ranking
+ * goes on without temperature and age, and `failed` says so. */
+async function tilt(db: Sql, ranked: Ranked[], p: Params, asOf: number | null) {
   const ids = ranked.slice(0, p.tiltWindow).map(([id]) => id);
-  if (!ids.length) return [ranked, new Map(), new Map()];
-  const found = await db`select id, confidence, chances_left from memory.entry where id = any(${ids}::text[])`;
-  const conf = new Map(found.map((r) => [r.id, r.confidence as number]));
-  const chances = new Map(found.map((r) => [r.id, r.chances_left as number]));
+  const found = ids.length ? await db`select id, confidence, chances_left from memory.entry where id = any(${ids}::text[])` : [];
+  const conf = new Map(found.map((r) => [r.id as string, r.confidence as number]));
+  const chances = new Map(found.map((r) => [r.id as string, r.chances_left as number]));
+  const rel = relevanceOf(ranked);
+  let clock: Clocked, failed: string | null = null;
+  try {
+    clock = await clocked(db, ranked.map(([id]) => id), asOf, p);
+  } catch (e) {
+    failed = `features-failed: ${(e as Error).name}`;
+    clock = { cNow: 0, temperature: new Map(), age: new Map() };
+  }
   const tilted = ranked
     .filter(([id]) => (conf.get(id) ?? 1) >= p.dormant)
-    .map(([id, score, line]): Ranked => [id, score * (p.tiltBase + (1 - p.tiltBase) * (conf.get(id) ?? p.tiltUnknownConfidence)), line])
+    .map(([id, score, line]): Ranked => [id, finalScore({
+      armScore: score, relevance: rel.get(id)!, confidence: conf.get(id) ?? null,
+      temperature: clock.temperature.get(id) ?? null, age: clock.age.get(id) ?? null,
+    }, p), line])
     .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
-  return [tilted, conf, chances];
+  return { tilted, conf, chances, relevance: rel, clock: failed ? null : clock, cNow: failed ? asOf : clock.cNow, failed };
 }
+
+/** The judge rankAndPack asks: the probability each item is relevant, in order. A shadow passes one that reads a cache. */
+export type Judge = (request: string, items: { id: string; text: string }[]) => Promise<number[]>;
+const liveJudge: Judge = (request, items) => relevance(request, items.map((i) => i.text));
 
 /** What the filter shows the judge for one candidate. Private and confidential entries go by title alone, since their
  * bodies never reach a third-party model. */
@@ -53,11 +70,11 @@ function itemText(line: string | null, row: Row | undefined) {
  * trialItems of them that the judge rates at or above trialFloor come back in `trial`, ranked by the same arm, for recall
  * to spend a chance on. Previews and the eval pass no lane, so they spend nothing and rank every entry in one list. */
 export async function rankAndPack(db: Sql, set: ParamSet, query: string, task = "", scope: string | null = null, filter = true, lane = false,
-  viewer: Viewer = null) {
+  viewer: Viewer = null, opts: { asOf?: number | null; judge?: Judge } = {}) {
   const p = set.params;
   const request = task ? `${task}\n${query}`.trim() : query;
   const [armRanked, armDegraded, trace, frontier] = await ARMS[set.arm](db, request, scope || null, p);
-  const [ranked, confidence, chances] = await tilt(db, armRanked, p);
+  const { tilted: ranked, conf: confidence, chances, relevance: rel, clock, cNow, failed } = await tilt(db, armRanked, p, opts.asOf ?? null);
   const split = lane && (p.trialItems ?? 0) > 0 && set.arm !== "index";
   const onTrial = ([id]: Ranked) => split && (chances.get(id) ?? 0) > 0;
   const settled = ranked.filter((r) => !onTrial(r)), waiting = ranked.filter(onTrial);
@@ -65,13 +82,17 @@ export async function rankAndPack(db: Sql, set: ParamSet, query: string, task = 
   const window = (list: Ranked[]) => list.slice(0, p.rowWindow).map(([id]) => id);
   const rows = lines ? {} : await fetchEntries(db, [...window(settled), ...window(waiting)]);
   let candidates = settled, rejected: string[] = [], filterDegraded: string | null = null, trial: string[] = [];
-  const judged = new Map<string, number>();
+  const judged = new Map<string, number>(), judgments: { id: string; text: string; p: number }[] = [];
   if (filter && ranked.length) {
     const loaded = ([id, , line]: Ranked) => line !== null || id in rows;
     const top = settled.filter(loaded).slice(0, p.filterK), trialTop = waiting.filter(loaded).slice(0, p.filterK);
     try {
-      const odds = await relevance(request, [...top, ...trialTop].map(([id, , line]) => itemText(line, rows[id])));
-      [...top, ...trialTop].forEach(([id], i) => judged.set(id, odds[i]));
+      const items = [...top, ...trialTop].map(([id, , line]) => ({ id, text: itemText(line, rows[id]) }));
+      const odds = await (opts.judge ?? liveJudge)(request, items);
+      items.forEach((it, i) => {
+        judged.set(it.id, odds[i]);
+        judgments.push({ ...it, p: odds[i] });
+      });
       candidates = top.filter(([id]) => judged.get(id)! >= p.filterThreshold);
       rejected = top.filter(([id]) => judged.get(id)! < p.filterThreshold).map(([id]) => id);
       trial = trialTop.filter(([id]) => judged.get(id)! >= (p.trialFloor ?? p.filterThreshold)).slice(0, p.trialItems).map(([id]) => id);
@@ -84,8 +105,11 @@ export async function rankAndPack(db: Sql, set: ParamSet, query: string, task = 
   for (const [id, line] of tagged) if (id in rows) rows[id] = { ...rows[id], provenance: line };
   candidates = candidates.map(([id, score, line]): Ranked => line !== null && tagged.has(id) ? [id, score, `${line} · ${tagged.get(id)}`] : [id, score, line]);
   const [delivered, chunks] = pack(candidates, rows, p);
-  const degraded = [armDegraded, filterDegraded].filter(Boolean).join("; ") || null;
-  return { ranked, degraded, delivered, chunks, lines, rejected, trial, rows, frontier, features: features(ranked, trace, confidence, judged) };
+  const degraded = [armDegraded, filterDegraded, failed].filter(Boolean).join("; ") || null;
+  return {
+    ranked, degraded, delivered, chunks, lines, rejected, trial, rows, frontier, cNow, judgments,
+    features: features(ranked, trace, confidence, judged, rel, clock),
+  };
 }
 
 /** The line a degraded recall leads with, so the caller knows the results are weaker than usual. */
@@ -126,7 +150,7 @@ export async function recall(session: string, query: string, task = "", client: 
   const { set, propensity } = await sessionSet(sql, session, unitOf(scope, principal, client), client);
   const mcp = client !== "http";
   const viewer = { device: principal, agent };
-  const { ranked, degraded, delivered: packed, chunks, lines, rejected, trial, rows, frontier, features: logged } =
+  const { ranked, degraded, delivered: packed, chunks, lines, rejected, trial, rows, frontier, features: logged, cNow, judgments } =
     await rankAndPack(sql, set, query, task, scope, true, mcp && !scope, viewer);
   let delivered = packed, deeper = "";
   const rid = crypto.randomUUID();
@@ -149,7 +173,8 @@ export async function recall(session: string, query: string, task = "", client: 
     const shown = trial.filter((id) => left.has(id));
     const packet = packetText(chunks, lines, degraded, shown.map((id, i) => renderTrialItem(i + 1, rows[id], left.get(id)!))) + deeper;
     const text = mcp ? `${packet}\n${feedbackFooter(rid)}` : packet;
-    const context: Row = { param_set: set.id, candidates: logged };
+    // c_now is the clock reading every feature is as of, so a replay rebuilds them from events alone.
+    const context: Row = { param_set: set.id, c_now: cNow, candidates: logged };
     // Best-first spreading's frontier (R44), for recall_more to resume the same queue from.
     if (frontier?.length) context.frontier = frontier.map(([id, strength]) => ({ id, strength }));
     if (shown.length) context.trial = shown.map((id) => ({ id, chance: TRIAL_CHANCES - left.get(id)! }));
@@ -161,6 +186,9 @@ export async function recall(session: string, query: string, task = "", client: 
         ${tx.json(context)}, ${depth})`;
     return text;
   });
+  // Shadow sets (R34) rank the same request after the response is out, as of the same clock reading. They never tick the
+  // clock and never change this packet.
+  background(runShadows({ retrieval: rid, query, task, scope, cNow, set: set.id, judgments, viewer }));
   return `retrieval ${rid}\n\n${text}`;
 }
 

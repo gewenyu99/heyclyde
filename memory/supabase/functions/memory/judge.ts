@@ -2,7 +2,7 @@
 // message an agent or clyde-flow writes is asked three typed questions before it's stored. Any yes refuses the write,
 // and so does a judge that can't answer: memory fails closed. Hook events are too many and too time-bound for it, so
 // they get redact.ts alone.
-import { assertBudget, meter } from "./budget.ts";
+import { assertBudget, type Kind, meter } from "./budget.ts";
 import { openai } from "./embed.ts";
 
 const MODEL = "gpt-6-luna";
@@ -62,16 +62,21 @@ export async function screen(text: string): Promise<string | null> {
 const RELEVANT = "Is memory item {n} relevant to the request? Relevant means an assistant handling the request needs it " +
   "or must respect it. An item that only shares a word or a topic with the request is not relevant.";
 
+/** Names the relevance judge's model and question. A shadow's judge cache keys on it, so changing either starts a new cache. */
+export const JUDGE_VERSION = `${MODEL}|relevance.1`;
+
 /** The probability each item is relevant to the request, in the items' order. One Decisions call asks about all of them.
- * Throws when the judge can't answer, and recall then serves its ranking unfiltered. */
-export async function relevance(request: string, items: string[]): Promise<number[]> {
-  await assertBudget("judge_recall");
+ * Throws when the judge can't answer, and recall then serves its ranking unfiltered. A shadow's call (kind "shadow") is
+ * metered and budgeted as one and says so in an x-memory-purpose header. */
+export async function relevance(request: string, items: string[], kind: Kind = "judge_recall"): Promise<number[]> {
+  await assertBudget(kind);
   const { url, key } = await openai();
+  const purpose: Record<string, string> = kind === "judge_recall" ? {} : { "x-memory-purpose": kind };
   const input = `Request:\n${request.slice(0, 2000)}\n\nMemory items:\n` +
     items.map((t, i) => `[${i + 1}] ${t.slice(0, 700)}`).join("\n");
   const r = await fetch(`${url}/decisions`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", ...purpose },
     body: JSON.stringify({
       model: MODEL, input,
       questions: items.map((_, i) => ({ type: "predicate", name: `i${i + 1}`, instructions: RELEVANT.replace("{n}", String(i + 1)) })),
@@ -80,7 +85,7 @@ export async function relevance(request: string, items: string[]): Promise<numbe
   });
   if (!r.ok) throw new Error(`OpenAI Decisions ${r.status}: ${(await r.text()).slice(0, 200)}`);
   const body = await r.json();
-  await meter("judge_recall", body.usage?.input_tokens ?? 0);
+  await meter(kind, body.usage?.input_tokens ?? 0);
   const byName = new Map((body.answers ?? []).map((a: Record<string, any>) => [a.name, a]));
   return items.map((_, i) => {
     const a = byName.get(`i${i + 1}`) as Record<string, any> | undefined;

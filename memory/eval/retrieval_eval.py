@@ -3,6 +3,7 @@
 function's admin eval routes.
 
   python eval/retrieval_eval.py [--arms index,hybrid] [--split train|test|all] [--misses] [--json] [--params <id|file.json>]
+  python eval/retrieval_eval.py --replay [--params <id|file.json>] [--limit 50] [--json]
 
 --params runs one parameter set instead of each arm's v1. An id names a stored set (hybrid.v1, or a researcher's hybrid.v2), and
 the arm is the set's own. A file is a POST /param-sets body without the id, {"arm": "hybrid", "parent": "hybrid.v1",
@@ -20,6 +21,12 @@ Every miss is placed in the funnel, so a loss points at a stage rather than at t
   budget-cut      a gold entry ranked inside the item cap but the token budget cut it
 For hybrid the gold entry's rank in each ranker (en, zh, vec) shows which ranker found it and which didn't.
 No session is written: the eval routes read the arms directly.
+
+--replay is the as-of replay (R32): the last --limit logged recalls, each re-scored under --params (or under the set it was
+served by), with temperature and age rebuilt from events as of that recall's own clock reading, never today's values. The
+report gives, over the replayed top PACKET_ITEMS, how much of what was served it keeps and how many entries the recall's
+feedback marked used, irrelevant or wrong, and the largest gap from the logged final scores (0 when replaying a recall's
+own set).
 """
 import argparse
 import json
@@ -103,6 +110,38 @@ def run(arms, split, probes=None, filter=True, tilt=None, params=None):
     return report
 
 
+def replay(params=None, limit=50):
+    extra, label = {}, "logged"
+    if params:
+        arm, extra, label = resolve_params(params)
+        if "params" in extra and arm:
+            extra["arm"] = arm
+    rows = call(f"/retrievals?limit={limit}")["items"]
+    per, skipped = [], 0
+    for row in rows:
+        try:
+            r = call("/eval/replay", {"retrieval_id": row["id"], **extra})
+        except urllib.error.HTTPError as e:
+            if e.code in (404, 422):
+                skipped += 1
+                continue
+            raise
+        top = [c["id"] for c in r["candidates"][:PACKET_ITEMS]]
+        served = r["delivered"] or []
+        verdicts = r["outcomes"]
+        count = lambda *vs: sum(1 for i in top if verdicts.get(i) in vs)
+        per.append({"retrieval_id": r["retrieval_id"], "c_now": r["c_now"], "param_set": r["param_set"], "top": top,
+                    "kept": round(len(set(top) & set(served)) / len(served), 3) if served else None,
+                    "used": count("used", "helpful"), "irrelevant": count("irrelevant"), "wrong": count("wrong"),
+                    "max_score_diff": max((abs(c["final_score"] - c["logged_score"]) for c in r["candidates"]), default=0.0)})
+    kept = [p["kept"] for p in per if p["kept"] is not None]
+    return {"param_set": label, "replayed": len(per), "skipped": skipped,
+            "mean_kept": round(sum(kept) / len(kept), 3) if kept else None,
+            "used_at_k": sum(p["used"] for p in per), "irrelevant_at_k": sum(p["irrelevant"] for p in per),
+            "wrong_at_k": sum(p["wrong"] for p in per),
+            "max_score_diff": max((p["max_score_diff"] for p in per), default=0.0), "per_recall": per}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--arms", default="index,hybrid")
@@ -113,7 +152,18 @@ def main():
     ap.add_argument("--no-filter", action="store_true", help="skip the relevance filter, to compare against it")
     ap.add_argument("--params", help="a stored parameter set id like hybrid.v1, or a JSON file {arm, parent, params} to try without storing it")
     ap.add_argument("--probes", help="a JSON file of {id, qtype, text, gold, must_not} to run instead, like labels/zh-probes.json")
+    ap.add_argument("--replay", action="store_true", help="re-score logged recalls as of each one's clock, under --params or its own set")
+    ap.add_argument("--limit", type=int, default=50, help="how many of the latest recalls --replay reads (at most 200)")
     a = ap.parse_args()
+    if a.replay:
+        r = replay(a.params, a.limit)
+        if a.json:
+            print(json.dumps(r, ensure_ascii=False, indent=2))
+        else:
+            print(f"replay ({r['param_set']}): {r['replayed']} recalls, {r['skipped']} skipped, kept {r['mean_kept']} of what was served, "
+                  f"used {r['used_at_k']}, irrelevant {r['irrelevant_at_k']}, wrong {r['wrong_at_k']} in the top {PACKET_ITEMS}, "
+                  f"max score diff {r['max_score_diff']:.3g}")
+        return
     report = run(a.arms.split(","), a.split, a.probes, not a.no_filter, a.tilt, a.params)
     if a.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))

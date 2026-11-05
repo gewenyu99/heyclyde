@@ -352,7 +352,9 @@ Every ranking knob lives in a parameter set, and an allocation says which sets s
 
 ### `GET /param-sets?arm=`
 
-Every set, by arm then id. Each item has `id`, `arm`, `params`, `parent`, `note`, `created_by` and `created_at`. `params` holds every knob: `candidates`, `packetItems`, `packetTokens`, `filterK`, `filterThreshold`, `tiltBase`, `tiltUnknownConfidence`, `tiltWindow`, `rowWindow`, `dormant`, `rrfK`, `vecWeight`, `indexDraftFactor`, `scopeBoost`, the optional `otherRunFactor` and `globalAgentDraftFactor` (each in (0, 1], 1 when a set leaves them out, so the v1 sets rank as before), `restart`, `iterations`, `supersededFactor`, `linkTypeWeights` (keyed `src_pattern|link_type|dst_pattern`) and the features' weights `wTemperature`, `wAge` and `wKind`, which stay 0 until the features exist. `index.v1`, `hybrid.v1` and `spreading.v1` hold the constants memory ranked by before parameter sets existed.
+Every set, by arm then id. Each item has `id`, `arm`, `params`, `parent`, `note`, `created_by` and `created_at`. `params` holds every knob: `candidates`, `packetItems`, `packetTokens`, `filterK`, `filterThreshold`, `tiltBase`, `tiltUnknownConfidence`, `tiltWindow`, `rowWindow`, `dormant`, `rrfK`, `vecWeight`, `indexDraftFactor`, `scopeBoost`, the optional `otherRunFactor` and `globalAgentDraftFactor` (each in (0, 1], 1 when a set leaves them out, so the v1 sets rank as before), `restart`, `iterations`, `supersededFactor`, `linkTypeWeights` (keyed `src_pattern|link_type|dst_pattern`) and the features' weights `wTemperature`, `wAge` and `wKind`, which are 0 in every set from before R32. `index.v1`, `hybrid.v1` and `spreading.v1` hold the constants memory ranked by before parameter sets existed.
+
+The R32 knobs are optional, and a set without them ranks as before. `scoreForm` is `tilt` (the default: the arm's score × (tiltBase + (1 − tiltBase) × confidence)) or `logodds`: `wRelevance`·r + `wTemperature`·h + `wAge`·ln(1 + age) + `wConfidence`·logit(confidence clamped to [0.01, 0.99]), with r the arm's score over the recall's top score. Under `tilt` the weights and temperature knobs change nothing. Temperature h is ACT-R's base level on the recall clock, ln Σ w·(c_now − seq + 1)^−`tempDecay` over the events of the last `tempWindow` recalls, floored at `tempFloor` and shifted up by it, so it is 0 or more: an agent's used or helpful (`tempAgentUsed`), Wen's confirmation from the console (`tempWenConfirm`) and a `get_entry` open (`tempOpened`), each counted once per (retrieval, entry, source) or (session, entry, seq). Age is recalls since the entry was written. Defaults: decay 0.5 (above 0, at most 5), floor −3 (−10 to 0), window 1000 (1 to 10000), weights 3, 3 and 1 (0 to 100), `wRelevance` and `wConfidence` 1 (−10 to 10). `logodds.v1` is `spreading.v6` with `scoreForm` logodds, 4·r + 0.15·h + 0.25·logit(c) and age at 0, made in shadow with no share.
 
 ### `GET /param-sets/{id}`
 
@@ -368,7 +370,7 @@ Body `{"id": "hybrid.v2", "parent"?: "hybrid.v1", "arm"?: "hybrid", "params": {.
 
 ### `PUT /allocation`
 
-Body `{"rows": [{"param_set", "role", "weight"}], "by"?: "..."}`. `by` is text of 1 to 64 characters and defaults to `admin`; the audit row records it. The rows named are set and the others stay, so one PUT can turn one variant off: `{"param_set": "hybrid.v2", "role": "off", "weight": 0}`. `weight` is a whole number, 0 or more. 422 if a set doesn't exist, a role is wrong, or the result would leave nothing serving, and then nothing changes. A session that a set served stops being served by it as soon as the set's role is off or its weight 0. Audited as `allocation.put`: `before` is `{"rows": [...]}`, the whole table before, and `after` is `{"by": "...", "rows": [...]}`.
+Body `{"rows": [{"param_set", "role", "weight"}], "by"?: "..."}`. `by` is text of 1 to 64 characters and defaults to `admin`; the audit row records it. The rows named are set and the others stay, so one PUT can turn one variant off: `{"param_set": "hybrid.v2", "role": "off", "weight": 0}`. `weight` is a whole number, 0 or more. 422 if a set doesn't exist, a role is wrong, the result would leave nothing serving, or it would make more than 2 shadow sets, and then nothing changes. A session that a set served stops being served by it as soon as the set's role is off or its weight 0. Audited as `allocation.put`: `before` is `{"rows": [...]}`, the whole table before, and `after` is `{"by": "...", "rows": [...]}`.
 
 ## Eval
 
@@ -378,7 +380,19 @@ The practice queries with their gold and must_not entries, for `eval/retrieval_e
 
 ### `POST /eval/rank`
 
-Body `{"query", "arm", "filter"?: true, "param_set"?: "hybrid.v1", "parent"?: "hybrid.v1", "params"?: {...}}`. Ranks and packs one query and returns `{"param_set", "candidates", "delivered", "rejected", "degraded", "parts"}`. With `param_set` it runs that stored set (and `arm` may be left out). With `params` it lays those knobs over `parent`, or the arm's v1, without storing anything. With neither it runs the arm's v1. It writes no retrieval, so it never ticks the recall clock.
+Body `{"query", "arm", "filter"?: true, "param_set"?: "hybrid.v1", "parent"?: "hybrid.v1", "params"?: {...}}`. Ranks and packs one query and returns `{"param_set", "candidates", "delivered", "rejected", "degraded", "parts"}`. With `param_set` it runs that stored set (and `arm` may be left out). With `params` it lays those knobs over `parent`, or the arm's v1, without storing anything. With neither it runs the arm's v1. It writes no retrieval, so it never ticks the recall clock. It also gives `c_now`, the clock reading the features are as of, and `scored`: every candidate's `id`, `final_score` and, for the top 50, its `features` (`arms`, `relevance`, `confidence`, `kind`, `judge`, `temperature`, `age`).
+
+### `POST /eval/replay`
+
+Body `{"retrieval_id", "param_set"?: "hybrid.v1", "parent"?, "params"?: {...}}`. The as-of replay: a logged recall's candidates re-scored under the set it was served by, or the one named, with temperature and age rebuilt from events as of the recall's own `context.c_now`, never today's. Relevance, the arm's score and confidence are the logged ones. Returns `{"retrieval_id", "c_now", "param_set", "logged_param_set", "delivered", "candidates": [{"id", "relevance", "confidence", "temperature", "age", "final_score", "logged_score"}], "outcomes": {entry_id: verdict}}`, best first. 404 for no such recall, 422 for one logged before the clock reading. Writes nothing. `eval/retrieval_eval.py --replay [--params <id|file>] [--limit 50]` runs it over the latest recalls.
+
+## Variants
+
+### `GET /variants/compare?days=30`
+
+Each set's outcomes over the last `days` (1 to 365): `{"days", "sets": [{"param_set", "source", "role", "recalls", "delivered", "judged", "used_rate", "irrelevant_rate", "wrong_rate", "leaks"}]}`. A `served` row counts the recalls the set served and the entries they delivered. A `shadow` row counts the recalls the shadow ranked (and `skipped`, the ones it couldn't), and since nobody saw what it would have delivered, its rates come only from the entries it shares with what was served: `overlap` is that share of its deliveries. `judged` is the entries with an outcome, the rates' denominator: used (or helpful), irrelevant and wrong from feedback. `leaks` counts entries marked wrong or blamed for Wen's pushback.
+
+Up to 2 sets with role `shadow` rank every real recall after its response is out, as of the same clock reading, and log one `memory.shadow_retrieval` row each: their top 12 ids and scores and what they would have delivered, with status `ranked`, `skipped:error` or `skipped:budget`. They judge only pairs missing from `memory.judge_cache` (keyed by the request's hash, entry, judged text's hash and judge version), which the served recall fills first. Their judge calls carry `x-memory-purpose: shadow` and are metered as kind `shadow`, which stops at the setting `research_budget_tokens` when set. A shadow never ticks the clock, never changes the packet and never reaches the learner. Rows older than 180 days go daily (`memory.variant_retention()`).
 
 ## Embeddings
 

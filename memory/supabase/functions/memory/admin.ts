@@ -9,6 +9,8 @@ import { type Row, type Sql, sql } from "./db.ts";
 import { contentSha, entryText, sha256, syncEmbeddings } from "./embed.ts";
 import { forgetParamSet, type Params, ParamError, paramSet, resolveParams } from "./params.ts";
 import { ARMS, hybridComponents } from "./search.ts";
+import { clocked, finalScore } from "./features.ts";
+import { MAX_SHADOWS } from "./shadow.ts";
 import * as service from "./service.ts";
 import { redact, redactText } from "./redact.ts";
 import { screen } from "./judge.ts";
@@ -1019,7 +1021,106 @@ async function evalRank(data: Row) {
   const set = await evalSet(data);
   const r = await service.rankAndPack(sql, set, query, "", null, data.filter !== false);
   const parts = set.arm === "hybrid" ? (await hybridComponents(sql, query, set.params)).parts : null;
-  return { param_set: set.id, candidates: r.ranked.map(([id]) => id), delivered: r.delivered, rejected: r.rejected, degraded: r.degraded, parts };
+  // Each candidate's final score and, for the top 50, the features it was made from, as of the clock now (c_now).
+  const logged = new Map(r.features.map(({ id, score: _score, ...f }) => [id, f]));
+  const scored = r.ranked.map(([id, score]) => ({ id, final_score: score, features: logged.get(id) ?? null }));
+  return {
+    param_set: set.id, candidates: r.ranked.map(([id]) => id), delivered: r.delivered, rejected: r.rejected, degraded: r.degraded, parts,
+    c_now: r.cNow, scored,
+  };
+}
+
+/** As-of replay (R32): a logged recall's candidates scored under a set, with temperature and age rebuilt from events as of the
+ * recall's own clock reading (context.c_now), never today's. Relevance, the arm's score and confidence are the logged ones.
+ * The set is the logged one unless `param_set`, or `params` over `parent`, names another. The recall's feedback comes back
+ * per entry, so a caller can score the replayed order. Writes nothing. */
+async function evalReplay(data: Row) {
+  const rid = data.retrieval_id;
+  if (typeof rid !== "string" || !UUID.test(rid)) throw new ApiError(422, "Need a retrieval_id.");
+  const [r] = await sql`select id, arm, param_set, context, delivered from memory.retrieval where id = ${rid}::uuid`;
+  if (!r) throw new ApiError(404, `No retrieval ${rid}.`);
+  const cNow = r.context?.c_now;
+  if (!Number.isInteger(cNow) || !Array.isArray(r.context?.candidates)) {
+    throw new ApiError(422, `Retrieval ${rid} logged no clock reading, so it can't be replayed.`);
+  }
+  const own = await paramSet(sql, r.param_set ?? `${r.arm}.v1`).catch(() => paramSet(sql, `${r.arm}.v1`));
+  const set = typeof data.param_set === "string" || data.params ? await evalSet({ ...data, arm: data.arm ?? (typeof data.param_set === "string" ? undefined : own.arm) }) : own;
+  const logged: Row[] = r.context.candidates;
+  let clock;
+  try {
+    clock = await clocked(sql, logged.map((c) => c.id), cNow, set.params);
+  } catch (e) {
+    throw new ApiError(500, `The feature query failed: ${(e as Error).message}`);
+  }
+  const candidates = logged.map((c) => {
+    const signals = {
+      armScore: c.arms?.[r.arm]?.score ?? 0, relevance: c.relevance ?? 0, confidence: c.confidence ?? null,
+      temperature: clock.temperature.get(c.id) ?? null, age: clock.age.get(c.id) ?? null,
+    };
+    return { id: c.id, relevance: signals.relevance, confidence: signals.confidence, temperature: signals.temperature, age: signals.age,
+      final_score: finalScore(signals, set.params), logged_score: c.score };
+  }).sort((a, b) => b.final_score - a.final_score || (a.id < b.id ? -1 : 1));
+  const outcomes: Record<string, string> = {};
+  for (const f of await sql`select entry_id, verdict from memory.feedback where retrieval_id = ${rid}::uuid and entry_id is not null order by id`) {
+    outcomes[f.entry_id] = f.verdict;
+  }
+  return { retrieval_id: rid, c_now: cNow, param_set: set.id, logged_param_set: r.param_set, delivered: r.delivered, candidates, outcomes };
+}
+
+/** Each set's outcomes over the last `days` (R34). A served set counts its own recalls: how many, what they delivered, and of
+ * the delivered entries that got an outcome, the share used (or helpful), irrelevant and wrong, and the leaks (entries marked
+ * wrong or blamed for Wen's pushback). A shadow set counts the recalls it ranked, and its rates come from the outcomes where
+ * what it would have delivered overlaps what was served, since nothing else of its was seen; `overlap` is the share of its
+ * deliveries that the served recall delivered too. Every rate's denominator is `judged`. */
+async function compareVariants(days: number) {
+  const since = sql`now() - make_interval(days => ${days})`;
+  const rows = await sql`
+    with recent as (
+      select r.id, r.param_set, r.delivered, r.reaction from memory.retrieval r
+      where r.parent_id is null and r.created_at >= ${since}),
+    outcome as (
+      select f.retrieval_id, f.entry_id, bool_or(f.verdict in ('used', 'helpful')) as used,
+        bool_or(f.verdict = 'irrelevant') as irrelevant, bool_or(f.verdict = 'wrong') as wrong
+      from memory.feedback f join recent r on r.id = f.retrieval_id where f.entry_id is not null group by 1, 2),
+    served as (
+      select r.param_set, 'served' as source, r.id as retrieval_id, d.entry_id, true as seen, r.reaction
+      from recent r cross join lateral jsonb_array_elements_text(r.delivered) d(entry_id)),
+    shadowed as (
+      select s.param_set, 'shadow' as source, r.id as retrieval_id, d.entry_id, r.delivered ? d.entry_id as seen, r.reaction
+      from memory.shadow_retrieval s join recent r on r.id = s.retrieval_id
+        cross join lateral jsonb_array_elements_text(s.delivered) d(entry_id)
+      where s.status = 'ranked'),
+    items as (
+      select i.*, o.used, o.irrelevant, o.wrong,
+        (i.reaction->>'pushback')::boolean is true and i.reaction->>'cause' = i.entry_id as blamed
+      from (select * from served union all select * from shadowed) i
+      left join outcome o on o.retrieval_id = i.retrieval_id and o.entry_id = i.entry_id)
+    select param_set, source, count(*) as delivered, count(*) filter (where seen) as overlap,
+      count(*) filter (where seen and (used is not null or blamed)) as judged,
+      count(*) filter (where seen and used) as used, count(*) filter (where seen and irrelevant) as irrelevant,
+      count(*) filter (where seen and wrong) as wrong, count(*) filter (where seen and (wrong or blamed)) as leaks
+    from items group by param_set, source`;
+  const recalls = await sql`
+    select param_set, 'served' as source, count(*) as recalls, 0 as skipped from memory.retrieval
+      where parent_id is null and created_at >= ${since} group by param_set
+    union all
+    select s.param_set, 'shadow', count(*) filter (where s.status = 'ranked'), count(*) filter (where s.status <> 'ranked')
+      from memory.shadow_retrieval s join memory.retrieval r on r.id = s.retrieval_id
+      where r.parent_id is null and r.created_at >= ${since} group by s.param_set`;
+  const roles = new Map((await sql`select param_set, role from memory.allocation`).map((a) => [a.param_set as string, a.role as string]));
+  const key = (r: Row) => `${r.source} ${r.param_set}`;
+  const counts = new Map(rows.map((r) => [key(r), r]));
+  const rate = (n: number, of: number) => (of ? n / of : null);
+  const sets = recalls.map((r) => {
+    const c = counts.get(key(r)) ?? { delivered: 0, overlap: 0, judged: 0, used: 0, irrelevant: 0, wrong: 0, leaks: 0 };
+    return {
+      param_set: r.param_set, source: r.source, role: roles.get(r.param_set) ?? null, recalls: r.recalls,
+      ...(r.source === "shadow" ? { skipped: r.skipped, overlap: rate(c.overlap, c.delivered) } : {}),
+      delivered: c.delivered, judged: c.judged, used_rate: rate(c.used, c.judged), irrelevant_rate: rate(c.irrelevant, c.judged),
+      wrong_rate: rate(c.wrong, c.judged), leaks: c.leaks,
+    };
+  }).sort((a, b) => (a.source < b.source ? -1 : a.source > b.source ? 1 : a.param_set < b.param_set ? -1 : 1));
+  return { days, sets };
 }
 
 // The text each table holds, for the redaction backfill: its key column and the columns to redact.
@@ -1224,6 +1325,8 @@ async function putAllocation(data: Row) {
     }
     const after = await allocationRows(tx);
     if (!after.some((r) => r.share !== null)) throw new ApiError(422, "That would leave no set serving. Give a live or default row a weight above 0.");
+    const shadows = after.filter((r: Row) => r.role === "shadow").length;
+    if (shadows > MAX_SHADOWS) throw new ApiError(422, `That makes ${shadows} shadow sets. At most ${MAX_SHADOWS} rank in the background at once.`);
     await audit(tx, "allocation.put", "allocation", { rows: before }, { by, rows: after });
     return { rows: after };
   });
@@ -1380,6 +1483,8 @@ const ROUTES: Route[] = [
   ["POST", /^\/judge\/backfill$/, 200, async (r) => judgeBackfill(await body(r))],
   ["GET", /^\/eval\/questions$/, 200, (_r, _m, q) => evalQuestions(q.choice("split", ["all", "train", "test"], "train")!)],
   ["POST", /^\/eval\/rank$/, 200, async (r) => evalRank(await body(r))],
+  ["POST", /^\/eval\/replay$/, 200, async (r) => evalReplay(await body(r))],
+  ["GET", /^\/variants\/compare$/, 200, (_r, _m, q) => compareVariants(q.int("days", 30, 1, 365))],
   ["GET", /^\/audit$/, 200, (_r, _m, q) => auditList(q.page())],
 ];
 

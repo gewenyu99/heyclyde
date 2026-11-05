@@ -6,7 +6,8 @@ import { setting, sql } from "./db.ts";
 export type Kind = "embed" | "judge_write" | "judge_recall" | "shadow" | "research";
 export const KINDS: Kind[] = ["embed", "judge_write", "judge_recall", "shadow", "research"];
 export type Usage = Record<Kind, number>;
-export type Caps = { general: number; reserve: number };
+/** research, when set, caps shadow and research together, inside the general budget (setting research_budget_tokens). */
+export type Caps = { general: number; reserve: number; research?: number };
 
 /** The month's spend passed a cap. Recall serves keyword ranks until the month turns. */
 export class OverBudget extends Error {
@@ -25,14 +26,24 @@ export function verdict(kind: Kind, usage: Usage, caps: Caps): string | null {
       ? `its reserve for screening writes is spent (${usage.judge_write} of ${caps.reserve} tokens)` : null;
   }
   const general = KINDS.filter((k) => k !== "judge_write").reduce((sum, k) => sum + usage[k], 0);
-  return general >= caps.general ? `${general} of ${caps.general} OpenAI tokens spent this month` : null;
+  if (general >= caps.general) return `${general} of ${caps.general} OpenAI tokens spent this month`;
+  const research = usage.shadow + usage.research;
+  if ((kind === "shadow" || kind === "research") && caps.research && research >= caps.research) {
+    return `its research budget is spent (${research} of ${caps.research} tokens on shadows and research)`;
+  }
+  return null;
 }
 
-async function caps(): Promise<Caps> {
-  return {
+async function caps(kind: Kind): Promise<Caps> {
+  const out: Caps = {
     general: Number(await setting("embed_budget_tokens")) || DEFAULT_GENERAL_TOKENS,
     reserve: Number(await setting("judge_write_reserve_tokens")) || DEFAULT_RESERVE_TOKENS,
   };
+  // Read fresh, not from the minute's settings cache, so lowering it stops the next shadow.
+  if (kind === "shadow" || kind === "research") {
+    out.research = Number((await sql`select value from memory.setting where name = 'research_budget_tokens'`)[0]?.value) || undefined;
+  }
+  return out;
 }
 
 export async function usage(): Promise<Usage> {
@@ -44,14 +55,14 @@ export async function usage(): Promise<Usage> {
 
 /** The month's spend against both budgets: `used` and `cap` for the general one, as the console reads them. */
 export async function budget() {
-  const [kinds, c] = await Promise.all([usage(), caps()]);
+  const [kinds, c] = await Promise.all([usage(), caps("embed")]);
   const used = KINDS.filter((k) => k !== "judge_write").reduce((sum, k) => sum + kinds[k], 0);
   return { used, cap: c.general, reserve: { used: kinds.judge_write, cap: c.reserve }, kinds };
 }
 
 /** Throws OverBudget unless this kind of call may spend now. */
 export async function assertBudget(kind: Kind) {
-  const why = verdict(kind, await usage(), await caps());
+  const why = verdict(kind, await usage(), await caps(kind));
   if (why) throw new OverBudget(why);
 }
 

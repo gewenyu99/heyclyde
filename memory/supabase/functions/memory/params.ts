@@ -48,10 +48,26 @@ export type Params = {
   iterations: number;
   supersededFactor: number;
   linkTypeWeights: Record<string, number>;
-  /** Weights of the features slice 3 adds: temperature, age and kind. At 0 they change nothing. */
+  /** Weights of the features slice 3 adds: temperature, age and kind. At 0 they change nothing, and under the tilt score form
+   * they are never read. */
   wTemperature: number;
   wAge: number;
   wKind: number;
+  /** How a candidate's final score is made (R32), optional and "tilt" when a set doesn't carry it. "tilt" is the arm's score
+   * tilted by confidence, as v1 always did. "logodds" sums wRelevance·r + wTemperature·h + wAge·ln(1 + age) +
+   * wConfidence·logit(confidence), with r the arm's score over the recall's top score. See features.ts finalScore. */
+  scoreForm?: "tilt" | "logodds";
+  wRelevance?: number;
+  wConfidence?: number;
+  /** Temperature on the recall clock: ACT-R's base level ln Σ w·(recalls since + 1)^−tempDecay over the events in the last
+   * tempWindow recalls, floored at tempFloor and shifted up by it, so it's 0 or more. The events are an agent's used
+   * (tempAgentUsed), Wen's confirmation (tempWenConfirm) and a get_entry open (tempOpened). See features.ts TEMPERATURE. */
+  tempDecay?: number;
+  tempFloor?: number;
+  tempWindow?: number;
+  tempAgentUsed?: number;
+  tempWenConfirm?: number;
+  tempOpened?: number;
   /** Best-first spreading (R44), optional. spreadMode picks the expansion: "ppr" (the default) or "bestfirst", which expands
    * the strongest path first. maxHops and minPath stop the initial spread; wPath weighs the best path strength in the score.
    * A set without them spreads as before. See SPREAD for what an absent knob means. */
@@ -74,9 +90,10 @@ export function spreadKnobs(p: Params) {
 }
 
 type Spec = { min: number; max: number; int?: boolean; above?: boolean };
-type OptionalKnob = "otherRunFactor" | "globalAgentDraftFactor" | "trialItems" | "trialFloor" | "trialStep" | "settledStep" | "itemChars" | "maxHops" | "minPath" | "wPath";
+type OptionalKnob = "otherRunFactor" | "globalAgentDraftFactor" | "trialItems" | "trialFloor" | "trialStep" | "settledStep" | "itemChars" | "maxHops" | "minPath" | "wPath"
+  | "wRelevance" | "wConfidence" | "tempDecay" | "tempFloor" | "tempWindow" | "tempAgentUsed" | "tempWenConfirm" | "tempOpened";
 const WEIGHT: Spec = { min: -10, max: 10 };
-const KNOBS: Record<Exclude<keyof Params, "linkTypeWeights" | "spreadMode" | OptionalKnob>, Spec> = {
+const KNOBS: Record<Exclude<keyof Params, "linkTypeWeights" | "spreadMode" | "scoreForm" | OptionalKnob>, Spec> = {
   candidates: { min: 1, max: 200, int: true }, packetItems: { min: 1, max: 50, int: true }, packetTokens: { min: 100, max: 20000, int: true },
   filterK: { min: 1, max: 50, int: true }, filterThreshold: { min: 0, max: 1 }, tiltBase: { min: 0, max: 1 },
   tiltUnknownConfidence: { min: 0, max: 1 }, tiltWindow: { min: 1, max: 200, int: true }, rowWindow: { min: 1, max: 200, int: true },
@@ -91,6 +108,9 @@ const OPTIONAL: Record<OptionalKnob, Spec> = {
   trialStep: { min: 0, max: 0.5, above: true }, settledStep: { min: 0, max: 0.5, above: true },
   itemChars: { min: 50, max: 4000, int: true },
   maxHops: { min: 1, max: 10, int: true }, minPath: { min: 0, max: 1 }, wPath: { min: 0, max: 10 },
+  wRelevance: WEIGHT, wConfidence: WEIGHT, tempDecay: { min: 0, max: 5, above: true }, tempFloor: { min: -10, max: 0 },
+  tempWindow: { min: 1, max: 10000, int: true }, tempAgentUsed: { min: 0, max: 100 }, tempWenConfirm: { min: 0, max: 100 },
+  tempOpened: { min: 0, max: 100 },
 };
 // "*|type|*" weighs a link type between any two patterns (search.ts linkTypeWeight), as spreading.v6 does co_used.
 const LINK_KEY = /^([a-z][a-z_-]{1,40}\|[a-z_]{2,40}\|[a-z][a-z_-]{1,40}|\*\|[a-z_]{2,40}\|\*)$/;
@@ -108,7 +128,7 @@ export function resolveParams(base: Params | null, overrides: unknown): Params {
   if (!overrides || typeof overrides !== "object" || Array.isArray(overrides)) throw new ParamError("params must be an object of knobs.");
   const merged: Record<string, unknown> = { ...base, ...overrides };
   for (const name of Object.keys(overrides)) {
-    if (name !== "linkTypeWeights" && name !== "spreadMode" && !(name in KNOBS) && !(name in OPTIONAL)) throw new ParamError(`unknown knob ${name}.`);
+    if (name !== "linkTypeWeights" && name !== "spreadMode" && name !== "scoreForm" && !(name in KNOBS) && !(name in OPTIONAL)) throw new ParamError(`unknown knob ${name}.`);
   }
   for (const [name, spec] of [...Object.entries(KNOBS), ...Object.entries(OPTIONAL)]) {
     const v = merged[name];
@@ -121,6 +141,9 @@ export function resolveParams(base: Params | null, overrides: unknown): Params {
   }
   if (merged.spreadMode !== undefined && merged.spreadMode !== "ppr" && merged.spreadMode !== "bestfirst") {
     throw new ParamError('spreadMode must be "ppr" or "bestfirst".');
+  }
+  if (merged.scoreForm !== undefined && merged.scoreForm !== "tilt" && merged.scoreForm !== "logodds") {
+    throw new ParamError('scoreForm must be "tilt" or "logodds".');
   }
   const weights = merged.linkTypeWeights;
   if (weights === undefined) throw new ParamError("linkTypeWeights is missing. A set with no parent must say every knob.");
