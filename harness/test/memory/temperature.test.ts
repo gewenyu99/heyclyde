@@ -349,10 +349,14 @@ test('R32: one logodds set ranks the same state the same way twice, features and
 
 // R32 (#36): "features add no OpenAI calls".
 test('R32: temperature and age add no OpenAI call: a new query costs 1 embedding and 1 judge call', { skip: SKIP }, async () => {
+  const w = word()
+  seed(`${w}-oc`, `${w} openai count`)
+  used(`${w}-oc`, clock())
   for (const id of ['hybrid.flat', 'hybrid.lo']) {
     await serve(id)
     const from = memory.openai.calls.length
-    assert.equal((await recall(`${word()} openai count`)).status, 200)
+    // A word no query has had, so the query is embedded afresh, and one the seeded entry matches, so the judge reads it.
+    assert.equal((await recall(`${word()} ${w} openai count`)).status, 200)
     assert.deepEqual(memory.openai.calls.slice(from).map((c) => c.path).sort(), ['/decisions', '/embeddings'], id)
   }
   await serve('hybrid.v1')
