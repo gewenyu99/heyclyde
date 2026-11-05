@@ -14,7 +14,9 @@ import { SKIP, apply, sql, startRealMemory, type RealMemory } from './server.ts'
 let memory: RealMemory
 
 before(async () => {
-  if (!SKIP) memory = await startRealMemory()
+  if (SKIP) return
+  memory = await startRealMemory()
+  await serve('hybrid.v1')
 })
 
 after(async () => {
@@ -109,9 +111,6 @@ async function rank(query: string, param_set: string): Promise<string[]> {
   return json(await admin('POST', '/eval/rank', { query, filter: false, param_set })).candidates
 }
 
-before(async () => {
-  if (!SKIP) await serve('hybrid.v1')
-})
 
 test('R43: the migration makes spreading.v6 a child of spreading.v4 with co_used linkTypeWeight 1, and allocates nothing', { skip: SKIP }, async () => {
   const alloc = sql('select param_set, role, weight from memory.allocation order by param_set')

@@ -176,6 +176,26 @@ async function learnNow() {
 const logRows = (id: string) => sql(`select round(before::numeric, 2)::float as before, round(after::numeric, 2)::float as after, retrieval_id
   from memory.confidence_log where target = 'entry:${id}' order by at`)
 
+// First in the file: the function caches the links for a minute from the first spreading recall, and this test's links are
+// inserted by SQL, so they must be there before that.
+test('R29: recall_more resumes a best-first recall\'s logged frontier', { skip: SKIP }, async () => {
+  const set = 'spreading.r29bf'
+  if (!sql(`select 1 from memory.param_set where id = '${set}'`).length) {
+    json(await admin('POST', '/param-sets', { id: set, parent: 'spreading.v1', params: { spreadMode: 'bestfirst', maxHops: 2, minPath: 0.05, wPath: 1 }, note: 'tier 3: two hops' }), 201)
+  }
+  const w = word()
+  // S holds the word. A chain S, B, C, D of strong links: two hops reach C, and D is past the frontier.
+  seed(`${w}-s`, { title: `${w} seed` })
+  for (const x of ['b', 'c', 'd']) seed(`${w}-${x}`, { title: `Neighbour ${x} ${word()}` })
+  for (const [a, b] of [['s', 'b'], ['b', 'c'], ['c', 'd']]) sql(`insert into memory.link (src, dst, type, weight) values ('${w}-${a}', '${w}-${b}', 'relates', 0.9)`)
+  const s = await on(set)
+  const r1 = await recall(s, w)
+  assert.deepEqual(r1.row.context.frontier?.map((f: any) => f.id), [`${w}-c`], JSON.stringify(r1.row.context))
+  assert.equal(r1.delivered.includes(`${w}-d`), false)
+  const page = await more(s, r1.id, 'spreading')
+  assert.ok(page.delivered.includes(`${w}-d`), page.text)
+})
+
 // ---------------------------------------------------------------------------------------------------------- functionality
 test('R29: recall_more returns the ranks past the packet\'s cut, in order, none repeated', { skip: SKIP }, async (t) => {
   for (const arm of Object.keys(ARMS) as Arm[]) {
@@ -692,24 +712,6 @@ test('R29: a recall_more is logged as a child retrieval of the same arm, query a
       assert.equal(r1.row.depth, 'packet')
     })
   }
-})
-
-test('R29: recall_more resumes a best-first recall\'s logged frontier', { skip: SKIP }, async () => {
-  const set = 'spreading.r29bf'
-  if (!sql(`select 1 from memory.param_set where id = '${set}'`).length) {
-    json(await admin('POST', '/param-sets', { id: set, parent: 'spreading.v1', params: { spreadMode: 'bestfirst', maxHops: 2, minPath: 0.05, wPath: 1 }, note: 'tier 3: two hops' }), 201)
-  }
-  const w = word()
-  // S holds the word. A chain S, B, C, D of strong links: two hops reach C, and D is past the frontier.
-  seed(`${w}-s`, { title: `${w} seed` })
-  for (const x of ['b', 'c', 'd']) seed(`${w}-${x}`, { title: `Neighbour ${x} ${word()}` })
-  for (const [a, b] of [['s', 'b'], ['b', 'c'], ['c', 'd']]) sql(`insert into memory.link (src, dst, type, weight) values ('${w}-${a}', '${w}-${b}', 'relates', 0.9)`)
-  const s = await on(set)
-  const r1 = await recall(s, w)
-  assert.deepEqual(r1.row.context.frontier.map((f: any) => f.id), [`${w}-c`])
-  assert.equal(r1.delivered.includes(`${w}-d`), false)
-  const page = await more(s, r1.id, 'spreading')
-  assert.ok(page.delivered.includes(`${w}-d`), page.text)
 })
 
 test('R29: the retrieval table gains parent_id and depth, every row has a depth', { skip: SKIP }, async () => {
