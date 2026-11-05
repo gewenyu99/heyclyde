@@ -235,7 +235,9 @@ async function route(req: Request): Promise<Response> {
   if (path.startsWith("/oauth/")) return oauth.handle(await baseOf(req), path, url);
   if (path === "/install" || path.startsWith("/install/")) return install(req, path, url);
   if (m === "POST" && path === "/devices/claim") return admin.claimDevice(await admin.readJson(req));
-  if (path.startsWith("/api/v1") || path === "/") return path === "/" ? json({ ok: true }) : admin.handle(req, path);
+  if (path.startsWith("/api/v1") || path === "/") {
+    return path === "/" ? json({ ok: true }) : admin.handle(req, path, who.role === "research" ? "research" : "admin");
+  }
 
   let match;
   if (m === "POST" && (match = /^\/hooks\/([^/]+)$/.exec(path))) return hooks(req, decodeURIComponent(match[1]), url, who);

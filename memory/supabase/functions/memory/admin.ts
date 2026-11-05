@@ -19,6 +19,9 @@ import { canonical, MEDIA_TYPE_RE, remember, Refused } from "./write.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 
+/** Which token made an API call: Wen's admin token, or the weekly researcher's research token. */
+export type Actor = "admin" | "research";
+
 export class ApiError extends Error {
   constructor(public status: number, public error: string) {
     super(error);
@@ -68,9 +71,9 @@ async function page(db: Sql, query: any, order: string, limit: number, offset: n
   return { items, total, limit, offset };
 }
 
-async function audit(db: Sql, action: string, target: string, before: unknown = null, after: unknown = null) {
-  const [row] = await db`insert into memory.admin_audit (action, target, before, after)
-    values (${action}, ${target}, ${before === null ? null : db.json(before as any)}, ${after === null ? null : db.json(after as any)})
+async function audit(db: Sql, action: string, target: string, before: unknown = null, after: unknown = null, actor: Actor = "admin") {
+  const [row] = await db`insert into memory.admin_audit (action, target, before, after, actor)
+    values (${action}, ${target}, ${before === null ? null : db.json(before as any)}, ${after === null ? null : db.json(after as any)}, ${actor})
     returning id`;
   return row.id as number;
 }
@@ -988,12 +991,22 @@ async function importRows(req: Request) {
 }
 
 /** The practice queries with their gold and must_not entries, for eval/retrieval_eval.py. */
-const evalQuestions = (split: string) =>
-  sql`select q.id, q.text, q.qtype, q.split,
+/** The questions of one split with their gold and must_not entries. Tune on train. The test split (in test and all) is read once,
+ * after the knobs are frozen: it takes freeze=1 and an admin_audit row records every read (R35). The research token never
+ * reads it. */
+async function evalQuestions(split: string, freeze: boolean, actor: Actor) {
+  if (split !== "train" && actor === "research") throw new ApiError(403, "The research token reads the train split only.");
+  if (split !== "train" && !freeze) {
+    throw new ApiError(403, "The test split is read once, after the knobs are frozen: ask again with freeze=1, and the read is audited.");
+  }
+  const rows = await sql`select q.id, q.text, q.qtype, q.split,
       coalesce(array_agg(r.entry_id) filter (where r.grade = 2), '{}') as gold,
       coalesce(array_agg(r.entry_id) filter (where r.grade = -1), '{}') as must_not
     from memory.question q left join memory.qrel r on r.question_id = q.id
     where ${split} = 'all' or q.split = ${split} group by q.id order by q.id`;
+  if (split !== "train") await audit(sql, "eval.test_read", `eval:${split}`, null, { split, questions: rows.length }, actor);
+  return rows;
+}
 
 /** The set an eval run ranks on: `param_set` names a stored one, `params` lays overrides on `parent` (default: the arm's v1)
  * without storing anything, and with neither it's the arm's v1. `tilt` still overrides tiltBase, for older callers. */
@@ -1254,6 +1267,10 @@ const linkTypeWeights = () =>
 // ---------------------------------------------------------------- parameter sets and allocation
 const SET_ID = /^[a-z0-9][a-z0-9._-]{1,63}$/;
 const ROLES = ["off", "shadow", "live", "default"];
+// R35: what the research token may do with a set, how many it makes a UTC week, and how long its written hypothesis must be.
+const RESEARCH_ROLES = ["off", "shadow"];
+const RESEARCH_SETS_A_WEEK = 3;
+const MIN_HYPOTHESIS = 20;
 
 const paramSets = (arm: string | null) =>
   sql`select id, arm, params, parent, note, created_by, created_at from memory.param_set
@@ -1267,11 +1284,18 @@ async function getParamSet(id: string) {
 
 /** Make a parameter set. Sets are never changed, so this is the only way in. With a `parent`, `params` names only what
  * differs and the set stores every knob. */
-async function createParamSet(data: Row) {
-  const { id: setId, parent = null, note = null, by = "admin" } = data;
+async function createParamSet(data: Row, actor: Actor = "admin") {
+  const { id: setId, parent = null, note = null } = data;
+  const by = actor === "research" ? "research" : data.by ?? "admin";
   if (typeof setId !== "string" || !SET_ID.test(setId)) throw new ApiError(422, "id must look like hybrid.v2: lowercase letters, digits, dots, dashes, underscores.");
   for (const [name, v] of [["parent", parent], ["note", note], ["by", by]]) {
     if (v !== null && typeof v !== "string") throw new ApiError(422, `${name} must be text.`);
+  }
+  if (actor === "research") {
+    if (parent === null) throw new ApiError(422, "A research set needs a parent: it changes a few knobs of a set that exists.");
+    if (typeof note !== "string" || note.trim().length < MIN_HYPOTHESIS) {
+      throw new ApiError(422, `note is the hypothesis: what the change should do and why, at least ${MIN_HYPOTHESIS} characters.`);
+    }
   }
   let arm = data.arm, params: Params;
   try {
@@ -1285,11 +1309,22 @@ async function createParamSet(data: Row) {
   }
   if (typeof arm !== "string" || !(arm in ARMS)) throw new ApiError(422, `arm must be one of ${Object.keys(ARMS).join(", ")}.`);
   return await sql.begin(async (tx) => {
+    if (actor === "research") {
+      // One research post at a time, so overlapping runs can't both take the week's last place.
+      await tx`select pg_advisory_xact_lock(hashtext('memory.research_param_sets'))`;
+      const [{ n }] = await tx`select count(*)::int as n from memory.param_set where created_by = 'research'
+        and created_at >= date_trunc('week', now() at time zone 'utc') at time zone 'utc'`;
+      if (n >= RESEARCH_SETS_A_WEEK) {
+        throw new ApiError(429, `Research makes at most ${RESEARCH_SETS_A_WEEK} sets a UTC week, and this week's are made. Try again on Monday.`);
+      }
+    }
     const [row] = await tx`insert into memory.param_set (id, arm, params, parent, note, created_by)
       values (${setId}, ${arm}, ${tx.json(params as any)}, ${parent}, ${note}, ${by}) on conflict (id) do nothing
       returning id, arm, params, parent, note, created_by, created_at`;
     if (!row) throw new ApiError(409, `Parameter set ${setId} exists. Sets never change, so make a new id.`);
-    await audit(tx, "param_set.create", `param_set:${setId}`, null, { arm, parent, note, by });
+    // A research set starts off, in the allocation where the researcher and Wen both see it.
+    if (actor === "research") await tx`insert into memory.allocation (param_set, role, weight) values (${setId}, 'off', 0) on conflict do nothing`;
+    await audit(tx, "param_set.create", `param_set:${setId}`, null, { arm, parent, note, by }, actor);
     return row;
   });
 }
@@ -1305,21 +1340,36 @@ async function allocationRows(db: Sql) {
 }
 
 /** Set roles and weights. The rows named change and the rest stay, so one PUT can turn one variant off. A weight is a share
- * of the live and default rows' total. The result has to serve someone. */
-async function putAllocation(data: Row) {
-  const rows = data.rows, by = data.by ?? "admin";
+ * of the live and default rows' total. The result has to serve someone.
+ *
+ * Making a set the default, unless it already is or it is its arm's v1 (the baseline every rollback returns to), is Wen's call,
+ * so it takes by "wen". The research token moves only the sets it made, and only to off or shadow, and signs as research. */
+async function putAllocation(data: Row, actor: Actor = "admin") {
+  const rows = data.rows, by = actor === "research" ? "research" : data.by ?? "admin";
   if (typeof by !== "string" || !by.trim() || by.length > 64) throw new ApiError(422, "by must be text, 1 to 64 characters.");
   if (!Array.isArray(rows) || !rows.length) throw new ApiError(422, "rows must be a list of {param_set, role, weight}.");
   for (const r of rows) {
     if (!r || typeof r.param_set !== "string") throw new ApiError(422, "Every row needs a param_set.");
     if (!ROLES.includes(r.role)) throw new ApiError(422, `role must be one of ${ROLES.join(", ")}.`);
     if (!Number.isInteger(r.weight) || r.weight < 0) throw new ApiError(422, "weight must be a whole number, 0 or more.");
+    if (actor === "research" && !RESEARCH_ROLES.includes(r.role)) {
+      throw new ApiError(403, `The research token sets a set off or shadow, never ${r.role}. Live and default are Wen's.`);
+    }
   }
   return await sql.begin(async (tx) => {
     const before = await allocationRows(tx);
     for (const r of rows) {
-      const [known] = await tx`select 1 from memory.param_set where id = ${r.param_set}`;
+      const [known] = await tx`select arm, created_by from memory.param_set where id = ${r.param_set}`;
       if (!known) throw new ApiError(422, `No parameter set ${r.param_set}.`);
+      if (actor === "research" && known.created_by !== "research") {
+        throw new ApiError(403, `${r.param_set} isn't a research set. The research token moves only the sets it made.`);
+      }
+      const already = before.some((b: Row) => b.param_set === r.param_set && b.role === "default");
+      if (r.role === "default" && !already && r.param_set !== `${known.arm}.v1` && by !== "wen") {
+        throw new ApiError(403, `Making ${r.param_set} the default is Wen's call. Once he has approved it, send this PUT with by "wen".`);
+      }
+    }
+    for (const r of rows) {
       await tx`insert into memory.allocation (param_set, role, weight) values (${r.param_set}, ${r.role}, ${r.weight})
         on conflict (param_set) do update set role = excluded.role, weight = excluded.weight, updated_at = now()`;
     }
@@ -1327,9 +1377,20 @@ async function putAllocation(data: Row) {
     if (!after.some((r) => r.share !== null)) throw new ApiError(422, "That would leave no set serving. Give a live or default row a weight above 0.");
     const shadows = after.filter((r: Row) => r.role === "shadow").length;
     if (shadows > MAX_SHADOWS) throw new ApiError(422, `That makes ${shadows} shadow sets. At most ${MAX_SHADOWS} rank in the background at once.`);
-    await audit(tx, "allocation.put", "allocation", { rows: before }, { by, rows: after });
+    await audit(tx, "allocation.put", "allocation", { rows: before }, { by, rows: after }, actor);
     return { rows: after };
   });
+}
+
+/** The latest real recalls, newest first, ids only: what the as-of replay walks. */
+const evalRecalls = (limit: number) =>
+  sql`select id, created_at, param_set from memory.retrieval where parent_id is null order by created_at desc limit ${limit}`;
+
+/** The guardrails' rollup over the last guard_days, and with `act` the rollbacks and the sample-ratio alert (R34). The same
+ * memory.variant_guard() pg_cron runs daily. */
+async function variantGuard(act: boolean) {
+  const [{ g }] = await sql`select memory.variant_guard(${act}) as g`;
+  return g;
 }
 
 const auditList = (p: Row) =>
@@ -1422,7 +1483,8 @@ function id(value: string, name = "id") {
   return v;
 }
 
-type Route = [method: string, pattern: RegExp, status: number, run: (req: Request, m: string[], q: ReturnType<typeof query>) => Promise<unknown>];
+type Route = [method: string, pattern: RegExp, status: number,
+  run: (req: Request, m: string[], q: ReturnType<typeof query>, actor: Actor) => Promise<unknown>];
 
 const ROUTES: Route[] = [
   ["GET", /^\/overview$/, 200, () => overview()],
@@ -1471,25 +1533,39 @@ const ROUTES: Route[] = [
     throw new ApiError(410, "PUT /link-type-weights is gone. Link type weights belong to a parameter set (linkTypeWeights): POST /api/v1/param-sets with parent spreading.v1, as eval/ants.py does.");
   }],
   ["GET", /^\/param-sets$/, 200, (_r, _m, q) => paramSets(q.text("arm"))],
-  ["POST", /^\/param-sets$/, 201, async (r) => createParamSet(await body(r))],
+  ["POST", /^\/param-sets$/, 201, async (r, _m, _q, actor) => createParamSet(await body(r), actor)],
   ["GET", /^\/param-sets\/([^/]+)$/, 200, (_r, m) => getParamSet(id(m[1]))],
   ["GET", /^\/allocation$/, 200, async () => ({ rows: await allocationRows(sql) })],
-  ["PUT", /^\/allocation$/, 200, async (r) => putAllocation(await body(r))],
+  ["PUT", /^\/allocation$/, 200, async (r, _m, _q, actor) => putAllocation(await body(r), actor)],
   ["GET", /^\/groom\/sessions$/, 200, () => groomSessions()],
   ["POST", /^\/groom\/checkpoint$/, 200, async (r) => groomCheckpoint(await body(r))],
   ["POST", /^\/groom\/draft$/, 201, async (r) => groomDraft(await body(r))],
   ["POST", /^\/groom\/reinforce$/, 200, async (r) => groomReinforce(await body(r))],
   ["POST", /^\/redact\/backfill$/, 200, async (r) => redactBackfill(await body(r))],
   ["POST", /^\/judge\/backfill$/, 200, async (r) => judgeBackfill(await body(r))],
-  ["GET", /^\/eval\/questions$/, 200, (_r, _m, q) => evalQuestions(q.choice("split", ["all", "train", "test"], "train")!)],
+  ["GET", /^\/eval\/questions$/, 200, (_r, _m, q, actor) => evalQuestions(q.choice("split", ["all", "train", "test"], "train")!, q.flag("freeze"), actor)],
   ["POST", /^\/eval\/rank$/, 200, async (r) => evalRank(await body(r))],
   ["POST", /^\/eval\/replay$/, 200, async (r) => evalReplay(await body(r))],
+  ["GET", /^\/eval\/recalls$/, 200, (_r, _m, q) => evalRecalls(q.int("limit", 50, 1, 200))],
   ["GET", /^\/variants\/compare$/, 200, (_r, _m, q) => compareVariants(q.int("days", 30, 1, 365))],
+  ["GET", /^\/variants\/guard$/, 200, () => variantGuard(false)],
+  ["POST", /^\/variants\/guard$/, 200, () => variantGuard(true)],
   ["GET", /^\/audit$/, 200, (_r, _m, q) => auditList(q.page())],
 ];
 
-export async function handle(req: Request, path: string): Promise<Response> {
+// R35: the routes the research token opens. It reads the variants, the allocation and the train split, ranks and replays without
+// writing a retrieval, makes parameter sets and moves its own between off and shadow. Every other /api/v1 route is a 403.
+const RESEARCH: [method: string, pattern: RegExp][] = [
+  ["GET", /^\/param-sets$/], ["GET", /^\/param-sets\/[^/]+$/], ["POST", /^\/param-sets$/], ["GET", /^\/allocation$/], ["PUT", /^\/allocation$/],
+  ["GET", /^\/eval\/questions$/], ["POST", /^\/eval\/rank$/], ["POST", /^\/eval\/replay$/], ["GET", /^\/eval\/recalls$/],
+  ["GET", /^\/variants\/compare$/], ["GET", /^\/variants\/guard$/],
+];
+
+export async function handle(req: Request, path: string, actor: Actor = "admin"): Promise<Response> {
   const sub = path.replace(/^\/api\/v1/, "") || "/";
+  if (actor === "research" && !RESEARCH.some(([method, pattern]) => method === req.method && pattern.test(sub))) {
+    return Response.json({ error: "The research token opens only the research routes (API.md, Research)." }, { status: 403 });
+  }
   if (req.method === "POST" && sub === "/embeddings/sync") {
     const [lease] = await sql`select value from memory.setting where name = 'embed_sync_lease'`;
     if (lease && new Date(lease.value) > new Date()) return Response.json({ error: "An embedding sync is already running." }, { status: 409 });
@@ -1502,7 +1578,7 @@ export async function handle(req: Request, path: string): Promise<Response> {
   if (!route) return Response.json({ error: "That method is not allowed here." }, { status: 405 });
   const [, pattern, status, run] = route;
   try {
-    return Response.json(await run(req, pattern.exec(sub)!, query(new URL(req.url).searchParams)), { status });
+    return Response.json(await run(req, pattern.exec(sub)!, query(new URL(req.url).searchParams), actor), { status });
   } catch (e) {
     if (e instanceof ApiError) return Response.json({ error: e.error }, { status: e.status });
     console.error(e);

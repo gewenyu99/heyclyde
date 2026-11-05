@@ -1,5 +1,6 @@
 // Who a request is. Each computer holds its own device token, clyde-flow holds the runtime token, the console holds the
-// admin token, the nightly backup holds the backup token and pg_cron holds the cron secret. Only SHA-256 hashes are
+// admin token, the weekly researcher holds the research token, the nightly backup holds the backup token and pg_cron holds the
+// cron secret. Only SHA-256 hashes are
 // stored, so a database read never yields a token.
 import { secret, setting, sql } from "./db.ts";
 import { sha256 } from "./embed.ts";
@@ -8,7 +9,7 @@ import { reportable } from "./version.ts";
 
 export type Kind = "open" | "agent" | "admin" | "backup" | "cron" | "owner";
 export type Principal = {
-  role: "anyone" | "device" | "runtime" | "admin" | "backup" | "cron" | "owner";
+  role: "anyone" | "device" | "runtime" | "admin" | "research" | "backup" | "cron" | "owner";
   device?: string;
   /** For a device: "full" keeps hook payloads, "metadata" keeps only the event, session, folder and tool name. */
   hooks?: string;
@@ -127,7 +128,11 @@ async function resolve(kind: Kind, token: string, seen: Seen): Promise<Principal
       ? { role: "device", device: d.name, hooks: d.hooks, clientVersion: d.client_version, updateFailed: d.client_update_failed, hookSeen: d.hook_seen }
       : null;
   }
-  if (kind === "admin") return same(hash, await setting("admin_token_sha256")) ? { role: "admin" } : null;
+  if (kind === "admin") {
+    if (same(hash, await setting("admin_token_sha256"))) return { role: "admin" };
+    // The weekly researcher's token opens /api/v1 too, and admin.ts lets it through only its own routes (RESEARCH).
+    return same(hash, await setting("research_token_sha256")) ? { role: "research" } : null;
+  }
   if (kind === "backup") {
     if (same(hash, await setting("backup_token_sha256"))) return { role: "backup" };
     return same(hash, await setting("admin_token_sha256")) ? { role: "admin" } : null;

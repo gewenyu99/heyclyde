@@ -1,6 +1,7 @@
 // What memory spends at OpenAI, metered by kind. embed, judge_recall, shadow and research share the general budget. The judge
 // that screens writes (judge_write) has a reserve of its own that nothing else spends, so when the general budget is gone
 // recall serves keyword ranks and degraded, and remember still screens.
+import { AsyncLocalStorage } from "node:async_hooks";
 import { setting, sql } from "./db.ts";
 
 export type Kind = "embed" | "judge_write" | "judge_recall" | "shadow" | "research";
@@ -66,8 +67,20 @@ export async function assertBudget(kind: Kind) {
   if (why) throw new OverBudget(why);
 }
 
+// What one recall spends at OpenAI, for its retrieval row's openai_tokens and the cost guardrail (R34). Shadow and research
+// calls are someone else's spend, so they never count, even from work a recall started.
+const tally = new AsyncLocalStorage<{ tokens: number }>();
+
+/** Runs `work` with a fresh count of the OpenAI tokens metered inside it, embed and judge calls alike. */
+export function tallied<T>(work: (spent: { tokens: number }) => Promise<T>): Promise<T> {
+  const spent = { tokens: 0 };
+  return tally.run(spent, () => work(spent));
+}
+
 export async function meter(kind: Kind, tokens: number) {
   if (!tokens) return;
+  const spent = kind === "shadow" || kind === "research" ? undefined : tally.getStore();
+  if (spent) spent.tokens += tokens;
   await sql`insert into memory.openai_usage (month, kind, tokens) values (date_trunc('month', now())::date, ${kind}, ${tokens})
     on conflict (month, kind) do update set tokens = memory.openai_usage.tokens + excluded.tokens`;
 }

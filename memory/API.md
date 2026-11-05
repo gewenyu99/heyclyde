@@ -14,9 +14,20 @@ Every `/api/v1` path needs `Authorization: Bearer <admin token>`. The function s
 
 A device token never opens it. Every agent holds its computer's device token, for MCP, the hooks and its inbox, and an agent with Bash could otherwise read private entries in full and write as Wen. Each token works on its own paths only.
 
+The research token, held by the weekly research-memory task and stored as `research_token_sha256`, opens only these `/api/v1` routes (R35). Any other gets 403 `{"error": "The research token opens only the research routes (API.md, Research)."}`, and every path outside `/api/v1` a 401.
+
+| Route | What research may do there |
+|---|---|
+| `GET /param-sets`, `GET /param-sets/{id}` | Read every set |
+| `POST /param-sets` | Make a set with a `parent` and a `note` (its hypothesis) of 20 characters or more. `created_by` is `research` whatever `by` says. At most 3 a UTC week (Monday 00:00 UTC on), else 429. A research set starts with an allocation row `off`, weight 0 |
+| `GET /allocation`, `PUT /allocation` | Move only sets it made, only to `off` or `shadow`, else 403. The audit row's `by` and actor are `research` |
+| `GET /eval/questions?split=train` | Train only. `test` and `all` are 403, with or without `freeze` |
+| `POST /eval/rank`, `POST /eval/replay`, `GET /eval/recalls` | Rank and replay, writing no retrieval |
+| `GET /variants/compare`, `GET /variants/guard` | Read the comparison and the guardrails' rollup. `POST /variants/guard` is 403 |
+
 | Path | Takes |
 |---|---|
-| `/api/v1`, `/api/v1/*`, `/` | The admin token |
+| `/api/v1`, `/api/v1/*`, `/` | The admin token, or the research token on the research routes only |
 | `/mcp`, `/hooks/*`, `/messages/*`, `/entries`, `/entries/*`, `/blobs/*`, `/recall` | A device token, or clyde's runtime token |
 | `/export` | The backup token, or the admin token |
 | `/embeddings/sync` | pg_cron's secret from Vault |
@@ -370,13 +381,17 @@ Body `{"id": "hybrid.v2", "parent"?: "hybrid.v1", "arm"?: "hybrid", "params": {.
 
 ### `PUT /allocation`
 
-Body `{"rows": [{"param_set", "role", "weight"}], "by"?: "..."}`. `by` is text of 1 to 64 characters and defaults to `admin`; the audit row records it. The rows named are set and the others stay, so one PUT can turn one variant off: `{"param_set": "hybrid.v2", "role": "off", "weight": 0}`. `weight` is a whole number, 0 or more. 422 if a set doesn't exist, a role is wrong, the result would leave nothing serving, or it would make more than 2 shadow sets, and then nothing changes. A session that a set served stops being served by it as soon as the set's role is off or its weight 0. Audited as `allocation.put`: `before` is `{"rows": [...]}`, the whole table before, and `after` is `{"by": "...", "rows": [...]}`.
+Body `{"rows": [{"param_set", "role", "weight"}], "by"?: "..."}`. `by` is text of 1 to 64 characters and defaults to `admin`; the audit row records it. Making a set the default is Wen's call: unless the set already is the default or is its arm's v1, the PUT takes `"by": "wen"`, else 403 and nothing changes. The rows named are set and the others stay, so one PUT can turn one variant off: `{"param_set": "hybrid.v2", "role": "off", "weight": 0}`. `weight` is a whole number, 0 or more. 422 if a set doesn't exist, a role is wrong, the result would leave nothing serving, or it would make more than 2 shadow sets, and then nothing changes. A session that a set served stops being served by it as soon as the set's role is off or its weight 0. Audited as `allocation.put`: `before` is `{"rows": [...]}`, the whole table before, and `after` is `{"by": "...", "rows": [...]}`.
 
 ## Eval
 
 ### `GET /eval/questions?split=train`
 
-The practice queries with their gold and must_not entries, for `eval/retrieval_eval.py`.
+The practice queries with their gold and must_not entries, for `eval/retrieval_eval.py`. `split` is `train` (the default), `test` or `all`. The test split is read once, after the knobs are frozen: `test` and `all` take `freeze=1`, else 403, and each read writes an `eval.test_read` audit row. The research token gets 403 on them always. `retrieval_eval.py --split test` sends `freeze=1` only under `MEMORY_EVAL_FREEZE=1`, and exits 2 before any request without it.
+
+### `GET /eval/recalls?limit=50`
+
+The latest real recalls, newest first, as `[{"id", "created_at", "param_set"}]`, for the as-of replay to walk. `limit` is 1 to 200. No query text.
 
 ### `POST /eval/rank`
 
@@ -384,7 +399,7 @@ Body `{"query", "arm", "filter"?: true, "param_set"?: "hybrid.v1", "parent"?: "h
 
 ### `POST /eval/replay`
 
-Body `{"retrieval_id", "param_set"?: "hybrid.v1", "parent"?, "params"?: {...}}`. The as-of replay: a logged recall's candidates re-scored under the set it was served by, or the one named, with temperature and age rebuilt from events as of the recall's own `context.c_now`, never today's. Relevance, the arm's score and confidence are the logged ones. Returns `{"retrieval_id", "c_now", "param_set", "logged_param_set", "delivered", "candidates": [{"id", "relevance", "confidence", "temperature", "age", "final_score", "logged_score"}], "outcomes": {entry_id: verdict}}`, best first. 404 for no such recall, 422 for one logged before the clock reading. Writes nothing. `eval/retrieval_eval.py --replay [--params <id|file>] [--limit 50]` runs it over the latest recalls.
+Body `{"retrieval_id", "param_set"?: "hybrid.v1", "parent"?, "params"?: {...}}`. The as-of replay: a logged recall's candidates re-scored under the set it was served by, or the one named, with temperature and age rebuilt from events as of the recall's own `context.c_now`, never today's. Relevance, the arm's score and confidence are the logged ones. Returns `{"retrieval_id", "c_now", "param_set", "logged_param_set", "delivered", "candidates": [{"id", "relevance", "confidence", "temperature", "age", "final_score", "logged_score"}], "outcomes": {entry_id: verdict}}`, best first. 404 for no such recall, 422 for one logged before the clock reading. Writes nothing. `eval/retrieval_eval.py --replay [--params <id|file>] [--limit 50]` runs it over the recalls `GET /eval/recalls` lists.
 
 ## Variants
 
@@ -393,6 +408,26 @@ Body `{"retrieval_id", "param_set"?: "hybrid.v1", "parent"?, "params"?: {...}}`.
 Each set's outcomes over the last `days` (1 to 365): `{"days", "sets": [{"param_set", "source", "role", "recalls", "delivered", "judged", "used_rate", "irrelevant_rate", "wrong_rate", "leaks"}]}`. A `served` row counts the recalls the set served and the entries they delivered. A `shadow` row counts the recalls the shadow ranked (and `skipped`, the ones it couldn't), and since nobody saw what it would have delivered, its rates come only from the entries it shares with what was served: `overlap` is that share of its deliveries. `judged` is the entries with an outcome, the rates' denominator: used (or helpful), irrelevant and wrong from feedback. `leaks` counts entries marked wrong or blamed for Wen's pushback.
 
 Up to 2 sets with role `shadow` rank every real recall after its response is out, as of the same clock reading, and log one `memory.shadow_retrieval` row each: their top 12 ids and scores and what they would have delivered, with status `ranked`, `skipped:error` or `skipped:budget`. They judge only pairs missing from `memory.judge_cache` (keyed by the request's hash, entry, judged text's hash and judge version), which the served recall fills first. Their judge calls carry `x-memory-purpose: shadow` and are metered as kind `shadow`, which stops at the setting `research_budget_tokens` when set. A shadow never ticks the clock, never changes the packet and never reaches the learner. Rows older than 180 days go daily (`memory.variant_retention()`).
+
+### `GET /variants/guard`, `POST /variants/guard`
+
+The guardrails (R34). `POST` runs `memory.variant_guard()`, which pg_cron's `memory-variant-guard` also runs daily at 05:23 UTC. `GET` reports the same without acting. Returns:
+
+```json
+{"days": 7, "acted": true, "rolled_back": ["hybrid.t1"],
+ "checked": [{"param_set": "hybrid.t1", "against": "hybrid.v1", "recalls": 1000, "against_recalls": 1000, "reasons": ["leak: ..."]}],
+ "srm": {"since": "...", "units": {"hybrid.v1": 600, "hybrid.t1": 400}, "chi2": 40, "df": 1, "p": 2.5e-10, "mismatch": true},
+ "sets": [{"param_set", "arm", "role", "weight", "recalls", "used_rate", "wrong_rate", "leaks", "leak_rate", "empty_rate",
+           "p95_latency_ms", "costed", "cost_per_recall"}]}
+```
+
+`sets` rolls up every live and default set's real recalls (recall_more pages left out) over the last `guard_days` (7): `used_rate` is the share with a used or helpful verdict, `wrong_rate` with a wrong verdict, `leaks` and `leak_rate` count a wrong verdict or Wen's pushback, `empty_rate` is the share that delivered nothing, `p95_latency_ms` is the 95th percentile of `latency_ms`, and `cost_per_recall` the mean `openai_tokens` over the `costed` recalls that logged them.
+
+Each live set with a weight above 0 is checked against the default with the most recalls on its arm. It rolls back when it's over the default by more than `guard_leak_points` (2) points of leak rate, `guard_empty_points` (5) points of empty packets, or `guard_cost_pct` (50) percent of cost, once both sides have `guard_min_recalls` (50) recalls, or by `guard_latency_pct` (30) percent of p95 latency, once both have `guard_min_latency_recalls` (200). All are rows of `memory.setting`. A rollback sets the weight to 0, writes an `allocation.rollback` audit row and messages `all`. A set already at 0 isn't checked, so a second run rolls nothing back twice.
+
+`srm` tests the serving sets' distinct units (`retrieval.unit_hash`) since the last allocation change, within the window, against their shares with a chi-square test. It runs when 2 or more sets serve and each expects at least 5 units. `mismatch` is p below `guard_srm_alpha` (0.001), and with `POST` it writes an `allocation.srm` audit row and messages `all`. It never rolls back.
+
+Each recall's row logs `openai_tokens`, what its own embedding and judge calls spent (shadows' spend is theirs), and `unit_hash`, the SHA-256 of the unit the allocation hashed.
 
 ## Embeddings
 
@@ -406,7 +441,7 @@ A failure never surfaces as an error. It is logged, `/overview` shows it under `
 
 ### `GET /audit`
 
-Newest first. Each item has `id`, `at`, `action`, `target`, `before` and `after`.
+Newest first. Each item has `id`, `at`, `action`, `target`, `before` and `after`. The table's `actor` column says who acted: `admin`, `research`, or `guardrail` for `memory.variant_guard()`.
 
 | action | target | before | after |
 |---|---|---|---|
@@ -423,6 +458,9 @@ Newest first. Each item has `id`, `at`, `action`, `target`, `before` and `after`
 | `embeddings.sync` | `embeddings` | null | `embedded` or `error` |
 | `param_set.create` | `param_set:<id>` | null | `arm`, `parent`, `note`, `by` |
 | `allocation.put` | `allocation` | `{rows}`, the table before | `{by, rows}`, the table after |
+| `allocation.rollback` | `param_set:<id>` | `{role, weight}` before | `{role, weight: 0, reason, days, recalls, against, against_recalls}` |
+| `allocation.srm` | `allocation` | null | The `srm` result that found the mismatch |
+| `eval.test_read` | `eval:test` or `eval:all` | null | `split`, `questions` |
 
 ## Code
 

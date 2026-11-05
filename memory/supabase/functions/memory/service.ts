@@ -1,6 +1,8 @@
 // What the MCP tools and hook endpoints do, independent of transport, so tests can call it directly.
 import { sessionSet, unitOf } from "./allocation.ts";
+import { tallied } from "./budget.ts";
 import { type Row, type Sql, sql } from "./db.ts";
+import { sha256 } from "./embed.ts";
 import { type Clocked, clocked, features, finalScore, relevanceOf } from "./features.ts";
 import { background, runShadows } from "./shadow.ts";
 import { type Params, type ParamSet, paramSet } from "./params.ts";
@@ -138,8 +140,14 @@ export function packetText(chunks: string[], lines: boolean, degraded: string | 
  * serves its run's notes in the main list, and an HTTP recall (clyde-flow) has no way to give feedback or see a trial list.
  *
  * With depth "deep" (R29), the packet is followed by the page recall_more would give next, and the one row logs both. */
-export async function recall(session: string, query: string, task = "", client: string | null = null,
+export function recall(session: string, query: string, task = "", client: string | null = null,
   scope: string | null = null, principal = "anyone", agent: string = agentName(client), depth: unknown = "packet") {
+  // The retrieval row logs what the recall spent at OpenAI and which unit it was, for the guardrails (R34).
+  return tallied((spent) => recallOnce(spent, session, query, task, client, scope, principal, agent, depth));
+}
+
+async function recallOnce(spent: { tokens: number }, session: string, query: string, task: string, client: string | null,
+  scope: string | null, principal: string, agent: string, depth: unknown) {
   if (scope && !SCOPE_RE.test(scope)) throw new Refused(`scope ${JSON.stringify(scope)} must look like run:<id>, or be left out.`);
   if (typeof depth !== "string" || !DEPTHS.includes(depth)) {
     throw new Refused(`depth must be "packet" (the default) or "deep" (the packet and the next page), not ${JSON.stringify(depth)}.`);
@@ -147,7 +155,8 @@ export async function recall(session: string, query: string, task = "", client: 
   query = redactText(query)[0];
   task = redactText(task)[0];
   const started = performance.now();
-  const { set, propensity } = await sessionSet(sql, session, unitOf(scope, principal, client), client);
+  const unit = unitOf(scope, principal, client), unitHash = await sha256(unit);
+  const { set, propensity } = await sessionSet(sql, session, unit, client);
   const mcp = client !== "http";
   const viewer = { device: principal, agent };
   const { ranked, degraded, delivered: packed, chunks, lines, rejected, trial, rows, frontier, features: logged, cNow, judgments } =
@@ -179,11 +188,11 @@ export async function recall(session: string, query: string, task = "", client: 
     if (frontier?.length) context.frontier = frontier.map(([id, strength]) => ({ id, strength }));
     if (shown.length) context.trial = shown.map((id) => ({ id, chance: TRIAL_CHANCES - left.get(id)! }));
     await tx`insert into memory.retrieval (id, mcp_session, arm, query, task, scope, candidates, delivered, rejected, on_trial, latency_ms,
-        degraded, packet, param_set, propensity, seq, context, depth)
+        degraded, packet, param_set, propensity, seq, context, depth, openai_tokens, unit_hash)
       values (${rid}, ${session}, ${set.arm}, ${query}, ${task || null}, ${scope || null},
         ${tx.json(ranked.map(([id, score]: Ranked) => ({ id, score })))}, ${tx.json(delivered)}, ${tx.json(rejected)}, ${tx.json(shown)},
         ${Math.round(performance.now() - started)}, ${degraded}, ${text}, ${set.id}, ${propensity}, ${seq},
-        ${tx.json(context)}, ${depth})`;
+        ${tx.json(context)}, ${depth}, ${spent.tokens}, ${unitHash})`;
     return text;
   });
   // Shadow sets (R34) rank the same request after the response is out, as of the same clock reading. They never tick the

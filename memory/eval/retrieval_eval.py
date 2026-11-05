@@ -11,7 +11,8 @@ the arm is the set's own. A file is a POST /param-sets body without the id, {"ar
 the arms run on their v1 sets, which is what the code ranked by before parameter sets.
 
 The admin token comes from MEMORY_ADMIN_TOKEN or ~/.config/memory/admin-token. Tune on train. Read test once, after
-the knobs are frozen.
+the knobs are frozen: --split test or all exits 2 before any request unless MEMORY_EVAL_FREEZE=1, and then the server, which
+takes freeze=1 and audits every test read, answers it. The research token never reads it.
 
 Gold hit: a gold entry was delivered in the packet. must_not leak: a replaced or draft item the query names was delivered.
 
@@ -82,8 +83,16 @@ def resolve_params(spec):
     return stored["arm"], {"param_set": spec}, spec
 
 
+def frozen():
+    """Whether the knobs are frozen, so the test split may be read: MEMORY_EVAL_FREEZE=1, and nothing else."""
+    return os.environ.get("MEMORY_EVAL_FREEZE") == "1"
+
+
 def run(arms, split, probes=None, filter=True, tilt=None, params=None):
-    questions = json.loads(Path(probes).read_text()) if probes else call(f"/eval/questions?split={split}")
+    if split != "train" and not frozen():
+        sys.exit(2)
+    ask = f"/eval/questions?split={split}" + ("&freeze=1" if split != "train" else "")
+    questions = json.loads(Path(probes).read_text()) if probes else call(ask)
     report = {}
     only_arm, extra, label = resolve_params(params) if params else (None, {}, None)
     for arm in [only_arm] if only_arm else arms:
@@ -116,7 +125,7 @@ def replay(params=None, limit=50):
         arm, extra, label = resolve_params(params)
         if "params" in extra and arm:
             extra["arm"] = arm
-    rows = call(f"/retrievals?limit={limit}")["items"]
+    rows = call(f"/eval/recalls?limit={limit}")
     per, skipped = [], 0
     for row in rows:
         try:
@@ -155,6 +164,10 @@ def main():
     ap.add_argument("--replay", action="store_true", help="re-score logged recalls as of each one's clock, under --params or its own set")
     ap.add_argument("--limit", type=int, default=50, help="how many of the latest recalls --replay reads (at most 200)")
     a = ap.parse_args()
+    if a.split != "train" and not a.replay and not frozen():
+        print(f"--split {a.split} reads the test split, which is read once, after the knobs are frozen. "
+              "Tune on train; once the knobs are frozen, rerun with MEMORY_EVAL_FREEZE=1.", file=sys.stderr)
+        sys.exit(2)
     if a.replay:
         r = replay(a.params, a.limit)
         if a.json:

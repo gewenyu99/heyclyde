@@ -59,6 +59,7 @@ Every recall's top 12 candidates also go through the judge, and only the ones it
 | Device token | One computer, in `~/.config/memory/token`. Minted by the installer after your email sign-in | MCP, the hooks, the inbox, clyde-flow's routes. Writes are drafts in a run scope |
 | Runtime token | clyde-flow's daemon only | The same paths, and alone writes above draft |
 | Admin token | You, in `~/.config/memory/admin-token` on the first Mac | `/api/v1`, the console's API |
+| Research token | The weekly research-memory task, in `~/.config/memory/research-token` | The research routes of `/api/v1` only: read variants, allocation and the train split, make sets, move its own between off and shadow |
 | Backup token | The nightly GitHub Action | `/export` only |
 
 Revoke a lost computer with `DELETE /api/v1/devices/<name>`. A computer's token stops working after 90 days unused, and rerunning the installer signs it in again. Every new computer posts a board message that your agents relay at your next prompt, so one you didn't add shows up fast.
@@ -100,6 +101,45 @@ curl -X PUT "$MEMORY_URL/api/v1/allocation" -H "Authorization: Bearer $MEMORY_AD
 Every knob each arm ranks by (candidates, packet size, the filter, the tilt, the fusion and PageRank constants, the link type weights) is a row of `memory.param_set`, and a set never changes. `eval/retrieval_eval.py --params <id|file.json>` runs any set offline. Link type weights have one owner: the `linkTypeWeights` of the set a recall is served. `eval/ants.py` saves its result as a new spreading set (parent `spreading.v1`, id `spreading.ants-<time>`) and writes nothing else, so trying it is `retrieval_eval.py --params <id>`, and serving it is an allocation row. `PUT /link-type-weights` answers 410 and points at `POST /param-sets`. The `link_type_weight` table stays for the record, and nothing ranks by it.
 
 [eval/ants.py](eval/ants.py) trains the per-link-type weights with an ant colony on the train questions. On today's 21 train questions it didn't beat neutral weights, so they're back at 1.0. Rerun it as the probe set grows.
+
+## Guardrails and promotion
+
+A live set that does worse than its arm's default loses its share by itself, daily. The pg_cron job `memory-variant-guard` runs `memory.variant_guard()` at 05:23 UTC, pure SQL with no function call. `POST /api/v1/variants/guard` runs the same thing now, and `GET` shows the rollup without acting.
+
+Over the last 7 days it compares each live set with a weight above 0 against its arm's default and rolls it back past any of these bounds:
+
+| Bound | Setting | Default | Acts from |
+|---|---|---|---|
+| Leak rate (recalls with a wrong verdict or your pushback) | `guard_leak_points` | +2 points | 50 recalls a side (`guard_min_recalls`) |
+| Empty packets | `guard_empty_points` | +5 points | 50 recalls a side |
+| OpenAI tokens per recall | `guard_cost_pct` | +50% | 50 recalls a side that logged tokens |
+| p95 latency | `guard_latency_pct` | +30% | 200 recalls a side (`guard_min_latency_recalls`) |
+
+A rollback sets the set's weight to 0, so it serves no one and stays registered. It writes one `allocation.rollback` audit row with actor `guardrail` and the bound in `after.reason`, and posts a message to `all`, so your agents relay it at your next prompt. Change a bound with `update memory.setting set value = '3' where name = 'guard_leak_points'`, and the next run reads it.
+
+The same run tests the serving sets' units since the last allocation change against their shares. A chi-square p below `guard_srm_alpha` (0.001) means assignment or logging is broken: it writes an `allocation.srm` audit row and messages `all`, and rolls nothing back.
+
+Promotion stays yours. `PUT /api/v1/allocation` refuses to make a set the default unless it already is, or it is its arm's v1, or the body carries `"by": "wen"`. Send that only once you've approved the change.
+
+## The researcher
+
+A weekly Claude Code scheduled task, "Research memory weekly", on Mondays at 09:00, follows [skills/research-memory](../skills/research-memory/SKILL.md) through [research/research.py](research/research.py). It reads the week's variant comparison, the guardrails' rollup and the train split's misses, proposes up to 3 child sets with written hypotheses, runs them on train, moves up to 2 winners to shadow and comments on the "memory research log" issue (label `research-log`), which it opens when it's missing.
+
+It holds the research token only, never the admin token. Mint one on the Mac that runs the task:
+
+```bash
+umask 077 && openssl rand -hex 32 | tr -d '\n' > ~/.config/memory/research-token
+shasum -a 256 ~/.config/memory/research-token | cut -d' ' -f1
+```
+
+Then store that hash, through the Supabase SQL editor or `execute_sql`:
+
+```sql
+insert into memory.setting (name, value) values ('research_token_sha256', '<the hash>')
+  on conflict (name) do update set value = excluded.value;
+```
+
+The server holds the researcher to its limits whatever the skill says. It makes at most 3 sets a UTC week, each with a parent and a hypothesis of 20 characters or more, and it moves only the sets it made, only to off or shadow. It reads the train split only. `eval/retrieval_eval.py --split test` (or `all`) exits 2 unless `MEMORY_EVAL_FREEZE=1`, and the server answers a test read only with `freeze=1` and the admin token, and audits it as `eval.test_read`. Read test once, after the knobs are frozen.
 
 ## Versions and self-update
 
