@@ -89,9 +89,9 @@ Deno.test('a recall logs at most 50 candidates, each with its rank and score per
   }
   const logged = features(ranked, trace, new Map([['e0', 0.95]]), new Map([['e0', 0.9]]))
   assert.equal(logged.length, 50)
-  for (const f of logged) assert.deepEqual(Object.keys(f).sort(), ['arms', 'confidence', 'id', 'judge', 'kind', 'score'])
+  for (const f of logged) assert.deepEqual(Object.keys(f).sort(), ['age', 'arms', 'confidence', 'id', 'judge', 'kind', 'relevance', 'score', 'temperature'])
   assert.deepEqual(logged[0], {
-    id: 'e0', arms: { hybrid: { rank: 1, score: 2 } }, confidence: 0.95, kind: null, judge: 0.9, score: 1,
+    id: 'e0', arms: { hybrid: { rank: 1, score: 2 } }, relevance: null, confidence: 0.95, kind: null, judge: 0.9, temperature: null, age: null, score: 1,
   })
   assert.deepEqual(logged[12].arms, { hybrid: { rank: 13, score: 1.76 }, vec: { rank: 3, score: null } })
   assert.equal(logged[12].confidence, null, 'a candidate whose confidence was not read has none logged')

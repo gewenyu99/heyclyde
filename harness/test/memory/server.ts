@@ -5,7 +5,7 @@ import net from 'node:net'
 import { join } from 'node:path'
 import { request } from '../../src/request.ts'
 import { type FakeAuth, startFakeAuth } from './auth.ts'
-import { type FakeOpenAI, startFakeOpenAI } from './openai.ts'
+import { type FakeOpenAI, type FakeOptions, startFakeOpenAI } from './openai.ts'
 import { FakeStorage } from './storage.ts'
 
 export const DATABASE_URL = process.env.MEMORY_TEST_DATABASE_URL ?? ''
@@ -75,7 +75,7 @@ async function waitHealthy(url: string, child: ChildProcess, log: () => string):
 
 /** A fresh schema memory and the function on it, with a device token, the runtime and admin tokens, and the cron secret.
  * close() stops the function and drops the schema. extraEnv is added to the function's environment. */
-export async function startRealMemory(extraEnv: Record<string, string> = {}, options: { storage?: boolean } = {}): Promise<RealMemory> {
+export async function startRealMemory(extraEnv: Record<string, string> = {}, options: { storage?: boolean; openai?: FakeOptions } = {}): Promise<RealMemory> {
   const token = `device-${randomBytes(8).toString('hex')}`
   const runtimeToken = `runtime-${randomBytes(8).toString('hex')}`
   const adminToken = `admin-${randomBytes(8).toString('hex')}`
@@ -86,7 +86,7 @@ export async function startRealMemory(extraEnv: Record<string, string> = {}, opt
   const port = await freePort()
   // Embeddings, the write judge and the recall filter all go to the fake OpenAI, and sign-ins to the fake Supabase Auth,
   // so nothing leaves the machine.
-  const openai = await startFakeOpenAI()
+  const openai = await startFakeOpenAI(options.openai)
   // With storage, a fake Supabase Storage answers under /storage/v1 on the same origin as SUPABASE_URL, and the function is
   // given a service role key, which is what switches its Storage on.
   const serviceKey = options.storage ? randomBytes(20).toString('hex') : undefined

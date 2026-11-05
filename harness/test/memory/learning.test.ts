@@ -281,7 +281,7 @@ test('a recall logs its parameter set and 1 to 50 candidates, each with arms, co
   const logged = row.context.candidates
   assert.ok(logged.length >= 1 && logged.length <= 50, `${logged.length} candidates`)
   for (const c of logged) {
-    assert.deepEqual(Object.keys(c).sort(), ['arms', 'confidence', 'id', 'judge', 'kind', 'score'])
+    assert.deepEqual(Object.keys(c).sort(), ['age', 'arms', 'confidence', 'id', 'judge', 'kind', 'relevance', 'score', 'temperature'])
     assert.ok(Object.keys(c.arms).length >= 1)
     for (const a of Object.values<any>(c.arms)) assert.ok(Number.isInteger(a.rank) && a.rank >= 1, JSON.stringify(c))
     assert.equal(c.kind, null)
