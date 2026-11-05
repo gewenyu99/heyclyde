@@ -68,7 +68,7 @@ async function allocate(o: { serve?: string; shadows?: string[] }) {
   const serve = o.serve ?? 'hybrid.v1', shadows = o.shadows ?? []
   const all = sql('select id from memory.param_set').map((r) => r.id as string)
   json(await admin('PUT', '/allocation', {
-    rows: all.map((param_set) => param_set === serve ? { param_set, role: 'default', weight: 1000 }
+    by: 'wen', rows: all.map((param_set) => param_set === serve ? { param_set, role: 'default', weight: 1000 }
       : shadows.includes(param_set) ? { param_set, role: 'shadow', weight: 0 } : { param_set, role: 'off', weight: 0 }),
   }))
 }

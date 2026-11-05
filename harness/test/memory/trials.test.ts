@@ -87,7 +87,7 @@ async function allocate(serve: string) {
   const rows = ['index.v1', 'hybrid.v1', 'spreading.v1', 'hybrid.v3', 'spreading.v3', 'hybrid.v2', 'spreading.v2']
     .filter((id) => sql(`select 1 from memory.param_set where id = '${id}'`).length)
     .map((param_set) => param_set === serve ? { param_set, role: 'default', weight: 1000 } : { param_set, role: 'off', weight: 0 })
-  json(await admin('PUT', '/allocation', { rows }))
+  json(await admin('PUT', '/allocation', { rows, by: 'wen' }))
 }
 
 /** Makes every unlearned recall old enough for the learner to settle without Wen's next prompt, then runs it. */

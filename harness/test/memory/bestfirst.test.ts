@@ -36,7 +36,7 @@ async function rank(query: string, param_set: string): Promise<string[]> {
 async function serve(id: string) {
   const rows = sql('select id from memory.param_set').map((r) => r.id as string)
     .map((param_set) => param_set === id ? { param_set, role: 'default', weight: 1000 } : { param_set, role: 'off', weight: 0 })
-  const r = await admin('PUT', '/allocation', { rows })
+  const r = await admin('PUT', '/allocation', { rows, by: 'wen' })
   assert.equal(r.status, 200, r.text)
 }
 

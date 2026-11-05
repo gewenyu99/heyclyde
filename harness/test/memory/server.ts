@@ -20,7 +20,7 @@ const NO_NODE_MODULES = '--node-modules-dir=none'
 
 export type RealMemory = {
   storage?: FakeStorage; serviceKey?: string; log?: () => string
-  url: string; token: string; runtimeToken: string; adminToken: string; cronSecret: string; openai: FakeOpenAI; auth: FakeAuth
+  url: string; token: string; runtimeToken: string; adminToken: string; researchToken: string; cronSecret: string; openai: FakeOpenAI; auth: FakeAuth
   close: () => Promise<void>
 }
 
@@ -73,15 +73,16 @@ async function waitHealthy(url: string, child: ChildProcess, log: () => string):
   throw new Error(`memory never answered /healthz:\n${log()}`)
 }
 
-/** A fresh schema memory and the function on it, with a device token, the runtime and admin tokens, and the cron secret.
+/** A fresh schema memory and the function on it, with a device token, the runtime, admin and research tokens, and the cron secret.
  * close() stops the function and drops the schema. extraEnv is added to the function's environment. */
 export async function startRealMemory(extraEnv: Record<string, string> = {}, options: { storage?: boolean; openai?: FakeOptions } = {}): Promise<RealMemory> {
   const token = `device-${randomBytes(8).toString('hex')}`
   const runtimeToken = `runtime-${randomBytes(8).toString('hex')}`
   const adminToken = `admin-${randomBytes(8).toString('hex')}`
+  const researchToken = `research-${randomBytes(8).toString('hex')}`
   const cronSecret = `cron-${randomBytes(8).toString('hex')}`
   database(['reset'], {
-    MEMORY_TEST_TOKEN: token, MEMORY_TEST_RUNTIME_TOKEN: runtimeToken, MEMORY_TEST_ADMIN_TOKEN: adminToken, MEMORY_TEST_CRON_SECRET: cronSecret,
+    MEMORY_TEST_TOKEN: token, MEMORY_TEST_RUNTIME_TOKEN: runtimeToken, MEMORY_TEST_ADMIN_TOKEN: adminToken, MEMORY_TEST_RESEARCH_TOKEN: researchToken, MEMORY_TEST_CRON_SECRET: cronSecret,
   })
   const port = await freePort()
   // Embeddings, the write judge and the recall filter all go to the fake OpenAI, and sign-ins to the fake Supabase Auth,
@@ -118,7 +119,7 @@ export async function startRealMemory(extraEnv: Record<string, string> = {}, opt
     await close()
     throw err
   }
-  return { url, token, runtimeToken, adminToken, cronSecret, openai, auth, close, storage, serviceKey, log: () => output }
+  return { url, token, runtimeToken, adminToken, researchToken, cronSecret, openai, auth, close, storage, serviceKey, log: () => output }
 }
 
 /** startRealMemory with a fake Supabase Storage (storage.ts) and a service role key, so the function's Storage is on. */

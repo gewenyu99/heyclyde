@@ -36,7 +36,7 @@ async function serve(id: string) {
   const rows = ['index.v1', 'hybrid.v1', 'spreading.v1', 'hybrid.v3', 'spreading.v3', 'hybrid.v4', 'spreading.v4', 'hybrid.v2', 'spreading.v2']
     .filter((p) => sql(`select 1 from memory.param_set where id = '${p}'`).length)
     .map((param_set) => param_set === id ? { param_set, role: 'default', weight: 1000 } : { param_set, role: 'off', weight: 0 })
-  const r = await admin('PUT', '/allocation', { rows })
+  const r = await admin('PUT', '/allocation', { rows, by: 'wen' })
   assert.equal(r.status, 200, r.text)
 }
 

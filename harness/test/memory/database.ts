@@ -1,7 +1,8 @@
 /**
  * Tier 3 support, run with deno: `reset` rebuilds schema memory from memory/supabase/migrations on SUPABASE_DB_URL, loads
  * the made-up tea vault, and stores the SHA-256 of MEMORY_TEST_TOKEN as a device, of MEMORY_TEST_RUNTIME_TOKEN as the
- * runtime token and of MEMORY_TEST_ADMIN_TOKEN as the admin token, the way auth.ts reads them, with
+ * runtime token, of MEMORY_TEST_ADMIN_TOKEN as the admin token and of MEMORY_TEST_RESEARCH_TOKEN as the research token,
+ * the way auth.ts reads them, with
  * MEMORY_TEST_CRON_SECRET in Vault. `drop` removes the schema again. `sql <statement>` prints its rows as JSON, for what
  * no route shows. `apply <migration file>` runs one migration file again, and `purge` runs memory.purge_messages() and prints
  * how long it took in ms. pg_cron only lives in the postgres database, so the tests reset a schema rather than create a database.
@@ -34,7 +35,7 @@ const env = (name: string) => Deno.env.get(name) ?? ''
 const sql = postgres(env('SUPABASE_DB_URL'), { max: 1, onnotice: () => {} })
 
 // The migrations schedule these against the real project, with the cron secret. The tests never want them.
-const CRONS = ['memory-embed-sync', 'memory-learn', 'memory-message-purge', 'memory-variant-retention']
+const CRONS = ['memory-embed-sync', 'memory-learn', 'memory-message-purge', 'memory-variant-retention', 'memory-variant-guard']
 
 // memory-blob-sweep stays scheduled after a reset, since a test checks the migration made it. drop removes it.
 async function unschedule(names = CRONS) {
@@ -72,6 +73,7 @@ async function reset() {
   for (const [src, dst, type] of LINKS) await sql`insert into memory.link (src, dst, type) values (${src}, ${dst}, ${type})`
   await sql`insert into memory.setting (name, value) values ('runtime_token_sha256', ${await sha256(env('MEMORY_TEST_RUNTIME_TOKEN'))})`
   await sql`insert into memory.setting (name, value) values ('admin_token_sha256', ${await sha256(env('MEMORY_TEST_ADMIN_TOKEN'))})`
+  await sql`insert into memory.setting (name, value) values ('research_token_sha256', ${await sha256(env('MEMORY_TEST_RESEARCH_TOKEN'))})`
   await sql`insert into memory.device (name, token_sha256) values ('clyde-test', ${await sha256(env('MEMORY_TEST_TOKEN'))})`
   await putSecret('cron_secret', env('MEMORY_TEST_CRON_SECRET'))
 }

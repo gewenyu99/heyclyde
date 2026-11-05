@@ -96,7 +96,7 @@ function settled(w: string, n: number, title = w, body?: string) {
 /** Serves one parameter set to every new session, and nothing else. */
 async function serve(id: string) {
   const all = sql('select id from memory.param_set').map((r) => r.id as string)
-  json(await admin('PUT', '/allocation', { rows: all.map((param_set) => param_set === id ? { param_set, role: 'default', weight: 1000 } : { param_set, role: 'off', weight: 0 }) }))
+  json(await admin('PUT', '/allocation', { by: 'wen', rows: all.map((param_set) => param_set === id ? { param_set, role: 'default', weight: 1000 } : { param_set, role: 'off', weight: 0 }) }))
 }
 /** A new session on the arm's set. */
 async function on(arm: Arm | string) {
