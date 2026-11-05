@@ -2,8 +2,9 @@
 import { sessionSet, unitOf } from "./allocation.ts";
 import { type Row, type Sql, sql } from "./db.ts";
 import { features } from "./features.ts";
-import type { Params, ParamSet } from "./params.ts";
-import { ARMS, fetchEntries, pack, type Ranked, redact as redactPrivate, renderEntry } from "./search.ts";
+import { type Params, type ParamSet, paramSet } from "./params.ts";
+import { ARMS, fetchEntries, type Frontier, pack, type Ranked, redact as redactPrivate, renderEntry } from "./search.ts";
+import { closingLine, deepPool, DEPTHS, nextPage, PAGE_HEAD } from "./deep.ts";
 import * as store from "./blobs.ts";
 import { MEDIA_TYPE_RE, Refused, SCOPE_RE } from "./write.ts";
 import { redact, redactText } from "./redact.ts";
@@ -97,7 +98,9 @@ function degradedLine(degraded: string) {
  * a line that is exactly "On trial". */
 export function packetText(chunks: string[], lines: boolean, degraded: string | null = null, trial: string[] = []) {
   const head = degraded ? degradedLine(degraded) + "\n\n" : "";
-  if (!chunks.length && !trial.length) return head + "Nothing in memory matches. Ask Wen rather than guessing.";
+  if (!chunks.length && !trial.length) {
+    return head + "Nothing in memory matches. Call recall_more with this retrieval id to dig deeper, then ask Wen rather than guessing.";
+  }
   const main = !chunks.length ? "" : lines ? "Index lines that match. Open any with get_entry(id).\n" + chunks.join("\n") : chunks.join("\n\n");
   if (!trial.length) return head + main;
   return head + (main ? main + "\n\n" : "") + "On trial\n" + trial.join("\n\n");
@@ -108,18 +111,33 @@ export function packetText(chunks: string[], lines: boolean, degraded: string | 
  * An MCP recall without a scope also serves the trial lane of a set that has one: entries with chances left come under "On
  * trial", and each one shown spends a chance. The spend, the packet and the retrieval row are one transaction, so a recall that
  * fails spends nothing, and an entry whose last chance a concurrent recall took is dropped from this packet. A scoped recall
- * serves its run's notes in the main list, and an HTTP recall (clyde-flow) has no way to give feedback or see a trial list. */
+ * serves its run's notes in the main list, and an HTTP recall (clyde-flow) has no way to give feedback or see a trial list.
+ *
+ * With depth "deep" (R29), the packet is followed by the page recall_more would give next, and the one row logs both. */
 export async function recall(session: string, query: string, task = "", client: string | null = null,
-  scope: string | null = null, principal = "anyone", agent: string = agentName(client)) {
+  scope: string | null = null, principal = "anyone", agent: string = agentName(client), depth: unknown = "packet") {
   if (scope && !SCOPE_RE.test(scope)) throw new Refused(`scope ${JSON.stringify(scope)} must look like run:<id>, or be left out.`);
+  if (typeof depth !== "string" || !DEPTHS.includes(depth)) {
+    throw new Refused(`depth must be "packet" (the default) or "deep" (the packet and the next page), not ${JSON.stringify(depth)}.`);
+  }
   query = redactText(query)[0];
   task = redactText(task)[0];
   const started = performance.now();
   const { set, propensity } = await sessionSet(sql, session, unitOf(scope, principal, client), client);
   const mcp = client !== "http";
-  const { ranked, degraded, delivered, chunks, lines, rejected, trial, rows, frontier, features: logged } =
-    await rankAndPack(sql, set, query, task, scope, true, mcp && !scope, { device: principal, agent });
+  const viewer = { device: principal, agent };
+  const { ranked, degraded, delivered: packed, chunks, lines, rejected, trial, rows, frontier, features: logged } =
+    await rankAndPack(sql, set, query, task, scope, true, mcp && !scope, viewer);
+  let delivered = packed, deeper = "";
   const rid = crypto.randomUUID();
+  if (depth === "deep") {
+    const request = task ? `${task}\n${query}`.trim() : query;
+    const candidates = ranked.map(([id]) => id);
+    const pool = await deepPool(sql, set.params, request, candidates, frontier ?? null);
+    const page = await nextPage(sql, set.params, pool, new Set([...packed, ...trial]), candidates.length, packed.length + 1, decorate(viewer));
+    delivered = [...packed, ...page.delivered];
+    deeper = `\n\n${PAGE_HEAD}\n\n${page.chunks.length ? page.chunks.join("\n\n") + "\n\n" : ""}${closingLine(page, rid, set.params)}`;
+  }
   // Only a whole recall ticks the clock, so a degraded one takes no seq.
   const seq = degraded ? null : sql`nextval('memory.retrieval_seq')`;
   const text = await sql.begin(async (tx) => {
@@ -129,20 +147,69 @@ export async function recall(session: string, query: string, task = "", client: 
           returning id, chances_left`).map((r) => [r.id as string, r.chances_left as number]))
       : new Map<string, number>();
     const shown = trial.filter((id) => left.has(id));
-    const packet = packetText(chunks, lines, degraded, shown.map((id, i) => renderTrialItem(i + 1, rows[id], left.get(id)!)));
+    const packet = packetText(chunks, lines, degraded, shown.map((id, i) => renderTrialItem(i + 1, rows[id], left.get(id)!))) + deeper;
     const text = mcp ? `${packet}\n${feedbackFooter(rid)}` : packet;
     const context: Row = { param_set: set.id, candidates: logged };
     // Best-first spreading's frontier (R44), for recall_more to resume the same queue from.
     if (frontier?.length) context.frontier = frontier.map(([id, strength]) => ({ id, strength }));
     if (shown.length) context.trial = shown.map((id) => ({ id, chance: TRIAL_CHANCES - left.get(id)! }));
     await tx`insert into memory.retrieval (id, mcp_session, arm, query, task, scope, candidates, delivered, rejected, on_trial, latency_ms,
-        degraded, packet, param_set, propensity, seq, context)
+        degraded, packet, param_set, propensity, seq, context, depth)
       values (${rid}, ${session}, ${set.arm}, ${query}, ${task || null}, ${scope || null},
         ${tx.json(ranked.map(([id, score]: Ranked) => ({ id, score })))}, ${tx.json(delivered)}, ${tx.json(rejected)}, ${tx.json(shown)},
         ${Math.round(performance.now() - started)}, ${degraded}, ${text}, ${set.id}, ${propensity}, ${seq},
-        ${tx.json(context)})`;
+        ${tx.json(context)}, ${depth})`;
     return text;
   });
+  return `retrieval ${rid}\n\n${text}`;
+}
+
+/** Adds each row's provenance line (R41) before a page renders it, as rankAndPack does for the packet. */
+const decorate = (viewer: Viewer) => async (rows: Record<string, Row>, ids: string[]) => {
+  for (const [id, line] of await provenanceLines(sql, ids, viewer)) if (id in rows) rows[id] = { ...rows[id], provenance: line };
+};
+
+/** recall_more (R29): the next page past a recall and the pages before it, for the MCP session that made the recall. It is logged as
+ * a child retrieval with the recall's arm, query, task and scope, so feedback on it moves what it showed like a packet's. A scope
+ * given here is ignored: the page comes from the ranking the recall made. Asks no judge, embeds nothing and spends no trial chance. */
+export async function recallMore(session: string, retrievalId: string, viewer: Viewer = null) {
+  const started = performance.now();
+  if (!UUID.test(retrievalId)) return `No retrieval ${retrievalId}.`;
+  // The recall and every page between it and this one. Each shows what the ones before it didn't.
+  const chain = await sql`with recursive c as (
+      select id, parent_id, delivered, on_trial, 0 as n from memory.retrieval where id = ${retrievalId} and mcp_session = ${session}
+      union all
+      select r.id, r.parent_id, r.delivered, r.on_trial, c.n + 1 from memory.retrieval r join c on r.id = c.parent_id where c.n < 10000)
+    select id, parent_id, delivered, on_trial from c order by n`;
+  if (!chain.length) return `No retrieval ${retrievalId}.`;
+  const [root] = await sql`select arm, query, task, scope, candidates, context, param_set, propensity, degraded
+    from memory.retrieval where id = ${chain.at(-1)!.id}`;
+  let set: ParamSet;
+  try {
+    set = await paramSet(sql, root.param_set ?? `${root.arm}.v1`);
+  } catch {
+    set = await paramSet(sql, `${root.arm}.v1`);
+  }
+  const seen = new Set<string>(chain.flatMap((r) => [...(r.delivered ?? []), ...(r.on_trial ?? [])]));
+  const candidates = ((root.candidates ?? []) as { id: string }[]).map((c) => c.id);
+  const frontier: Frontier | null = Array.isArray(root.context?.frontier)
+    ? root.context.frontier.map((f: { id: string; strength: number }) => [f.id, f.strength])
+    : null;
+  const request = root.task ? `${root.task}\n${root.query}`.trim() : root.query;
+  const pool = await deepPool(sql, set.params, request, candidates, frontier);
+  const page = await nextPage(sql, set.params, pool, seen, candidates.length, 1, decorate(viewer));
+  // The ranking was the recall's, so a recall that ranked without vectors pages without them too. A page judges nothing.
+  const degraded = String(root.degraded ?? "").split("; ").filter((d) => d.startsWith("embed-failed")).join("; ") || null;
+  const rid = crypto.randomUUID();
+  const head = degraded ? `Degraded: ${degraded}; results are keyword-only.\n\n` : "";
+  const body = page.chunks.length ? page.chunks.join("\n\n") + "\n\n" : "";
+  const text = `${head}${PAGE_HEAD}\n\n${body}${closingLine(page, rid, set.params)}` + (page.delivered.length ? `\n${feedbackFooter(rid)}` : "");
+  await sql`insert into memory.retrieval (id, mcp_session, arm, query, task, scope, candidates, delivered, rejected, on_trial, latency_ms,
+      degraded, packet, param_set, propensity, seq, context, parent_id, depth)
+    values (${rid}, ${session}, ${root.arm}, ${root.query}, ${root.task}, ${root.scope},
+      ${sql.json([])}, ${sql.json(page.delivered)}, ${sql.json([])}, ${sql.json([])},
+      ${Math.round(performance.now() - started)}, ${degraded}, ${text}, ${set.id}, ${root.propensity}, ${null},
+      ${sql.json({ param_set: set.id, root: chain.at(-1)!.id })}, ${retrievalId}, 'deep')`;
   return `retrieval ${rid}\n\n${text}`;
 }
 

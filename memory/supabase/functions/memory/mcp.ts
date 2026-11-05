@@ -14,7 +14,8 @@ const VERSIONS =["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 export const INSTRUCTIONS = "Wen's memory. Register once with register_agent (name, context work, personal or both, surface, " +
   "description): memory remembers it for this token and app, and your notes and messages then carry your name. You can use " +
   "memory before you have, and each reply reminds you until you do. Call recall before acting on anything that depends on Wen's decisions, " +
-  "preferences or history. Wen's other agents leave you messages. Call check_messages when you start a task, " +
+  "preferences or history. When a recall misses, call recall_more(retrieval_id) for the next page, dormant and replaced notes " +
+  "included, before saying memory has nothing. Wen's other agents leave you messages. Call check_messages when you start a task, " +
   "and post_message to reach them. check_messages numbers each message: call ack_messages with those ids once you've " +
   "handled them, or they come back. To keep what you learn, call remember: it needs only pattern, title, body and " +
   "evidence, and every other agent can recall the note at once. Give feedback after every recall: one feedback call " +
@@ -50,11 +51,27 @@ export const TOOLS = [
       "query: what you need to know, in English or 中文.\n" +
       "task: optional one-line description of what you are doing, to sharpen the search.\n" +
       "scope: optional run scope like run:abc. That run's notes rank first. Other runs' notes are searched too.\n" +
+      "depth: optional, packet (the default) or deep, which adds the page recall_more would give next.\n" +
       "Results start with a retrieval id and end with the feedback call to make. Give feedback after every recall, one call " +
       "for the whole packet, so memory learns which results to keep.",
     inputSchema: {
       type: "object", required: ["query"],
-      properties: { query: str("What you need to know"), task: str("What you are doing"), scope: str("run:<id>") },
+      properties: {
+        query: str("What you need to know"), task: str("What you are doing"), scope: str("run:<id>"),
+        depth: str("packet (default) or deep: the packet and the next page past it, in one call"),
+      },
+    },
+  },
+  {
+    name: "recall_more",
+    description: "Dig deeper when a recall missed: the next page past what that recall showed, in the order it ranked them, then " +
+      "the notes recall leaves out, dormant (low strength) and superseded ones included. Each item is labelled with its kind, " +
+      "strength and state: settled, on trial, dormant, or superseded by its replacement. Call it before saying memory has " +
+      "nothing. Each page has its own retrieval id: give feedback on it, and pass it to recall_more for the page after. A " +
+      "dormant note you mark used comes back. Only the session that made the recall can dig into it.",
+    inputSchema: {
+      type: "object", required: ["retrieval_id"],
+      properties: { retrieval_id: str("The retrieval id of the recall, or of the last recall_more page") },
     },
   },
   {
@@ -250,7 +267,9 @@ function mailboxes(c: Pick<Call, "agent" | "client">): string[] {
 
 const RUN: Record<string, (c: Call) => Promise<string>> = {
   register_agent: register,
-  recall: (c) => service.recall(c.session, s(c.args.query), s(c.args.task), c.client, s(c.args.scope) || null, c.principal, nameOf(c)),
+  recall: (c) => service.recall(c.session, s(c.args.query), s(c.args.task), c.client, s(c.args.scope) || null, c.principal, nameOf(c),
+    c.args.depth ?? "packet"),
+  recall_more: (c) => service.recallMore(c.session, s(c.args.retrieval_id), { device: c.principal, agent: nameOf(c) }),
   get_entry: async (c) => (await service.getEntry(c.session, s(c.args.id), { device: c.principal, agent: nameOf(c) })) ?? `No entry ${s(c.args.id)}.`,
   get_blob: ({ args }) => service.getBlob(s(args.sha256), Number(args.offset ?? 0), Number(args.limit ?? 20000)),
   upload_blob: ({ principal, args }) => service.uploadBlob(principal, args),
@@ -328,7 +347,7 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
       const remind = async (text: string) => {
         if (!session) return text;
         try {
-          const own = name === "recall" ? RID.exec(text)?.[1] ?? null : null;
+          const own = name === "recall" || name === "recall_more" ? RID.exec(text)?.[1] ?? null : null;
           const line = await service.reminder(session, own);
           return line ? `${text}\n${line}` : text;
         } catch (e) {

@@ -298,7 +298,7 @@ Recalls, newest first. `q` is a substring of the query or the task. Each item ha
 ```json
 {"retrieval": {"id": "...", "mcp_session": "...", "arm": "hybrid", "query": "...", "task": null,
                "candidates": [...], "delivered": [...], "rejected": [], "latency_ms": 12, "degraded": null, "created_at": "...",
-               "packet": "Index lines that match. ..."},
+               "packet": "Index lines that match. ...", "parent_id": null, "depth": "packet"},
  "client": "claude-code",
  "candidates": [{"rank": 1, "id": "tea-oolong-temp", "score": 0.09, "title": "...", "authority": "approved",
                  "superseded_by": [], "current": true, "delivered": true, "exists": true}],
@@ -306,6 +306,8 @@ Recalls, newest first. `q` is a substring of the query or the task. Each item ha
 ```
 
 `packet` is the exact text the agent read under the retrieval id. Recalls made before it was stored have null.
+
+`parent_id` is set on a `recall_more` page (R29): the retrieval id it was called with, a recall or the page before it. A page has `depth` `deep`, the recall's arm, query, task and scope, no candidates, no rejected entries and no seq, since it doesn't tick the recall clock. A recall with depth `deep` has `depth` `deep` and no parent, and its `delivered` is the packet followed by the page. Every other recall has `depth` `packet`. The overview's `recalls` count leaves pages out.
 
 `exists` is false for an entry deleted since the recall. `superseded_by` and `current` are the entry's state now. The store keeps no history of it, so an entry superseded after the recall shows as superseded here.
 

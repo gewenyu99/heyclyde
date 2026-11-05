@@ -227,11 +227,19 @@ type Graph = {
 };
 let graphCache: Graph | null = null;
 
-/** The links, cached per isolate for a minute. */
+/** Drop the cached links, so the next ranking reads them fresh. The learner calls it when it changes a co_used link. */
+export const forgetGraph = () => void (graphCache = null);
+
+/** How many sessions must co-use a pair before its co_used link ranks (R43). */
+export const CO_USE_SESSIONS = 2;
+
+/** The links, cached per isolate for a minute. A co_used link counts only once CO_USE_SESSIONS sessions have co-used the pair. */
 async function graph(db: Sql): Promise<Graph> {
   if (graphCache && Date.now() - graphCache.at < 60_000) return graphCache;
   const links = await db`select l.src, l.dst, l.type, coalesce(l.weight, 1) as weight, s.pattern as sp, d.pattern as dp
-       from memory.link l join memory.entry s on s.id = l.src join memory.entry d on d.id = l.dst`;
+       from memory.link l join memory.entry s on s.id = l.src join memory.entry d on d.id = l.dst
+       where l.type <> 'co_used' or exists (select 1 from memory.co_use c
+         where c.src = l.src and c.dst = l.dst and cardinality(c.sessions) >= ${CO_USE_SESSIONS})`;
   graphCache = {
     links: [...links], at: Date.now(), edges: new Map(),
     superseded: new Set(links.filter((l) => l.type === "supersedes").map((l) => l.dst as string)),
@@ -239,7 +247,13 @@ async function graph(db: Sql): Promise<Graph> {
   return graphCache;
 }
 
-/** Every edge with its weight under these link type weights. */
+/** A link's type weight under a set: its exact "src_pattern|type|dst_pattern" key, else the type's "*|type|*" key, else 1. A
+ * co_used link (R43) is 0 unless the set names it, so the sets from before co-use rank as they always did. */
+export function linkTypeWeight(typeWeights: Params["linkTypeWeights"], sp: string, type: string, dp: string): number {
+  return typeWeights[`${sp}|${type}|${dp}`] ?? typeWeights[`*|${type}|*`] ?? (type === "co_used" ? 0 : 1);
+}
+
+/** Every edge with its weight under these link type weights. An edge of weight 0 is left out. */
 function edgesUnder(g: Graph, typeWeights: Params["linkTypeWeights"]): Edges {
   const key = JSON.stringify(typeWeights);
   const hit = g.edges.get(key);
@@ -247,7 +261,8 @@ function edgesUnder(g: Graph, typeWeights: Params["linkTypeWeights"]): Edges {
   const out: Edges = new Map();
   const add = (a: string, b: string, w: number) => { if (!out.has(a)) out.set(a, []); out.get(a)!.push([b, w]); };
   for (const l of g.links) {
-    const w = (typeWeights[`${l.sp}|${l.type}|${l.dp}`] ?? 1) * l.weight;
+    const w = linkTypeWeight(typeWeights, l.sp, l.type, l.dp) * l.weight;
+    if (!(w > 0)) continue;
     if (l.type === "supersedes") {
       add(l.dst, l.src, w);  // old → new only
     } else {

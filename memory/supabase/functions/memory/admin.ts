@@ -113,7 +113,8 @@ async function overview() {
       (select count(*) from memory.link) as links, (select count(*) from memory.source) as sources,
       (select count(*) from memory.entry where pattern = 'projects') as projects, (select count(*) from memory.event) as events,
       (select count(distinct session_id) from memory.event where event <> 'get_entry') as client_sessions,
-      (select count(*) from memory.mcp_session) as mcp_sessions, (select count(*) from memory.retrieval) as recalls,
+      (select count(*) from memory.mcp_session) as mcp_sessions,
+      (select count(*) from memory.retrieval where parent_id is null) as recalls,
       (select count(*) from memory.feedback) as feedback, (select count(*) from memory.message) as messages,
       (select count(*) from memory.device where revoked_at is null) as devices,
       (select max(received_at) from memory.event) as last_event,
@@ -857,7 +858,7 @@ async function putSecret(name: string, data: Row) {
 }
 
 // Tables /import fills, the same set /export writes, and the serial columns whose sequences follow the rows in.
-const IMPORTABLE = new Set(["source", "entry", "link", "question", "qrel", "blob", "entry_blob", "entry_provenance", "agent", "agent_binding", "mcp_session", "mcp_client",
+const IMPORTABLE = new Set(["source", "entry", "link", "co_use", "question", "qrel", "blob", "entry_blob", "entry_provenance", "agent", "agent_binding", "mcp_session", "mcp_client",
   "retrieval", "event", "feedback", "message", "message_delivery", "admin_audit", "link_type_weight", "device", "embed_usage", "param_set",
   "allocation", "openai_usage"]);
 const SERIAL = ["event", "feedback", "message", "message_delivery", "admin_audit", "device"];

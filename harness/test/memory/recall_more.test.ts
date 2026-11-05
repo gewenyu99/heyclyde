@@ -389,7 +389,7 @@ test('R29: helpful feedback on a recall_more hit revives a dormant entry', { ski
   assert.equal(r1.delivered.includes(d), false)
   const r2 = await more(s, r1.id, 'hybrid')
   assert.deepEqual(r2.delivered, [d])
-  assert.equal((await s.tool('feedback', { retrieval_id: r2.id, verdict: 'helpful', entry_id: d })).text, 'Logged.')
+  assert.match((await s.tool('feedback', { retrieval_id: r2.id, verdict: 'helpful', entry_id: d })).text, /^Logged\./)
   await learnNow()
   assert.equal(conf(d), 0.16)
   assert.deepEqual(logRows(d), [{ before: 0.14, after: 0.16, retrieval_id: r2.id }])
@@ -409,7 +409,7 @@ test('R29: wrong or irrelevant feedback on a recall_more hit lowers it, and feed
     const r2 = await more(s, r1.id, 'hybrid')
     assert.deepEqual(r2.delivered, [d])
     const fb = verdict ? { retrieval_id: r2.id, verdict, entry_id: d } : { retrieval_id: r2.id, verdict: 'helpful' }
-    assert.equal((await s.tool('feedback', fb)).text, 'Logged.')
+    assert.match((await s.tool('feedback', fb)).text, /^Logged\./)
     await learnNow()
     assert.equal(conf(d), after, String(verdict))
     assert.equal(logRows(d).length, verdict ? 1 : 0)

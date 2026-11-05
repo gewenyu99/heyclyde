@@ -25,7 +25,7 @@ const MAX_HOOK_BODY = 2_000_000;
 const MAX_ENTRY_BODY = 12 * 1024 * 1024;
 const WRITE_DEADLINE_MS = 1500;
 // Tables the export carries, parents first, so a restore can load them in order. Embeddings are rebuilt, not kept.
-const EXPORT = ["source", "entry", "link", "question", "qrel", "blob", "entry_blob", "entry_provenance", "agent", "agent_binding", "mcp_session",
+const EXPORT = ["source", "entry", "link", "co_use", "question", "qrel", "blob", "entry_blob", "entry_provenance", "agent", "agent_binding", "mcp_session",
   "mcp_client", "retrieval",
   "event", "feedback", "message", "message_delivery", "admin_audit", "link_type_weight", "device", "embed_usage", "param_set", "allocation",
   "openai_usage"];
@@ -88,7 +88,8 @@ async function httpRemember(req: Request, who: Principal) {
 async function httpRecall(req: Request, who: Principal) {
   const body = (await jsonObject(req, 1 << 20)) ?? {};
   const { query, task = "", scope = null } = body;
-  if (!(typeof query === "string" && query.trim()) || typeof task !== "string" || (scope !== null && typeof scope !== "string")) {
+  // R29 leaves clyde-flow's recall out: it has no recall_more, so a depth is refused rather than ignored.
+  if (!(typeof query === "string" && query.trim()) || typeof task !== "string" || (scope !== null && typeof scope !== "string") || "depth" in body) {
     return json({ error: "body must be {query, task, scope}, with a non-empty query" }, 400);
   }
   try {
@@ -102,7 +103,7 @@ async function httpRecall(req: Request, who: Principal) {
 
 // A stable order per table, so offset paging never skips or repeats a row.
 const ORDER: Record<string, string> = {
-  source: "id", entry: "id", link: "src, dst, type", question: "id", qrel: "question_id, entry_id", blob: "sha256",
+  source: "id", entry: "id", link: "src, dst, type", co_use: "src, dst", question: "id", qrel: "question_id, entry_id", blob: "sha256",
   entry_blob: "entry_id, name", entry_provenance: "entry_id", agent: "name", agent_binding: "principal, client", mcp_session: "id", mcp_client: "session_id", retrieval: "created_at, id", event: "id",
   feedback: "id", message: "id", message_delivery: "id", admin_audit: "id", link_type_weight: "src_pattern, link_type, dst_pattern", device: "id",
   embed_usage: "month", param_set: "id", allocation: "param_set", openai_usage: "month, kind",

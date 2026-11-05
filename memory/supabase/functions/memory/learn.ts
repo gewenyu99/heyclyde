@@ -4,17 +4,41 @@
 //     blaming it (wrong), the agent's feedback naming it (used, irrelevant or wrong), or the agent opening it with get_entry
 //   - an entry shown but named by no one, in a packet whose feedback named other entries, is ignored: a weak negative
 //   - step() turns an outcome into a new confidence: a big step while the entry was on trial, a small one once settled
-//   - his next prompt doesn't push back: every delivered item +0.03, links between delivered items +0.2
+//   - his next prompt doesn't push back: every delivered item +0.03, links between delivered items +0.2. A dormant item gets
+//     nothing for being shown (R29: recall_more shows them), only for an outcome
 //   - the filter judged a candidate irrelevant: its miss streak grows, and past 5 in a row it eases ×0.98 per miss
+//   - two or more entries used (R43): a co_used link between each pair of the top 4, +0.1 up to 1, and between their projects
+//     when those differ. A recall on the clock that shows one end without the pair co-used counts a miss, and every 200 misses
+//     take 0.05 off the link, which goes at 0
 // An entry under 0.15 goes dormant: recall skips it, nothing deletes it. Every change lands in memory.confidence_log.
 import { type Row, type Sql, sql } from "./db.ts";
 import { reaction } from "./judge.ts";
 import { paramSet } from "./params.ts";
+import { CO_USE_SESSIONS, forgetGraph } from "./search.ts";
 
 const WAIT_MINUTES = 30;           // how long a recall waits for Wen's next prompt before it counts as no reaction
 const REINFORCE = 0.03, CAP = 0.99;
 const MISS_FREE = 5, MISS_EASE = 0.98;
 const LINK_UP = 0.2, LINK_CAP = 5, LINK_DOWN = 0.9, LINK_FLOOR = 0.2;
+const DORMANT = 0.15;
+
+/** R43's co-use rule. A pair gains `step` a co-use up to `cap`. One recall links every pair of its top `topEntries` used
+ * entries, so at most `maxPairs`. A link ranks once `sessions` sessions have co-used it, and loses `fade` for every `fadeEvery`
+ * recalls on the clock that show one end without the pair. */
+export const CO_USE = { step: 0.1, cap: 1, topEntries: 4, maxPairs: 6, sessions: CO_USE_SESSIONS, fadeEvery: 200, fade: 0.05 } as const;
+const round6 = (x: number) => Math.round(x * 1e6) / 1e6;
+export const coUsed = (w: number) => round6(Math.min(CO_USE.cap, w + CO_USE.step));
+export const faded = (w: number) => round6(Math.max(0, w - CO_USE.fade));
+
+/** The pairs one recall's used entries link, [src, dst] with src < dst: every pair of the first topEntries distinct ids. */
+export function coPairs(used: string[]): [string, string][] {
+  const top = [...new Set(used)].slice(0, CO_USE.topEntries);
+  const out: [string, string][] = [];
+  for (let i = 0; i < top.length; i++) {
+    for (let j = i + 1; j < top.length; j++) out.push(top[i] < top[j] ? [top[i], top[j]] : [top[j], top[i]]);
+  }
+  return out.slice(0, CO_USE.maxPairs);
+}
 
 export type Outcome = "used" | "irrelevant" | "wrong" | "opened" | "ignored";
 export type Steps = { trialStep: number; settledStep: number };
@@ -73,7 +97,7 @@ async function setConfidence(db: Sql, id: string, next: (c: number) => number, r
 async function moveLinks(db: Sql, among: string[], touching: string | null, up: boolean, rid: string) {
   if (among.length < 2) return;
   const links = await db`select src, dst, type, weight from memory.link
-    where src = any(${among}::text[]) and dst = any(${among}::text[]) and type <> 'part_of'
+    where src = any(${among}::text[]) and dst = any(${among}::text[]) and type not in ('part_of', 'co_used')
       and (${touching}::text is null or src = ${touching} or dst = ${touching})`;
   for (const l of links) {
     const w = l.weight ?? 1;
@@ -90,25 +114,83 @@ function itemText(r: Row) {
   return r.sensitivity === "normal" ? `${r.title}. ${r.body ?? ""}` : r.title;
 }
 
-/** The step sizes of the set that served a recall, or the defaults when it names none or is gone. */
-async function stepsOf(setId: string | null): Promise<Steps> {
-  if (!setId) return STEPS;
+/** The step sizes of the set that served a recall and its dormant line, or the defaults when it names none or is gone. */
+async function stepsOf(setId: string | null): Promise<Steps & { dormant: number }> {
+  if (!setId) return { ...STEPS, dormant: DORMANT };
   try {
     const p = (await paramSet(sql, setId)).params;
-    return { trialStep: p.trialStep ?? STEPS.trialStep, settledStep: p.settledStep ?? STEPS.settledStep };
+    return { trialStep: p.trialStep ?? STEPS.trialStep, settledStep: p.settledStep ?? STEPS.settledStep, dormant: p.dormant ?? DORMANT };
   } catch {
-    return STEPS;
+    return { ...STEPS, dormant: DORMANT };
   }
+}
+
+/** Add one co-use to the co_used link between src and dst (src < dst), made at 0.1 if it isn't there, from this session. */
+async function strengthen(db: Sql, src: string, dst: string, session: string, rid: string, why: string) {
+  const [l] = await db`select weight from memory.link where src = ${src} and dst = ${dst} and type = 'co_used'`;
+  const before = l ? Number(l.weight ?? 0) : 0, after = coUsed(before);
+  await db`insert into memory.link (src, dst, type, weight) values (${src}, ${dst}, 'co_used', ${after})
+    on conflict (src, dst, type) do update set weight = excluded.weight`;
+  await db`insert into memory.co_use (src, dst, sessions, uses, misses) values (${src}, ${dst}, array[${session}::text], 1, 0)
+    on conflict (src, dst) do update set uses = memory.co_use.uses + 1, misses = 0, updated_at = now(),
+      sessions = case when ${session}::text = any(memory.co_use.sessions) or cardinality(memory.co_use.sessions) >= ${CO_USE.sessions}
+        then memory.co_use.sessions else memory.co_use.sessions || ${session}::text end`;
+  if (Math.abs(after - before) >= 1e-6) {
+    await db`insert into memory.confidence_log (target, before, after, reason, retrieval_id)
+      values (${`link:${src}|co_used|${dst}`}, ${l ? before : null}, ${after}, ${why}, ${rid})`;
+  }
+}
+
+/** R43 for one recall: link the pairs among its used entries and their projects, and count a miss on every other co_used link
+ * with an end it showed, when the recall is on the clock. Says whether any co_used link changed. */
+async function coUse(db: Sql, r: Row, shown: string[], used: string[]): Promise<boolean> {
+  const pairs = coPairs(used);
+  const session = String(r.mcp_session ?? r.id);
+  for (const [a, b] of pairs) await strengthen(db, a, b, session, r.id, "used together");
+  if (pairs.length) {
+    const ends = [...new Set(pairs.flat())];
+    const projects = new Map((await db`select e.id, e.project from memory.entry e join memory.entry p on p.id = e.project
+      where e.id = any(${ends}::text[])`).map((e) => [e.id as string, e.project as string]));
+    const across = new Set<string>();
+    for (const [a, b] of pairs) {
+      const pa = projects.get(a), pb = projects.get(b);
+      if (pa && pb && pa !== pb) across.add(pa < pb ? `${pa}\n${pb}` : `${pb}\n${pa}`);
+    }
+    for (const key of across) {
+      const [pa, pb] = key.split("\n");
+      await strengthen(db, pa, pb, session, r.id, "their entries were used together");
+    }
+  }
+  if (r.seq === null || r.seq === undefined || !shown.length) return pairs.length > 0;
+  // A miss is a recall on the clock that showed one end and didn't co-use the pair. Every fadeEvery of them take one fade off.
+  const keep = pairs.map(([a, b]) => `${a}\n${b}`);
+  const due = await db`update memory.co_use c set updated_at = now(),
+      misses = case when c.misses + 1 >= ${CO_USE.fadeEvery} then 0 else c.misses + 1 end
+    where (c.src = any(${shown}::text[]) or c.dst = any(${shown}::text[])) and not (c.src || E'\n' || c.dst = any(${keep}::text[]))
+    returning c.src, c.dst, c.misses`;
+  let changed = pairs.length > 0;
+  for (const d of due.filter((x) => x.misses === 0)) {
+    const [l] = await db`select weight from memory.link where src = ${d.src} and dst = ${d.dst} and type = 'co_used'`;
+    if (!l) continue;
+    const before = Number(l.weight ?? 0), after = faded(before);
+    if (after <= 1e-6) await db`delete from memory.link where src = ${d.src} and dst = ${d.dst} and type = 'co_used'`;
+    else await db`update memory.link set weight = ${after} where src = ${d.src} and dst = ${d.dst} and type = 'co_used'`;
+    await db`insert into memory.confidence_log (target, before, after, reason, retrieval_id)
+      values (${`link:${d.src}|co_used|${d.dst}`}, ${before}, ${after}, ${`shown ${CO_USE.fadeEvery} times without being used together`}, ${r.id})`;
+    changed = true;
+  }
+  return changed;
 }
 
 const SAYS: Record<string, Outcome> = { helpful: "used", used: "used", irrelevant: "irrelevant", wrong: "wrong" };
 
 /** Learn from up to `limit` recalls. Returns what it did, for the cron log and the console. */
 export async function learn(limit = 40) {
-  const pending = await sql`select r.id, r.delivered, r.rejected, r.on_trial, r.param_set, r.created_at, r.mcp_session, s.claude_session_id
+  const pending = await sql`select r.id, r.delivered, r.rejected, r.on_trial, r.param_set, r.created_at, r.mcp_session, r.seq, s.claude_session_id
     from memory.retrieval r left join memory.mcp_session s on s.id = r.mcp_session
     where r.learned_at is null order by r.created_at limit ${limit}`;
   const done = { learned: 0, pushback: 0, helpful: 0, no_reaction: 0, waiting: 0, failed: 0 };
+  let linked = false;
   for (const r of pending) {
     const delivered: string[] = r.delivered ?? [], rejected: string[] = r.rejected ?? [], onTrial: string[] = r.on_trial ?? [];
     const shown = [...delivered, ...onTrial];
@@ -147,7 +229,11 @@ export async function learn(limit = 40) {
       : []);
     const blamed = read?.pushback && read.cause && shown.includes(read.cause) ? read.cause : null;
     const outcomes = outcomesOf({ shown, named, opened, blamed });
-    const sizes = outcomes.size ? await stepsOf(r.param_set) : STEPS;
+    const sizes = await stepsOf(r.param_set);
+    // R43: what was used, by the agent's outcome or Wen's confirmation from the console, in the order the recall showed it.
+    const confirmed = new Set<string>((await sql`select entry_id from memory.feedback where retrieval_id = ${r.id} and source = 'wen'
+        and entry_id is not null and verdict in ('used', 'helpful')`).map((f) => f.entry_id as string));
+    const used = shown.filter((id) => outcomes.get(id) === "used" || confirmed.has(id));
     await sql.begin(async (tx) => {
       // Fade by recalls only: a miss is this entry turning up as a candidate and being judged irrelevant.
       for (const id of rejected) {
@@ -158,7 +244,10 @@ export async function learn(limit = 40) {
       if (read?.pushback) {
         if (blamed && delivered.includes(blamed)) await moveLinks(tx, delivered, blamed, false, r.id);
       } else if (read) {
-        for (const id of delivered) await setConfidence(tx, id, (c) => Math.min(CAP, c + REINFORCE), "served, no pushback", r.id);
+        // A dormant entry recall_more showed is not revived for being shown, only by an outcome below.
+        for (const id of delivered) {
+          await setConfidence(tx, id, (c) => c < sizes.dormant ? c : Math.min(CAP, c + REINFORCE), "served, no pushback", r.id);
+        }
         await moveLinks(tx, delivered, null, true, r.id);
       }
       for (const [id, outcome] of outcomes) {
@@ -166,6 +255,7 @@ export async function learn(limit = 40) {
         const why = id === blamed && outcome === "wrong" ? "Wen pushed back on it" : WHY[outcome];
         await setConfidence(tx, id, (c) => step({ confidence: c, trial }, outcome, sizes), `${trial ? "on trial: " : ""}${why}`, r.id);
       }
+      if (await coUse(tx, r, shown, used)) linked = true;
       await tx`update memory.retrieval set learned_at = now(),
         reaction = ${tx.json(read ? { pushback: read.pushback, p: read.p, cause: read.cause, event_id: next.id } : { none: true })}
         where id = ${r.id}`;
@@ -175,5 +265,7 @@ export async function learn(limit = 40) {
     else if (read.pushback) done.pushback++;
     else done.helpful++;
   }
+  // This isolate ranks with the new co_used links at once. Others pick them up when their minute's cache runs out.
+  if (linked) forgetGraph();
   return done;
 }
