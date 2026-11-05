@@ -289,12 +289,12 @@ test('a real claim mints a working token, and no table holds it or any other cre
   assert.ok(devices.some((d) => d.name === 'claimed-box'))
   for (const d of devices) assert.match(d.token_sha256, hex, `device ${d.name}`)
   const credentials = sql(`select name, value from memory.setting where name like '%sha256'`)
-  assert.deepEqual(credentials.map((c) => c.name).sort(), ['admin_token_sha256', 'runtime_token_sha256'])
+  assert.deepEqual(credentials.map((c) => c.name).sort(), ['admin_token_sha256', 'research_token_sha256', 'runtime_token_sha256'])
   for (const c of credentials) assert.match(c.value, hex, c.name)
   // No row anywhere a token could land holds one. The messages name the credential, never its value.
   const rows = sql(['device', 'setting', 'admin_audit', 'message', 'event']
     .map((t) => `select '${t}' as tbl, to_jsonb(t)::text as row from memory.${t} t`).join(' union all '))
-  const plaintext = { claimed: token, device: memory.token, runtime: memory.runtimeToken, admin: memory.adminToken, cron: memory.cronSecret }
+  const plaintext = { claimed: token, device: memory.token, runtime: memory.runtimeToken, admin: memory.adminToken, research: memory.researchToken, cron: memory.cronSecret }
   for (const [name, value] of Object.entries(plaintext)) {
     const hit = rows.find((row) => row.row.includes(value))
     assert.ok(!hit, `the ${name} credential sits in plaintext in memory.${hit?.tbl}`)
