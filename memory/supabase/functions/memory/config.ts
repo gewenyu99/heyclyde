@@ -13,4 +13,6 @@ export const config = {
   embedDim: 1024,
   // A client whose version stamp is older than this many days, and behind the server, is told to rerun the installer.
   clientCutoffDays: num("MEMORY_CLIENT_CUTOFF_DAYS", 30),
+  // How long an owner's plan and access are cached per instance (R38): a revoke or refund reaches every instance within it.
+  entitlementTtlMs: num("MEMORY_ENTITLEMENT_TTL_MS", 60_000),
 };

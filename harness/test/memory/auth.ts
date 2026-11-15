@@ -60,7 +60,8 @@ export async function startFakeAuth(extra?: (req: http.IncomingMessage, res: htt
       if (req.method === 'GET' && path === '/auth/v1/user') {
         const claims = claimsOf(req.headers.authorization ?? '')
         if (!claims?.email) return reply(401, { msg: 'invalid JWT' })
-        return reply(200, { id: claims.sub ?? 'fake-user', email: claims.email, email_confirmed_at: '2026-11-01T00:00:00Z' })
+        // A token with unconfirmed: true is a user who never clicked their confirmation link.
+        return reply(200, { id: claims.sub ?? 'fake-user', email: claims.email, email_confirmed_at: claims.unconfirmed ? null : '2026-11-01T00:00:00Z' })
       }
       if (req.method === 'POST' && path === '/auth/v1/otp') return reply(200, {})
       if (req.method === 'POST' && path === '/auth/v1/token') {

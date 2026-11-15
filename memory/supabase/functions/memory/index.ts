@@ -4,6 +4,8 @@ import "jsr:@supabase/functions-js@2/edge-runtime.d.ts";
 import * as admin from "./admin.ts";
 import { servingArms } from "./allocation.ts";
 import { allowed, authenticate, baseOf, type Principal, viaProxy } from "./auth.ts";
+import * as billing from "./billing/index.ts";
+import * as limits from "./billing/limits.ts";
 import { config } from "./config.ts";
 import { sql } from "./db.ts";
 import { learn } from "./learn.ts";
@@ -80,11 +82,15 @@ async function hooks(req: Request, event: string, url: URL, who: Principal) {
 async function httpRemember(req: Request, who: Principal) {
   const payload = await jsonObject(req, MAX_ENTRY_BODY);
   if (!payload) return json({ error: "body must be a JSON object" }, 400);
+  await limits.burst(who.entitlement);
+  await limits.assertRemember(who.entitlement, payload);
+  await limits.charge(who.entitlement, "remembers_month");
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<"late">((resolve) => timer = setTimeout(() => resolve("late"), WRITE_DEADLINE_MS));
   try {
     const result = await Promise.race([remember(payload, who.role === "runtime" ? "runtime" : "agent", "agent", who.device ?? who.role, { agent: "http", context: null, session: null }), deadline]);
     if (result === "late") return json({ error: "write temporarily unavailable; retry the same entry" }, 503);
+    await limits.countBlobs(who.entitlement, result.blobs ?? []);
     return json(result);
   } catch (e) {
     if (e instanceof Refused) return json({ error: e.message }, 400);
@@ -101,6 +107,8 @@ async function httpRecall(req: Request, who: Principal) {
   if (!(typeof query === "string" && query.trim()) || typeof task !== "string" || (scope !== null && typeof scope !== "string") || "depth" in body) {
     return json({ error: "body must be {query, task, scope}, with a non-empty query" }, 400);
   }
+  await limits.burst(who.entitlement);
+  await limits.charge(who.entitlement, "recalls_month");
   try {
     // Each scope is its own session, so a run draws one arm and keeps it.
     return text(await service.recall(`http-${scope || "global"}`, query, task, "http", scope || null, who.device ?? who.role));
@@ -231,24 +239,36 @@ async function install(req: Request, path: string, url: URL) {
   return json({ error: "No such endpoint." }, 404);
 }
 
-async function route(req: Request): Promise<Response> {
-  const url = new URL(req.url), path = routeOf(url), m = req.method;
+async function route(req: Request, time: (entry: string) => void): Promise<Response> {
+  const url = new URL(req.url), path = routeOf(url);
   const who = await authenticate(req, path);
   if (who instanceof Response) return who;
+  if (who.timing) time(who.timing);
+  // Every OpenAI token this request spends counts against its owner's plan (R38).
+  return limits.within(who.entitlement, () => serve(req, url, path, who));
+}
+
+async function serve(req: Request, url: URL, path: string, who: Principal): Promise<Response> {
+  const m = req.method;
 
   if (path === "/healthz") {
     await sql`select 1`;
     return json({ ok: true, arms: await servingArms(sql).catch(() => config.arms), version: SERVER_VERSION, client_version: CLIENT_VERSION });
   }
   if (path === "/mcp" || path === "/mcp/") return mcp.handle(req, who);
+  if (path.startsWith("/billing/")) return billing.handle(req, path, url, await viaProxy(req));
   if (path.startsWith("/.well-known/oauth-protected-resource")) return oauth.resourceMetadata(await baseOf(req));
   if (path.startsWith("/oauth/")) {
     // The Worker asks for JSON and renders the pages (R46). Anyone else, a caller straight to Supabase included, gets text.
     const asJson = (req.headers.get("accept") ?? "").includes("application/json") && await viaProxy(req);
-    return oauth.handle(await baseOf(req), path, url, asJson);
+    return oauth.handle(req, await baseOf(req), path, url, asJson);
   }
   if (path === "/install" || path.startsWith("/install/")) return install(req, path, url);
-  if (m === "POST" && path === "/devices/claim") return admin.claimDevice(await admin.readJson(req));
+  if (m === "POST" && path === "/devices/claim") {
+    const data = await admin.readJson(req);
+    await limits.assertAgentSlot(who.entitlement, String(data?.name ?? ""));
+    return admin.claimDevice(data, who.owner ?? null, !who.owner || Boolean(who.entitlement?.allowlisted));
+  }
   if (path.startsWith("/api/v1") || path === "/") {
     return path === "/" ? json({ ok: true }) : admin.handle(req, path, who.role === "research" ? "research" : "admin");
   }
@@ -271,6 +291,7 @@ async function route(req: Request): Promise<Response> {
     return entry === null ? json({ error: "no such entry" }, 404) : text(entry);
   }
   if (m === "GET" && (match = /^\/blobs\/([^/]+)$/.exec(path))) {
+    await limits.assertArtifacts(who.entitlement);
     const blob = await service.readBlob(match[1]);
     if (!blob) return json({ error: "no such blob" }, 404);
     if (!blob.public) return json({ error: service.PRIVATE_BLOB }, 403);
@@ -308,22 +329,25 @@ const CORS = {
   "access-control-allow-origin": "*",
   "access-control-allow-headers": "authorization, content-type, mcp-session-id, mcp-protocol-version, x-memory-client-version, x-memory-update-failed",
   "access-control-allow-methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  "access-control-expose-headers": "mcp-session-id, retry-after, x-rows, www-authenticate, x-memory-version, x-memory-client-latest, x-memory-client-status",
+  "access-control-expose-headers": "mcp-session-id, retry-after, x-rows, www-authenticate, x-memory-version, x-memory-client-latest, x-memory-client-status, server-timing",
 };
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
   let res: Response;
+  let timing: string | undefined;
   try {
-    res = await route(req);
+    res = await route(req, (t) => timing = t);
   } catch (e) {
-    if (e instanceof admin.ApiError) res = json({ error: e.error }, e.status);
+    if (e instanceof limits.Limited) res = e.response;
+    else if (e instanceof admin.ApiError) res = json({ error: e.error }, e.status);
     else {
       console.error(e);
       res = json({ error: "The server hit an error. Its log has the details." }, 500);
     }
   }
   for (const [k, v] of Object.entries(CORS)) res.headers.set(k, v);
+  if (timing && !res.headers.has("server-timing")) res.headers.set("server-timing", timing);
   // Every answer carries the server's version and the newest client version, the one a hook updates itself to. A client
   // that sent its own also hears where it stands (R31).
   res.headers.set("x-memory-version", SERVER_VERSION);

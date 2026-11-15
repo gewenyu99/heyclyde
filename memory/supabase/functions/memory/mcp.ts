@@ -2,6 +2,8 @@
 // name, so a later call in any isolate knows claude from codex and keeps the arm its session drew. GET gets 405, which
 // the spec allows a server that offers no stream.
 import type { Principal } from "./auth.ts";
+import type { Verdict } from "./billing/entitlement.ts";
+import * as limits from "./billing/limits.ts";
 import { config } from "./config.ts";
 import { sql } from "./db.ts";
 import * as quests from "./quests.ts";
@@ -302,7 +304,10 @@ function installNote(who: Principal) {
 
 /** The profile a session is registered as, or null. */
 type Profile = { name: string; context: string; surface: string };
-type Call = { session: string; client: string | null; agent: Profile | null; principal: string; args: Record<string, any>; note: string };
+type Call = {
+  session: string; client: string | null; agent: Profile | null; principal: string; args: Record<string, any>; note: string;
+  entitlement?: Verdict;
+};
 const s = (v: unknown, fallback = "") => typeof v === "string" ? v : fallback;
 
 /** The one line every reply of an unregistered session ends with, as a content block of its own so the tool's text is never
@@ -387,6 +392,7 @@ const RUN: Record<string, (c: Call) => Promise<string>> = {
       agent: me, context: c.agent?.context ?? null, session: c.session,
       profile: c.agent ? `${c.agent.name}, a ${c.agent.context} agent on ${c.agent.surface}` : null,
     });
+    await limits.countBlobs(c.entitlement, r.blobs);
     return [`Remembered ${r.id}.`,
       ...r.blobs.map((b: { name: string; sha256: string; kind: string; size: number }) => `Blob ${b.name}: ${b.sha256} (${b.kind}, ${b.size} bytes)`),
       "Keyword search finds it now. Vector search finds it after the next embedding sync."].join("\n");
@@ -465,8 +471,9 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
       const principal = who.device ?? who.role;
       // R67: a chat app that renders cards gets them for the whole session. A coding app's initialize is what it always was.
       const ui = wantsUi(msg.params);
-      // A credential and app that registered before start as that agent.
-      await sql`insert into memory.mcp_client (session_id, client, principal, agent, ui)
+      // A credential and app that registered before start as that agent. A client that can't use memory yet (R38)
+      // connects, but leaves no session behind.
+      if (!who.denied) await sql`insert into memory.mcp_client (session_id, client, principal, agent, ui)
         values (${sid}, ${client}, ${principal}, (select agent from memory.agent_binding where principal = ${principal} and client = ${client}), ${ui})
         on conflict do nothing`;
       return result(id, {
@@ -490,8 +497,18 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
       return read ? result(id, read) : error(id, -32002, `Resource not found: ${String(msg.params?.uri ?? "")}`);
     }
     case "tools/call": {
+      // R38: the 402 or 451 the entitlement check decided, as the HTTP answer, before anything is counted or read.
+      if (who.denied) throw new limits.Limited(who.denied);
       const name = msg.params?.name, run = RUN[name];
       if (!run) return error(id, -32602, `Unknown tool ${name}`);
+      // The burst limit, then the plan's caps on what this tool spends. Each refusal is the HTTP answer.
+      await limits.burst(who.entitlement);
+      if (name === "recall") await limits.charge(who.entitlement, "recalls_month");
+      if (name === "remember") {
+        await limits.assertRemember(who.entitlement, msg.params?.arguments ?? {});
+        await limits.charge(who.entitlement, "remembers_month");
+      }
+      if (name === "get_blob" || name === "upload_blob") await limits.assertArtifacts(who.entitlement);
       const sid = session ?? `anon-${crypto.randomUUID()}`;
       // Every reply, errors included, ends with a reminder while a recall in this MCP session has no feedback. A call with no
       // session header has no recalls of its own to be reminded of.
@@ -519,7 +536,7 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
         cards = known.ui || requestWantsUi(msg.params);
         badge = badgeOf(known);
         const args = msg.params?.arguments ?? {};
-        const text = await run({ session: sid, client: known.client, agent: known.agent, principal, args, note: installNote(who) });
+        const text = await run({ session: sid, client: known.client, agent: known.agent, principal, args, note: installNote(who), entitlement: who.entitlement });
         // R67: the text is what it always was. A card-rendering client also gets the card's data, in _meta, which the
         // model never reads. A registration's card shows the agent it just became.
         if (cards && name === "register_agent") badge = badgeOf(await sessionOf(session, principal));
@@ -557,7 +574,13 @@ export async function handle(req: Request, who: Principal): Promise<Response> {
   const batch = Array.isArray(body);
   const replies = [];
   for (const msg of batch ? body as RpcMessage[] : [body as RpcMessage]) {
-    const reply = await answer(msg, session, minted, who);
+    let reply;
+    try {
+      reply = await answer(msg, session, minted, who);
+    } catch (e) {
+      if (e instanceof limits.Limited) return e.response;
+      throw e;
+    }
     if (reply && msg.id !== undefined) replies.push(reply);
   }
   const headers: Record<string, string> = minted.id ? { "mcp-session-id": minted.id } : {};

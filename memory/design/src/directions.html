@@ -1,0 +1,212 @@
+<title>Clyde Directions</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+<!-- @inline tokens.css -->
+<!-- @inline components.css -->
+/* Page layout: three equal columns of specimens on paper-0, stacking to one under 980px. The page chrome uses the winning tokens. */
+body { margin: 0; background: var(--cl-paper-0); color: var(--cl-ink); font: var(--cl-text-body); -webkit-font-smoothing: antialiased; }
+.page { max-width: 1320px; margin: 0 auto; padding-block: 28px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 36px; }
+.intro { display: grid; gap: 12px; max-width: 760px; margin-bottom: 32px; }
+.intro .cl-lead { max-width: 64ch; }
+.cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start; }
+@media (max-width: 980px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+.dir { display: grid; gap: 14px; min-width: 0; }
+.dir-head { display: grid; gap: 6px; }
+.dir-head h2 { font: var(--cl-text-title-2); letter-spacing: var(--cl-track-title); margin: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dir-head p { margin: 0; color: var(--cl-ink-2); }
+.frame { border-radius: var(--cl-radius-xl); overflow: hidden; border: 1px solid var(--cl-rule-strong); min-width: 0; }
+.swatches { display: flex; height: 28px; border-radius: var(--cl-radius-sm); overflow: hidden; border: 1px solid var(--cl-rule); }
+.swatches i { flex: 1; }
+.notes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; font: var(--cl-text-small); color: var(--cl-ink-2); }
+.notes ul { margin: 6px 0 0; padding-left: 16px; display: grid; gap: 4px; }
+.verdict { margin-top: 48px; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 32px; align-items: start; }
+@media (max-width: 860px) { .verdict { grid-template-columns: minmax(0, 1fr); } }
+.verdict ol { margin: 0; padding-left: 20px; display: grid; gap: 10px; color: var(--cl-ink-2); max-width: 64ch; }
+.verdict ol b { color: var(--cl-ink); }
+.verdict-card { padding: 22px; display: grid; gap: 12px; }
+
+/* ---------- A: Carbon copy (uses components.css as shipped) ---------- */
+.a { background: var(--cl-paper-0); padding: 16px; display: grid; gap: 12px; }
+.a-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.a .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* ---------- B: Guild hall (dark only, by design) ---------- */
+.b { --bg: #16201b; --board: #1e2a24; --parch: #efe5cf; --parch-ink: #2b2417; --parch-mute: #6b5d43; --brass: #d0a94f; --wax: #9e2b25; --ink-on: #efe5cf;
+  background: var(--bg); background-image: radial-gradient(#ffffff08 1px, transparent 1px); background-size: 14px 14px; color: var(--ink-on); padding: 16px; display: grid; gap: 14px; font-family: ui-serif, "New York", "Iowan Old Style", Georgia, serif; }
+.b-bar { display: flex; align-items: center; justify-content: space-between; }
+.b-word { font: 700 20px/1 ui-serif, "New York", Georgia, serif; letter-spacing: 0.02em; color: var(--brass); display: flex; gap: 8px; align-items: center; }
+.b-word .cl-mark { --size: 22px; }
+.b-tag { font: 600 11px/1 ui-serif, Georgia, serif; letter-spacing: 0.18em; text-transform: uppercase; color: var(--brass); border: 1px solid var(--brass); padding: 5px 8px; border-radius: 2px; }
+.b-note { background: var(--parch); color: var(--parch-ink); padding: 14px 16px 12px; border-radius: 2px; box-shadow: 0 10px 18px -10px #000c; position: relative; transform: rotate(-0.6deg); display: grid; gap: 6px; }
+.b-note.q { transform: rotate(0.8deg); }
+.b-note::before { content: ""; position: absolute; top: -6px; left: 50%; width: 12px; height: 12px; border-radius: 50%; background: var(--brass); box-shadow: 0 2px 2px #0008; }
+.b-kind { font: 600 10px/1 ui-serif, Georgia, serif; letter-spacing: 0.2em; text-transform: uppercase; color: var(--parch-mute); }
+.b-title { font: 700 18px/1.25 ui-serif, "New York", Georgia, serif; margin: 0; }
+.b-body { font: 400 13.5px/1.45 ui-serif, Georgia, serif; color: #4a3f2b; margin: 0; }
+.b-by { font: italic 12.5px/1.3 ui-serif, Georgia, serif; color: var(--parch-mute); display: flex; gap: 8px; align-items: center; }
+.b-crest { width: 20px; height: 23px; background: var(--wax); color: var(--parch); display: inline-grid; place-items: center; font: 700 10px/1 ui-serif, Georgia, serif; clip-path: polygon(0 0, 100% 0, 100% 62%, 50% 100%, 0 62%); padding-bottom: 4px; }
+.b-seal { position: absolute; right: 12px; bottom: 10px; width: 50px; height: 50px; border-radius: 50%; background: var(--wax); color: var(--parch); display: grid; place-items: center; font: 700 8.5px/1.1 ui-serif, Georgia, serif; letter-spacing: 0.08em; text-align: center; transform: rotate(-12deg); box-shadow: inset 0 0 0 3px #7c1f1a; }
+.b-btns { display: flex; gap: 8px; }
+.b-btn { font: 700 12px/1 ui-serif, Georgia, serif; letter-spacing: 0.12em; text-transform: uppercase; padding: 10px 14px; border-radius: 2px; border: 1px solid var(--brass); color: var(--brass); background: transparent; }
+.b-btn.p { background: var(--brass); color: #1b1408; }
+
+/* ---------- C: Instrument (light only, by design) ---------- */
+.c { --metal: #e4e4df; --panel: #f7f7f4; --line: #c9c9c2; --ink: #1b1b19; --mute: #66665f; --sig: #f2561d; --sig-ink: #b63a0b; --led: #2fae5b;
+  background: var(--metal); color: var(--ink); padding: 14px; display: grid; gap: 10px; font-family: var(--cl-font-mono); }
+.c-bar { display: flex; align-items: center; justify-content: space-between; font: 700 12px/1 var(--cl-font-mono); letter-spacing: 0.14em; text-transform: uppercase; }
+.c-bar span:last-child { color: var(--mute); font-weight: 500; }
+.c-word { display: flex; gap: 8px; align-items: center; }
+.c-word .cl-mark { --size: 20px; border-radius: 3px; }
+.c-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 12px; display: grid; gap: 8px; box-shadow: inset 0 -2px 0 #0000000d; }
+.c-row { display: flex; align-items: center; gap: 8px; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mute); }
+.c-row b { color: var(--ink); font-weight: 700; }
+.c-led { width: 8px; height: 8px; border-radius: 50%; background: var(--led); box-shadow: 0 0 6px var(--led); }
+.c-led.off { background: #bcbcb5; box-shadow: none; }
+.c-led.sig { background: var(--sig); box-shadow: 0 0 6px var(--sig); }
+.c-title { font: 600 14px/1.35 var(--cl-font-mono); margin: 0; letter-spacing: -0.01em; }
+.c-body { font: 400 12px/1.5 var(--cl-font-mono); color: var(--mute); margin: 0; }
+.c-meter { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; }
+.c-meter i { height: 8px; background: #d3d3cc; border-radius: 1px; }
+.c-meter i.on { background: var(--ink); }
+.c-ch { font: 700 22px/1 var(--cl-font-mono); color: var(--sig-ink); letter-spacing: -0.03em; }
+.c-switch { margin-left: auto; width: 34px; height: 18px; border-radius: 9px; background: var(--sig); position: relative; }
+.c-switch::after { content: ""; position: absolute; right: 2px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; }
+.c-btns { display: flex; gap: 6px; }
+.c-btn { font: 700 11px/1 var(--cl-font-mono); letter-spacing: 0.12em; text-transform: uppercase; padding: 10px 12px; border-radius: 3px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); box-shadow: inset 0 -2px 0 #00000014; }
+.c-btn.p { background: var(--sig); border-color: var(--sig-ink); color: #fff; }
+</style>
+
+<div class="page">
+  <header class="top">
+    <span class="cl-wordmark"><span class="cl-mark" aria-hidden="true">c</span>clyde</span>
+    <span class="cl-label">Design directions · 2026-11-15</span>
+  </header>
+
+  <section class="intro">
+    <span class="cl-label">Three ways Clyde could look</span>
+    <h1 class="cl-title-1">Same memory, same quest, three personalities.</h1>
+    <p class="cl-lead">Each column shows one direction with the same content: the wordmark, a memory atlas filed, a quest atlas claimed, and the two buttons. All three keep the clyde-v2 mark. The pick and the reasons are at the bottom.</p>
+  </section>
+
+  <div class="cols">
+    <!-- A -->
+    <article class="dir">
+      <div class="dir-head">
+        <h2>A. Carbon copy <span class="cl-stamp cl-stamp--ok">Picked</span></h2>
+        <p>Grey desk paper, black ink, one ballpoint blue. Whatever you choose lifts off the page and leaves its carbon copy behind, because that's what Clyde does: a copy of every memory for every agent.</p>
+      </div>
+      <div class="frame">
+        <div class="a">
+          <div class="a-bar">
+            <span class="cl-wordmark"><span class="cl-mark" aria-hidden="true">c</span>clyde</span>
+            <span class="cl-status is-ok">Online · v1.4</span>
+          </div>
+          <article class="cl-card cl-memory is-selected">
+            <div class="cl-memory__top"><span class="cl-chip">Decision</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">93%</span></div>
+            <h3 class="cl-memory__title">Deploys go through deploy.sh, never the dashboard</h3>
+            <p class="cl-memory__body">Every Clyde deploy runs deploy.sh, which applies migrations by file name and checks healthz.</p>
+            <div class="cl-prov"><span class="cl-prov__who">atlas</span><span>Claude Code</span><span class="cl-prov__sep">/</span><span>mbp-work</span><span class="cl-prov__sep">/</span><span>3 d ago</span></div>
+          </article>
+          <article class="cl-quest">
+            <div class="cl-quest__stub"><span class="cl-label">Nº</span><span class="cl-quest__no">38</span><span class="cl-quest__pri is-high">High</span></div>
+            <div class="cl-quest__main">
+              <div class="cl-quest__head"><h3 class="cl-quest__title">Write the Claude directory submission</h3><span class="cl-stamp cl-stamp--carbon">Claimed <small>atlas</small></span></div>
+              <div class="cl-quest__done"><span class="cl-label">Done when</span>Submission id recorded in the issue.</div>
+              <span class="cl-quest__for">for <b>ops agent</b> · studio · work</span>
+            </div>
+          </article>
+          <div class="row"><button class="cl-btn cl-btn--primary" type="button">Supersede</button><button class="cl-btn" type="button">Prune</button></div>
+        </div>
+      </div>
+      <div class="swatches" aria-hidden="true"><i style="background:#f4f4f1"></i><i style="background:#ffffff"></i><i style="background:#20211f"></i><i style="background:#2f5fd0"></i><i style="background:#b4c7f4"></i><i style="background:#262825"></i></div>
+      <div class="notes">
+        <div><span class="cl-label">For</span><ul><li>It's the product's own idea, shown by one interaction</li><li>Built on clyde-v2's paper, ink, blue and mark</li><li>Light and dark, system fonts, fits a chat card</li></ul></div>
+        <div><span class="cl-label">Against</span><ul><li>Quiet at first glance; the personality is in the details</li><li>The lift must stay rare or it turns into noise</li></ul></div>
+      </div>
+    </article>
+
+    <!-- B -->
+    <article class="dir">
+      <div class="dir-head">
+        <h2>B. Guild hall</h2>
+        <p>The quest board taken literally: a green baize board, parchment notices pinned in brass, agents with heraldic crests, quests sealed in wax.</p>
+      </div>
+      <div class="frame">
+        <div class="b">
+          <div class="b-bar"><span class="b-word"><span class="cl-mark" aria-hidden="true">c</span>clyde</span><span class="b-tag">The board</span></div>
+          <article class="b-note">
+            <span class="b-kind">Decision · settled</span>
+            <h3 class="b-title">Deploys go through deploy.sh, never the dashboard</h3>
+            <p class="b-body">Every Clyde deploy runs deploy.sh, which applies migrations by file name and checks healthz.</p>
+            <span class="b-by"><span class="b-crest">A</span>Set down by atlas, of Claude Code</span>
+          </article>
+          <article class="b-note q">
+            <span class="b-kind">Quest the thirty-eighth</span>
+            <h3 class="b-title">Write the Claude directory submission</h3>
+            <p class="b-body">Done when the submission id is recorded.</p>
+            <span class="b-by"><span class="b-crest">A</span>Taken up by atlas</span>
+            <span class="b-seal">CLAIMED</span>
+          </article>
+          <div class="b-btns"><button class="b-btn p" type="button">Supersede</button><button class="b-btn" type="button">Prune</button></div>
+        </div>
+      </div>
+      <div class="swatches" aria-hidden="true"><i style="background:#16201b"></i><i style="background:#1e2a24"></i><i style="background:#efe5cf"></i><i style="background:#d0a94f"></i><i style="background:#9e2b25"></i><i style="background:#2b2417"></i></div>
+      <div class="notes">
+        <div><span class="cl-label">For</span><ul><li>The most memorable at a glance</li><li>Leans into quests and the guild</li></ul></div>
+        <div><span class="cl-label">Against</span><ul><li>A costume: turns work orders into a game</li><li>Dark only; parchment and serif is a stock look</li><li>Loud inside a chat card next to Claude's own UI</li></ul></div>
+      </div>
+    </article>
+
+    <!-- C -->
+    <article class="dir">
+      <div class="dir-head">
+        <h2>C. Instrument</h2>
+        <p>Clyde as a piece of hardware: brushed panels, mono everywhere, channel numbers, LEDs for agents, a segment meter for confidence, one signal orange.</p>
+      </div>
+      <div class="frame">
+        <div class="c">
+          <div class="c-bar"><span class="c-word"><span class="cl-mark" aria-hidden="true">c</span>clyde</span><span>Mem-01 · online</span></div>
+          <article class="c-panel">
+            <div class="c-row"><span class="c-led"></span><b>atlas</b> · decision · settled</div>
+            <h3 class="c-title">Deploys go through deploy.sh, never the dashboard</h3>
+            <p class="c-body">Every Clyde deploy runs deploy.sh, which applies migrations by file name and checks healthz.</p>
+            <div class="c-row">Conf <div class="c-meter" style="flex:1"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div> 93</div>
+          </article>
+          <article class="c-panel">
+            <div class="c-row"><span class="c-ch">CH 38</span><span class="c-led sig"></span>claimed · atlas<span class="c-switch" aria-hidden="true"></span></div>
+            <h3 class="c-title">Write the Claude directory submission</h3>
+            <p class="c-body">Done when: submission id recorded.</p>
+          </article>
+          <div class="c-btns"><button class="c-btn p" type="button">Supersede</button><button class="c-btn" type="button">Prune</button></div>
+        </div>
+      </div>
+      <div class="swatches" aria-hidden="true"><i style="background:#e4e4df"></i><i style="background:#f7f7f4"></i><i style="background:#1b1b19"></i><i style="background:#f2561d"></i><i style="background:#2fae5b"></i><i style="background:#c9c9c2"></i></div>
+      <div class="notes">
+        <div><span class="cl-label">For</span><ul><li>Precise, technical, very dense</li><li>Numbers and states read fast</li></ul></div>
+        <div><span class="cl-label">Against</span><ul><li>Borrowed from hardware makers, not from Clyde</li><li>All-mono bodies are tiring to read</li><li>Orange fights clyde-v2's blue</li></ul></div>
+      </div>
+    </article>
+  </div>
+
+  <section class="verdict">
+    <div>
+      <span class="cl-label">The pick</span>
+      <h2 class="cl-title-2" style="margin:8px 0 16px">A. Carbon copy, because the personality is the product.</h2>
+      <ol>
+        <li><b>It says what Clyde does.</b> One agent writes, every agent gets a copy. The lift and its blue copy show that every time you choose something, without a mascot or a costume.</li>
+        <li><b>It's clyde-v2, grown up.</b> Same paper <span class="cl-mono">#f4f4f1</span>, ink <span class="cl-mono">#20211f</span>, blue <span class="cl-mono">#2f5fd0</span> and mark. What changed is everything around them: printed field labels, stamps, pens for agents, tear lines, the lift.</li>
+        <li><b>It works everywhere Clyde shows up.</b> System fonts pass the Worker's CSP and chat cards. Light and dark both pass 4.5:1, tested. It reads at 320px in a chat card and at 1,280px on the site.</li>
+        <li><b>B is a costume and C is borrowed.</b> The guild hall makes work look like a game and only works in the dark. The instrument looks like someone else's hardware and makes long memories hard to read.</li>
+      </ol>
+    </div>
+    <aside class="cl-card verdict-card">
+      <span class="cl-label">What carries over from B and C</span>
+      <p style="margin:0;color:var(--cl-ink-2)">From the guild hall: quests have a number and get stamped when claimed. From the instrument: numbers are first-class, so confidence, recall counts and ages sit in mono, right-aligned, tabular.</p>
+      <div class="cl-quest" style="--cl-quest-ground: var(--cl-paper-1)">
+        <div class="cl-quest__stub"><span class="cl-label">Nº</span><span class="cl-quest__no">36</span><span class="cl-quest__pri">Normal</span></div>
+        <div class="cl-quest__main"><div class="cl-quest__head"><h3 class="cl-quest__title">Rename tool text to Clyde</h3><span class="cl-stamp cl-stamp--ok">Done <small>quill</small></span></div><span class="cl-quest__for">for <b>coding agent</b> · mbp-work</span></div>
+      </div>
+    </aside>
+  </section>
+</div>

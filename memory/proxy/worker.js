@@ -17,6 +17,12 @@ function pass(req, url, env, extra = {}) {
   headers.delete("x-memory-client");
   const ip = req.headers.get("cf-connecting-ip");
   if (ip) headers.set("x-memory-client", ip);
+  // Where Cloudflare saw the caller, for the blocked-country checks (R38). A client's own cf-ipcountry or cf-region-code
+  // never passes: both come from request.cf or not at all.
+  headers.delete("cf-ipcountry");
+  headers.delete("cf-region-code");
+  if (req.cf?.country) headers.set("cf-ipcountry", req.cf.country);
+  if (req.cf?.regionCode) headers.set("cf-region-code", req.cf.regionCode);
   for (const [k, v] of Object.entries(extra)) headers.set(k, v);
   const hasBody = !["GET", "HEAD"].includes(req.method);
   return fetch(ORIGIN + (url.pathname === "/" ? "" : url.pathname) + url.search, {
@@ -37,7 +43,7 @@ function html(render, status = 200, headers = {}) {
     headers: {
       "content-type": "text/html; charset=utf-8",
       "content-security-policy": `default-src 'none'; script-src 'nonce-${n}'; style-src 'nonce-${n}'; img-src data:; ` +
-        "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+        "connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
       "x-frame-options": "DENY",
       "x-content-type-options": "nosniff",
       "referrer-policy": "no-referrer",
@@ -60,17 +66,24 @@ async function signIn(req, url, env) {
   const advances = (data.state === "check_email" || data.state === "waiting") && ID.test(id);
   const headers = { "cache-control": "no-store" };
   if (advances) headers.refresh = `3; url=/oauth/wait?authorization_id=${encodeURIComponent(id)}`;
-  return html((n) => statePage(data, n), res.status, headers);
+  return html((n) => statePage(data, n, ID.test(id) ? id : ""), res.status, headers);
 }
+
+/** A browser asking for a page: it accepts HTML and sends no token. */
+const wantsPage = (req) => !req.headers.has("authorization") && (req.headers.get("accept") ?? "").includes("text/html");
 
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     const read = req.method === "GET" || req.method === "HEAD";
-    if (read && url.pathname === "/" && !req.headers.has("authorization") && (req.headers.get("accept") ?? "").includes("text/html")) {
+    if (read && url.pathname === "/" && wantsPage(req)) {
       return html(homePage, 200, { "cache-control": "public, max-age=300" });
     }
     if (read && SIGN_IN.has(url.pathname)) return signIn(req, url, env);
+    // With open sign-up (R38), the consent page's email form posts back here, and the reply is a page too.
+    if (req.method === "POST" && url.pathname === "/oauth/consent") return signIn(req, url, env);
+    // Polar sends the buyer here after checkout (R38). The page says only what the function's text does.
+    if (read && url.pathname === "/billing/thanks" && wantsPage(req)) return html((n) => statePage({ state: "subscribed" }, n));
     return pass(req, url, env);
   },
 };

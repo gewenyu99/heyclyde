@@ -2,12 +2,14 @@
 // admin token, the weekly researcher holds the research token, the nightly backup holds the backup token and pg_cron holds the
 // cron secret. Only SHA-256 hashes are
 // stored, so a database read never yields a token.
+import { entitled, geoOf, refusal, type Verdict } from "./billing/entitlement.ts";
+import { isWebhook } from "./billing/index.ts";
 import { secret, setting, sql } from "./db.ts";
 import { sha256 } from "./embed.ts";
 import { resourceMetadataUrl } from "./oauth.ts";
 import { reportable } from "./version.ts";
 
-export type Kind = "open" | "agent" | "admin" | "backup" | "cron" | "owner";
+export type Kind = "open" | "agent" | "admin" | "backup" | "cron" | "owner" | "webhook";
 export type Principal = {
   role: "anyone" | "device" | "runtime" | "admin" | "research" | "backup" | "cron" | "owner";
   device?: string;
@@ -19,11 +21,25 @@ export type Principal = {
   updateFailed?: boolean;
   /** For a device: whether a hook has ever called. A computer that only uses MCP never has. */
   hookSeen?: boolean;
+  /** The Supabase Auth user id behind the credential: an OAuth client's or a sign-in's user, or the user who claimed a device.
+   * Wen's runtime, admin, backup and cron credentials, and devices claimed before R38, have none. Tenancy (R25) scopes
+   * data by it; billing keys entitlement by it. */
+  owner?: string;
+  /** For an owner: the plan and access the entitlement check found (R38). */
+  entitlement?: Verdict;
+  /** For an MCP client whose plan isn't open: the 402 or 451 its tools/call gets. initialize and tools/list still work, so
+   * the client connects and can show the checkout link. */
+  denied?: Response;
+  /** The Server-Timing entry of the entitlement check. */
+  timing?: string;
 };
 
 /** Which credential a path takes. /healthz and the console's files take none. Any path not named takes none of them
  * and gets 401. */
 export function credentialFor(path: string): Kind | null {
+  if (path === "/billing/usage/report") return "cron";
+  if (isWebhook(path)) return "webhook";
+  if (path === "/billing/checkout" || path === "/billing/thanks") return "open";
   if (path === "/healthz" || path === "/install" || path.startsWith("/install/")) return "open";
   if (path.startsWith("/oauth/") || path.startsWith("/.well-known/")) return "open";
   if (path === "/devices/claim") return "owner";
@@ -101,7 +117,7 @@ async function touchDevice(hash: string, seen: Seen) {
         client_update_failed = case when ${seen.version}::text is null then client_update_failed else ${seen.failed} end,
         hook_seen = hook_seen or ${seen.hook}
       where token_sha256 = ${hash} and revoked_at is null and coalesce(last_seen, created_at) > now() - interval '90 days'
-      returning name, hooks, client_version, client_update_failed, hook_seen`;
+      returning name, hooks, client_version, client_update_failed, hook_seen, owner_id`;
     return d;
   } catch (e) {
     if ((e as { code?: string }).code !== "42703") throw e;
@@ -119,13 +135,14 @@ async function resolve(kind: Kind, token: string, seen: Seen): Promise<Principal
     // An OAuth client, like claude.ai, holds a Supabase Auth access token for the owner. No hooks run there.
     if (isJwt(token)) {
       const claims = await ownerOf(token);
-      return claims?.client_id ? { role: "device", device: `oauth:${claims.client_id}`, hooks: "metadata" } : null;
+      return claims?.client_id ? { role: "device", device: `oauth:${claims.client_id}`, hooks: "metadata", ...(claims.sub ? { owner: String(claims.sub) } : {}) } : null;
     }
     // A computer's token lapses after 90 days unused. Rerunning the installer signs it in again.
     // What a hook reports rides on the same write, so every computer's version is on its row.
     const d = await touchDevice(hash, seen);
     return d
-      ? { role: "device", device: d.name, hooks: d.hooks, clientVersion: d.client_version, updateFailed: d.client_update_failed, hookSeen: d.hook_seen }
+      ? { role: "device", device: d.name, hooks: d.hooks, clientVersion: d.client_version, updateFailed: d.client_update_failed, hookSeen: d.hook_seen,
+        ...(d.owner_id ? { owner: d.owner_id } : {}) }
       : null;
   }
   if (kind === "admin") {
@@ -141,7 +158,7 @@ async function resolve(kind: Kind, token: string, seen: Seen): Promise<Principal
   // Only a sign-in of the owner's own mints a device token, never a token an OAuth client was given.
   if (kind === "owner") {
     const claims = await ownerOf(token);
-    return claims && !claims.client_id ? { role: "owner" } : null;
+    return claims && !claims.client_id ? { role: "owner", ...(claims.sub ? { owner: String(claims.sub) } : {}) } : null;
   }
   return null;
 }
@@ -150,6 +167,8 @@ async function resolve(kind: Kind, token: string, seen: Seen): Promise<Principal
 export async function allowed(email: string) {
   return (await sql`select 1 from memory.allowed_email where email = ${email.trim().toLowerCase()}`).length > 0;
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const isJwt = (token: string) => /^eyJ[\w-]*\.[\w-]+\.[\w-]+$/.test(token);
 
@@ -164,8 +183,13 @@ function claimsOf(jwt: string): Record<string, unknown> {
 // Answers for a minute, so an MCP client's burst of calls asks Supabase Auth once.
 const owners = new Map<string, { until: number; claims: Record<string, unknown> | null }>();
 
-/** The token's claims when a Supabase Auth access token belongs to an allowlisted email, confirmed, else null.
- * Supabase Auth checks the token, so a forged, expired or revoked one comes back 401. */
+/** Whether anyone may sign in (R38), not just allowlisted emails. Off until tenancy (R25) gives each owner their own
+ * memory: with it off, sign-in is exactly as before, so billing stays dormant. */
+export const openSignup = async () => (await setting("open_signup")) === "on";
+
+/** The token's claims, else null. Supabase Auth checks the token, so a forged, expired or revoked one comes back 401. With
+ * sign-in closed, only a confirmed, allowlisted email gets claims. With it open, any user does, and the entitlement check
+ * decides what they may do. The user's id and email are kept in memory.account, the owner billing keys on. */
 async function ownerOf(jwt: string) {
   const key = await sha256(jwt), hit = owners.get(key);
   if (hit && hit.until > Date.now()) return hit.claims;
@@ -174,8 +198,19 @@ async function ownerOf(jwt: string) {
     signal: AbortSignal.timeout(10_000),
   });
   const user = r.ok ? await r.json() : null;
-  const ok = Boolean(user?.email && user.email_confirmed_at) && await allowed(user.email);
-  const claims = ok ? claimsOf(jwt) : null;
+  const confirmed = Boolean(user?.email && user.email_confirmed_at);
+  const ok = Boolean(user?.email) && (await openSignup() || (confirmed && await allowed(user.email)));
+  // Supabase Auth's user ids are uuids. Anything else has no owner, and can't get in with sign-in open.
+  const id = UUID.test(String(user?.id ?? "")) ? String(user.id).toLowerCase() : null;
+  const claims: Record<string, unknown> | null = ok && (id || !(await openSignup())) ? { ...claimsOf(jwt), sub: id } : null;
+  if (claims && id) {
+    // A new account takes one of the free plan's seats while any are left (the first 1,000, Wen 2026-11-15).
+    await sql`insert into memory.account as a (owner_id, email, email_confirmed, free_slot)
+      values (${id}, ${String(user.email).toLowerCase()}, ${confirmed},
+        (select count(*) from memory.account where free_slot) < coalesce((select seats from memory.plan where id = 'free'), 2147483647))
+      on conflict (owner_id) do update set email = excluded.email, email_confirmed = excluded.email_confirmed
+      where (a.email, a.email_confirmed) is distinct from (excluded.email, excluded.email_confirmed)`;
+  }
   if (owners.size > 100) owners.clear();
   owners.set(key, { until: Date.now() + 60_000, claims });
   return claims;
@@ -188,7 +223,8 @@ const json = (body: unknown, status: number, headers: Record<string, string> = {
  * out, 503 while the console has no admin token. */
 export async function authenticate(req: Request, path: string): Promise<Principal | Response> {
   const kind = credentialFor(path);
-  if (kind === "open") return { role: "anyone" };
+  // A webhook proves itself with its provider's signature, which billing/webhooks.ts checks.
+  if (kind === "open" || kind === "webhook") return { role: "anyone" };
   if (kind === null) return json({ error: "unauthorized" }, 401);
   if (kind === "admin" && !(await setting("admin_token_sha256"))) {
     return json({ error: "The console is off. No admin token is set." }, 503);
@@ -217,6 +253,25 @@ export async function authenticate(req: Request, path: string): Promise<Principa
     const challenge: Record<string, string> = path.startsWith("/mcp")
       ? { "www-authenticate": `Bearer resource_metadata="${resourceMetadataUrl(await baseOf(req))}"` } : {};
     return json({ error: "unauthorized" }, 401, challenge);
+  }
+  // R38: the one entitlement check, for every agent and owner request whose principal has an owner. It runs before the
+  // burst limiter and the usage counters, so a refused call writes nothing. A lookup that fails refuses: 503.
+  if (who.owner) {
+    let v: Verdict;
+    try {
+      v = await entitled(who.owner);
+    } catch (e) {
+      console.error(e);
+      return json({ error: "memory couldn't check your plan just now. Try again in a minute." }, 503);
+    }
+    who.entitlement = v;
+    who.timing = `entitlement;dur=${v.ms.toFixed(2)};desc="${v.source}"`;
+    if (!v.plan.open) {
+      const refused = await refusal(v, geoOf(req, await viaProxy(req)));
+      refused.headers.set("server-timing", who.timing);
+      if (!path.startsWith("/mcp")) return refused;
+      who.denied = refused;
+    }
   }
   return who;
 }

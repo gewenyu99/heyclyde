@@ -22,6 +22,8 @@ export type RealMemory = {
   storage?: FakeStorage; serviceKey?: string; log?: () => string
   url: string; token: string; runtimeToken: string; adminToken: string; researchToken: string; cronSecret: string; openai: FakeOpenAI; auth: FakeAuth
   close: () => Promise<void>
+  /** The function's environment, so a second instance on the same database can start (startSibling). */
+  env?: Record<string, string | undefined>
 }
 
 function database(args: string[], tokens: Record<string, string> = {}): string {
@@ -121,7 +123,31 @@ export async function startRealMemory(extraEnv: Record<string, string> = {}, opt
     await close()
     throw err
   }
-  return { url, token, runtimeToken, adminToken, researchToken, cronSecret, openai, auth, close, storage, serviceKey, log: () => output }
+  return { url, token, runtimeToken, adminToken, researchToken, cronSecret, openai, auth, close, storage, serviceKey, log: () => output, env }
+}
+
+/** A second function process on the same database and fakes as `memory`, as another Edge Function instance would be. It
+ * shares nothing in memory with the first. close() stops only it. */
+export async function startSibling(memory: RealMemory): Promise<{ url: string; close: () => Promise<void>; log: () => string }> {
+  const port = await freePort()
+  const child = spawn(DENO, ['run', '-A', NO_NODE_MODULES, FUNCTION], { env: { ...memory.env, DENO_SERVE_ADDRESS: `tcp:127.0.0.1:${port}` }, stdio: ['ignore', 'pipe', 'pipe'] })
+  let output = ''
+  child.stdout?.on('data', (c) => (output += c))
+  child.stderr?.on('data', (c) => (output += c))
+  const url = `http://127.0.0.1:${port}/functions/v1/memory`
+  const close = async () => {
+    if (child.exitCode === null) {
+      child.kill('SIGTERM')
+      await new Promise((r) => child.once('exit', r))
+    }
+  }
+  try {
+    await waitHealthy(url, child, () => output)
+  } catch (err) {
+    await close()
+    throw err
+  }
+  return { url, close, log: () => output }
 }
 
 /** startRealMemory with a fake Supabase Storage (storage.ts) and a service role key, so the function's Storage is on. */
