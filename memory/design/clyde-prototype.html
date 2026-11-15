@@ -206,7 +206,7 @@ const M=[
  ["Pick a Mac mini for the home box","plan","patch","studio","home","personal","dormant",0.4,"Waits for hardware. Local models replace the AI provider."],
  ["Antigravity callback is antigravity.google","fact","juniper","mbp-work","clyde","work","settled",0.85,"https://antigravity.google/oauth-callback with dynamic registration."],
  ["Recall feedback coverage is 96%","fact","scout","cloud","clyde","work","settled",0.83,"211 of 219 recalls got feedback in the last 7 days."],
- ["Price the base plan at $9.99","decision","atlas","mbp-work","clyde","work","settled",0.94,"One plan with covered limits. Usage beyond is billed at cost plus a fixed 50% margin."],
+ ["Price the base plan at $12.99","decision","atlas","mbp-work","clyde","work","settled",0.94,"One plan with covered limits. Usage beyond is billed at cost plus a fixed 50% margin."],
  ["Weekend climbing at the gym","preference","patch","studio","home","personal","settled",0.7,"Sunday afternoons."]
 ].map((r,i)=>({id:i,title:r[0],kind:r[1],agent:r[2],machine:r[3],project:r[4],ctx:r[5],state:r[6],conf:r[7],body:r[8],age:[1,2,3,5,6,8,9,12,14,16,20,24,30][i%13],recalls:(i*37)%61+2}));
 const LINKS=[[0,17,"supports"],[0,19,"relates"],[7,23,"relates"],[12,16,"derived_from"],[2,9,"relates"],[4,2,"relates"],[1,15,"supports"],[3,11,"supports"],[5,23,"supports"],[8,18,"relates"],[18,21,"relates"],[14,15,"relates"],[6,24,"relates"],[13,20,"relates"],[10,11,"relates"],[9,4,"supports"],[22,2,"relates"],[16,5,"relates"],[19,1,"supports"],[12,7,"contradicts"],[20,9,"relates"],[3,1,"relates"]];
@@ -251,7 +251,7 @@ function renderNav(){
     const c=k==="memories"?`<span class="count">${M.length}</span>`:k==="quests"?`<span class="count">${QUESTS.filter(q=>q.state!=="done").length}</span>`:"";
     return `<a class="navrow${k===cur?" selected":""}" href="#${k}">${l}${c}</a>`}).join("")).join("");
   $("#mnav").innerHTML=NAV.flatMap(g=>g.items).map(([k,l])=>`<option value="${k}"${k===cur?" selected":""}>${l}</option>`).join("");
-  $("#planline").textContent={free:"Free allocation",clyde:"Clyde plan, $9.99/mo",owner:"Owner plan, no limits"}[S.plan];
+  $("#planline").textContent={free:"Free allocation",clyde:"Clyde plan, $12.99/mo",owner:"Owner plan, no limits"}[S.plan];
 }
 $("#mnav").addEventListener("change",e=>go(e.target.value));
 function kindPill(k){return `<span class="pill k-${k}">${k}</span>`}
@@ -399,25 +399,25 @@ function bindApps(){
   const st=document.querySelector("[data-store]");if(st)st.addEventListener("click",()=>{APPS[+st.dataset.store][3]=true;S.appModal=null;render()});
   const cp=$("#copy");if(cp)cp.addEventListener("click",()=>{const done=()=>{$("#copied").textContent="Copied."};try{navigator.clipboard.writeText("https://heyclyde.me/mcp").then(done,()=>{getSelection().selectAllChildren($("#mcpurl"));$("#copied").textContent="Selected. Press copy."})}catch(e){getSelection().selectAllChildren($("#mcpurl"))}});
 }
-const METERS=[["AI usage","$0.50 at cost",0.41,0.5,"$",["2.3x the AI provider's list price"]],["Storage","5 GB",3.2,5,"GB",["$0.05 per GB-month"]],["Egress","2 GB",2.6,2,"GB",["$0.21 per GB"]],["Requests","100,000",71400,100000,"",["$4.60 per million"]],["Database","0.5 GB",0.31,0.5,"GB",["$0.29 per GB-month"]]];
+const METERS=[["AI tokens","1.5M",1.23,1.5,"M",["2.3x cost, $0.30 per million"]],["Storage","5 GB",3.2,5,"GB",["$0.05 per GB-month"]],["Egress","2 GB",2.6,2,"GB",["$0.21 per GB"]],["Recalls","2,000",1420,2000,"",["Billed as the tokens they use"]],["Remembers","500",210,500,"",["Billed as the tokens they use"]]];
 function fmt(v,u){return u==="$"?"$"+v.toFixed(2):u?v.toFixed(1)+" "+u:v.toLocaleString()}
 function vBilling(){
   const seg=`<div class="seg" role="group" aria-label="Plan view">${[["free","Free"],["clyde","Clyde"],["owner","Owner"]].map(([k,l])=>`<button aria-pressed="${S.plan===k}" data-plan="${k}">${l}</button>`).join("")}</div>`;
   let body="";
   if(S.plan==="clyde"){
     const over=0.6*0.21;
-    body=`<div class="grid2"><div class="card"><h2>Your plan</h2><div class="row" style="margin-top:8px;align-items:baseline"><span class="big">$9.99</span><span class="subtle">per month, renews Dec 1</span></div><p class="subtle" style="margin-top:6px">One plan. It covers the allowances below. Use past them is billed at cost plus a fixed 50% margin, at the end of the month.</p></div>
-     <div class="card"><h2>This month</h2><div class="row" style="margin-top:8px;align-items:baseline"><span class="big">$${(9.99+over).toFixed(2)}</span><span class="subtle">projected</span></div><p class="subtle" style="margin-top:6px">$9.99 plan plus $${over.toFixed(2)} of egress over the allowance.</p></div></div>
+    body=`<div class="grid2"><div class="card"><h2>Your plan</h2><div class="row" style="margin-top:8px;align-items:baseline"><span class="big">$12.99</span><span class="subtle">per month, renews Dec 1</span></div><p class="subtle" style="margin-top:6px">One plan. It covers the allowances below. Use past them is billed at cost plus a fixed 50% margin, at the end of the month.</p></div>
+     <div class="card"><h2>This month</h2><div class="row" style="margin-top:8px;align-items:baseline"><span class="big">$${(12.99+over).toFixed(2)}</span><span class="subtle">projected</span></div><p class="subtle" style="margin-top:6px">$12.99 plan plus $${over.toFixed(2)} of egress over the allowance.</p></div></div>
      <div class="section"><h2>Included this month</h2><div class="table-wrap" style="margin-top:10px"><table><thead><tr><th>Meter</th><th>Included</th><th>Used</th><th style="width:28%">Of allowance</th><th>Past the allowance</th></tr></thead><tbody>
      ${METERS.map(m=>{const p=Math.min(100,m[2]/m[3]*100);return `<tr><td><b>${m[0]}</b></td><td>${m[1]}</td><td class="num">${fmt(m[2],m[4])}</td><td><div class="bar${m[2]>m[3]?" warn":""}"><span style="width:${p}%"></span></div><span class="subtle" style="font-size:11px">${Math.round(m[2]/m[3]*100)}%</span></td><td>${m[5][0]}</td></tr>`}).join("")}
      </tbody></table></div></div>
      <div class="section card"><h2>Usage spend limit</h2><p class="subtle" style="margin:6px 0 10px">Usage past the allowance stops at this amount each month. Reads keep working.</p><div class="row"><input type="range" id="spend" min="0" max="500" step="5" value="${S.spend}" style="flex:1;min-width:160px" aria-label="Usage spend limit"><b id="spendv" class="num" style="min-width:56px">$${S.spend}</b></div></div>
-     <div class="section"><h2>Invoices</h2><div class="list" style="margin-top:10px">${[["Nov 1, 2026","$10.14","Paid"],["Oct 1, 2026","$9.99","Paid"]].map(r=>`<div class="item" style="cursor:default"><div class="t">${r[0]}</div><div class="r num">${r[1]}</div><div class="m"><span class="status-ok">${r[2]}</span></div><div class="r">Receipt from Polar</div></div>`).join("")}</div><p class="subtle" style="margin-top:10px;font-size:11.5px">Billed by Polar, the merchant of record. Polar handles tax, receipts and refunds.</p></div>`;
+     <div class="section"><h2>Invoices</h2><div class="list" style="margin-top:10px">${[["Nov 1, 2026","$13.14","Paid"],["Oct 1, 2026","$12.99","Paid"]].map(r=>`<div class="item" style="cursor:default"><div class="t">${r[0]}</div><div class="r num">${r[1]}</div><div class="m"><span class="status-ok">${r[2]}</span></div><div class="r">Receipt from Polar</div></div>`).join("")}</div><p class="subtle" style="margin-top:10px;font-size:11.5px">Billed by Polar, the merchant of record. Polar handles tax, receipts and refunds.</p></div>`;
   }else if(S.plan==="free"){
     const L=[["Memories","64 of 100"],["Artifacts","None on Free"],["Recalls","212 of 300 this month"],["Writes","31 of 50 this month"],["Apps","2 of 2"],["Agents","2 of 2"],["Quest board","Clyde plan"],["Learning","Clyde plan"]];
     body=`<div class="notice amber">You're one of the first 1,000 people on Clyde, so you have a free allocation. It doesn't renew into a bill. Upgrade when you outgrow it.</div>
     <div class="grid3 section">${L.map(l=>`<div class="card"><h2>${l[0]}</h2><div style="font-size:16px;font-weight:650;margin-top:6px">${l[1]}</div></div>`).join("")}</div>
-    <div class="section"><button class="btn primary" id="upgrade">Upgrade to Clyde, $9.99/month</button> <span class="subtle" id="upmsg"></span></div>`;
+    <div class="section"><button class="btn primary" id="upgrade">Upgrade to Clyde, $12.99/month</button> <span class="subtle" id="upmsg"></span></div>`;
   }else{
     body=`<div class="card"><h2>Owner plan</h2><div style="font-size:16px;font-weight:650;margin:6px 0">No limits. No billing.</div><p class="subtle">The owner account. Every meter still counts, so you can see what Clyde costs to run.</p></div>
     <div class="section"><h2>This month, at cost</h2><div class="table-wrap" style="margin-top:10px"><table><thead><tr><th>Meter</th><th>Used</th><th>Cost to run</th></tr></thead><tbody>${[["AI usage","35M tokens","$3.92"],["Storage","0.01 GB","$0.00"],["Egress","3.6 GB","$0.32"],["Requests","71,400","$0.14"],["Database","0.38 GB","$0.05"]].map(r=>`<tr><td><b>${r[0]}</b></td><td class="num">${r[1]}</td><td class="num">${r[2]}</td></tr>`).join("")}</tbody></table></div></div>`;

@@ -12,7 +12,7 @@ Clyde gives every agent a person runs one shared memory, so work picked up weeks
 - **`https://heyclyde.me/mcp`.** The one connector URL every store listing names. `memory.heyclyde.me/mcp` stays as an alias.
 - **Store listings.** Claude directory and plugin, ChatGPT and Codex, Gemini Connected Apps, Antigravity marketplace, Gemini CLI gallery, Grok.
 - **Tenancy.** `owner_id` on every per-user table, forced RLS, role `memory_tenant`.
-- **One plan.** Clyde at $9.99 a month with included usage, then metered overage at a 50% margin.
+- **One plan.** Clyde at $12.99 a month with included usage, then metered overage at a 50% margin.
 - **Free allocation.** The first 1,000 accounts get a small, capped free allowance.
 - **`/me` API.** The site's only door to a user's data, with the user's own JWT.
 - **Agent identity v2.** Nickname, type, harness, machine, repos and work flag. Quests target type and environment.
@@ -30,7 +30,7 @@ Agents forget. A conversation ends, a tool switches, a laptop changes, and the d
 | Picking up a project | "What did we decide about the deploy?" gets nothing in a new Codex session | Codex recalls the Claude Code session's decision from 3 weeks ago, with its evidence and the machine it came from |
 | Pruning | Supabase Table Editor or the admin console with the admin token | heyclyde.me, signed in like anyone, with search, filters, edit, prune and supersede |
 | Handing off work | A message to `all` that every test name receives | A quest for "a coding agent on the work laptop with access to like-vincent", claimed by the one agent that matches |
-| Paying | Nobody can | $9.99 a month through Polar, overage billed at cost plus margin, a spend limit the user sets |
+| Paying | Nobody can | $12.99 a month through Polar, overage billed at cost plus margin, a spend limit the user sets |
 
 Who gains: anyone running agents in more than one app. Who loses: nobody. Wen's routes, tokens and data keep working, now under his owner id. What Wen owns after: listings in six stores, a privacy policy and terms, a support inbox, Polar payouts, and a Supabase bill that the free allocation never pushes past Pro's included usage.
 
@@ -52,7 +52,7 @@ Wen's rulings, 2026-11-15, plus the recommendations he told the design to take w
 |---|---|---|
 | D1 | One project, `wlhlncmgjqyidosunugv`. Wen's rows get his owner id in place | He asked to be a normal user of his own product. No copy, no second bill, no drift between two deploys |
 | D2 | Owner columns plus forced RLS, not schema-per-tenant | Per-tenant schemas mean every migration and every pg_cron job runs once per user. RLS fails closed when the owner isn't set |
-| D3 | One paid plan, Clyde, $9.99 a month with included usage. Overage at cost plus a fixed 50% margin | Wen: "just one plan tier with a covered limit, and then you will pay per usage", with "an extra 50% margin" |
+| D3 | One paid plan, Clyde, $12.99 a month with included usage. Overage at cost plus a fixed 50% margin | Wen: "just one plan tier with a covered limit, and then you will pay per usage", with "an extra 50% margin" |
 | D4 | Free allocation for the first 1,000 accounts, capped hard, no overage | Trying Clyde costs Wen about $0.014 a user a month and fits Pro's included usage |
 | D5 | Wen's account is plan `owner`: no limits, no billing | He dogfoods first and is always premium |
 | D6 | Store listings are a must-have, ahead of every site feature except Wen's own login | Wen: a manual MCP URL "is too awkward to use" |
@@ -71,7 +71,7 @@ Wen's rulings, 2026-11-15, plus the recommendations he told the design to take w
 - **For: Polar does metered billing.** [Polar usage billing](https://polar.sh/docs/features/usage-based-billing/introduction) ingests events, aggregates them in meters, and bills metered prices on subscriptions. Against: it's alpha, and Polar "will never prohibit any customer's action based on their Usage Meter balance", so the spend limit is Clyde's job.
 - **Against: HNSW doesn't fit Micro at scale.** Supabase's [compute guide](https://supabase.com/docs/guides/ai/choosing-compute-addon) shows Micro holding about 15,000 vectors at 1,536 dimensions, in swap. Clyde scans each owner's own vectors exactly instead, which my estimate puts under 20 ms for 10,000 `halfvec(1024)` rows. Slice C2 load-tests that claim.
 - **For: RLS per owner is the common pattern.** Practitioner guides ([MakerKit](https://makerkit.dev/blog/tutorials/multi-tenant-saas-architecture)) recommend it and warn that one policy bug leaks everything, which is why the function also drops to a role without `bypassrls` (PRODUCT-PLAN's finding: `postgres` has `rolbypassrls = true` today).
-- **Competition.** [Supermemory](https://supermemory.ai/pricing) sells $19, $100 and $399 plans on credits. [Mem0](https://mem0.ai/pricing) lists Free and Custom. A $9.99 plan with metered overage undercuts both for a single person.
+- **Competition.** [Supermemory](https://supermemory.ai/pricing) sells $19, $100 and $399 plans on credits. [Mem0](https://mem0.ai/pricing) lists Free and Custom. A $12.99 plan with metered overage undercuts Supermemory's $19 for a single person.
 
 ## L1
 
@@ -113,7 +113,7 @@ Dashed parts are new: the store-listed apps, the site, owner tenancy in the data
 
 ## L2: tenancy
 
-**Owner.** Every row a user creates carries `owner_id uuid not null references auth.users(id)`. That covers 28 of today's 35 tables plus the new `quest`: `entry`, `link`, `blob`, `entry_blob`, `entry_embedding`, `entry_provenance`, `source`, `event`, `retrieval`, `shadow_retrieval`, `feedback`, `confidence_log`, `co_use`, `allocation`, `message`, `message_delivery`, `agent`, `agent_binding`, `device`, `install_claim`, `mcp_client`, `mcp_session`, `oauth_consent`, `upload`, `admin_audit`, `judge_cache`, `openai_usage`, `embed_usage` (dropped into `usage`), and new `quest`. Shared tables keep no owner: `setting`, `link_type_weight`, `param_set`, `auth_miss`, `question`, `qrel`, `allowed_email` (until C3 retires it), and new `plan_limit`.
+**Owner.** Every row a user creates carries `owner_id uuid not null references auth.users(id)`. That covers 28 of today's 35 tables plus the new `quest`: `entry`, `link`, `blob`, `entry_blob`, `entry_embedding`, `entry_provenance`, `source`, `event`, `retrieval`, `shadow_retrieval`, `feedback`, `confidence_log`, `co_use`, `allocation`, `message`, `message_delivery`, `agent`, `agent_binding`, `device`, `install_claim`, `mcp_client`, `mcp_session`, `oauth_consent`, `upload`, `admin_audit`, `judge_cache`, `openai_usage`, `embed_usage` (dropped into `usage`), and new `quest`. Shared tables keep no owner: `setting`, `link_type_weight`, `param_set`, `auth_miss`, `question`, `qrel`, `allowed_email` (until C3 retires it), and R38's `plan`.
 
 **Keys.** `entry.id` is free text like `proj-pkg`, so two owners collide. It becomes `primary key (owner_id, id)`, and every reference to an entry carries `owner_id`. `blob.sha256` becomes `primary key (owner_id, sha256)`, so storing a file never reveals that another owner holds it. `agent.name` becomes unique per owner.
 
@@ -144,25 +144,25 @@ The account lifecycle. Owner: `entitled()` in `auth.ts`, the single call site R3
 | lapsed | Read and export only | 90 days pass, after emails at day 60 and day 83 | deleted, final |
 | comp | No limits, no billing | None | final |
 
-`plan` is one of `free`, `clyde` or `owner`, a check constraint. `comp` rows carry plan `owner`, which is Wen and anyone he adds. Every limit reads `memory.plan_limit` by plan, so a number change is one row.
+`plan` is one of `free`, `clyde` or `owner`, a check constraint. `comp` rows carry plan `owner`, which is Wen and anyone he adds. Every limit is a column of `memory.plan`, one row per plan, built by the R38 billing session (migration `20261115000000_billing.sql`). A number changes by SQL or `PUT /api/v1/billing/plans/<id>`, live within 60 s, with no deploy.
 
-**Free slots.** `setting.free_slots_total = 1000`. A free row is granted when `count(*) where plan = 'free'` is under it, inside one transaction with `for update` on the setting row, so two sign-ups never take slot 1,000 together. A deleted free account frees its slot.
+**Free slots.** The free row's `seats` column is 1,000. A free entitlement is granted when `count(*) where plan = 'free'` is under it, inside one transaction with `for update` on the plan row, so two sign-ups never take slot 1,000 together. A deleted free account frees its slot.
 
 ## L2: pricing and metering
 
-**The plan.** Clyde, $9.99 a month, billed by Polar as merchant of record. Included each month:
+**The plan.** Clyde, $12.99 a month, billed by Polar as merchant of record. The `clyde` row of `memory.plan` holds what's included each month:
 
 | Meter | Included | Overage price | Unit cost | Margin after Polar's 6.5% |
 |---|---|---|---|---|
-| AI (OpenAI embeddings and judge) | $0.50 of cost | 2.3 x OpenAI's list price | list | 50.0% |
-| Storage | 5 GB-month | $0.05 per GB-month | $0.0213 | 50.9% |
-| Egress | 2 GB | $0.21 per GB | $0.09 | 50.6% |
-| Requests | 100,000 | $4.60 per million | $2.00 | 50.0% |
-| Database | 0.5 GB-month | $0.29 per GB-month | $0.125 | 50.4% |
+| AI tokens (embeddings and judge) | 1,500,000 (`openai_tokens_month`) | 2.3 x cost, priced at $0.13 per million | $0.13 per million | 50.0% |
+| Storage | 5 GiB (`blob_bytes_total`) | $0.05 per GB-month | $0.0213 | 50.9% |
+| Recalls and remembers | 2,000 and 500 (`recalls_month`, `remembers_month`) | Billed as the tokens and requests they use | | |
+| Requests | 2,000,000 shared by everyone in Pro | $4.60 per million | $2.00 | 50.0% |
+| Egress | 250 GB shared by everyone in Pro | $0.21 per GB, once C12 counts bytes | $0.09 | 50.6% |
 
-The multiplier is 2.3 because Polar keeps 6.5% of every dollar billed (5% plus 1.5% on non-US cards). 2.3 x cost, less 6.5% of it, less cost, is 50% of the price. Storage at 100 GB costs a user $4.75 a month on top, so the 20, 50 and 100 GB sizes from the brief are just usage.
+One rule bills every overage: `chargeFor(cost)` in `billing/cost.ts` charges cost / 0.435, which is 2.3 x cost. Polar keeps 6.5% of every dollar billed (5% plus 1.5% on non-US cards), so 2.3 x cost, less 6.5% of it, less cost, is 50% of the charge. Storage at 100 GB costs a user $4.75 a month on top, so the 20, 50 and 100 GB sizes from the brief are just usage.
 
-**Spend limit.** Polar never blocks, so Clyde does. Each paid account has `spend_limit_cents`, default 2,500 ($25 of overage), settable from $0 to $500 on the billing page. At the limit, metered actions answer 429 with the limit and the reset date. Reads of the user's own notes from the site keep working. A `past_due` account gets no overage at all, so unpaid exposure is one month's overage at most.
+**Spend limit.** Polar never blocks, so Clyde does. Each paid account has `spend_limit_cents`, default 2,000 ($20 of overage, `overage_ceiling_micro_usd_month` on the plan), settable from $0 to $500 on the billing page. At the limit, metered actions answer 429 with the limit and the reset date. Reads of the user's own notes from the site keep working. A `past_due` account gets no overage at all, so unpaid exposure is one month's overage at most.
 
 **Metering.** `memory.usage (owner_id, period, kind, quantity, cost_micro_usd)` with `kind` in `ai`, `storage_gb_hours`, `egress_bytes`, `requests`, `db_bytes`. AI cost is counted per call from tokens and each model's price in `config.ts`. Storage and database are sampled hourly by pg_cron. Egress is the bytes the function sends plus the size of each signed Storage URL it issues. An hourly job sends the overage past the included amount to Polar's `POST /v1/events/ingest`, one event per owner per kind, idempotent on `(owner_id, period, kind, hour)`.
 
@@ -197,21 +197,21 @@ Measured on 2026-11-15 from `/api/v1/overview` and the database: 1,082 entries, 
 
 Free accounts cost Wen about $0.014 each in OpenAI, $14 a month if all 1,000 hit every cap, and nothing on Supabase while the totals sit inside Pro.
 
-**A paid account at its included limits.** Every resource priced at Supabase's overage rate, as if Pro's quotas were already spent. That's the worst case.
+**A paid account at its included limits.** One cost model, `costOf()` in `billing/cost.ts`, which CI runs over every row of `memory.plan`. Its planned case shares Supabase Pro's $25 and Polar's payout fee across 20 paying users, prices every token at the most expensive model, and counts every sale as a non-US card.
 
-| Line | Worst-case cost |
+| Line | Worst-case cost a month |
 |---|---|
-| AI | $0.500 |
-| Storage, 5 GB-month at $0.0213 | $0.107 |
-| Egress, 2 GB at $0.09 | $0.180 |
-| Requests, 100,000 at $2 per million | $0.200 |
-| Database, 0.5 GB-month at $0.125 | $0.063 |
-| Compute share (a $60 Medium add-on across 240 paid accounts) | $0.250 |
-| MAU at $0.00325 | $0.003 |
-| Polar: 5% + 1.5% of $9.99, plus $0.50 | $1.149 |
-| **Total** | **$2.452, 24.5% of $9.99** |
+| Polar: 5% + 1.5% of $12.99, plus $0.50 | $1.344 |
+| Supabase Pro's $25 across 20 users | $1.250 |
+| Disputes, 1% of sales at $15 | $0.150 |
+| Polar payout: $2.25 across 20, plus 0.25% | $0.145 |
+| AI, 1.5M tokens at $0.13 per million | $0.195 |
+| Storage, 5 GiB at $0.0213 per GB | $0.114 |
+| **Total** | **$3.199, 24.6% of $12.99** |
 
-Gross margin on the base plan is 75.5%. Overage runs at 50%. Polar's payout fee ($2 a month with payouts, plus 0.25% and $0.25 a payout) is paid monthly by Wen and covered by the margin from the first paying user.
+Gross margin on the plan is 75.4%, and `margin_floor` = 0.75 on the `clyde` row makes CI fail any change that drops it. Overage runs at 50%. The Supabase share falls as paying users grow: at 100 it's $0.25, and the margin passes 83%.
+
+Why $12.99 and not $9.99: the same model gives $9.99 with 4M tokens 67.9%, and $9.99 with no tokens at all only 72%. Polar's fixed $0.50 and the shared Supabase fee are 24% of a $9.99 sale before anything is used.
 
 **When to add compute.** Micro until 60 paid accounts or a P95 recall over 1.5 s, then Small ($15). Medium ($60) at 240 paid accounts. Compute isn't covered by Supabase's spend cap, so this is a manual step the groom reports.
 
@@ -366,7 +366,7 @@ Each slice is one pull request and one requirement issue, listed in [the index, 
 |---|---|---|---|---|
 | C1 | [R48](https://github.com/gewenyu99/like-vincent/issues/53) | Tenancy schema and Wen's backfill | none | Every owned row is Wen's, forced RLS, composite keys |
 | C2 | [R49](https://github.com/gewenyu99/like-vincent/issues/54) | Requests run as the tenant, per-owner vector scan | C1 | No route returns another owner's row. Recall holds its score |
-| C3 | [R50](https://github.com/gewenyu99/like-vincent/issues/55) | Plans and limits: `plan_limit`, Wen on `owner`, allowlist to comp | C2, R38's entitlement table | Every limit reads its plan. Wen has none |
+| C3 | [R50](https://github.com/gewenyu99/like-vincent/issues/55) | Plans and limits: limits read `memory.plan`, Wen on `owner`, allowlist to comp | C2, R38's entitlement table | Every limit reads its plan. Wen has none |
 | C4 | [R51](https://github.com/gewenyu99/like-vincent/issues/56) | Site shell, sign-in and the memories browser on heyclyde.me | C2 | Wen signs in and searches his notes |
 | C5 | [R52](https://github.com/gewenyu99/like-vincent/issues/57) | Memory detail: edit, prune, supersede, delete | C4 | Wen prunes from the site |
 | C6 | [R53](https://github.com/gewenyu99/like-vincent/issues/58) | Clyde naming, neutral tool text, annotations, `heyclyde.me/mcp` | C2 | `tools/list` passes both stores' checks |
@@ -395,7 +395,7 @@ C9 to C11 run side by side once C8 lands. C12 to C19 run beside the listings, in
 | 3 | Store reviewers | C8 to C11 submitted | A rejection, fixed and resubmitted |
 | 4 | The public, free slots and paid | The first listing goes live | A cap that fails open, or a month where cost passes 25% of revenue |
 
-No feature flag. `setting.signups_open` closes sign-up without a deploy, and `free_slots_total` closes the free door.
+No feature flag. `setting.signups_open` closes sign-up without a deploy, and the free plan's `open = false` closes the free door.
 
 ## Sources
 
