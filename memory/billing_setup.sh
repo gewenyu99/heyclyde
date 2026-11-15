@@ -8,12 +8,14 @@
 #
 # The token is read from the environment and sent only to Polar and to memory's console API, which stores it in Vault as
 # polar_api_token. Nothing secret is printed. The console token is ~/.config/memory/admin-token.
-set -eu
+set -euo pipefail
 : "${POLAR_TOKEN:?set POLAR_TOKEN to a Polar organization access token}"
 POLAR_API=${POLAR_API:-https://api.polar.sh}
 MEMORY_URL=${MEMORY_URL:-https://memory.heyclyde.me}
 ADMIN=${MEMORY_ADMIN_TOKEN:-$(cat "$HOME/.config/memory/admin-token")}
 PLAN=${PLAN:-clyde}
+# Polar refuses a product without a price in the organization's default currency. Clyde's is CAD (Pennywhistle software).
+CAD_CENTS=${CAD_CENTS:-1799}
 EVENTS='["subscription.created","subscription.active","subscription.updated","subscription.canceled","subscription.uncanceled","subscription.past_due","subscription.revoked","order.refunded"]'
 
 polar() { curl -sS --fail-with-body -H "Authorization: Bearer $POLAR_TOKEN" -H 'content-type: application/json' "$@"; }
@@ -28,7 +30,9 @@ name=$(printf '%s' "$plan" | jq -r '.name')
 product=$(polar "$POLAR_API/v1/products/?is_recurring=true&limit=100" | jq -r --arg n "$name" '[.items[] | select(.name == $n and .is_archived != true)][0].id // empty')
 if [ -z "$product" ]; then
   product=$(polar -X POST "$POLAR_API/v1/products/" -d "$(jq -n --arg n "$name" --argjson c "$cents" \
-    '{name: $n, recurring_interval: "month", prices: [{amount_type: "fixed", price_amount: $c, price_currency: "usd"}]}')" | jq -r .id)
+    '{name: $n, recurring_interval: "month", prices: [{amount_type: "fixed", price_amount: $c, price_currency: "usd"},
+               {amount_type: "fixed", price_amount: $cad, price_currency: "cad"}]}' --argjson cad "$CAD_CENTS")" | jq -r '.id // empty')
+  [ -n "$product" ] || { echo "billing_setup.sh: Polar made no product" >&2; exit 1; }
   echo "created product $name ($product) at $cents cents a month"
 else
   echo "product $name is $product"

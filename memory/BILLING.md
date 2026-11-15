@@ -198,7 +198,7 @@ Wen does steps 1 to 4. Each needs an account or bank details, which only he can 
    POLAR_TOKEN='<sandbox token>' POLAR_API=https://sandbox-api.polar.sh MEMORY_URL=<branch url> ./billing_setup.sh
    ```
 
-   The script creates the `Clyde` product at the plan's price, and the webhook endpoint `https://memory.heyclyde.me/billing/polar`, subscribed to the eight events above. It stores `polar_webhook_secret` and `polar_api_token` in Vault and sets the plan's `product_ids`.
+   The script creates the `Clyde` product at the plan's price, and the webhook endpoint `https://memory.heyclyde.me/billing/polar`, subscribed to the eight events above. It stores `polar_webhook_secret` and `polar_api_token` in Vault and sets the plan's `product_ids`. Polar requires a price in the organization's default currency, which for Pennywhistle software is CAD, so the product also carries CAD 17.99 (`CAD_CENTS`), and the metered overage price needs a CAD price too. Production: product `b71524f6-d19b-4912-8fd7-7a830c79a142`, set up 2026-11-15.
 
 The lead agent then checks the result. It reads `select count(*) from vault.decrypted_secrets where name in ('polar_api_token','polar_webhook_secret')`, which should return 2. It also lists Polar's products and webhook endpoints.
 
