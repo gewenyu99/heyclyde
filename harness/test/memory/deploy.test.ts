@@ -13,10 +13,11 @@ import { repoRoot } from '../../src/config.ts'
 import { CLIENT_VERSION } from '../../../memory/supabase/functions/memory/version.ts'
 import { tempDir } from '../helpers.ts'
 import { otherKey, trustedKey, verifies } from './signing.ts'
+import { AGENT_APP_FILES, CLIENT_SURFACE_FILES } from './surface-hash.ts'
 
 const MEMORY = join(repoRoot(), 'memory')
 const FUNCTION = join('supabase', 'functions', 'memory')
-const CLIENT_FILES = ['memory-hook', 'claude-settings.json', 'codex-hooks.json', 'install.sh', 'signing-pub.pem']
+const CLIENT_FILES = CLIENT_SURFACE_FILES
 /** What `supabase migration list --linked` prints (CLI 2.122): JSON, an entry per migration, remote empty while it is pending. */
 const listing = (entries: [string, string][]) => JSON.stringify({ migrations: entries.map(([local, remote]) => ({ local, remote })), message: 'Migrations listed' })
 const APPLIED = listing([['20261101000900', '20261101000900'], ['20261102120000', '20261102120000']])
@@ -75,6 +76,8 @@ test('deploy.sh bakes one manifest of the client files and signs it, and the sig
     assert.equal(r.status, 0, r.out)
     const baked = files(t)
     for (const f of CLIENT_FILES) assert.ok(baked[f], `${f} is baked`)
+    // R45 (#50): the Gemini and Antigravity files are signed with the rest.
+    for (const f of AGENT_APP_FILES) assert.ok(baked.manifest.split('\n').some((l) => l.startsWith(`${f} `)), `${f} is in the signed manifest`)
     assert.ok(verifies(join(t.client, 'signing-pub.pem'), baked.manifest, baked['manifest.sig']), 'manifest.sig verifies')
     // Signed as served: memory-hook carries the client version, since the manifest hashes exactly these bytes.
     assert.match(baked['memory-hook'], new RegExp(`^VERSION=${CLIENT_VERSION.replace('.', '\\.')}$`, 'm'))

@@ -4,9 +4,9 @@ name: harness
 
 on:
   push:
-    paths: ['harness/**', 'memory/**', 'skills/**', '.github/workflows/harness.yml']
+    paths: ['harness/**', 'memory/**', 'skills/**', 'plugins/**', '.claude-plugin/**', '.github/workflows/harness.yml']
   pull_request:
-    paths: ['harness/**', 'memory/**', 'skills/**', '.github/workflows/harness.yml']
+    paths: ['harness/**', 'memory/**', 'skills/**', 'plugins/**', '.claude-plugin/**', '.github/workflows/harness.yml']
 
 permissions:
   contents: read

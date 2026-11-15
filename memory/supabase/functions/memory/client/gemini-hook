@@ -1,0 +1,60 @@
+#!/bin/sh
+# gemini-hook <event>: Gemini CLI's hooks into memory (R45). It maps Gemini's event onto memory's (SessionStart stays
+# SessionStart, BeforeAgent is UserPromptSubmit, AfterTool is PostToolUse, AfterAgent is Stop) and forwards the payload
+# through the memory-hook beside it, as the agent gemini, so the token, the version headers and self-update are
+# memory-hook's. The payload goes with hook_event_name set to memory's event, and AfterAgent's prompt_response also as
+# last_assistant_message, the field Claude Code's Stop carries.
+#
+# Gemini CLI reads a hook's stdout as JSON and turns plain text into a systemMessage the model never sees, so this prints
+# one JSON object and nothing else: {"hookSpecificOutput": {"hookEventName": ..., "additionalContext": ...}} when
+# SessionStart or BeforeAgent has something for the model (the server's answer and the inbox), and {} otherwise. A JSON
+# answer that carries hookSpecificOutput.additionalContext passes that through for any event. Like memory-hook it never
+# blocks the agent: no config, no python3, a slow server or an error all exit 0 with {}.
+case $1 in
+  SessionStart) event=SessionStart ;;
+  BeforeAgent) event=UserPromptSubmit ;;
+  AfterTool) event=PostToolUse ;;
+  AfterAgent) event=Stop ;;
+  *) cat >/dev/null; echo '{}'; exit 0 ;;
+esac
+hook=$(dirname "$0")/memory-hook
+if [ ! -x "$hook" ] || ! command -v python3 >/dev/null 2>&1; then
+  cat >/dev/null
+  echo '{}'
+  exit 0
+fi
+
+out=$(python3 -c '
+import json, sys
+raw = sys.stdin.read()
+try:
+    d = json.loads(raw)
+except ValueError:
+    sys.stdout.write(raw)
+    sys.exit(0)
+if not isinstance(d, dict):
+    d = {"body": d}
+d["hook_event_name"] = sys.argv[1]
+if sys.argv[1] == "Stop" and "prompt_response" in d and "last_assistant_message" not in d:
+    d["last_assistant_message"] = d["prompt_response"]
+sys.stdout.write(json.dumps(d))
+' "$event" 2>/dev/null | MEMORY_AGENT=gemini "$hook" "$event" 2>/dev/null)
+
+printf '%s' "$out" | python3 -c '
+import json, sys
+gemini = sys.argv[1]
+text = sys.stdin.read().strip()
+context = ""
+try:
+    d = json.loads(text) if text.startswith("{") else None
+except ValueError:
+    d = None
+if isinstance(d, dict):
+    spec = d.get("hookSpecificOutput")
+    if isinstance(spec, dict) and isinstance(spec.get("additionalContext"), str):
+        context = spec["additionalContext"]
+elif gemini in ("SessionStart", "BeforeAgent"):
+    context = text
+print(json.dumps({"hookSpecificOutput": {"hookEventName": gemini, "additionalContext": context}}) if context else "{}")
+' "$1" 2>/dev/null || echo '{}'
+exit 0

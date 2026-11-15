@@ -2,14 +2,14 @@
 // APIs here, so the tests import this file under node.
 //
 // CLIENT_VERSION covers the client files computers update themselves from: client/memory-hook, install.sh, the two hook
-// configs and the public key. A computer whose hook is behind it replaces them. SERVER_VERSION covers the MCP tools and
+// configs, the public key, and the Gemini CLI and Antigravity files (R45). A computer whose hook is behind it replaces them. SERVER_VERSION covers the MCP tools and
 // the server instructions, which every client reads fresh at initialize, so editing a tool description needs no update
 // on any computer and bumps only this one.
 //
 // Each is pinned to the hash of its surface: version.test.ts fails unless the surface on disk hashes to the entry for the
 // current version, no two versions share a hash, and no entry that main already has changed. After a bump, add an entry
 // with the hash the failing test prints. deploy.sh runs that guard before it deploys.
-export const CLIENT_VERSION = "20261102.1";
+export const CLIENT_VERSION = "20261115.1";
 export const SERVER_VERSION = "20261104.1";
 
 /** Every client version that was released, oldest first, with the day it was. A client is expired only when it is behind
@@ -17,11 +17,13 @@ export const SERVER_VERSION = "20261104.1";
  * Add the new CLIENT_VERSION here in the same change that bumps it. */
 export const CLIENT_RELEASES: { version: string; released: string }[] = [
   { version: "20261102.1", released: "2026-11-02" },
+  { version: "20261115.1", released: "2026-11-15" },
 ];
 
 /** SHA-256 of the client files at each client version: `{ "20261102.1": "<hash>" }`. Entries are never edited or removed. */
 export const CLIENT_SURFACE_HASHES: Record<string, string> = {
   "20261102.1": "70276f9bf6b6cc030f83e7e46afdc3b02abd42973615d249c433f40415ec89cb",
+  "20261115.1": "e1224e98bff182a79adb223a3341793a8eabc0f980e963ba3605c5b1950b7ccb",
 };
 
 /** SHA-256 of the MCP tools and server instructions at each server version. Entries are never edited or removed. */

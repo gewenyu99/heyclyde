@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import http from 'node:http'
 import https from 'node:https'
@@ -17,6 +17,7 @@ import { test } from 'node:test'
 import { repoRoot } from '../../src/config.ts'
 import { tempDir, waitFor } from '../helpers.ts'
 import { type KeyPair, localTls, nextKey, otherKey, sign, trustedKey } from './signing.ts'
+import { CLIENT_SURFACE_FILES } from './surface-hash.ts'
 
 const CLIENT = join(repoRoot(), 'memory', 'supabase', 'functions', 'memory', 'client')
 const OLD = '20261101.1'
@@ -24,7 +25,11 @@ const NEW = '20261102.1'
 const TOKEN = 'device-token-for-the-update-test'
 const read = (name: string) => readFileSync(join(CLIENT, name), 'utf8')
 /** Every file a self-update fetches and verifies. */
-const UPDATE_FILES = ['memory-hook', 'claude-settings.json', 'codex-hooks.json', 'install.sh', 'signing-pub.pem']
+const UPDATE_FILES = CLIENT_SURFACE_FILES
+/** What a memory-hook from before R45 fetched and verified, so what its install.sh --update ran beside. */
+const OLD_UPDATE_FILES = ['memory-hook', 'claude-settings.json', 'codex-hooks.json', 'install.sh', 'signing-pub.pem']
+/** The public MCP URL, which the OAuth clients (Gemini CLI, Antigravity, the Claude Code plugin) are given. */
+const MCP_URL = 'https://memory.heyclyde.me/mcp'
 
 type Fake = {
   /** https, which is all self-update will talk to. */
@@ -39,6 +44,10 @@ type Fake = {
   sent: Record<string, string[]>
   /** The x-memory-update-failed header of each https request, by "METHOD /path". */
   failed: Record<string, string[]>
+  /** The query string of each https request, by "METHOD /path". */
+  queries: Record<string, string[]>
+  /** The body of each https request, by "METHOD /path". */
+  bodies: Record<string, string[]>
   /** Every header name any request carried. */
   headerNames: Set<string>
   /** The client version memory-hook is stamped with, and the one the server announces. */
@@ -74,6 +83,10 @@ type Fake = {
 }
 
 const sha256 = (text: string) => createHash('sha256').update(text).digest('hex')
+/** A client file this checkout has, or one the fake serves anyway. */
+const onDisk = (f: string) => f === 'signing-pub.pem' || existsSync(join(CLIENT, f))
+/** The token the fake's /devices/claim mints, shaped like a real one. */
+const CLAIMED = randomBytes(32).toString('base64url')
 
 const signed = new Map<string, string>()
 const signature = (key: KeyPair, content: string) => {
@@ -85,7 +98,7 @@ const signature = (key: KeyPair, content: string) => {
 /** A server that answers hooks and /messages with its version headers and serves signed /install/files like the function. */
 async function fakeServer(version = NEW): Promise<Fake> {
   const fake = {
-    hits: [], httpHits: [], sent: {}, failed: {}, headerNames: new Set(), answer: {}, version, override: {}, tamper: {}, signWith: {}, noSig: {},
+    hits: [], httpHits: [], sent: {}, failed: {}, queries: {}, bodies: {}, headerNames: new Set(), answer: {}, version, override: {}, tamper: {}, signWith: {}, noSig: {},
     signer: trustedKey(), pub: readFileSync(trustedKey().pub, 'utf8'), redirect: false, status: 'behind', inbox: '', delayMs: 0,
   } as unknown as Fake
   const handler = (secure: boolean): http.RequestListener => (req, res) => {
@@ -94,8 +107,11 @@ async function fakeServer(version = NEW): Promise<Fake> {
     for (const h of Object.keys(req.headers)) fake.headerNames.add(h)
     ;(fake.sent[key] ??= []).push(String(req.headers['x-memory-client-version'] ?? ''))
     ;(fake.failed[key] ??= []).push(String(req.headers['x-memory-update-failed'] ?? ''))
-    req.resume()
+    if (secure) (fake.queries[key] ??= []).push((req.url ?? '').split('?')[1] ?? '')
+    const chunks: Buffer[] = []
+    req.on('data', (c) => chunks.push(c))
     req.on('end', () => {
+      if (secure) (fake.bodies[key] ??= []).push(Buffer.concat(chunks).toString('utf8'))
       res.setHeader('x-memory-client-latest', fake.latest ?? fake.version)
       if (req.method === 'POST' && req.url?.startsWith('/hooks/')) {
         res.setHeader('x-memory-client-status', fake.status)
@@ -106,6 +122,31 @@ async function fakeServer(version = NEW): Promise<Fake> {
       }
       if (req.method === 'GET' && req.url?.startsWith('/messages/')) {
         res.end(fake.inbox)
+        return
+      }
+      // The sign-in a computer with no token goes through (install.sh's sign_in), all on this one server.
+      if (req.method === 'GET' && req.url === '/install/config') {
+        res.end(JSON.stringify({ auth: `${fake.url}/auth`, key: 'fake-anon-key' }))
+        return
+      }
+      if (req.method === 'POST' && req.url === '/install/check') {
+        res.end(JSON.stringify({ allowed: true }))
+        return
+      }
+      if (req.method === 'POST' && req.url?.startsWith('/auth/otp')) {
+        res.end('{}')
+        return
+      }
+      if (req.method === 'GET' && req.url?.startsWith('/install/claim/')) {
+        res.end(JSON.stringify({ auth_code: 'fake-auth-code' }))
+        return
+      }
+      if (req.method === 'POST' && req.url?.startsWith('/auth/token')) {
+        res.end(JSON.stringify({ access_token: 'fake-session' }))
+        return
+      }
+      if (req.method === 'POST' && req.url === '/devices/claim') {
+        res.end(JSON.stringify({ token: CLAIMED }))
         return
       }
       if (req.method === 'POST' && req.url === '/mcp') {
@@ -142,7 +183,7 @@ async function fakeServer(version = NEW): Promise<Fake> {
           if (typeof o === 'string') return o
           return f === 'signing-pub.pem' ? fake.pub : read(f).replace('VERSION=@MEMORY_VERSION@', `VERSION=${fake.version}`)
         }
-        const manifest = fake.manifest ?? `version=${fake.manifestVersion ?? fake.version}\n${UPDATE_FILES.map((f) => `${f} ${sha256(contentOf(f))}`).join('\n')}\n`
+        const manifest = fake.manifest ?? `version=${fake.manifestVersion ?? fake.version}\n${UPDATE_FILES.filter(onDisk).map((f) => `${f} ${sha256(contentOf(f))}`).join('\n')}\n`
         res.setHeader('content-type', 'text/plain')
         if (file === 'manifest') {
           res.end(fake.tamper.manifest ?? manifest)
@@ -154,7 +195,7 @@ async function fakeServer(version = NEW): Promise<Fake> {
           } else {
             res.end(no ?? signature(fake.signWith.manifest ?? fake.signer, manifest))
           }
-        } else if (UPDATE_FILES.includes(file)) {
+        } else if (UPDATE_FILES.includes(file) && onDisk(file)) {
           res.end(fake.tamper[file] ?? contentOf(file))
         } else {
           res.statusCode = 404
@@ -205,7 +246,7 @@ function computer(url: string, at = OLD, opts: { userLast?: boolean; trust?: Key
 type Ran = { code: number | null; stdout: string; ms: number }
 
 /** One hook call, the way Claude Code makes it: the payload on stdin, the exit waited for. */
-function runHook(c: Computer, event: string, args: string[] = [], bin = c.hook, extra: Record<string, string> = {}): Promise<Ran> {
+function runHook(c: Computer, event: string, args: string[] = [], bin = c.hook, extra: Record<string, string> = {}, stdin = '{"session_id":"s1","cwd":"/tmp"}'): Promise<Ran> {
   return new Promise((resolve) => {
     const env = {
       PATH: process.env.PATH ?? '', HOME: c.home, LANG: 'C', NO_PROXY: '127.0.0.1', no_proxy: '127.0.0.1', CURL_CA_BUNDLE: localTls().certPath, ...extra,
@@ -214,7 +255,7 @@ function runHook(c: Computer, event: string, args: string[] = [], bin = c.hook, 
     const child = spawn(bin, [event, ...args], { env, stdio: ['pipe', 'pipe', 'pipe'] })
     let stdout = ''
     child.stdout.on('data', (d) => (stdout += d))
-    child.stdin.end('{"session_id":"s1","cwd":"/tmp"}')
+    child.stdin.end(stdin)
     child.on('close', (code) => resolve({ code, stdout, ms: Date.now() - t0 }))
   })
 }
@@ -1062,5 +1103,273 @@ test('the new public key moves into place only when memory-hook was installed', 
   } finally {
     await cleanup(fake, c)()
     rmSync(set, { recursive: true, force: true })
+  }
+})
+
+// R45 (#50): Gemini CLI, Antigravity and the plugin's installer run.
+
+/** install.sh alone, the way `curl | sh` has it, run with this HOME and stand-ins for the named apps' binaries on PATH.
+ * Each stand-in logs its arguments to <home>/<name>.log. With no terminal, as the plugin's /memory:connect runs it. */
+async function installAlone(fake: Fake, home: string, opts: { stubs?: string[]; env?: Record<string, string> } = {}): Promise<{ code: number | null; stderr: string }> {
+  const bin = tempDir('memory-install-bin-')
+  const stubs = tempDir('memory-install-stubs-')
+  copyFileSync(join(CLIENT, 'install.sh'), join(bin, 'install.sh'))
+  for (const name of opts.stubs ?? []) {
+    writeFileSync(join(stubs, name), `#!/bin/sh\necho "$*" >> "$HOME/${name}.log"\nexit 0\n`, { mode: 0o755 })
+  }
+  try {
+    return await new Promise((resolve) => {
+      const env = {
+        PATH: `${stubs}:/usr/bin:/bin`, HOME: home, MEMORY_URL: fake.url, MEMORY_DEVICE: 'test-mac', CURL_CA_BUNDLE: localTls().certPath,
+        NO_PROXY: '127.0.0.1', no_proxy: '127.0.0.1', ...opts.env,
+      }
+      const child = spawn('sh', [join(bin, 'install.sh')], { env, stdio: ['ignore', 'ignore', 'pipe'], detached: true })
+      let stderr = ''
+      child.stderr.on('data', (d) => (stderr += d))
+      child.on('close', (code) => resolve({ code, stderr }))
+    })
+  } finally {
+    rmSync(bin, { recursive: true, force: true })
+    rmSync(stubs, { recursive: true, force: true })
+  }
+}
+
+/** Every file under a directory, recursively, with its text. */
+function tree(dir: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (!existsSync(dir)) return out
+  for (const f of readdirSync(dir)) {
+    const path = join(dir, f)
+    if (statSync(path).isDirectory()) Object.assign(out, tree(path))
+    else out[path] = readFileSync(path, 'utf8')
+  }
+  return out
+}
+
+const GEMINI_EVENTS = ['AfterAgent', 'AfterTool', 'BeforeAgent', 'SessionStart']
+
+test('installer sets up Gemini CLI', async () => {
+  const fake = await fakeServer(NEW)
+  const home = tempDir('memory-gemini-')
+  const bare = tempDir('memory-gemini-none-')
+  // Shaped like a real device token, so a leak of it into a Gemini file is a 43-character base64url run.
+  const token = randomBytes(32).toString('base64url')
+  try {
+    const ran = await installAlone(fake, home, { stubs: ['gemini'], env: { MEMORY_TOKEN: token } })
+    assert.equal(ran.code, 0, ran.stderr)
+    const ext = join(home, '.gemini', 'extensions', 'memory')
+    const manifestText = readFileSync(join(ext, 'gemini-extension.json'), 'utf8')
+    const manifest = JSON.parse(manifestText)
+    assert.equal(manifest.name, 'memory')
+    assert.equal(manifest.mcpServers.memory.httpUrl, MCP_URL)
+    assert.deepEqual(Object.keys(manifest.mcpServers.memory), ['httpUrl'], 'no headers: Gemini CLI signs in by OAuth')
+    const hooks = JSON.parse(readFileSync(join(ext, 'hooks', 'hooks.json'), 'utf8')).hooks
+    assert.deepEqual(Object.keys(hooks).sort(), GEMINI_EVENTS)
+    for (const event of GEMINI_EVENTS) {
+      const commands = hooks[event].flatMap((g: { hooks: { type: string; command: string }[] }) => g.hooks.map((h) => `${h.type} ${h.command}`))
+      assert.deepEqual(commands, [`command ~/.config/memory/gemini-hook ${event}`], event)
+    }
+    const adapter = join(home, '.config', 'memory', 'gemini-hook')
+    assert.equal(readFileSync(adapter, 'utf8'), read('gemini-hook'))
+    assert.ok(statSync(adapter).mode & 0o100, 'gemini-hook is executable')
+    assert.equal(statSync(adapter).mode & 0o077, 0, 'and private')
+    for (const [path, text] of Object.entries(tree(join(home, '.gemini')))) assert.ok(!text.includes(token), `${path} holds no token`)
+    assert.equal(existsSync(join(home, '.gemini', 'config')), false, 'no Antigravity on this computer, so no mcp_config.json')
+    // A computer with neither app gets no ~/.gemini at all.
+    const none = await installAlone(fake, bare, { env: { MEMORY_TOKEN: token } })
+    assert.equal(none.code, 0, none.stderr)
+    assert.equal(existsSync(join(bare, '.gemini')), false)
+  } finally {
+    await fake.close()
+    rmSync(home, { recursive: true, force: true })
+    rmSync(bare, { recursive: true, force: true })
+  }
+})
+
+test('gemini adapter prints JSON only', async () => {
+  const fake = await fakeServer(NEW)
+  const c = computer(fake.url, NEW)
+  const adapter = join(c.dir, 'gemini-hook')
+  const gemini = (event: string, stdin?: string) => runHook(c, event, [], adapter, {}, stdin)
+  try {
+    // Inside the try, so a checkout without gemini-hook still closes the server and the file can end.
+    copyFileSync(join(CLIENT, 'gemini-hook'), adapter)
+    chmodSync(adapter, 0o700)
+    // BeforeAgent is memory's UserPromptSubmit, for the agent gemini, and the answer reaches the model as additionalContext.
+    fake.answer.UserPromptSubmit = { status: 200, body: 'note X' }
+    const before = await gemini('BeforeAgent', '{"session_id":"g1","cwd":"/tmp","hook_event_name":"BeforeAgent","prompt":"hi"}')
+    assert.equal(before.code, 0)
+    const out = JSON.parse(before.stdout)
+    assert.deepEqual(Object.keys(out), ['hookSpecificOutput'])
+    assert.equal(out.hookSpecificOutput.hookEventName, 'BeforeAgent')
+    assert.match(out.hookSpecificOutput.additionalContext, /note X/)
+    assert.deepEqual(fake.queries['POST /hooks/UserPromptSubmit'], ['agent=gemini'])
+    const forwarded = JSON.parse(fake.bodies['POST /hooks/UserPromptSubmit'][0])
+    assert.equal(forwarded.hook_event_name, 'UserPromptSubmit')
+    assert.equal(forwarded.prompt, 'hi')
+    assert.equal(forwarded.session_id, 'g1')
+    assert.deepEqual(fake.queries['GET /messages/gemini'], [''], "and it reads gemini's inbox")
+    // An empty answer and an empty inbox: {} and nothing else.
+    fake.answer.UserPromptSubmit = { status: 200, body: '' }
+    const empty = await gemini('BeforeAgent')
+    assert.equal(empty.stdout.trim(), '{}')
+    // The inbox reaches the model at SessionStart.
+    fake.inbox = 'codex says hello'
+    const start = JSON.parse((await gemini('SessionStart')).stdout)
+    assert.equal(start.hookSpecificOutput.hookEventName, 'SessionStart')
+    assert.match(start.hookSpecificOutput.additionalContext, /codex says hello/)
+    fake.inbox = ''
+    // AfterTool is PostToolUse and AfterAgent is Stop, with the reply as last_assistant_message. Both print {}.
+    const tool = await gemini('AfterTool', '{"session_id":"g1","tool_name":"mcp_memory_recall","tool_input":{},"tool_response":{"retrieval_id":"r1"}}')
+    assert.equal(tool.stdout.trim(), '{}')
+    assert.equal(JSON.parse(fake.bodies['POST /hooks/PostToolUse'][0]).tool_name, 'mcp_memory_recall')
+    fake.answer.Stop = { status: 200, body: 'plain text the model would not see' }
+    const stop = await gemini('AfterAgent', '{"session_id":"g1","prompt":"hi","prompt_response":"done"}')
+    assert.equal(stop.stdout.trim(), '{}')
+    const stopped = JSON.parse(fake.bodies['POST /hooks/Stop'][0])
+    assert.equal(stopped.last_assistant_message, 'done')
+    assert.equal(stopped.hook_event_name, 'Stop')
+    for (const e of ['PostToolUse', 'Stop']) assert.deepEqual(fake.queries[`POST /hooks/${e}`], ['agent=gemini'], e)
+    // An event memory doesn't take: {} and no call.
+    const calls = fake.hits.length
+    assert.equal((await gemini('BeforeModel')).stdout.trim(), '{}')
+    assert.equal(fake.hits.length, calls)
+  } finally {
+    await cleanup(fake, c)()
+  }
+  // A server that is down, or a computer with no token: still {} and exit 0.
+  const down = computer('https://127.0.0.1:9', NEW)
+  try {
+    copyFileSync(join(CLIENT, 'gemini-hook'), join(down.dir, 'gemini-hook'))
+    chmodSync(join(down.dir, 'gemini-hook'), 0o700)
+    const ran = await runHook(down, 'BeforeAgent', [], join(down.dir, 'gemini-hook'))
+    assert.equal(ran.code, 0)
+    assert.equal(ran.stdout.trim(), '{}')
+    rmSync(join(down.dir, 'token'))
+    assert.equal((await runHook(down, 'SessionStart', [], join(down.dir, 'gemini-hook'))).stdout.trim(), '{}')
+  } finally {
+    rmSync(down.home, { recursive: true, force: true })
+  }
+})
+
+test('installer sets up Antigravity', async () => {
+  const fake = await fakeServer(NEW)
+  const home = tempDir('memory-antigravity-')
+  const fresh = tempDir('memory-antigravity-bin-')
+  const token = randomBytes(32).toString('base64url')
+  const config = join(home, '.gemini', 'config', 'mcp_config.json')
+  const other = { serverUrl: 'https://example.com/mcp', headers: { 'X-Key': 'theirs' } }
+  mkdirSync(join(home, '.gemini', 'config'), { recursive: true })
+  writeFileSync(config, JSON.stringify({ mcpServers: { other } }))
+  try {
+    const first = await installAlone(fake, home, { env: { MEMORY_TOKEN: token } })
+    assert.equal(first.code, 0, first.stderr)
+    const bytes = readFileSync(config, 'utf8')
+    const doc = JSON.parse(bytes)
+    assert.deepEqual(doc.mcpServers.memory, { serverUrl: MCP_URL })
+    assert.deepEqual(doc.mcpServers.other, other, 'the other server is untouched')
+    assert.deepEqual(Object.keys(doc.mcpServers).sort(), ['memory', 'other'])
+    assert.ok(!bytes.includes(token), 'no token: Antigravity signs in by OAuth')
+    const second = await installAlone(fake, home, { env: { MEMORY_TOKEN: token } })
+    assert.equal(second.code, 0, second.stderr)
+    assert.equal(readFileSync(config, 'utf8'), bytes, 'a second run changes nothing')
+    // An antigravity or agy binary is enough, and the config is made.
+    for (const binary of ['antigravity', 'agy']) {
+      rmSync(join(fresh, '.gemini'), { recursive: true, force: true })
+      const ran = await installAlone(fake, fresh, { stubs: [binary], env: { MEMORY_TOKEN: token } })
+      assert.equal(ran.code, 0, ran.stderr)
+      const made = JSON.parse(readFileSync(join(fresh, '.gemini', 'config', 'mcp_config.json'), 'utf8'))
+      assert.deepEqual(made, { mcpServers: { memory: { serverUrl: MCP_URL } } }, binary)
+    }
+  } finally {
+    await fake.close()
+    rmSync(home, { recursive: true, force: true })
+    rmSync(fresh, { recursive: true, force: true })
+  }
+})
+
+test("install.sh --update run beside the five files a pre-R45 memory-hook fetched still updates, and leaves Gemini alone", async () => {
+  const fake = await fakeServer(NEW)
+  const c = computer(fake.url, OLD)
+  const set = tempDir('memory-fetched-old-')
+  for (const f of OLD_UPDATE_FILES) writeFileSync(join(set, f), f === 'memory-hook' ? read(f).replace('VERSION=@MEMORY_VERSION@', `VERSION=${NEW}`) : read(f))
+  copyFileSync(trustedKey().pub, join(set, 'signing-pub.pem'))
+  try {
+    const ran = await runInstall(join(set, 'install.sh'), ['--update'], c)
+    assert.equal(ran.code, 0, ran.stderr)
+    assert.equal(versionOf(c), NEW)
+    assert.equal(existsSync(join(c.home, '.gemini')), false)
+    assert.equal(existsSync(join(c.dir, 'gemini-hook')), false)
+  } finally {
+    await cleanup(fake, c)()
+    rmSync(set, { recursive: true, force: true })
+  }
+})
+
+test("a self-update brings gemini-hook and the Gemini extension's files to a computer that has the extension", async () => {
+  const fake = await fakeServer(NEW)
+  const c = computer(fake.url, OLD)
+  const ext = join(c.home, '.gemini', 'extensions', 'memory')
+  mkdirSync(join(ext, 'hooks'), { recursive: true })
+  writeFileSync(join(ext, 'hooks', 'hooks.json'), '{"hooks":{}}')
+  writeFileSync(join(ext, 'gemini-extension.json'), '{"name":"memory","version":"0.0.1"}')
+  try {
+    await runHook(c, 'Stop')
+    await waitFor(() => versionOf(c) === NEW, 30_000, 'the update to land')
+    await clean(c)
+    assert.equal(readFileSync(join(c.dir, 'gemini-hook'), 'utf8'), read('gemini-hook'))
+    assert.deepEqual(JSON.parse(readFileSync(join(ext, 'hooks', 'hooks.json'), 'utf8')), JSON.parse(read('gemini-hooks.json')))
+    assert.deepEqual(JSON.parse(readFileSync(join(ext, 'gemini-extension.json'), 'utf8')), JSON.parse(read('gemini-extension.json')))
+    for (const f of ['gemini-hook', 'gemini-hooks.json', 'gemini-extension.json', 'antigravity-mcp.json']) {
+      assert.ok(fake.hits.includes(`GET /install/files/${f}`), `${f} was fetched and checked against the manifest`)
+    }
+  } finally {
+    await cleanup(fake, c)()
+  }
+})
+
+test('MEMORY_CLAUDE=plugin leaves Claude Code to the memory plugin, and the installer sets it up otherwise', async () => {
+  const fake = await fakeServer(NEW)
+  const plugin = tempDir('memory-plugin-')
+  const plain = tempDir('memory-plain-')
+  // This computer ran the installer before, so settings.json has its hooks beside the user's own.
+  mkdirSync(join(plugin, '.claude'))
+  const ours = JSON.parse(read('claude-settings.json')).hooks
+  writeFileSync(join(plugin, '.claude', 'settings.json'), JSON.stringify({ model: 'opus', hooks: { ...ours, UserPromptSubmit: [USER_HOOK, ...ours.UserPromptSubmit] } }))
+  try {
+    const skipped = await installAlone(fake, plugin, { stubs: ['claude'], env: { MEMORY_TOKEN: TOKEN, MEMORY_CLAUDE: 'plugin' } })
+    assert.equal(skipped.code, 0, skipped.stderr)
+    // The plugin brings the MCP server and the hooks, so the installer's go: no second server and no event sent twice.
+    const calls = readFileSync(join(plugin, 'claude.log'), 'utf8').trim().split('\n')
+    assert.deepEqual(calls, ['mcp remove kb --scope user', 'mcp remove memory --scope user'])
+    const settings = JSON.parse(readFileSync(join(plugin, '.claude', 'settings.json'), 'utf8'))
+    assert.ok(!JSON.stringify(settings).includes('memory-hook'), 'no memory-hook entry is left in settings.json')
+    assert.deepEqual(settings.hooks.UserPromptSubmit, [USER_HOOK], "the user's own hook stays")
+    assert.equal(settings.model, 'opus')
+    assert.ok(existsSync(join(plugin, '.config', 'memory', 'memory-hook')), "the plugin's hooks forward through memory-hook, so it is there")
+    const added = await installAlone(fake, plain, { stubs: ['claude'], env: { MEMORY_TOKEN: TOKEN } })
+    assert.equal(added.code, 0, added.stderr)
+    assert.match(readFileSync(join(plain, 'claude.log'), 'utf8'), /^mcp add --transport http --scope user memory /m)
+    assert.match(readFileSync(join(plain, '.claude', 'settings.json'), 'utf8'), /memory-hook UserPromptSubmit/)
+  } finally {
+    await fake.close()
+    rmSync(plugin, { recursive: true, force: true })
+    rmSync(plain, { recursive: true, force: true })
+  }
+})
+
+test('with MEMORY_EMAIL and no terminal, the installer signs in without asking', async () => {
+  const fake = await fakeServer(NEW)
+  const home = tempDir('memory-email-')
+  try {
+    const ran = await installAlone(fake, home, { env: { MEMORY_EMAIL: 'wen@example.com' } })
+    assert.equal(ran.code, 0, ran.stderr)
+    assert.equal(readFileSync(join(home, '.config', 'memory', 'token'), 'utf8'), `${CLAIMED}\n`)
+    assert.equal(JSON.parse(fake.bodies['POST /install/check'][0]).email, 'wen@example.com')
+    assert.equal(JSON.parse(fake.bodies['POST /auth/otp'][0]).email, 'wen@example.com', 'the sign-in link went to that email')
+    assert.match(ran.stderr, /Check wen@example\.com and click the sign-in link/, 'the waiting line goes to stderr with no terminal')
+  } finally {
+    await fake.close()
+    rmSync(home, { recursive: true, force: true })
   }
 })

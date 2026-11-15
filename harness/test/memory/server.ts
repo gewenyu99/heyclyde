@@ -84,7 +84,6 @@ export async function startRealMemory(extraEnv: Record<string, string> = {}, opt
   database(['reset'], {
     MEMORY_TEST_TOKEN: token, MEMORY_TEST_RUNTIME_TOKEN: runtimeToken, MEMORY_TEST_ADMIN_TOKEN: adminToken, MEMORY_TEST_RESEARCH_TOKEN: researchToken, MEMORY_TEST_CRON_SECRET: cronSecret,
   })
-  const port = await freePort()
   // Embeddings, the write judge and the recall filter all go to the fake OpenAI, and sign-ins to the fake Supabase Auth,
   // so nothing leaves the machine.
   const openai = await startFakeOpenAI(options.openai)
@@ -93,6 +92,9 @@ export async function startRealMemory(extraEnv: Record<string, string> = {}, opt
   const serviceKey = options.storage ? randomBytes(20).toString('hex') : undefined
   const storage = serviceKey ? new FakeStorage(serviceKey) : undefined
   const auth = await startFakeAuth(storage?.handle)
+  // The function's port is picked once the fakes hold theirs. Picked before, a fake listening on port 0 could be handed
+  // the same one, and the function would die with AddrInUse.
+  const port = await freePort()
   const env = {
     ...process.env, SUPABASE_DB_URL: DATABASE_URL, DENO_SERVE_ADDRESS: `tcp:127.0.0.1:${port}`, MEMORY_OPENAI_URL: openai.url,
     SUPABASE_URL: auth.url, SUPABASE_ANON_KEY: 'fake-anon-key', NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost',

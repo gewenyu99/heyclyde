@@ -9,8 +9,12 @@ import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 
+/** The Gemini CLI and Antigravity files (R45 #50): the Gemini hook adapter, the extension's hooks and manifest, and
+ * Antigravity's MCP entry. */
+export const AGENT_APP_FILES = ['gemini-hook', 'gemini-hooks.json', 'gemini-extension.json', 'antigravity-mcp.json']
+
 /** The files a self-update installs and verifies. Their hash is the client surface. */
-export const CLIENT_SURFACE_FILES = ['claude-settings.json', 'codex-hooks.json', 'install.sh', 'memory-hook', 'signing-pub.pem']
+export const CLIENT_SURFACE_FILES = ['claude-settings.json', 'codex-hooks.json', 'install.sh', 'memory-hook', 'signing-pub.pem', ...AGENT_APP_FILES]
 
 const sha256 = (text: string) => createHash('sha256').update(text).digest('hex')
 

@@ -25,6 +25,7 @@ import { jwt } from './auth.ts'
 import { FAKE_DOWN, FAKE_REFUSE } from './openai.ts'
 import { apply, purge, SKIP, sql, startRealMemory, type RealMemory } from './server.ts'
 import { verifies } from './signing.ts'
+import { CLIENT_SURFACE_FILES } from './surface-hash.ts'
 
 let memory: RealMemory
 const SEED = ['tea-oolong-temp', 'tea-oolong-old', 'tea-draft-cold', 'tea-supplier', 'tea-zh', 'proj-tea']
@@ -349,6 +350,37 @@ test('/oauth/consent sends at most 3 sign-in emails in 15 minutes, all to the ow
   for (const e of emails) assert.deepEqual([e.body.email, e.body.create_user], [ownerEmail(), false])
 })
 
+// R45 (#50): Antigravity's, Grok's and the Gemini app's callbacks are approved, and any other is refused with its
+// redirect_uri in admin_audit. accounts.google.com is not allowed until there's evidence the Gemini app uses it.
+test('oauth: agent app callbacks allowed, others denied and logged', { skip: SKIP }, async () => {
+  const cases: [string, string, 'approve' | 'deny'][] = [
+    ['antigravity', 'https://antigravity.google/oauth-callback', 'approve'],
+    ['grok', 'https://grok.com/connectors/oauth/callback', 'approve'],
+    ['xai', 'https://x.ai/oauth/callback', 'approve'],
+    ['gemini-app', 'https://gemini.google.com/oauth/callback', 'approve'],
+    ['evil', 'https://evil.example/cb', 'deny'],
+    ['evil-google', 'https://accounts.google.com/o/oauth2/callback', 'deny'],
+    ['evil-http', 'http://grok.com/connectors/oauth/callback', 'deny'],
+    ['evil-sub', 'https://grok.com.evil.example/cb', 'deny'],
+  ]
+  for (const [name, target, want] of cases) {
+    const id = `agent-app-${name}-0001`, code = `pkce-${name}`
+    sql(`insert into memory.oauth_consent (authorization_id, code_verifier) values ('${id}', 'verifier-${name}')`)
+    memory.auth.signIns[code] = ownerEmail()
+    memory.auth.authorizations[id] = { redirect_uri: target, client: { id: `client-${name}`, name: `App ${name}` } }
+    const r = await call('GET', `/oauth/approve?authorization_id=${id}&code=${code}`)
+    assert.equal(r.status, want === 'approve' ? 200 : 403, `${name}: ${r.text}`)
+    const consent = memory.auth.calls.filter((c) => c.path === `/auth/v1/oauth/authorizations/${id}/consent`)
+    assert.deepEqual(consent.map((c) => c.body.action), [want], name)
+    const audit = sql(`select action, after->>'redirect_uri' as redirect_uri from memory.admin_audit where target = 'client:client-${name}'`)
+    assert.deepEqual(audit, [{ action: `oauth_${want}`, redirect_uri: target }], name)
+    // The waiting window goes on to the client: with a code when approved, with the error when not.
+    const moved = await call('GET', `/oauth/wait?authorization_id=${id}`)
+    assert.equal(moved.status, 302, name)
+    assert.match(String(moved.headers.location), want === 'approve' ? new RegExp(`code=code-${id}`) : /error=access_denied/, name)
+  }
+})
+
 // R8 (#11): a note with an API key is stored with it redacted.
 test('a note with an API key is stored with it redacted, and the judge never saw the key', { skip: SKIP }, async () => {
   const rt = new Memory(memory.url, memory.runtimeToken)
@@ -539,7 +571,8 @@ test('the install route serves every client file and a signed manifest that list
   assert.ok(!verifies(pub, `${manifest.text}# changed\n`, sig.text), 'and covers no other bytes')
   const lines = manifest.text.trimEnd().split('\n')
   assert.equal(lines[0], `version=${CLIENT_VERSION}`)
-  for (const f of ['memory-hook', 'install.sh', 'claude-settings.json', 'codex-hooks.json', 'signing-pub.pem']) {
+  // Every client file, the Gemini and Antigravity ones too (R45 #50).
+  for (const f of CLIENT_SURFACE_FILES) {
     const served = await request('GET', `${memory.url}/install/files/${f}`)
     assert.equal(served.status, 200, f)
     const local = readFileSync(join(CLIENT_DIR, f), 'utf8')
