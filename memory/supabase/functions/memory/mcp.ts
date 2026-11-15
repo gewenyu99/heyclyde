@@ -6,6 +6,8 @@ import { config } from "./config.ts";
 import { sql } from "./db.ts";
 import * as quests from "./quests.ts";
 import * as service from "./service.ts";
+import { CARD_KEY as CARD, readUiResource, requestWantsUi, UI_EXTENSION, uiResources, uiTools, wantsUi } from "./ui/apps.ts";
+import { type Badge, cardData } from "./ui/data.ts";
 import { clientStatus, installerNote, SERVER_VERSION } from "./version.ts";
 import { Refused, remember } from "./write.ts";
 
@@ -408,12 +410,48 @@ const error = (id: RpcMessage["id"], code: number, message: string) => ({ jsonrp
 
 /** The client name a session gave at initialize, and the agent it is. A session opened under another credential is no one:
  * its id is not a bearer token. */
-async function sessionOf(session: string | null, principal: string): Promise<{ client: string | null; agent: Profile | null }> {
-  if (!session) return { client: null, agent: null };
-  const [row] = await sql`select c.client, c.principal, a.name, a.context, a.surface from memory.mcp_client c
+async function sessionOf(session: string | null, principal: string): Promise<{ client: string | null; agent: Profile | null; ui: boolean }> {
+  if (!session) return { client: null, agent: null, ui: false };
+  const [row] = await sql`select c.client, c.principal, c.ui, a.name, a.context, a.surface from memory.mcp_client c
     left join memory.agent a on a.name = c.agent where c.session_id = ${session}`;
   const mine = row?.principal === principal && row?.name;
-  return { client: row?.client ?? null, agent: mine ? { name: row.name, context: row.context, surface: row.surface } : null };
+  return {
+    client: row?.client ?? null, agent: mine ? { name: row.name, context: row.context, surface: row.surface } : null,
+    ui: row?.principal === principal && row?.ui === true,
+  };
+}
+
+/** Whether this request's client renders cards (R67): it said so at initialize, or says so on this request. */
+async function rendersCards(msg: RpcMessage, session: string | null, principal: string) {
+  if (requestWantsUi(msg.params)) return true;
+  if (!session) return false;
+  const [row] = await sql`select ui from memory.mcp_client where session_id = ${session} and principal = ${principal}`;
+  return row?.ui === true;
+}
+
+/** The origin a Storage download link comes from, so a card may show an image artifact. */
+const storageOrigin = () => {
+  try {
+    return new URL(Deno.env.get("SUPABASE_URL") ?? "").origin;
+  } catch {
+    return null;
+  }
+};
+
+/** The agent a card's badge names. */
+const badgeOf = (k: { client: string | null; agent: Profile | null }): Badge =>
+  k.agent ? { name: k.agent.name, context: k.agent.context, surface: k.agent.surface, registered: true }
+    : { name: service.agentName(k.client), context: null, surface: null, registered: false };
+
+/** A result's card data as its _meta, or null. A card that can't be built leaves the text result as it is. */
+async function card(c: Parameters<typeof cardData>[0]): Promise<{ _meta: Record<string, unknown> } | null> {
+  try {
+    const data = await cardData(c);
+    return data ? { _meta: { [CARD]: data } } : null;
+  } catch (e) {
+    console.error(e);
+    return null;
+  }
 }
 
 async function answer(msg: RpcMessage, session: string | null, minted: { id?: string }, who: Principal) {
@@ -425,13 +463,15 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
       minted.id = sid;
       const client = typeof msg.params?.clientInfo?.name === "string" ? msg.params.clientInfo.name : null;
       const principal = who.device ?? who.role;
+      // R67: a chat app that renders cards gets them for the whole session. A coding app's initialize is what it always was.
+      const ui = wantsUi(msg.params);
       // A credential and app that registered before start as that agent.
-      await sql`insert into memory.mcp_client (session_id, client, principal, agent)
-        values (${sid}, ${client}, ${principal}, (select agent from memory.agent_binding where principal = ${principal} and client = ${client}))
+      await sql`insert into memory.mcp_client (session_id, client, principal, agent, ui)
+        values (${sid}, ${client}, ${principal}, (select agent from memory.agent_binding where principal = ${principal} and client = ${client}), ${ui})
         on conflict do nothing`;
       return result(id, {
         protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0],
-        capabilities: { tools: { listChanged: false } },
+        capabilities: ui ? { tools: { listChanged: false }, resources: {}, extensions: { [UI_EXTENSION]: {} } } : { tools: { listChanged: false } },
         serverInfo: { name: "memory", version: SERVER_VERSION },
         instructions: INSTRUCTIONS,
       });
@@ -439,7 +479,16 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
     case "ping":
       return result(id, {});
     case "tools/list":
-      return result(id, { tools: TOOLS });
+      return result(id, { tools: (await rendersCards(msg, session, who.device ?? who.role)) ? uiTools(TOOLS) : TOOLS });
+    // R67: the cards. Only a client that renders them is told they exist, but reading one is harmless for anyone.
+    case "resources/list":
+      return result(id, { resources: uiResources() });
+    case "resources/templates/list":
+      return result(id, { resourceTemplates: [] });
+    case "resources/read": {
+      const read = readUiResource(msg.params?.uri, storageOrigin());
+      return read ? result(id, read) : error(id, -32002, `Resource not found: ${String(msg.params?.uri ?? "")}`);
+    }
     case "tools/call": {
       const name = msg.params?.name, run = RUN[name];
       if (!run) return error(id, -32602, `Unknown tool ${name}`);
@@ -459,6 +508,7 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
       };
       const principal = who.device ?? who.role;
       let nudge: { type: string; text: string }[] = [];
+      let cards = false, badge: Badge | null = null;
       try {
         const known = await sessionOf(session, principal);
         // Registration is gentle: an unregistered session works, and hears this after every reply until it registers.
@@ -466,12 +516,22 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
         if (known.agent) {
           await sql`update memory.agent set last_seen = now() where name = ${known.agent.name} and last_seen < now() - interval '1 minute'`;
         }
-        const text = await run({ session: sid, client: known.client, agent: known.agent, principal, args: msg.params?.arguments ?? {}, note: installNote(who) });
-        return result(id, { content: [{ type: "text", text: await remind(text) }, ...nudge] });
+        cards = known.ui || requestWantsUi(msg.params);
+        badge = badgeOf(known);
+        const args = msg.params?.arguments ?? {};
+        const text = await run({ session: sid, client: known.client, agent: known.agent, principal, args, note: installNote(who) });
+        // R67: the text is what it always was. A card-rendering client also gets the card's data, in _meta, which the
+        // model never reads. A registration's card shows the agent it just became.
+        if (cards && name === "register_agent") badge = badgeOf(await sessionOf(session, principal));
+        const meta = cards ? await card({ tool: name, args, text, error: false, session: sid, viewer: { device: principal, agent: badge.name }, badge }) : null;
+        return result(id, { content: [{ type: "text", text: await remind(text) }, ...nudge], ...meta });
       } catch (e) {
         if (!(e instanceof Refused)) console.error(e);
         const text = e instanceof Refused ? e.message : `Error: ${(e as Error).message}`;
-        return result(id, { content: [{ type: "text", text: await remind(text) }, ...nudge], isError: true });
+        const meta = cards && badge
+          ? await card({ tool: name, args: msg.params?.arguments ?? {}, text, error: true, session: sid, viewer: { device: principal, agent: badge.name }, badge })
+          : null;
+        return result(id, { content: [{ type: "text", text: await remind(text) }, ...nudge], isError: true, ...meta });
       }
     }
     default:

@@ -17,7 +17,8 @@ const FRESH = "15 minutes";
 // A program on this computer (Claude Code, Gemini CLI and other local clients) may use http too. Anything else is refused
 // and its redirect_uri logged to admin_audit as oauth_deny, so a client someone registered for themselves can't collect a
 // code, and an app whose real callback differs shows it on its first try.
-const CLIENT_HOSTS = new Set(["claude.ai", "claude.com", "antigravity.google", "grok.com", "x.ai", "gemini.google.com"]);
+// chatgpt.com: ChatGPT's connector callbacks (R67), https://chatgpt.com/connector_platform_oauth_redirect and /connector/oauth/<id>.
+const CLIENT_HOSTS = new Set(["claude.ai", "claude.com", "chatgpt.com", "antigravity.google", "grok.com", "x.ai", "gemini.google.com"]);
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
 // At most this many sign-in emails in 15 minutes, so the open consent page can't flood the owner's inbox.
 const MAX_EMAILS = 3;

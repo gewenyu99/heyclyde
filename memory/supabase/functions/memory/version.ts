@@ -1,6 +1,8 @@
 // Two versions, one for each thing that can change under a client. Both are a date and a serial, YYYYMMDD.N. No Deno
 // APIs here, so the tests import this file under node.
 //
+// SERVER_VERSION also covers, since R67, what chat apps that render cards read: the card links, resources and HTML.
+//
 // CLIENT_VERSION covers the client files computers update themselves from: client/memory-hook, install.sh, the two hook
 // configs, the public key, and the Gemini CLI and Antigravity files (R45). A computer whose hook is behind it replaces them. SERVER_VERSION covers the MCP tools and
 // the server instructions, which every client reads fresh at initialize, so editing a tool description needs no update
@@ -10,7 +12,7 @@
 // current version, no two versions share a hash, and no entry that main already has changed. After a bump, add an entry
 // with the hash the failing test prints. deploy.sh runs that guard before it deploys.
 export const CLIENT_VERSION = "20261115.1";
-export const SERVER_VERSION = "20261115.1";
+export const SERVER_VERSION = "20261115.2";
 
 /** Every client version that was released, oldest first, with the day it was. A client is expired only when it is behind
  * a version released more than the cutoff ago, so a new release can never expire a client on the day it ships.
@@ -36,6 +38,7 @@ export const SERVER_SURFACE_HASHES: Record<string, string> = {
   "20261103.5": "0851f7bd157b591987c9fdde99e16a88cb1a82e5d20f8f9a67b203c53cd72df9",
   "20261104.1": "3d7449c7158e88d770c8b285e50e1a596f5f496ded659e0ce852b03f1df7e92f",
   "20261115.1": "f4446bde0480e1f30931efaa9b25f111690b7ebbc7837953041177c70fb20942",
+  "20261115.2": "558ff788dd3c921c129b59dc9e6b5ca8cda51738a5fd01c26bf4e4257b96e6bf",
 };
 
 /** What a rerun of the installer fixes: it replaces a hook too old to update itself or one that can't, and keeps the
