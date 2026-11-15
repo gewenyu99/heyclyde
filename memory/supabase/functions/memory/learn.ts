@@ -130,9 +130,9 @@ async function strengthen(db: Sql, src: string, dst: string, session: string, ri
   const [l] = await db`select weight from memory.link where src = ${src} and dst = ${dst} and type = 'co_used'`;
   const before = l ? Number(l.weight ?? 0) : 0, after = coUsed(before);
   await db`insert into memory.link (src, dst, type, weight) values (${src}, ${dst}, 'co_used', ${after})
-    on conflict (src, dst, type) do update set weight = excluded.weight`;
+    on conflict (owner_id, src, dst, type) do update set weight = excluded.weight`;
   await db`insert into memory.co_use (src, dst, sessions, uses, misses) values (${src}, ${dst}, array[${session}::text], 1, 0)
-    on conflict (src, dst) do update set uses = memory.co_use.uses + 1, misses = 0, updated_at = now(),
+    on conflict (owner_id, src, dst) do update set uses = memory.co_use.uses + 1, misses = 0, updated_at = now(),
       sessions = case when ${session}::text = any(memory.co_use.sessions) or cardinality(memory.co_use.sessions) >= ${CO_USE.sessions}
         then memory.co_use.sessions else memory.co_use.sessions || ${session}::text end`;
   if (Math.abs(after - before) >= 1e-6) {

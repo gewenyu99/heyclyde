@@ -298,7 +298,7 @@ export async function uploadBlob(principal: string, args: Record<string, unknown
   }
   const url = await store.signUpload(sha);
   await sql`insert into memory.upload (sha256, principal, size, media_type) values (${sha}, ${principal}, ${size}, ${type})
-    on conflict (principal, sha256) do update set size = excluded.size, media_type = excluded.media_type, created_at = now()`;
+    on conflict (owner_id, principal, sha256) do update set size = excluded.size, media_type = excluded.media_type, created_at = now()`;
   return [`Upload ${sha}, ${size} bytes. PUT the file within two hours:`,
     `curl -fsS -X PUT -H 'content-type: ${type}' --data-binary @<file> '${url}'`,
     `Then call remember with artifacts: [{"name": "<name>", "kind": "<kind>", "sha256": "${sha}"}]. memory checks the size and hash before it keeps the file.`,

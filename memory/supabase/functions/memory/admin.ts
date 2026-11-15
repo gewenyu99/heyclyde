@@ -523,7 +523,7 @@ async function addArtifact(id: string, data: Row) {
       }
       if (stored === "storage") await store.put(sha, mediaType, bytes);
       await tx`insert into memory.blob (sha256, media_type, size, content, stored)
-        values (${sha}, ${mediaType}, ${bytes.length}, ${stored === "db" ? bytes : null}, ${stored}) on conflict (sha256) do nothing`;
+        values (${sha}, ${mediaType}, ${bytes.length}, ${stored === "db" ? bytes : null}, ${stored}) on conflict (owner_id, sha256) do nothing`;
     }
     await tx`insert into memory.entry_blob (entry_id, name, sha256, kind) values (${id}, ${name}, ${sha}, ${kind})`;
     const after = { name, sha256: sha, kind, media_type: mediaType, size: bytes.length, stored: have ? "existing" : stored };
@@ -817,9 +817,10 @@ async function addDevice(data: Row) {
   });
 }
 
-/** The owner's sign-in from the installer: a token for this computer, shown once. A name already taken gets a fresh
- * token, so reinstalling a computer rotates its token rather than failing. */
-export async function claimDevice(data: Row, owner: string | null = null, adopt = true) {
+/** The owner's sign-in from the installer: a token for this computer, shown once. A name the owner already holds gets a
+ * fresh token, so reinstalling a computer rotates its token rather than failing. Names are per owner (R48), so a claim
+ * only ever replaces one of the owner's own computers. A sign-in with no owner is Wen's. */
+export async function claimDevice(data: Row, owner: string | null = null) {
   const name = data?.name;
   const hooks = data?.hooks ?? "full";
   if (!HOOK_LEVELS.includes(hooks)) return Response.json({ error: "hooks must be full or metadata." }, { status: 422 });
@@ -828,15 +829,10 @@ export async function claimDevice(data: Row, owner: string | null = null, adopt 
   }
   const token = newToken();
   await sql.begin(async (tx) => {
-    // A name another owner holds is theirs: claiming it would take over their computer's token. A device from before R38
-    // (no owner) is Wen's, so only an allowlisted owner (adopt) takes it over.
-    const [held] = await tx`select owner_id from memory.device where name = ${name}`;
-    if (owner && held && (held.owner_id ? held.owner_id !== owner : !adopt)) {
-      throw new ApiError(409, `The name ${name} is taken. Pick another.`);
-    }
-    await tx`insert into memory.device (name, token_sha256, hooks, owner_id) values (${name}, ${await sha256(token)}, ${hooks}, ${owner})
-      on conflict (name) do update set token_sha256 = excluded.token_sha256, hooks = excluded.hooks, revoked_at = null,
-        created_at = now(), last_seen = null, owner_id = excluded.owner_id`;
+    await tx`insert into memory.device (name, token_sha256, hooks, owner_id)
+      values (${name}, ${await sha256(token)}, ${hooks}, coalesce(${owner}::uuid, memory.owner_default()))
+      on conflict (owner_id, name) do update set token_sha256 = excluded.token_sha256, hooks = excluded.hooks, revoked_at = null,
+        created_at = now(), last_seen = null`;
     await audit(tx, "device.claim", `device:${name}`, null, { name, hooks });
     await announce(tx, name, "through the installer's email sign-in");
   });

@@ -343,7 +343,7 @@ export async function board(principal: string, agent: string, mode: "start" | "p
   const M = Number(n), Q = quests.length ? Number(quests[0].total) : 0;
   const [{ top }] = await sql`select coalesce(max(id), 0) as top from memory.quest`;
   await sql`insert into memory.board_seen (principal, agent, last_quest) values (${principal}, ${agent}, ${top})
-    on conflict (principal, agent) do update set last_quest = greatest(memory.board_seen.last_quest, excluded.last_quest), seen_at = now()`;
+    on conflict (owner_id, principal, agent) do update set last_quest = greatest(memory.board_seen.last_quest, excluded.last_quest), seen_at = now()`;
   if (!M && !Q) return "";
   // Headers first, then items, messages before quests, and a last line for what didn't fit.
   const headers = mode === "start" ? 1 : (M ? 1 : 0) + (Q ? 1 : 0);

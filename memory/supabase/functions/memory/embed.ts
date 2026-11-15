@@ -68,7 +68,7 @@ export async function syncEmbeddings(db: Sql = sql, batch = 64): Promise<number>
     for (const [[r, , sha], v] of chunk.map((c, j) => [c, vecs[j]] as const)) {
       await db`insert into memory.entry_embedding (entry_id, model, content_sha256, embedding)
         values (${r.id}, ${config.embedModel}, ${sha}, ${toPgvector(v)}::extensions.vector)
-        on conflict (entry_id) do update set model = excluded.model, content_sha256 = excluded.content_sha256,
+        on conflict (owner_id, entry_id) do update set model = excluded.model, content_sha256 = excluded.content_sha256,
           embedding = excluded.embedding, updated_at = now()`;
     }
   }

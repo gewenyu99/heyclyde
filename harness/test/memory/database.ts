@@ -73,6 +73,9 @@ async function reset() {
   // The tenancy migration takes Wen's owner from Supabase Auth, which the CI database has no user in, so the tests name him.
   if (await sql`select 1 from information_schema.columns where table_schema = 'memory' and table_name = 'entry' and column_name = 'owner_id'`.then((r) => r.length)) {
     await sql`insert into memory.setting (name, value) values ('owner_id', ${WEN_ID}) on conflict (name) do update set value = excluded.value`
+    // His account, as production has it: the confirmed owner-plan address on the allowlist.
+    await sql`insert into memory.account (owner_id, email, email_confirmed)
+      select ${WEN_ID}, email, true from memory.allowed_email where plan = 'owner' order by added_at limit 1`
   }
   for (const [id, kind, title, uri, date] of SOURCES) {
     await sql`insert into memory.source (id, kind, title, uri, date) values (${id}, ${kind}, ${title}, ${uri}, ${date})`

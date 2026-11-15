@@ -79,7 +79,7 @@ export async function sessionSet(db: Sql, session: string, unit: string, client:
   const set = await paramSet(db, drawn.param_set);
   await db`insert into memory.mcp_session (id, arm, client, param_set, propensity, unit)
     values (${session}, ${set.arm}, ${client}, ${set.id}, ${drawn.propensity}, ${unit})
-    on conflict (id) do update set arm = excluded.arm, param_set = excluded.param_set, propensity = excluded.propensity,
+    on conflict (owner_id, id) do update set arm = excluded.arm, param_set = excluded.param_set, propensity = excluded.propensity,
       unit = excluded.unit`;
   return { set, propensity: drawn.propensity };
 }

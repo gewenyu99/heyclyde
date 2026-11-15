@@ -267,7 +267,7 @@ async function serve(req: Request, url: URL, path: string, who: Principal): Prom
   if (m === "POST" && path === "/devices/claim") {
     const data = await admin.readJson(req);
     await limits.assertAgentSlot(who.entitlement, String(data?.name ?? ""));
-    return admin.claimDevice(data, who.owner ?? null, !who.owner || Boolean(who.entitlement?.allowlisted));
+    return admin.claimDevice(data, who.owner ?? null);
   }
   if (path.startsWith("/api/v1") || path === "/") {
     return path === "/" ? json({ ok: true }) : admin.handle(req, path, who.role === "research" ? "research" : "admin");

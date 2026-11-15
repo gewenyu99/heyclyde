@@ -339,7 +339,7 @@ async function register({ session, client, principal, args }: Call) {
   // One statement, so two credentials racing for a new name leave one owner. The where keeps a name with the credential that took it.
   const [agent] = await sql`insert into memory.agent (name, context, surface, description, registered_by)
     values (${name}, ${context}, ${surface}, ${description}, ${principal})
-    on conflict (name) do update set context = excluded.context, surface = excluded.surface,
+    on conflict (owner_id, name) do update set context = excluded.context, surface = excluded.surface,
       description = excluded.description, last_seen = now()
       where memory.agent.registered_by is not distinct from excluded.registered_by
     returning name, (xmax = 0) as created`;
@@ -347,7 +347,7 @@ async function register({ session, client, principal, args }: Call) {
   await sql`update memory.mcp_client set agent = ${name} where session_id = ${session} and principal = ${principal}`;
   if (client) {
     await sql`insert into memory.agent_binding (principal, client, agent) values (${principal}, ${client}, ${name})
-      on conflict (principal, client) do update set agent = excluded.agent, updated_at = now()`;
+      on conflict (owner_id, principal, client) do update set agent = excluded.agent, updated_at = now()`;
   }
   return `${agent.created ? "Registered" : "Welcome back,"} ${name}: a ${context} agent on ${surface}. ` +
     "memory remembers this for this token and app, so your next session starts registered. Your notes and messages carry your name.";

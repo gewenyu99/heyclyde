@@ -397,13 +397,13 @@ async function ensureNotesProject(db: Sql, e: Row) {
   const s = e.source, who = e.project.slice("notes-".length);
   const evidence = `memory made this the first time ${who} remembered a note with no project of its own.`;
   await db`insert into memory.source (id, kind, title, uri, date) values (${s.id}, ${s.kind}, ${s.title}, ${s.uri}, current_date)
-    on conflict (id) do nothing`;
+    on conflict (owner_id, id) do nothing`;
   await db`insert into memory.entry (id, pattern, title, body, authority, scope, sensitivity, lang, valid_from, source_id,
       evidence_kind, evidence, evidence_sha256, project, origin, kind, confidence, chances_left)
     values (${e.project}, 'projects', ${`Notes by ${who}`}, ${`Notes ${who} wrote through remember with no project of their own.`},
       'draft', 'global', 'normal', 'en', ${today()}, ${s.id}, 'summary', ${evidence}, ${await sha256(evidence)}, ${e.project},
       'runtime', 'observation', ${START.observation.confidence}, 0)
-    on conflict (id) do nothing`;
+    on conflict (owner_id, id) do nothing`;
 }
 
 /** Insert every row. False when another write took the id first. A new blob's file in Storage moves from incoming/ to its
@@ -411,12 +411,12 @@ async function ensureNotesProject(db: Sql, e: Row) {
 async function insert(db: Sql, e: Row) {
   const s = e.source;
   await db`insert into memory.source (id, kind, title, uri, date) values (${s.id}, ${s.kind}, ${s.title}, ${s.uri}, current_date)
-    on conflict (id) do nothing`;
+    on conflict (owner_id, id) do nothing`;
   // Two writers inserting the same new blobs in opposite orders would each wait on the other. One order can't deadlock.
   for (const b of [...e.blobs].sort((a, b) => a.sha256 < b.sha256 ? -1 : 1)) {
     if (b.existing) continue;
     await db`insert into memory.blob (sha256, media_type, size, content, stored)
-      values (${b.sha256}, ${b.media_type}, ${b.size}, ${b.stored === "db" ? b.content : null}, ${b.stored}) on conflict (sha256) do nothing`;
+      values (${b.sha256}, ${b.media_type}, ${b.size}, ${b.stored === "db" ? b.content : null}, ${b.stored}) on conflict (owner_id, sha256) do nothing`;
   }
   const inserted = await db`insert into memory.entry (id, pattern, title, body, authority, scope, sensitivity, lang, valid_from,
       source_id, evidence_kind, evidence, evidence_sha256, project, origin, payload_sha256, kind, confidence, chances_left,
@@ -424,7 +424,7 @@ async function insert(db: Sql, e: Row) {
     values (${e.id}, ${e.pattern}, ${e.title}, ${e.body}, ${e.authority}, ${e.scope}, ${e.sensitivity}, ${e.lang},
       ${e.valid_from}, ${s.id}, ${e.evidence_kind}, ${e.evidence}, ${await sha256(e.evidence)}, ${e.project ?? e.id},
       'runtime', ${e.digest}, ${e.kind}, ${e.confidence}, ${e.chances}, ${e.evidence_event}, ${e.verified})
-    on conflict (id) do nothing returning id`;
+    on conflict (owner_id, id) do nothing returning id`;
   if (!inserted.length) return false;
   const all: [string, string][] = [
     ...(e.project ? [["part_of", e.project] as [string, string]] : []),
@@ -441,7 +441,7 @@ async function insert(db: Sql, e: Row) {
       select ${e.id}::text, ${e.prov.device}::text, ${e.prov.agent}::text, ${e.prov.context}::text, s.repo, s.cwd, ${e.prov.session}::text,
         ${String(e.scope).startsWith("run:") ? e.scope : null}::text
       from (select 1) one left join memory.mcp_session s on s.id = ${e.prov.session}::text
-      on conflict (entry_id) do nothing`;
+      on conflict (owner_id, entry_id) do nothing`;
   }
   for (const b of e.blobs) if (b.uploaded && !b.existing) await store.claim(b.sha256);
   return true;

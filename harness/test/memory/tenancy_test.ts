@@ -7,9 +7,10 @@ import assert from 'node:assert/strict'
 
 const ROOT = new URL('../../../memory/supabase/functions/memory/', import.meta.url)
 
-/** The owned tables whose primary key starts with owner_id, after the tenancy migration. */
+/** The owned tables whose primary key starts with owner_id after the tenancy migration, and device, whose name is unique
+ * per owner. */
 const OWNER_KEYED = new Set([
-  'account', 'agent', 'agent_binding', 'blob', 'board_seen', 'burst', 'co_use', 'entitlement', 'entry', 'entry_blob',
+  'account', 'agent', 'device', 'agent_binding', 'blob', 'board_seen', 'burst', 'co_use', 'entitlement', 'entry', 'entry_blob',
   'entry_embedding', 'entry_provenance', 'judge_cache', 'link', 'mcp_client', 'mcp_session', 'source', 'upload', 'usage',
 ])
 
