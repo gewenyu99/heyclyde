@@ -1190,10 +1190,11 @@ test('gemini adapter prints JSON only', async () => {
   const fake = await fakeServer(NEW)
   const c = computer(fake.url, NEW)
   const adapter = join(c.dir, 'gemini-hook')
-  copyFileSync(join(CLIENT, 'gemini-hook'), adapter)
-  chmodSync(adapter, 0o700)
   const gemini = (event: string, stdin?: string) => runHook(c, event, [], adapter, {}, stdin)
   try {
+    // Inside the try, so a checkout without gemini-hook still closes the server and the file can end.
+    copyFileSync(join(CLIENT, 'gemini-hook'), adapter)
+    chmodSync(adapter, 0o700)
     // BeforeAgent is memory's UserPromptSubmit, for the agent gemini, and the answer reaches the model as additionalContext.
     fake.answer.UserPromptSubmit = { status: 200, body: 'note X' }
     const before = await gemini('BeforeAgent', '{"session_id":"g1","cwd":"/tmp","hook_event_name":"BeforeAgent","prompt":"hi"}')
