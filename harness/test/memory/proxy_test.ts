@@ -137,3 +137,51 @@ Deno.test('the home page is small and self-contained', async () => {
   for (const u of loads) assert.ok(!/^(https?:)?\/\//.test(u) && !u.startsWith('http'), `loads ${u}`)
   assert.ok(!/@import|url\(\s*['"]?https?:/i.test(html), 'no CSS loads from elsewhere')
 })
+
+// R46 with R38's open sign-up: the consent page asks for an email, and a blocked country is refused.
+Deno.test('ask_email renders a form that posts back to this request, through the Worker', async () => {
+  stub(json({ state: 'ask_email', message: 'memory: enter your email', post: 'https://evil.example/steal' }))
+  const r = await get('/oauth/consent?authorization_id=abc12345')
+  const html = await r.text()
+  assert.equal(r.status, 200)
+  assert.equal(h1(html), 'Sign in to Clyde')
+  assert.equal(r.headers.get('refresh'), null, 'the form waits for the person, not a timer')
+  assert.match(String(r.headers.get('content-security-policy')), /form-action 'self'/)
+  const form = /<form[^>]*>/.exec(html)?.[0] ?? ''
+  assert.match(form, /method="post"/)
+  assert.match(form, /action="\/oauth\/consent\?authorization_id=abc12345"/, 'the action comes from this request, never the JSON')
+  assert.ok(!html.includes('evil.example'))
+  assert.match(html, /<input[^>]*type="email"[^>]*name="email"/)
+
+  stub(json({ state: 'check_email', email: 'w••@example.com', message: 'memory: sent' }))
+  const posted = await worker.fetch(new Request('https://memory.heyclyde.me/oauth/consent?authorization_id=abc12345', {
+    method: 'POST', headers: { accept: 'text/html', 'content-type': 'application/x-www-form-urlencoded' }, body: 'email=w%40example.com',
+  }), ENV)
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].headers.get('accept'), 'application/json')
+  assert.equal(posted.status, 200)
+  assert.equal(h1(await posted.text()), 'Check your email')
+  assert.equal(posted.headers.get('refresh'), '3; url=/oauth/wait?authorization_id=abc12345')
+})
+
+Deno.test('a blocked country gets its own page with 451', async () => {
+  stub(json({ state: 'blocked', message: "Clyde isn't available in your country." }, 451))
+  const r = await get('/oauth/consent?authorization_id=abc12345')
+  const html = await r.text()
+  assert.equal(r.status, 451)
+  assert.equal(h1(html), 'Not available in your country')
+  assert.ok(html.includes('Clyde isn&#39;t available in your country.'))
+  assert.equal(r.headers.get('refresh'), null)
+})
+
+Deno.test('a browser on /billing/thanks gets a page, and other callers reach the function', async () => {
+  stub(json({ ok: true }))
+  const r = await get('/billing/thanks')
+  assert.equal(sent.length, 0)
+  assert.equal(r.status, 200)
+  assert.equal(h1(await r.text()), "You're subscribed")
+  stub(() => new Response('memory: thanks.', { headers: { 'content-type': 'text/plain' } }))
+  const plain = await get('/billing/thanks', { accept: '*/*' })
+  assert.equal(sent.length, 1)
+  assert.equal(await plain.text(), 'memory: thanks.')
+})

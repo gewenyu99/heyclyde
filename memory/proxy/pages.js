@@ -67,6 +67,14 @@ h1{font-size:26px;line-height:1.2;letter-spacing:-.02em;margin:0 0 10px;font-wei
 @keyframes b{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
 @media (prefers-reduced-motion:reduce){.dots i{animation:none;opacity:.7}}
 .sign-top{justify-content:center}
+form.ask{margin:24px 0 0;display:grid;gap:10px;text-align:left}
+form.ask label{font-size:13px;font-weight:600;color:var(--muted)}
+form.ask input{width:100%;font:inherit;font-size:16px;color:var(--text);background:var(--surface);border:1px solid var(--border);
+border-radius:8px;padding:10px 12px}
+form.ask input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+.btn.primary{background:#253f7b;border-color:#253f7b;color:#fff;font-size:15px;padding:10px 14px}
+.btn.primary:hover{filter:brightness(1.08)}
+@media (prefers-color-scheme:dark){.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}}
 `;
 
 const HOME_CSS = `
@@ -130,6 +138,7 @@ const ICON = {
   ok: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>`,
   no: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.4 7.5 9.5 4.3-1.1 7.5-4.9 7.5-9.5V6L12 3Z"/><path d="m9.5 9.5 5 5m0-5-5 5"/></svg>`,
   late: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12M6 21h12M7 3c0 5 5 6 5 9s-5 4-5 9M17 3c0 5-5 6-5 9s5 4 5 9"/></svg>`,
+  globe: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3Z"/></svg>`,
   err: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 2.5 20h19L12 3.5Z"/><path d="M12 10v4.5M12 17.5v.01"/></svg>`,
 };
 
@@ -141,8 +150,9 @@ function sentence(message) {
   return s ? s[0].toUpperCase() + s.slice(1) : "Start connecting again from the app.";
 }
 
-/** The page for one state the function reported. */
-export function statePage(data, nonce) {
+/** The page for one state the function reported. id is the request's authorization_id, already checked against the
+ * function's pattern: the email form posts back to it, never to a URL from the JSON. */
+export function statePage(data, nonce, id = "") {
   const state = data?.state;
   const app = (fallback = "the app") => data?.client ? `<strong>${esc(data.client)}</strong>` : fallback;
   let tone = "", icon, h1, lead, extra = "", title;
@@ -166,6 +176,23 @@ export function statePage(data, nonce) {
       tone = "bad"; icon = ICON.no; h1 = "Refused"; title = "Refused";
       lead = `${app("This app")} wasn't connected. Nothing was shared.`;
       extra = `<p class="note">Its callback${data?.callback ? `, <code>${esc(data.callback)}</code>,` : ""} isn't one of the agent apps Clyde knows, or this computer. The attempt is logged.</p>`;
+      break;
+    case "ask_email":
+      icon = ICON.mail; h1 = "Sign in to Clyde"; title = "Sign in";
+      lead = "Enter your email and we'll send you a sign-in link. No password needed.";
+      extra = `<form class="ask" method="post" action="/oauth/consent?authorization_id=${esc(encodeURIComponent(id))}">
+<label for="email">Email</label><input id="email" type="email" name="email" autocomplete="email" required autofocus placeholder="you@example.com">
+<button class="btn primary" type="submit">Email me a link</button></form>`;
+      break;
+    case "blocked":
+      tone = "bad"; icon = ICON.globe; h1 = "Not available in your country"; title = "Not available";
+      lead = esc(sentence(data?.message));
+      extra = `<p class="note">Nothing was saved and no email was sent.</p>`;
+      break;
+    case "subscribed":
+      tone = "ok"; icon = ICON.ok; h1 = "You're subscribed"; title = "Subscribed";
+      lead = "Your Clyde subscription starts within a minute.";
+      extra = `<p class="note">Go back to your app and carry on. You can close this tab.</p>`;
       break;
     case "expired":
       tone = "warn"; icon = ICON.late; h1 = "Link expired"; title = "Link expired";
