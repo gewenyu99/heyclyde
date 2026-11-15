@@ -4,7 +4,7 @@
  * memory/design/css.js in step with the CSS files, and check the Worker's pages carry the tokens.
  */
 import assert from 'node:assert/strict'
-import { COMPONENTS_CSS, TOKENS_CSS } from '../../../memory/design/css.js'
+import { COMPONENTS_CSS, FONTS_CSS, TOKENS_CSS } from '../../../memory/design/css.js'
 import { homePage, statePage } from '../../../memory/proxy/pages.js'
 
 const read = (p: string) => Deno.readTextFileSync(new URL(`../../../memory/design/${p}`, import.meta.url))
@@ -63,6 +63,7 @@ Deno.test('the dark theme is the same whether the system or data-theme asks for 
 
 Deno.test('css.js is generated from the CSS files (node memory/design/build.mjs)', () => {
   assert.equal(TOKENS_CSS, tokensCss.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ').replace(/\s*([{}:;,>])\s*/g, '$1').trim())
+  assert.equal(FONTS_CSS, read('fonts.css').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ').replace(/\s*([{}:;,>])\s*/g, '$1').trim())
   assert.equal(COMPONENTS_CSS, componentsCss.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ').replace(/\s*([{}:;,>])\s*/g, '$1').trim())
   for (const v of componentsCss.matchAll(/var\(--cl-([a-z0-9-]+)/g)) {
     const defined = tokensCss.includes(`--cl-${v[1]}:`) || componentsCss.includes(`--cl-${v[1]}:`)
@@ -77,7 +78,12 @@ Deno.test('every Worker page carries the tokens and the components', () => {
   for (const html of pages) {
     assert.ok(html.includes(TOKENS_CSS), 'tokens inlined')
     assert.ok(html.includes(COMPONENTS_CSS), 'components inlined')
-    assert.ok(html.includes('class="cl-mark"'), 'the clyde mark')
+    assert.ok(html.includes('/_clyde/brand/clyde-lockup-light.svg') && html.includes('/_clyde/brand/clyde-lockup-dark.svg'), 'the clyde logo, both themes')
+    assert.ok(html.includes(FONTS_CSS), 'the self-hosted fonts')
+    for (const m of html.matchAll(/["(](\/_clyde\/[^")\s]+)/g)) {
+      const file = new URL(`../../../memory/proxy/public${m[1]}`, import.meta.url)
+      assert.ok(Deno.statSync(file).isFile, `${m[1]} is served from memory/proxy/public`)
+    }
     assert.ok(!/\sstyle="/.test(html), 'no style attributes: the CSP allows only the nonce\'d <style>')
   }
 })

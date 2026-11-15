@@ -42,7 +42,7 @@ function html(render, status = 200, headers = {}) {
     status,
     headers: {
       "content-type": "text/html; charset=utf-8",
-      "content-security-policy": `default-src 'none'; script-src 'nonce-${n}'; style-src 'nonce-${n}'; img-src data:; ` +
+      "content-security-policy": `default-src 'none'; script-src 'nonce-${n}'; style-src 'nonce-${n}'; img-src 'self' data:; font-src 'self'; ` +
         "connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
       "x-frame-options": "DENY",
       "x-content-type-options": "nosniff",

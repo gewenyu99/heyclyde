@@ -1,0 +1,280 @@
+<title>Clyde Design System</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=Geist:wght@300..800&family=Geist+Mono:wght@400..700&display=swap">
+<style>
+<!-- @inline tokens.css -->
+<!-- @inline components.css -->
+/* Layout: a brand book on desk paper. One centered column at 1120px with a sticky index on the left from 1100px up;
+   every section opens with a mono caption and a Bricolage headline, and shows the thing itself, live, in both themes. */
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--cl-paper-0);color:var(--cl-ink);font:var(--cl-text-body);-webkit-font-smoothing:antialiased;
+ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .045 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E")}
+a{color:var(--cl-carbon)}
+:focus-visible{outline:2px solid var(--cl-carbon);outline-offset:2px}
+.page{max-width:1240px;margin:0 auto;padding-block:0 96px;padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px));display:grid;grid-template-columns:200px minmax(0,1fr);gap:56px}
+@media (max-width:1100px){.page{grid-template-columns:minmax(0,1fr);gap:0}}
+.index{position:sticky;top:calc(28px + env(safe-area-inset-top,0px));align-self:start;padding-top:132px;display:grid;gap:2px}
+@media (max-width:1100px){.index{display:none}}
+.index a{font:var(--cl-text-mono);font-size:12px;color:var(--cl-ink-3);text-decoration:none;padding:5px 0}
+.index a:hover{color:var(--cl-ink)}
+.index b{font:var(--cl-text-label);letter-spacing:var(--cl-track-label);text-transform:uppercase;color:var(--cl-ink-3);margin:14px 0 4px}
+main{min-width:0}
+.top{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-block:28px 0}
+.top .cl-logo{--cl-logo-h:30px}
+.top nav{display:flex;gap:18px;font:var(--cl-text-small)}
+.top nav a{color:var(--cl-ink-2);text-decoration:none}
+.top nav a:hover{color:var(--cl-ink)}
+@media (max-width:640px){.top nav{display:none}}
+
+/* Hero */
+.hero{padding-block:72px 56px;display:grid;gap:22px;position:relative}
+.hero::after{content:"";position:absolute;inset:0 -40px auto auto;width:min(46%,480px);height:100%;pointer-events:none;
+ background:repeating-linear-gradient(to bottom,transparent 0 31px,var(--cl-rule) 31px 32px);mask-image:linear-gradient(to left,#000,transparent);-webkit-mask-image:linear-gradient(to left,#000,transparent)}
+.hero h1{font:var(--cl-text-display);font-size:clamp(46px,8vw,96px);letter-spacing:var(--cl-track-display);margin:0;max-width:12ch;text-wrap:balance}
+.hero h1 em{font-style:normal;color:var(--cl-carbon);position:relative}
+.hero .cl-lead{font-size:19px;line-height:29px;max-width:56ch}
+.meta-row{display:flex;flex-wrap:wrap;gap:8px 20px;font:var(--cl-text-mono);color:var(--cl-ink-3)}
+.meta-row b{color:var(--cl-ink);font-weight:500}
+
+/* Sections */
+section.s{padding-block:56px;border-top:1px solid var(--cl-rule);scroll-margin-top:12px}
+.s-head{display:grid;gap:10px;margin-bottom:28px;max-width:720px}
+.s-head h2{font:var(--cl-text-title-1);letter-spacing:var(--cl-track-title);margin:0;text-wrap:balance}
+.s-head p{margin:0;color:var(--cl-ink-2);font:var(--cl-text-body-l);max-width:62ch}
+h3.sub{font:var(--cl-text-label);letter-spacing:var(--cl-track-label);text-transform:uppercase;color:var(--cl-ink-3);margin:36px 0 14px}
+
+/* Theme tiles: render any block in light or dark regardless of the page's theme */
+.tile-light{--cl-paper-0:#f4f4f1;--cl-paper-1:#ffffff;--cl-paper-2:#ebece7;--cl-rule:#e1e2dc;--cl-rule-strong:#c9cbc3;--cl-edge:#8a8d86;--cl-ink:#20211f;--cl-ink-2:#4c4f49;--cl-ink-3:#686b65;--cl-on-ink:#ffffff;--cl-carbon:#2f5fd0;--cl-carbon-ink:#234ea9;--cl-carbon-wash:#eaf0fd;--cl-carbon-copy:#b4c7f4;--cl-ok:#1d7a42;--cl-ok-wash:#e5f3e9;--cl-warn:#9c5208;--cl-warn-wash:#fcefdf;--cl-bad:#b3261e;--cl-bad-wash:#fbe8e6;--cl-pen-blue:#2f5fd0;--cl-pen-red:#b8382c;--cl-pen-green:#1d7a42;--cl-pen-violet:#6a44c4;--cl-pen-amber:#915200;--cl-pen-teal:#0d7266;--cl-pen-graphite:#4c4f49;color-scheme:light}
+.tile-dark{--cl-paper-0:#121311;--cl-paper-1:#1b1c1a;--cl-paper-2:#242522;--cl-rule:#2d2f2b;--cl-rule-strong:#3d403b;--cl-edge:#6f736b;--cl-ink:#ecece6;--cl-ink-2:#bdbfb8;--cl-ink-3:#959891;--cl-on-ink:#121311;--cl-carbon:#86a6f5;--cl-carbon-ink:#b8caf8;--cl-carbon-wash:#1c2740;--cl-carbon-copy:#34508f;--cl-ok:#6cc690;--cl-ok-wash:#15301f;--cl-warn:#e3a45f;--cl-warn-wash:#33240f;--cl-bad:#f2897e;--cl-bad-wash:#3a1a17;--cl-pen-blue:#86a6f5;--cl-pen-red:#f08c80;--cl-pen-green:#6cc690;--cl-pen-violet:#b69ff3;--cl-pen-amber:#e0aa5c;--cl-pen-teal:#5fc4b4;--cl-pen-graphite:#bdbfb8;color-scheme:dark}
+.tile-light,.tile-dark{background:var(--cl-paper-0);color:var(--cl-ink)}
+.pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-xl);overflow:hidden}
+@media (max-width:760px){.pair{grid-template-columns:minmax(0,1fr)}}
+.pair>div{padding:28px;min-width:0;display:grid;gap:18px;align-content:start}
+.pair .tag{font:var(--cl-text-label);letter-spacing:var(--cl-track-label);text-transform:uppercase;color:var(--cl-ink-3)}
+
+/* Logo */
+.logo-hero{display:grid;place-items:center;padding:56px 20px !important;min-height:260px}
+.logo-hero .cl-logo{--cl-logo-h:clamp(54px,9vw,96px)}
+.sizes{display:flex;flex-wrap:wrap;gap:26px;align-items:flex-end}
+.sizes figure{margin:0;display:grid;justify-items:center;gap:8px;font:var(--cl-text-mono);font-size:11px;color:var(--cl-ink-3)}
+
+.opts{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:14px}
+.opt{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:14px;align-items:center;padding:14px;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-lg);background:var(--cl-paper-1)}
+.opt.is-pick{border-color:var(--cl-carbon);box-shadow:var(--cl-copy-2)}
+.opt-art{display:flex;border-radius:var(--cl-radius-md);overflow:hidden}
+.opt-art span{display:grid;place-items:center;padding:8px}
+.opt-art svg{width:52px;height:52px}
+.on-light{background:#f4f4f1}.on-dark{background:#121311}
+.opt figcaption{font:var(--cl-text-small);color:var(--cl-ink-2)}
+.opt figcaption b{display:block;color:var(--cl-ink);font:600 14px/20px var(--cl-font-sans);margin-bottom:2px}
+.rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:14px}
+.rules .cl-card{display:grid;gap:10px}
+.clear{position:relative;display:inline-grid;padding:22px;border:1.5px dashed var(--cl-carbon);border-radius:var(--cl-radius-md);justify-self:start}
+.clear .cl-logo{--cl-logo-h:34px}
+.misuse{display:flex;gap:16px;flex-wrap:wrap;align-items:center}
+.misuse span{position:relative;display:grid;place-items:center;width:64px;height:64px;border-radius:var(--cl-radius-md);background:var(--cl-paper-2)}
+.misuse span::after{content:"";position:absolute;inset:6px;background:linear-gradient(45deg,transparent 47%,var(--cl-bad) 47% 53%,transparent 53%)}
+.misuse .cl-logo{--cl-logo-h:38px}
+
+/* Color */
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,150px),1fr));gap:10px}
+.sw{border:1px solid var(--cl-rule);border-radius:var(--cl-radius-lg);overflow:hidden;background:var(--cl-paper-1)}
+.sw i{display:block;height:64px;border-bottom:1px solid var(--cl-rule)}
+.sw div{padding:9px 10px;display:grid;gap:2px;font:var(--cl-text-mono);font-size:11px;color:var(--cl-ink-3)}
+.sw b{font:600 12.5px/1.3 var(--cl-font-sans);color:var(--cl-ink)}
+
+/* Type */
+.specimen{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:28px;align-items:end;padding:28px 0;border-bottom:1px dashed var(--cl-rule-strong)}
+@media (max-width:760px){.specimen{grid-template-columns:minmax(0,1fr)}}
+.specimen .big{font-size:clamp(56px,10vw,128px);line-height:.9;letter-spacing:-.045em;overflow-wrap:anywhere}
+.specimen .about{display:grid;gap:6px;font:var(--cl-text-small);color:var(--cl-ink-2)}
+.specimen .about b{font:var(--cl-text-label);letter-spacing:var(--cl-track-label);text-transform:uppercase;color:var(--cl-ink-3)}
+.scale{display:grid;gap:0}
+.scale>div{display:grid;grid-template-columns:120px minmax(0,1fr);gap:16px;align-items:baseline;padding:14px 0;border-bottom:1px solid var(--cl-rule)}
+.scale span{font:var(--cl-text-mono);font-size:11px;color:var(--cl-ink-3)}
+.scale p{margin:0;min-width:0;overflow-wrap:anywhere}
+
+/* Space, radius, shadow, motion */
+.bars{display:grid;gap:8px}
+.bars div{display:grid;grid-template-columns:110px minmax(0,1fr);gap:12px;align-items:center;font:var(--cl-text-mono);font-size:11.5px;color:var(--cl-ink-3)}
+.bars i{display:block;height:12px;background:var(--cl-carbon-copy);border-radius:2px}
+.radii{display:flex;gap:14px;flex-wrap:wrap}
+.radii div{width:84px;height:84px;border:1.5px solid var(--cl-ink);display:grid;place-items:end start;padding:8px;font:var(--cl-text-mono);font-size:11px;color:var(--cl-ink-3);background:var(--cl-paper-1)}
+.lift-demo{display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+
+/* Components grid */
+.comp{display:grid;gap:14px}
+.comp-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.duo{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:14px;align-items:start}
+
+/* In use: a chat card mockup */
+.chat{border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-xl);background:var(--cl-paper-1);overflow:hidden;max-width:520px;box-shadow:var(--cl-shadow-2)}
+.chat-top{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--cl-rule);font:var(--cl-text-mono);font-size:11.5px;color:var(--cl-ink-3)}
+.chat-top i{width:9px;height:9px;border-radius:50%;background:var(--cl-paper-2);border:1px solid var(--cl-rule-strong)}
+.chat-body{padding:16px;display:grid;gap:12px;background:var(--cl-paper-0)}
+.bubble{justify-self:end;max-width:80%;background:var(--cl-ink);color:var(--cl-on-ink);padding:9px 13px;border-radius:14px 14px 4px 14px;font:var(--cl-text-small)}
+.reply{display:grid;gap:10px;font:var(--cl-text-small);color:var(--cl-ink-2)}
+.via{display:flex;align-items:center;gap:6px;font:var(--cl-text-label);letter-spacing:.06em;text-transform:uppercase;color:var(--cl-ink-3)}
+.via .cl-logo{--cl-logo-h:14px}
+
+/* Voice */
+.voice{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:760px){.voice{grid-template-columns:minmax(0,1fr)}}
+.voice .cl-card{display:grid;gap:8px}
+.voice q{quotes:none;font:500 16px/24px var(--cl-font-sans);color:var(--cl-ink)}
+.foot{border-top:1px dashed var(--cl-rule-strong);margin-top:24px;padding-top:20px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font:var(--cl-text-mono);font-size:12px;color:var(--cl-ink-3)}
+.foot .cl-logo{--cl-logo-h:20px}
+</style>
+
+<div class="page cl-root">
+<nav class="index" aria-label="Sections">
+ <b>Brand</b><a href="#logo">Logo</a><a href="#voice">Voice</a>
+ <b>Foundations</b><a href="#color">Color</a><a href="#type">Type</a><a href="#space">Space and motion</a>
+ <b>Build</b><a href="#components">Components</a><a href="#in-use">In use</a><a href="#files">Files</a>
+</nav>
+<main>
+<header class="top"><a class="cl-wordmark" href="#" aria-label="Clyde"><!-- @logo lockup --></a>
+<nav><a href="#logo">Logo</a><a href="#color">Color</a><a href="#type">Type</a><a href="#components">Components</a><a href="https://memory.heyclyde.me/">Live site ↗</a></nav></header>
+
+<section class="hero">
+ <span class="cl-label">Clyde design system · v2 · November 2026</span>
+ <h1>Carbon <em>copy</em>.</h1>
+ <p class="cl-lead">Clyde gives every agent a person runs one shared memory. One agent writes it down; every other agent gets the copy. So the brand is desk paper, black ink, and one ballpoint blue for what Clyde copied. Whatever you choose lifts off the page and leaves its blue copy behind.</p>
+ <div class="meta-row"><span>Display <b>Bricolage Grotesque</b></span><span>Text <b>Geist</b></span><span>Data <b>Geist Mono</b></span><span>Accent <b>#2f5fd0</b></span><span>Source <b>memory/design/</b></span></div>
+</section>
+
+<section class="s" id="logo">
+ <div class="s-head"><span class="cl-label">01 · Logo</span><h2>A square, its carbon copy, and a c cut through to show it.</h2><p>The mark grows out of clyde-v2's dark square. Behind it sits the blue copy every agent gets, and the c is a window onto that copy. The wordmark is lowercase "clyde" in Bricolage Grotesque ExtraBold, outlined, so it looks the same everywhere.</p></div>
+ <div class="pair"><div class="tile-light logo-hero"><!-- @logo lockup --></div><div class="tile-dark logo-hero"><!-- @logo lockup --></div></div>
+ <h3 class="sub">Sizes: favicon, nav, app icon, hero</h3>
+ <div class="pair">
+  <div class="tile-light"><span class="tag">Light</span><div class="sizes"><figure><span style="--cl-logo-h:16px"><!-- @logo mark --></span>16 · favicon</figure><figure><span style="--cl-logo-h:32px"><!-- @logo mark --></span>32 · nav</figure><figure><span style="--cl-logo-h:64px"><!-- @logo mark --></span>64 · app icon</figure><figure><span style="--cl-logo-h:128px"><!-- @logo mark --></span>128 · hero</figure></div></div>
+  <div class="tile-dark"><span class="tag">Dark</span><div class="sizes"><figure><span style="--cl-logo-h:16px"><!-- @logo mark --></span>16 · favicon</figure><figure><span style="--cl-logo-h:32px"><!-- @logo mark --></span>32 · nav</figure><figure><span style="--cl-logo-h:64px"><!-- @logo mark --></span>64 · app icon</figure><figure><span style="--cl-logo-h:128px"><!-- @logo mark --></span>128 · hero</figure></div></div>
+ </div>
+ <h3 class="sub">Six options, one pick</h3>
+ <div class="opts"><!-- @include brand/options.html --></div>
+ <h3 class="sub">Rules</h3>
+ <div class="rules">
+  <div class="cl-card"><b>Clear space</b><div class="clear"><!-- @logo lockup --></div><p class="cl-hint">Keep the height of the mark's copy offset (a sixth of the mark) clear on every side. Nothing enters the dashed box.</p></div>
+  <div class="cl-card"><b>Minimum size</b><p class="cl-hint">Mark alone from 16 px. Lockup from 20 px tall. Below that, use the mark.</p><div class="comp-row"><span style="--cl-logo-h:16px;display:inline-block"><!-- @logo mark --></span><span style="--cl-logo-h:20px;display:inline-block"><!-- @logo lockup --></span></div></div>
+  <div class="cl-card"><b>Never</b><div class="misuse"><span style="transform:rotate(-12deg)"><!-- @logo mark --></span><span style="filter:hue-rotate(140deg)"><!-- @logo mark --></span><span style="transform:scaleX(1.4)"><!-- @logo mark --></span></div><p class="cl-hint">Don't rotate it, recolor it, stretch it, outline it, animate it or put it on a pattern. Ink and carbon come from the tokens and swap for dark on their own.</p></div>
+ </div>
+</section>
+
+<section class="s" id="voice">
+ <div class="s-head"><span class="cl-label">02 · Voice</span><h2>Clyde is the guild's clerk.</h2><p>Exact, unhurried, on your side. Writes down who said what, where and when. Never gushes, never jokes in an error, never says "AI-powered".</p></div>
+ <div class="voice">
+  <div class="cl-card"><span class="cl-chip cl-chip--ok" style="justify-self:start">Write</span><q>atlas filed this from Claude Code on mbp-work, 3 weeks ago.</q><q>Nothing filed yet. The first thing an agent remembers lands here.</q><q>That link expired. Links last 15 minutes and work once.</q></div>
+  <div class="cl-card"><span class="cl-chip cl-chip--bad" style="justify-self:start">Don't write</span><q>Oops! Something went wrong 😅</q><q>Supercharge your AI with a second brain!</q><q>Your notes have been successfully saved.</q></div>
+ </div>
+ <p class="cl-hint" style="margin-top:14px">Four nouns, never synonyms: memory, quest, agent, app. The product is Clyde; the wordmark is clyde.</p>
+</section>
+
+<section class="s" id="color">
+ <div class="s-head"><span class="cl-label">03 · Color</span><h2>Paper, ink, and one blue.</h2><p>Neutrals carry nine-tenths of every screen. Carbon blue means "Clyde's copy" and nothing else. State colors always come with a word. Each agent signs in its own pen. Every text color passes 4.5:1 on every paper, in both themes, in CI.</p></div>
+ <div class="pair">
+  <div class="tile-light"><span class="tag">Light</span><div class="swatches">
+   <div class="sw"><i style="background:#f4f4f1"></i><div><b>paper-0</b>#f4f4f1 page</div></div><div class="sw"><i style="background:#ffffff"></i><div><b>paper-1</b>#ffffff sheet</div></div><div class="sw"><i style="background:#ebece7"></i><div><b>paper-2</b>#ebece7 well</div></div>
+   <div class="sw"><i style="background:#20211f"></i><div><b>ink</b>#20211f 15.6:1</div></div><div class="sw"><i style="background:#686b65"></i><div><b>ink-3</b>#686b65 5.0:1</div></div><div class="sw"><i style="background:#2f5fd0"></i><div><b>carbon</b>#2f5fd0 5.3:1</div></div>
+   <div class="sw"><i style="background:#b4c7f4"></i><div><b>carbon-copy</b>#b4c7f4 offset</div></div><div class="sw"><i style="background:#1d7a42"></i><div><b>ok</b>#1d7a42</div></div><div class="sw"><i style="background:#b3261e"></i><div><b>bad</b>#b3261e</div></div>
+  </div></div>
+  <div class="tile-dark"><span class="tag">Dark</span><div class="swatches">
+   <div class="sw"><i style="background:#121311"></i><div><b>paper-0</b>#121311 page</div></div><div class="sw"><i style="background:#1b1c1a"></i><div><b>paper-1</b>#1b1c1a sheet</div></div><div class="sw"><i style="background:#242522"></i><div><b>paper-2</b>#242522 well</div></div>
+   <div class="sw"><i style="background:#ecece6"></i><div><b>ink</b>#ecece6 15.9:1</div></div><div class="sw"><i style="background:#959891"></i><div><b>ink-3</b>#959891 6.2:1</div></div><div class="sw"><i style="background:#86a6f5"></i><div><b>carbon</b>#86a6f5 7.6:1</div></div>
+   <div class="sw"><i style="background:#34508f"></i><div><b>carbon-copy</b>#34508f offset</div></div><div class="sw"><i style="background:#6cc690"></i><div><b>ok</b>#6cc690</div></div><div class="sw"><i style="background:#f2897e"></i><div><b>bad</b>#f2897e</div></div>
+  </div></div>
+ </div>
+ <h3 class="sub">Pens: one per agent</h3>
+ <div class="pair"><div class="tile-light"><div class="comp-row">
+  <span class="cl-agent cl-pen-blue"><span class="cl-agent__sq">at</span><span class="cl-agent__name">atlas</span></span><span class="cl-agent cl-pen-violet"><span class="cl-agent__sq">qu</span><span class="cl-agent__name">quill</span></span><span class="cl-agent cl-pen-teal"><span class="cl-agent__sq">sc</span><span class="cl-agent__name">scout</span></span><span class="cl-agent cl-pen-amber"><span class="cl-agent__sq">ju</span><span class="cl-agent__name">juniper</span></span><span class="cl-agent cl-pen-red"><span class="cl-agent__sq">pa</span><span class="cl-agent__name">patch</span></span><span class="cl-agent cl-pen-green"><span class="cl-agent__sq">fe</span><span class="cl-agent__name">fern</span></span><span class="cl-agent cl-pen-graphite"><span class="cl-agent__sq">em</span><span class="cl-agent__name">ember</span></span>
+ </div></div><div class="tile-dark"><div class="comp-row">
+  <span class="cl-agent cl-pen-blue"><span class="cl-agent__sq">at</span><span class="cl-agent__name">atlas</span></span><span class="cl-agent cl-pen-violet"><span class="cl-agent__sq">qu</span><span class="cl-agent__name">quill</span></span><span class="cl-agent cl-pen-teal"><span class="cl-agent__sq">sc</span><span class="cl-agent__name">scout</span></span><span class="cl-agent cl-pen-amber"><span class="cl-agent__sq">ju</span><span class="cl-agent__name">juniper</span></span><span class="cl-agent cl-pen-red"><span class="cl-agent__sq">pa</span><span class="cl-agent__name">patch</span></span><span class="cl-agent cl-pen-green"><span class="cl-agent__sq">fe</span><span class="cl-agent__name">fern</span></span><span class="cl-agent cl-pen-graphite"><span class="cl-agent__sq">em</span><span class="cl-agent__name">ember</span></span>
+ </div></div></div>
+</section>
+
+<section class="s" id="type">
+ <div class="s-head"><span class="cl-label">04 · Type</span><h2>A grotesque with ink traps, a quiet sans, a mono for the record.</h2><p>Bricolage Grotesque has optical sizes: it tightens and darkens as it grows, like ink pooling in a printed headline. Geist reads cleanly at 13 px in a dense list. Geist Mono carries every caption, id, number and provenance line. All three are open source (OFL) and self-hosted on memory.heyclyde.me.</p></div>
+ <div class="specimen"><div class="big" style="font-family:var(--cl-font-display);font-weight:780">Recall&nbsp;it.</div><div class="about"><b>Display</b>Bricolage Grotesque, 600 to 800, optical size on. Headlines, the hero, big numbers. Track it tight: -0.04em at display sizes.</div></div>
+ <div class="specimen"><div class="big" style="font-family:var(--cl-font-sans);font-weight:500;letter-spacing:-.035em">Every agent.</div><div class="about"><b>Text</b>Geist, 400 to 600. Body, UI, card titles. 14.5/22 in the app, 17/27 for reading.</div></div>
+ <div class="specimen"><div class="big" style="font-family:var(--cl-font-mono);font-weight:500;font-size:clamp(40px,7vw,88px);letter-spacing:-.04em">Nº&nbsp;38</div><div class="about"><b>Data</b>Geist Mono, 400 to 500. Labels in caps at 10.5 px with +0.1em, provenance, ids, money, counts. Tabular figures.</div></div>
+ <h3 class="sub">Scale</h3>
+ <div class="scale">
+  <div><span>display · 84</span><p style="font:var(--cl-text-display);letter-spacing:var(--cl-track-display)">Your agents forget.</p></div>
+  <div><span>title-1 · 36</span><p class="cl-title-1">Connect your apps</p></div>
+  <div><span>title-2 · 26</span><p class="cl-title-2">Quest board</p></div>
+  <div><span>title-3 · 17</span><p class="cl-title-3">Deploys go through deploy.sh</p></div>
+  <div><span>body-l · 17</span><p style="font:var(--cl-text-body-l)">What one agent learns, every other agent can recall.</p></div>
+  <div><span>body · 14.5</span><p>Every Clyde deploy runs deploy.sh and checks healthz.</p></div>
+  <div><span>label · 10.5</span><p class="cl-label">Done when</p></div>
+  <div><span>mono · 12</span><p style="font:var(--cl-text-mono)">atlas / Claude Code / mbp-work / 3 d ago</p></div>
+ </div>
+</section>
+
+<section class="s" id="space">
+ <div class="s-head"><span class="cl-label">05 · Space, corners, depth, motion</span><h2>Small corners, hard copies, short moves.</h2><p>A 4 px grid. Paper has small corners; only the logo is soft. The one chosen thing gets a hard carbon offset instead of a blur. Frequent actions never animate; a stamp landing does, once.</p></div>
+ <div class="duo">
+  <div class="cl-card"><span class="cl-label">Space</span><div class="bars" style="margin-top:12px"><div>space-1 · 4<i style="width:4px"></i></div><div>space-2 · 8<i style="width:8px"></i></div><div>space-3 · 12<i style="width:12px"></i></div><div>space-4 · 16<i style="width:16px"></i></div><div>space-6 · 24<i style="width:24px"></i></div><div>space-8 · 32<i style="width:32px"></i></div><div>space-14 · 56<i style="width:56px"></i></div><div>space-20 · 80<i style="width:80px"></i></div></div></div>
+  <div class="cl-card"><span class="cl-label">Corners</span><div class="radii" style="margin-top:12px"><div style="border-radius:3px">3</div><div style="border-radius:5px">5</div><div style="border-radius:7px">7</div><div style="border-radius:10px">10</div><div style="border-radius:14px">14</div></div></div>
+  <div class="cl-card"><span class="cl-label">Depth and motion · hover these</span><div class="lift-demo" style="margin-top:14px"><button class="cl-btn cl-btn--primary" type="button">Primary lifts</button><button class="cl-btn" type="button">Secondary</button><span class="cl-stamp cl-stamp--carbon is-new">Claimed <small>atlas</small></span></div><p class="cl-hint" style="margin-top:12px">90 ms press · 160 ms hover · 240 ms enter · 420 ms stamp. Out-ease for arrivals; the stamp's overshoot is reserved for the stamp.</p></div>
+ </div>
+</section>
+
+<section class="s" id="components">
+ <div class="s-head"><span class="cl-label">06 · Components</span><h2>The parts, live, in both themes.</h2><p>Every class starts with cl- and is built only on the tokens, so it can sit inside a chat card. Pens are classes, never inline styles: Clyde's pages run under a strict CSP.</p></div>
+ <div class="pair">
+  <div class="tile-light comp"><span class="tag">Light</span>
+   <div class="comp-row"><button class="cl-btn cl-btn--primary" type="button">Supersede</button><button class="cl-btn" type="button">Prune</button><button class="cl-btn cl-btn--ghost" type="button">Cancel</button><button class="cl-btn cl-btn--danger" type="button">Delete</button></div>
+   <div class="cl-field"><label for="e1">Email</label><input class="cl-input" id="e1" placeholder="you@example.com"></div>
+   <article class="cl-card cl-memory is-selected"><div class="cl-memory__top"><span class="cl-chip">Decision</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">93%</span></div><h3 class="cl-memory__title">Deploys go through deploy.sh, never the dashboard</h3><p class="cl-memory__body">A dashboard deploy skips the migration check and once left the function on old code.</p><div class="cl-prov"><span class="cl-prov__who cl-pen-blue">atlas</span><span>Claude Code</span><span class="cl-prov__sep">/</span><span>mbp-work</span><span class="cl-prov__sep">/</span><span>3 w ago</span></div><div class="cl-memory__foot"><span>recalled 41×</span><span>3 links</span></div></article>
+   <article class="cl-quest"><div class="cl-quest__stub"><span class="cl-label">Nº</span><span class="cl-quest__no">38</span><span class="cl-quest__pri is-high">High</span></div><div class="cl-quest__main"><div class="cl-quest__head"><h3 class="cl-quest__title">Write the Claude directory submission</h3><span class="cl-stamp cl-stamp--carbon">Claimed <small>atlas</small></span></div><div class="cl-quest__done"><span class="cl-label">Done when</span>Submission id recorded in the issue.</div><span class="cl-quest__for">for <b>ops agent</b> · studio</span></div></article>
+   <div class="comp-row"><span class="cl-chip">Fact</span><span class="cl-state cl-state--trial">On trial</span><span class="cl-status is-ok">Online</span><span class="cl-stamp cl-stamp--ok">Done <small>quill</small></span></div>
+  </div>
+  <div class="tile-dark comp"><span class="tag">Dark</span>
+   <div class="comp-row"><button class="cl-btn cl-btn--primary" type="button">Supersede</button><button class="cl-btn" type="button">Prune</button><button class="cl-btn cl-btn--ghost" type="button">Cancel</button><button class="cl-btn cl-btn--danger" type="button">Delete</button></div>
+   <div class="cl-field"><label for="e2">Email</label><input class="cl-input" id="e2" placeholder="you@example.com"></div>
+   <article class="cl-card cl-memory is-selected"><div class="cl-memory__top"><span class="cl-chip">Decision</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">93%</span></div><h3 class="cl-memory__title">Deploys go through deploy.sh, never the dashboard</h3><p class="cl-memory__body">A dashboard deploy skips the migration check and once left the function on old code.</p><div class="cl-prov"><span class="cl-prov__who cl-pen-blue">atlas</span><span>Claude Code</span><span class="cl-prov__sep">/</span><span>mbp-work</span><span class="cl-prov__sep">/</span><span>3 w ago</span></div><div class="cl-memory__foot"><span>recalled 41×</span><span>3 links</span></div></article>
+   <article class="cl-quest" style="--cl-quest-ground:var(--cl-paper-0)"><div class="cl-quest__stub"><span class="cl-label">Nº</span><span class="cl-quest__no">38</span><span class="cl-quest__pri is-high">High</span></div><div class="cl-quest__main"><div class="cl-quest__head"><h3 class="cl-quest__title">Write the Claude directory submission</h3><span class="cl-stamp cl-stamp--carbon">Claimed <small>atlas</small></span></div><div class="cl-quest__done"><span class="cl-label">Done when</span>Submission id recorded in the issue.</div><span class="cl-quest__for">for <b>ops agent</b> · studio</span></div></article>
+   <div class="comp-row"><span class="cl-chip">Fact</span><span class="cl-state cl-state--trial">On trial</span><span class="cl-status is-ok">Online</span><span class="cl-stamp cl-stamp--ok">Done <small>quill</small></span></div>
+  </div>
+ </div>
+ <h3 class="sub">Empty state, toast, navigation</h3>
+ <div class="duo">
+  <div class="cl-empty"><svg class="cl-empty__art cl-ill" viewBox="0 0 112 80" aria-hidden="true"><rect class="copy" x="26" y="18" width="70" height="50" rx="6"/><rect class="sheet" x="16" y="8" width="70" height="50" rx="6"/><path class="line" d="M27 24h40M27 33h48M27 42h30"/><path class="pen" d="M27 24h14"/></svg><h3 class="cl-empty__title">Nothing filed yet</h3><p class="cl-empty__text">The first thing one of your agents remembers lands here, with who filed it and where.</p><button class="cl-btn cl-btn--primary" type="button">Connect an app</button></div>
+  <div style="display:grid;gap:16px;align-content:start"><div class="cl-toast"><span class="cl-toast__label">Pruned</span><span class="cl-toast__msg">Recall skips "The old allowlist rule".</span><button type="button">Undo</button></div>
+   <nav class="cl-nav cl-card" style="max-width:260px" aria-label="Example"><span class="cl-nav__group">Clyde</span><a class="cl-nav__item is-current" href="#components">Memories<span class="cl-nav__count">1,082</span></a><a class="cl-nav__item" href="#components">Graph</a><a class="cl-nav__item" href="#components">Quest board<span class="cl-nav__count">5</span></a></nav></div>
+ </div>
+</section>
+
+<section class="s" id="in-use">
+ <div class="s-head"><span class="cl-label">07 · In use</span><h2>Where the system shows up.</h2><p>The same parts appear on memory.heyclyde.me, on the site, and as cards inside the chat apps your agents run in.</p></div>
+ <div class="duo">
+  <div class="chat"><div class="chat-top"><i></i><i></i><i></i><span>a chat app · Clyde card</span></div>
+   <div class="chat-body"><div class="bubble">What did we decide about deploys?</div>
+    <div class="reply"><span>Clyde has this, filed three weeks ago:</span>
+     <article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-chip">Decision</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">93%</span></div><h3 class="cl-memory__title">Deploys go through deploy.sh, never the dashboard</h3><div class="cl-prov"><span class="cl-prov__who cl-pen-blue">atlas</span><span>Claude Code</span><span class="cl-prov__sep">/</span><span>mbp-work</span></div></article>
+     <span class="via"><span style="display:inline-block;--cl-logo-h:14px"><!-- @logo mark --></span>from Clyde</span></div></div></div>
+  <div class="cl-card" style="display:grid;gap:12px;align-content:start"><span class="cl-label">Live pages</span>
+   <a class="cl-link" href="https://memory.heyclyde.me/">memory.heyclyde.me · Connect your apps</a>
+   <a class="cl-link" href="https://memory.heyclyde.me/billing/thanks">memory.heyclyde.me/billing/thanks · a sign-in ticket</a>
+   <a class="cl-link" href="https://claude.ai/artifact/FBkXSUX6NgUWE81SkvidLt">The site prototype</a>
+   <a class="cl-link" href="https://claude.ai/artifact/3usQ13GnTPUnGyxJPw7rAa">The three directions this came from</a></div>
+ </div>
+</section>
+
+<section class="s" id="files">
+ <div class="s-head"><span class="cl-label">08 · Files</span><h2>One source, in the repo.</h2><p>Everything here is generated from memory/design in like-vincent. Change a token there, and this page, the site, the Worker and the chat cards all change.</p></div>
+ <div class="table-wrap cl-card" style="padding:0;overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:520px;font:var(--cl-text-small)">
+  <tbody>
+  <tr><td style="padding:12px 16px;font:var(--cl-text-mono)">tokens.css</td><td style="padding:12px 16px">Color (light and dark), type, space, radii, shadows, motion. Contrast tested in CI.</td></tr>
+  <tr><td style="padding:12px 16px;border-top:1px solid var(--cl-rule);font:var(--cl-text-mono)">components.css</td><td style="padding:12px 16px;border-top:1px solid var(--cl-rule)">Every cl- component, on tokens only.</td></tr>
+  <tr><td style="padding:12px 16px;border-top:1px solid var(--cl-rule);font:var(--cl-text-mono)">fonts.css</td><td style="padding:12px 16px;border-top:1px solid var(--cl-rule)">Bricolage Grotesque, Geist, Geist Mono, self-hosted.</td></tr>
+  <tr><td style="padding:12px 16px;border-top:1px solid var(--cl-rule);font:var(--cl-text-mono)">brand.js · brand/</td><td style="padding:12px 16px;border-top:1px solid var(--cl-rule)">The logo: inline SVG that follows the theme, plus SVG files and the favicon.</td></tr>
+  <tr><td style="padding:12px 16px;border-top:1px solid var(--cl-rule);font:var(--cl-text-mono)">BRAND.md · PRINCIPLES.md</td><td style="padding:12px 16px;border-top:1px solid var(--cl-rule)">Voice and rules; what the system learned from Linear, Raycast, Things, Stripe and others.</td></tr>
+  </tbody></table></div>
+ <div class="foot"><span class="cl-wordmark"><!-- @logo lockup --></span><span>One memory for every agent · heyclyde.me</span></div>
+</section>
+</main>
+</div>

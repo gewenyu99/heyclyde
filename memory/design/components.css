@@ -6,13 +6,15 @@
 .cl-root { background: var(--cl-paper-0); color: var(--cl-ink); font: var(--cl-text-body); -webkit-font-smoothing: antialiased; -webkit-text-size-adjust: 100%; }
 .cl-root *, .cl-root *::before, .cl-root *::after { box-sizing: border-box; }
 
-/* ---- Brand ---- */
-.cl-wordmark { display: inline-flex; align-items: center; gap: 9px; font: 680 17px/1 var(--cl-font-sans); letter-spacing: -0.03em; color: var(--cl-ink); text-decoration: none; }
-.cl-mark { --size: 24px; width: var(--size); height: var(--size); flex: none; border-radius: 29%; background: var(--cl-mark); color: var(--cl-on-mark); display: inline-grid; place-items: center; font: 600 calc(var(--size) * 0.62)/1 var(--cl-font-sans); padding-bottom: calc(var(--size) * 0.07); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06); }
+/* ---- Brand: the logo is inline SVG from memory/design/brand.js (LOGO_LOCKUP, LOGO_MARK). Never redraw it. ---- */
+.cl-wordmark { display: inline-flex; align-items: center; color: var(--cl-ink); text-decoration: none; line-height: 0; }
+.cl-logo { display: block; height: var(--cl-logo-h, 26px); width: auto; overflow: visible; }
+.cl-logo .i { fill: var(--cl-ink); }
+.cl-logo .c { fill: var(--cl-carbon); }
 
 /* ---- Text ---- */
 .cl-display { font: var(--cl-text-display); letter-spacing: var(--cl-track-display); text-wrap: balance; margin: 0; }
-.cl-title-1 { font: var(--cl-text-title-1); letter-spacing: var(--cl-track-title); text-wrap: balance; margin: 0; }
+.cl-title-1 { font: var(--cl-text-title-1); font-optical-sizing: auto; letter-spacing: var(--cl-track-title); text-wrap: balance; margin: 0; }
 .cl-title-2 { font: var(--cl-text-title-2); letter-spacing: var(--cl-track-title); text-wrap: balance; margin: 0; }
 .cl-title-3 { font: var(--cl-text-title-3); letter-spacing: -0.01em; margin: 0; }
 .cl-lead { font: var(--cl-text-body-l); color: var(--cl-ink-2); max-width: var(--cl-measure); margin: 0; }

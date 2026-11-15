@@ -5,3 +5,8 @@ main = "worker.js"
 compatibility_date = "2026-10-01"
 workers_dev = false
 routes = [{ pattern = "memory.heyclyde.me", custom_domain = true }]
+
+# R68: fonts, the Clyde logo and allowed app logos, served as static files under /_clyde/ (memory/proxy/public).
+# Any other path falls through to worker.js.
+[assets]
+directory = "./public"

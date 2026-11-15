@@ -53,23 +53,27 @@
   --cl-copy-2: 4px 4px 0 0 var(--cl-carbon-copy);
   --cl-focus: 0 0 0 2px var(--cl-paper-1), 0 0 0 4px var(--cl-carbon);
 
-  /* Type. System faces only: the Worker's CSP and the chat cards load no fonts. Personality comes from weight, tracking and mono. */
-  --cl-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
-  --cl-font-mono: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  /* Type. Bricolage Grotesque for display and the wordmark (ink-trap grotesque with optical sizes: it gets
+     tighter and blacker as it grows), Geist for reading and UI, Geist Mono for labels, provenance and numbers.
+     All three are OFL. Load them with memory/design/fonts.css (self-hosted) or Google Fonts; the system stack
+     behind each keeps a page readable before they arrive and inside hosts that block fonts. */
+  --cl-font-display: "Bricolage Grotesque", "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --cl-font-sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --cl-font-mono: "Geist Mono", ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
 
-  /* Type scale: size / line height. Display sizes tighten, labels open up. */
-  --cl-text-display: 700 clamp(40px, 7vw, 64px) / 0.98 var(--cl-font-sans);
-  --cl-text-title-1: 720 34px / 38px var(--cl-font-sans);
-  --cl-text-title-2: 700 24px / 30px var(--cl-font-sans);
-  --cl-text-title-3: 650 17px / 24px var(--cl-font-sans);
-  --cl-text-body-l: 400 16px / 25px var(--cl-font-sans);
-  --cl-text-body: 400 14px / 21px var(--cl-font-sans);
+  /* Type scale: weight size / line height family. Display sizes tighten, labels open up. */
+  --cl-text-display: 760 clamp(44px, 8vw, 84px) / 0.94 var(--cl-font-display);
+  --cl-text-title-1: 720 36px / 40px var(--cl-font-display);
+  --cl-text-title-2: 700 26px / 32px var(--cl-font-display);
+  --cl-text-title-3: 600 17px / 24px var(--cl-font-sans);
+  --cl-text-body-l: 400 17px / 27px var(--cl-font-sans);
+  --cl-text-body: 400 14.5px / 22px var(--cl-font-sans);
   --cl-text-small: 400 13px / 19px var(--cl-font-sans);
-  --cl-text-label: 600 10.5px / 14px var(--cl-font-mono);
+  --cl-text-label: 500 10.5px / 14px var(--cl-font-mono);
   --cl-text-mono: 400 12px / 18px var(--cl-font-mono);
-  --cl-track-display: -0.045em;
+  --cl-track-display: -0.04em;
   --cl-track-title: -0.025em;
-  --cl-track-label: 0.09em;
+  --cl-track-label: 0.1em;
 
   /* Space: a 4 px grid. */
   --cl-space-1: 4px;
@@ -99,6 +103,9 @@
   --cl-ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
   --cl-ease-in: cubic-bezier(0.4, 0, 1, 1);
   --cl-ease-stamp: cubic-bezier(0.3, 1.6, 0.55, 1);
+
+  /* The logo's height; set it on any parent to size a .cl-logo inside. */
+  --cl-logo-h: 26px;
 
   /* Layout */
   --cl-measure: 64ch;

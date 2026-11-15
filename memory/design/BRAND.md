@@ -56,9 +56,9 @@ Calm, precise, warm under the precision. An archive that's been well kept, not a
 
 **Color.** Neutrals carry 90% of every screen. `carbon` is the only accent and it means "Clyde's copy". State colors (`ok`, `warn`, `bad`) appear only with a word or a glyph. Pens appear only next to an agent's name or square. Text colors pass 4.5:1 on every paper in both themes, which `harness/test/memory/design_test.ts` checks.
 
-**Dark.** Dark is the carbon sheet: `#121311` ground, papers getting lighter as they rise, ink `#ecece6`, carbon and pens redrawn lighter. The mark stays `#262825` with its white c in both themes; it's a logo, it doesn't invert.
+**Dark.** Dark is the carbon sheet: `#121311` ground, papers getting lighter as they rise, ink `#ecece6`, carbon and pens redrawn lighter. The logo switches to its dark files (ink `#ecece6`, carbon `#86a6f5`).
 
-**Type.** System sans for everything a person reads, at off-grid weights (650, 680, 700, 720) with tight tracking on titles (`--cl-track-title`, `--cl-track-display`). System mono for labels, provenance, ids, numbers and code. Reading text 16/25 at most 64ch; UI text 14/21. Nothing smaller than 10.5px, and that size is only for mono caps labels.
+**Type.** Bricolage Grotesque for display and titles with tight tracking (`--cl-track-title`, `--cl-track-display`), Geist for everything else a person reads, Geist Mono for labels, provenance, ids, numbers and code. Reading text 16/25 at most 64ch; UI text 14/21. Nothing smaller than 10.5px, and that size is only for mono caps labels.
 
 **Space.** A 4px grid: 4, 8, 12, 16, 20, 24, 32, 40, 56, 80. Cards pad 16. Sections sit 32 to 56 apart.
 
@@ -68,9 +68,34 @@ Calm, precise, warm under the precision. An archive that's been well kept, not a
 
 **Motion.** 90ms press, 160ms hover, 240ms enter, 420ms stamp. Out-ease for arrivals, in-ease for exits. The stamp's overshoot (`--cl-ease-stamp`) is used by the stamp and nothing else. Nav, filters and keyboard actions don't animate. Everything respects reduced motion (the tokens drop to 0ms).
 
-## Mark
+## Logo
 
-The clyde-v2 mark: a `#262825` rounded square, corners at 29% of the side, with a lowercase white "c" in the system font at 62% of the side, next to the lowercase wordmark "clyde" at weight 680. That's the only logo. Never redraw it, outline it, color it, animate it or put it on a pattern. Never make a new one.
+Wen asked for a real logo on 2026-11-15, which replaces the clyde-v2 placeholder mark. The mark is an ink square with
+its carbon copy offset behind it, and a lowercase c cut through the square so you see the blue copy through it: the
+product's idea in one shape. The wordmark is lowercase "clyde" in Bricolage Grotesque ExtraBold (optical size 96),
+outlined to paths so it renders the same everywhere. Six options were drawn; the rest and why they lost are on the
+design system page.
+
+- **Files.** `memory/design/brand/` (and the copy the Worker serves at `/_clyde/brand/`): `clyde-mark-*.svg`,
+  `clyde-wordmark-*.svg`, `clyde-lockup-*.svg` in light and dark, and `favicon.svg`, which switches with the system
+  theme. `memory/design/brand.js` has the same logo as inline SVG whose colors come from the tokens (`.cl-logo`).
+- **Colors.** Ink (`#20211f`, dark `#ecece6`) and carbon (`#2f5fd0`, dark `#86a6f5`). Nothing else.
+- **Clear space.** The copy offset (a sixth of the mark) on every side.
+- **Minimum size.** Mark 16 px; lockup 20 px tall.
+- **Never** rotate, recolor, stretch, outline, animate it, or set it on a pattern. Never redraw it in a font.
+
+## Typefaces
+
+Bricolage Grotesque (display: headlines, the hero, big numbers), Geist (text and UI), Geist Mono (labels, provenance,
+ids, numbers). All OFL. memory.heyclyde.me self-hosts them (`memory/design/fonts.css`, files in
+`memory/proxy/public/_clyde/fonts`); artifacts load them from Google Fonts; every stack falls back to the system face.
+
+## Other apps' logos
+
+Show another company's logo only when its own guidelines allow it without approval, unaltered, from its official
+assets. Today that's Grok. Every other app appears as its name in plain text until its owner approves
+(`memory/design/APP-LOGOS.md` has the sources, rules and contacts). Label the row "Connects to", and keep the footer
+line saying a listed app doesn't mean its maker endorses Clyde.
 
 ## Illustration
 
@@ -96,5 +121,5 @@ Line icons on a 24 grid drawn at 16 or 20px, 1.5px stroke (2px at 16px only if t
 | Write "Nothing filed yet. The first thing an agent remembers lands here." | Write "No data" or "Get started!" |
 | Use `ink-3` for meta text on any paper | Use opacity to make grey text |
 | Say "Refused. Nothing was shared." then the next step | Apologize, or blame the user |
-| Keep the mark `#262825` in dark mode | Invert the mark or draw a new one |
+| Use the logo files or `brand.js` as they are | Rebuild the logo in a font, or recolor it |
 | Use mono caps for field labels only | Set headings or buttons in all caps |
