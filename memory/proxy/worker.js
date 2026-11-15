@@ -17,6 +17,12 @@ function pass(req, url, env, extra = {}) {
   headers.delete("x-memory-client");
   const ip = req.headers.get("cf-connecting-ip");
   if (ip) headers.set("x-memory-client", ip);
+  // Where Cloudflare saw the caller, for the blocked-country checks (R38). A client's own cf-ipcountry or cf-region-code
+  // never passes: both come from request.cf or not at all.
+  headers.delete("cf-ipcountry");
+  headers.delete("cf-region-code");
+  if (req.cf?.country) headers.set("cf-ipcountry", req.cf.country);
+  if (req.cf?.regionCode) headers.set("cf-region-code", req.cf.regionCode);
   for (const [k, v] of Object.entries(extra)) headers.set(k, v);
   const hasBody = !["GET", "HEAD"].includes(req.method);
   return fetch(ORIGIN + (url.pathname === "/" ? "" : url.pathname) + url.search, {

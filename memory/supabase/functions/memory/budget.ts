@@ -2,6 +2,7 @@
 // that screens writes (judge_write) has a reserve of its own that nothing else spends, so when the general budget is gone
 // recall serves keyword ranks and degraded, and remember still screens.
 import { AsyncLocalStorage } from "node:async_hooks";
+import { meterOwner, ownerTokensSpent } from "./billing/limits.ts";
 import { setting, sql } from "./db.ts";
 
 export type Kind = "embed" | "judge_write" | "judge_recall" | "shadow" | "research";
@@ -65,6 +66,11 @@ export async function budget() {
 export async function assertBudget(kind: Kind) {
   const why = verdict(kind, await usage(), await caps(kind));
   if (why) throw new OverBudget(why);
+  // The plan of the owner this request runs for has its own cap (R38). Shadows and research are memory's spend, not theirs.
+  if (kind !== "shadow" && kind !== "research") {
+    const mine = await ownerTokensSpent();
+    if (mine) throw new OverBudget(mine);
+  }
 }
 
 // What one recall spends at OpenAI, for its retrieval row's openai_tokens and the cost guardrail (R34). Shadow and research
@@ -81,6 +87,7 @@ export async function meter(kind: Kind, tokens: number) {
   if (!tokens) return;
   const spent = kind === "shadow" || kind === "research" ? undefined : tally.getStore();
   if (spent) spent.tokens += tokens;
+  if (kind !== "shadow" && kind !== "research") await meterOwner(tokens);
   await sql`insert into memory.openai_usage (month, kind, tokens) values (date_trunc('month', now())::date, ${kind}, ${tokens})
     on conflict (month, kind) do update set tokens = memory.openai_usage.tokens + excluded.tokens`;
 }

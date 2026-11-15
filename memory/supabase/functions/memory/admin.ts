@@ -16,6 +16,8 @@ import { redact, redactText } from "./redact.ts";
 import { screen } from "./judge.ts";
 import { MIN_QUOTE, squash, verifyEvidence } from "./evidence.ts";
 import { canonical, MEDIA_TYPE_RE, remember, Refused } from "./write.ts";
+import { forget as forgetEntitlements } from "./billing/entitlement.ts";
+import { SECRETS as BILLING_SECRETS } from "./billing/index.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 
@@ -817,7 +819,7 @@ async function addDevice(data: Row) {
 
 /** The owner's sign-in from the installer: a token for this computer, shown once. A name already taken gets a fresh
  * token, so reinstalling a computer rotates its token rather than failing. */
-export async function claimDevice(data: Row) {
+export async function claimDevice(data: Row, owner: string | null = null, adopt = true) {
   const name = data?.name;
   const hooks = data?.hooks ?? "full";
   if (!HOOK_LEVELS.includes(hooks)) return Response.json({ error: "hooks must be full or metadata." }, { status: 422 });
@@ -826,9 +828,15 @@ export async function claimDevice(data: Row) {
   }
   const token = newToken();
   await sql.begin(async (tx) => {
-    await tx`insert into memory.device (name, token_sha256, hooks) values (${name}, ${await sha256(token)}, ${hooks})
+    // A name another owner holds is theirs: claiming it would take over their computer's token. A device from before R38
+    // (no owner) is Wen's, so only an allowlisted owner (adopt) takes it over.
+    const [held] = await tx`select owner_id from memory.device where name = ${name}`;
+    if (owner && held && (held.owner_id ? held.owner_id !== owner : !adopt)) {
+      throw new ApiError(409, `The name ${name} is taken. Pick another.`);
+    }
+    await tx`insert into memory.device (name, token_sha256, hooks, owner_id) values (${name}, ${await sha256(token)}, ${hooks}, ${owner})
       on conflict (name) do update set token_sha256 = excluded.token_sha256, hooks = excluded.hooks, revoked_at = null,
-        created_at = now(), last_seen = null`;
+        created_at = now(), last_seen = null, owner_id = excluded.owner_id`;
     await audit(tx, "device.claim", `device:${name}`, null, { name, hooks });
     await announce(tx, name, "through the installer's email sign-in");
   });
@@ -860,6 +868,69 @@ async function putSecret(name: string, data: Row) {
     await audit(tx, "secret.set", `secret:${name}`, null, { name });
     return { set: name };
   });
+}
+
+// R38: plans and who holds what. Plans are data; a limit set to null is no limit.
+const PLAN_LIMITS = ["price_micro_usd_month", "recalls_month", "remembers_month", "blob_bytes_total", "openai_tokens_month",
+  "connected_agents", "burst_calls", "burst_seconds"];
+const PLAN_FLAGS = ["open", "listed", "artifacts"];
+
+async function plans() {
+  return { plans: await sql`select * from memory.plan order by price_micro_usd_month, id` };
+}
+
+async function putPlan(planId: string, data: Row) {
+  const set: Row = {};
+  for (const k of PLAN_LIMITS) {
+    if (!(k in data)) continue;
+    if (data[k] !== null && !(Number.isInteger(data[k]) && data[k] >= 0)) throw new ApiError(422, `${k} must be a whole number of at least 0, or null.`);
+    set[k] = data[k];
+  }
+  for (const k of PLAN_FLAGS) {
+    if (!(k in data)) continue;
+    if (typeof data[k] !== "boolean") throw new ApiError(422, `${k} must be true or false.`);
+    set[k] = data[k];
+  }
+  if ("name" in data) {
+    if (typeof data.name !== "string" || !data.name.trim()) throw new ApiError(422, "name must be a non-empty string.");
+    set.name = data.name.trim();
+  }
+  if ("product_ids" in data) {
+    if (!data.product_ids || typeof data.product_ids !== "object" || Array.isArray(data.product_ids)) throw new ApiError(422, "product_ids must be an object.");
+    set.product_ids = sql.json(data.product_ids);
+  }
+  if ("margin_floor" in data) {
+    if (typeof data.margin_floor !== "number" || data.margin_floor < 0 || data.margin_floor > 1) throw new ApiError(422, "margin_floor must be between 0 and 1.");
+    set.margin_floor = data.margin_floor;
+  }
+  if (!PLAN.test(planId)) throw new ApiError(422, "A plan id is 2 to 31 lowercase letters, digits, '_' or '-', starting with a letter.");
+  return await sql.begin(async (tx) => {
+    const [before] = await tx`select * from memory.plan where id = ${planId}`;
+    const [after] = before
+      ? Object.keys(set).length ? await tx`update memory.plan set ${tx(set)}, updated_at = now() where id = ${planId} returning *` : [before]
+      : await tx`insert into memory.plan ${tx({ id: planId, name: set.name ?? planId, ...set })} returning *`;
+    await audit(tx, before ? "plan.update" : "plan.create", `plan:${planId}`, before ?? null, after);
+    forgetEntitlements();
+    return after;
+  });
+}
+const PLAN = /^[a-z][a-z0-9_-]{1,30}$/;
+
+async function entitlements(state: string | null, page: { limit: number; offset: number }) {
+  const rows = await sql`select a.owner_id, a.email, a.email_confirmed, a.country, a.region, a.created_at as signed_up,
+      al.plan as allowlist_plan, e.provider, e.subscription_id, e.plan, e.state, e.current_period_end, e.cancel_at_period_end,
+      e.refunded, e.billing_country, e.billing_region, e.updated_at
+    from memory.account a
+    left join memory.allowed_email al on a.email_confirmed and al.email = a.email
+    left join memory.entitlement e on e.owner_id = a.owner_id
+    where ${state}::text is null or e.state = ${state}
+    order by a.created_at desc limit ${page.limit} offset ${page.offset}`;
+  return { entitlements: rows };
+}
+
+async function usageOf(owner: string) {
+  if (!/^[0-9a-f-]{36}$/.test(owner)) throw new ApiError(422, "owner must be a uuid.");
+  return { usage: await sql`select period, kind, amount from memory.usage where owner_id = ${owner} order by period desc, kind` };
 }
 
 // Tables /import fills, the same set /export writes, and the serial columns whose sequences follow the rows in.
@@ -1530,7 +1601,14 @@ const ROUTES: Route[] = [
   ["POST", /^\/devices$/, 201, async (r) => addDevice(await body(r))],
   ["DELETE", /^\/devices\/([^/]+)$/, 200, (_r, m) => revokeDevice(id(m[1], "name"))],
   ["PATCH", /^\/devices\/([^/]+)$/, 200, async (r, m) => setDeviceHooks(id(m[1], "name"), await body(r))],
-  ["PUT", /^\/secrets\/(openai_key)$/, 200, async (r, m) => putSecret(m[1], await body(r))],
+  ["PUT", /^\/secrets\/([a-z_]+)$/, 200, async (r, m) => {
+    if (m[1] !== "openai_key" && !BILLING_SECRETS.includes(m[1])) throw new ApiError(404, `No secret ${m[1]}.`);
+    return putSecret(m[1], await body(r));
+  }],
+  ["GET", /^\/billing\/plans$/, 200, () => plans()],
+  ["PUT", /^\/billing\/plans\/([^/]+)$/, 200, async (r, m) => putPlan(m[1], await body(r))],
+  ["GET", /^\/billing\/entitlements$/, 200, (_r, _m, q) => entitlements(q.text("state") ?? null, q.page())],
+  ["GET", /^\/billing\/usage\/([^/]+)$/, 200, (_r, m) => usageOf(m[1])],
   ["POST", /^\/import$/, 200, (r) => importRows(r)],
   ["GET", /^\/link-type-weights$/, 200, () => linkTypeWeights()],
   ["PUT", /^\/link-type-weights$/, 200, () => {

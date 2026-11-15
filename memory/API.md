@@ -473,3 +473,29 @@ Newest first. Each item has `id`, `at`, `action`, `target`, `before` and `after`
 ## Code
 
 [supabase/functions/memory/admin.ts](supabase/functions/memory/admin.ts) holds the routes, the input parsing and the SQL, one function per endpoint. The function type-checks with `deno check supabase/functions/memory/index.ts`.
+
+## Billing (R38)
+
+Plans, entitlements and usage. memory/BILLING.md has the access rule, the webhooks and the setup.
+
+### `GET /billing/plans`
+
+Every row of `memory.plan`: its price, its limits (null is no limit), `open`, `listed`, `artifacts` and `product_ids`.
+
+### `PUT /billing/plans/{id}`
+
+Creates or updates a plan. The body can set any of these: `name`, the limit columns (whole numbers ≥ 0, or null), `open`, `listed`, `artifacts`, `margin_floor` (0 to 1) and `product_ids`. The change lands with an audit row, and every instance applies it within a minute.
+
+### `GET /billing/entitlements?state=`
+
+Every signed-in account, newest first, with:
+
+- its email and country
+- its allowlist plan
+- its subscription: provider, plan, state, period end, cancel-at-period-end and billing country
+
+`state` filters to one state: `pending`, `paid`, `lapsed`, `refunded` or `blocked`.
+
+### `GET /billing/usage/{owner}`
+
+That owner's counters. Each row is `{period, kind, amount}`, where kind is one of `recalls_month`, `remembers_month`, `openai_tokens_month` or `blob_bytes_total`.

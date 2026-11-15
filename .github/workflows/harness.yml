@@ -35,7 +35,7 @@ jobs:
   memory:
     name: Memory and tier 3
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     services:
       postgres:
         # Supabase's own image, for the extensions the migrations need: pgvector, pgroonga, pg_cron and pg_net.
