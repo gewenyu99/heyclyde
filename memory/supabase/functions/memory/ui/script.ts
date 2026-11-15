@@ -234,7 +234,7 @@ function recallCard(d) {
   var s = sheet((d.page === "more" ? "more for " : "recall · ") + "“" + (d.query || "") + "”", d.badge), dk = desk();
   if (d.degraded) dk.appendChild(h("p", { class: "c-text" }, h("span", { class: "cl-chip cl-chip--warn", text: "degraded" }), " ", d.degraded));
   if (!items.length) {
-    dk.appendChild(h("div", { class: "cl-empty" }, h("p", { class: "cl-empty__title", text: "Nothing filed matches yet." }),
+    dk.appendChild(h("div", { class: "cl-empty" }, h("p", { class: "cl-empty__title", text: "Nothing in Clyde matches that yet." }),
       h("p", { class: "cl-empty__text", text: "Ask for more results, or tell your agent what to remember." })));
     s.appendChild(dk); return s;
   }
@@ -284,7 +284,7 @@ function recallCard(d) {
 }
 function entryCard(d, saved) {
   var e = d.entry, s = sheet(saved ? "remember" : "memory", d.badge), dk = desk();
-  if (saved) s.appendChild(h("div", { class: "c-hero" }, h("span", { class: "cl-stamp cl-stamp--ok is-new", text: "Filed" }),
+  if (saved) s.appendChild(h("div", { class: "c-hero" }, h("span", { class: "cl-stamp cl-stamp--ok is-new", text: "Saved" }),
     h("div", null, h("div", { text: "Every agent can recall it now." }), h("div", { class: "c-sub cl-mono", text: e.id }))));
   dk.appendChild(h("article", { class: "cl-card cl-memory" }, memoryParts(e, true), h("div", { class: "c-detail" }, entryDetail(e))));
   s.appendChild(dk);
@@ -340,7 +340,7 @@ function questCard(q, d) {
 function questsCard(d) {
   var s = sheet("quest board", d.badge), dk = desk(), qs = d.quests || [];
   if (d.head) dk.appendChild(h("p", { class: "c-text", text: d.head }));
-  if (!qs.length) dk.appendChild(h("div", { class: "cl-empty" }, h("p", { class: "cl-empty__title", text: "No quests on the board." }),
+  if (!qs.length) dk.appendChild(h("div", { class: "cl-empty" }, h("p", { class: "cl-empty__title", text: "Quest board's empty." }),
     h("p", { class: "cl-empty__text", text: "Ask your agent to post one, with a done-when line anyone can check." })));
   qs.forEach(function (q) { dk.appendChild(questCard(q, d)); });
   s.appendChild(dk);

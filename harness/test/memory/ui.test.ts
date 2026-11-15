@@ -72,7 +72,13 @@ test('R67 the cards use only the design tokens', () => {
   assert.equal(TOKENS_CSS, design.TOKENS_CSS, 'run node memory/design/build.mjs')
   assert.equal(COMPONENTS_CSS, design.COMPONENTS_CSS, 'run node memory/design/build.mjs')
   assert.equal(LOGO_LOCKUP, BRAND_LOCKUP, 'the logo is brand.js\'s: run node memory/design/build.mjs')
-  for (const card of Object.keys(CARDS)) assert.ok(cardHtml(card).includes(BRAND_LOCKUP), `${card} carries the logo`)
+  assert.ok(Buffer.byteLength(LOGO_LOCKUP) <= 4_500, `LOGO_LOCKUP is ${Buffer.byteLength(LOGO_LOCKUP)} bytes`)
+  for (const card of Object.keys(CARDS)) {
+    const html = cardHtml(card)
+    assert.ok(html.includes(BRAND_LOCKUP), `${card} carries the logo`)
+    assert.ok(!html.includes('Nothing filed matches yet.'), `${card} drops retired clerk copy`)
+    assert.ok(html.includes('Nothing in Clyde matches that yet.') && html.includes("Quest board's empty."), `${card} carries non-serious empty state copy`)
+  }
   const defined = new Set([...(TOKENS_CSS + COMPONENTS_CSS).matchAll(/(--[a-z0-9-]+)\s*:/g)].map((m) => m[1]))
   const used = new Set([...CARD_CSS.matchAll(/var\((--[a-z0-9-]+)/g)].map((m) => m[1]))
   assert.ok(used.size > 10)
@@ -90,6 +96,7 @@ test('R67 cards render and escape everything from memory', { skip: NO_CHROME }, 
     assert.equal(f.injected, 0, `${id} made no element from data`)
     assert.ok(f.text.includes('<b class="injected">'), `${id} shows the markup as text`)
   }
+  assert.match(report.frames.remembered.text, /\bSaved\b/i, 'remembered card stamps Saved')
   assert.equal(report.xss, 0)
 })
 

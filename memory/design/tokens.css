@@ -7,13 +7,16 @@
 :root {
   color-scheme: light;
 
-  /* Paper. The desk, the sheet on it, and the well under a field. */
+  /* Paper. The desk, the sheet on it, the well under a field, and the sticky note slapped on top. */
   --cl-paper-0: #f4f4f1;   /* page ground (clyde-v2 page) */
   --cl-paper-1: #ffffff;   /* cards, sheets, inputs */
   --cl-paper-2: #ebece7;   /* wells: code, notes, hover rows, empty slots */
+  --cl-sticky: #fdf4c4;    /* sticky-note yellow sheet (4.8:1+ for all ink and pens) */
+  --cl-sticky-strip: #f4e593; /* adhesive glue strip along the top edge; never text */
+  --cl-sticky-edge: #cab965;  /* sticky-note border */
   --cl-rule: #e1e2dc;      /* hairlines between things */
   --cl-rule-strong: #c9cbc3; /* card edges that must show on paper-0 */
-  --cl-edge: #8a8d86;      /* control borders: inputs, secondary buttons (3:1 on paper-1) */
+  --cl-edge: #8a8d86;      /* control borders: inputs, secondary buttons (3:1 on paper-1 and sticky) */
 
   /* Ink. Three strengths, all text-safe on paper-0, paper-1 and paper-2. */
   --cl-ink: #20211f;       /* headings, body, primary fills */
@@ -46,9 +49,10 @@
   --cl-pen-teal: #0d7266;
   --cl-pen-graphite: #4c4f49;
 
-  /* Shadows. Soft lift for sheets; the hard carbon offset for the one chosen thing. */
+  /* Shadows. Soft lift for sheets; sticky peel shadow; the hard carbon offset for the one chosen thing. */
   --cl-shadow-1: 0 1px 0 rgb(32 33 31 / 0.04), 0 1px 2px rgb(32 33 31 / 0.06);
   --cl-shadow-2: 0 1px 2px rgb(32 33 31 / 0.06), 0 14px 32px -18px rgb(32 33 31 / 0.30);
+  --cl-sticky-shadow: 0 2px 0 rgb(32 33 31 / 0.05), 2px 6px 14px -6px rgb(32 33 31 / 0.18);
   --cl-copy-1: 2px 2px 0 0 var(--cl-carbon-copy);
   --cl-copy-2: 4px 4px 0 0 var(--cl-carbon-copy);
   --cl-focus: 0 0 0 2px var(--cl-paper-1), 0 0 0 4px var(--cl-carbon);
@@ -116,6 +120,7 @@
   :root:not([data-theme="light"]) {
     color-scheme: dark;
     --cl-paper-0: #121311; --cl-paper-1: #1b1c1a; --cl-paper-2: #242522;
+    --cl-sticky: #282416; --cl-sticky-strip: #332d1a; --cl-sticky-edge: #6b6036;
     --cl-rule: #2d2f2b; --cl-rule-strong: #3d403b; --cl-edge: #6f736b;
     --cl-ink: #ecece6; --cl-ink-2: #bdbfb8; --cl-ink-3: #959891; --cl-on-ink: #121311;
     --cl-carbon: #86a6f5; --cl-carbon-ink: #b8caf8; --cl-carbon-wash: #1c2740; --cl-carbon-copy: #34508f; --cl-on-carbon: #0e1524;
@@ -127,11 +132,13 @@
     --cl-pen-amber: #e0aa5c; --cl-pen-teal: #5fc4b4; --cl-pen-graphite: #bdbfb8;
     --cl-shadow-1: 0 1px 0 rgb(0 0 0 / 0.30), 0 1px 2px rgb(0 0 0 / 0.40);
     --cl-shadow-2: 0 1px 2px rgb(0 0 0 / 0.40), 0 16px 36px -18px rgb(0 0 0 / 0.80);
+    --cl-sticky-shadow: 0 2px 0 rgb(0 0 0 / 0.35), 2px 8px 18px -6px rgb(0 0 0 / 0.65);
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
   --cl-paper-0: #121311; --cl-paper-1: #1b1c1a; --cl-paper-2: #242522;
+  --cl-sticky: #282416; --cl-sticky-strip: #332d1a; --cl-sticky-edge: #6b6036;
   --cl-rule: #2d2f2b; --cl-rule-strong: #3d403b; --cl-edge: #6f736b;
   --cl-ink: #ecece6; --cl-ink-2: #bdbfb8; --cl-ink-3: #959891; --cl-on-ink: #121311;
   --cl-carbon: #86a6f5; --cl-carbon-ink: #b8caf8; --cl-carbon-wash: #1c2740; --cl-carbon-copy: #34508f; --cl-on-carbon: #0e1524;
@@ -143,6 +150,7 @@
   --cl-pen-amber: #e0aa5c; --cl-pen-teal: #5fc4b4; --cl-pen-graphite: #bdbfb8;
   --cl-shadow-1: 0 1px 0 rgb(0 0 0 / 0.30), 0 1px 2px rgb(0 0 0 / 0.40);
   --cl-shadow-2: 0 1px 2px rgb(0 0 0 / 0.40), 0 16px 36px -18px rgb(0 0 0 / 0.80);
+  --cl-sticky-shadow: 0 2px 0 rgb(0 0 0 / 0.35), 2px 8px 18px -6px rgb(0 0 0 / 0.65);
 }
 
 @media (prefers-reduced-motion: reduce) {

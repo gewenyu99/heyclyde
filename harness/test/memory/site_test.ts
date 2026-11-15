@@ -25,12 +25,16 @@ Deno.test('the home page has the logo, pricing and its links', async () => {
   assert.equal(r.status, 200)
   assert.match(String(r.headers.get('content-type')), /^text\/html/)
   assert.equal(calls, 0, 'the home page needs nothing from the function')
-  assert.equal(h1s(html).length, 1)
+  assert.deepEqual(h1s(html), ["For some reason they haven't thought of allowing agents to remember shit the way a human does, so we did."])
   assert.ok(text(html).includes('$12.99'))
   assert.ok(/\bFree\b/.test(text(html)))
   assert.ok(/<a[^>]*href="https:\/\/memory\.heyclyde\.me\/"[^>]*>[^<]*Get Clyde/.test(html), 'a Get Clyde link to the connect page')
   for (const href of ['/signin', '/privacy', '/terms']) assert.ok(html.includes(`href="${href}"`), href)
   assert.ok(html.includes('/_clyde/brand/clyde-lockup-light.svg'), 'the logo')
+  assert.ok(html.includes('/_clyde/brand/clyde-mascot-light.svg') && html.includes('/_clyde/brand/clyde-mascot-dark.svg'), 'Sticky-Note Forehead Clyde mascot')
+  assert.ok(html.includes('id="honest"') && html.includes('cl-sticky'), 'sticky-note warning section')
+  assert.ok(text(html).includes("This is not advanced space-age technology, and it's probably not even very secure."))
+  assert.ok(text(html).includes('Shared memory') && text(html).includes('A sticky-note quest board'))
   assert.ok(new TextEncoder().encode(html).length <= 50_000, `${html.length} bytes`)
 })
 
@@ -58,7 +62,18 @@ Deno.test('the other pages, the 404 and the www redirect', async () => {
   const nope = await get('https://heyclyde.me/nope')
   assert.equal(nope.r.status, 404)
   assert.match(String(nope.r.headers.get('content-type')), /^text\/html/)
+  assert.deepEqual(h1s(nope.html), ['Nothing here'])
+  assert.ok(nope.html.includes('/_clyde/brand/clyde-mascot-light.svg'), '404 mascot')
+  assert.ok(text(nope.html).includes("Even Clyde doesn't remember a page at /nope"))
   assert.equal(calls, 0)
+  const terms = text((await get('https://heyclyde.me/terms')).html)
+  for (const place of ['European Union', 'Iceland', 'Liechtenstein', 'Norway', 'United Kingdom', 'Switzerland', 'Quebec', '14 days', '$12.99']) {
+    assert.ok(terms.includes(place), `terms mentions ${place}`)
+  }
+  const termsHtml = (await get('https://heyclyde.me/terms')).html
+  assert.ok(!/[€£]|\b(?:EUR|GBP|CHF)\b|hreflang/i.test(termsHtml), 'USD-only terms with no foreign currency or hreflang')
+  const priv = text((await get('https://heyclyde.me/privacy')).html)
+  for (const word of ['Supabase', 'Cloudflare', 'OpenAI', 'Polar', 'passwords']) assert.ok(priv.includes(word), `privacy mentions ${word}`)
   const www = await get('https://www.heyclyde.me/privacy?x=1')
   assert.equal(www.r.status, 301)
   assert.equal(www.r.headers.get('location'), 'https://heyclyde.me/privacy?x=1')
@@ -74,7 +89,13 @@ Deno.test('every heyclyde.me page is locked down, and public pages are indexable
     assert.equal(r.headers.get('x-frame-options'), 'DENY', path)
     assert.ok(!/\sstyle="/.test(html), `${path}: no style attributes`)
     const loads = [...html.matchAll(/<(?:script|link|img|source|iframe)[^>]*\s(?:src|href|srcset)="([^"]+)"/gi)].map((m) => m[1])
-    for (const u of loads) assert.ok(!/^(https?:)?\/\//.test(u), `${path} loads ${u}`)
+    for (const u of loads) {
+      assert.ok(!/^(https?:)?\/\//.test(u), `${path} loads ${u}`)
+      if (u.startsWith('/_clyde/')) {
+        const file = new URL(`../../../memory/proxy/public${u}`, import.meta.url)
+        assert.ok(Deno.statSync(file).isFile, `${path} asset ${u} exists in memory/proxy/public`)
+      }
+    }
     if (path !== '/nope') assert.equal((html.match(/noindex/gi) ?? []).length, 0, `${path} must not carry noindex`)
   }
 })

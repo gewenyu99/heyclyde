@@ -9,8 +9,16 @@
 /* ---- Brand: the logo is inline SVG from memory/design/brand.js (LOGO_LOCKUP, LOGO_MARK). Never redraw it. ---- */
 .cl-wordmark { display: inline-flex; align-items: center; color: var(--cl-ink); text-decoration: none; line-height: 0; }
 .cl-logo { display: block; height: var(--cl-logo-h, 26px); width: auto; overflow: visible; }
+.cl-logo .p { fill: var(--cl-paper-1); }
+.cl-logo .s { fill: var(--cl-sticky); }
 .cl-logo .i { fill: var(--cl-ink); }
 .cl-logo .c { fill: var(--cl-carbon); }
+.cl-mascot { display: inline-flex; line-height: 0; flex: none; }
+.cl-mascot img { display: block; height: auto; max-width: 100%; }
+.cl-scribble { position: relative; display: inline-block; font-style: normal; color: var(--cl-carbon); }
+.cl-scribble::after { content: ""; position: absolute; left: -2px; right: -2px; bottom: -0.08em; height: 0.2em; min-height: 5px; border-top: 2.5px solid var(--cl-carbon); border-radius: 55% 45% 40% 60% / 80% 70% 30% 20%; transform: rotate(-1.2deg); pointer-events: none; }
+.cl-doodle { display: inline-block; fill: none; stroke: var(--cl-carbon); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.cl-doodle--ink { stroke: var(--cl-ink-2); }
 
 /* ---- Text ---- */
 .cl-display { font: var(--cl-text-display); letter-spacing: var(--cl-track-display); text-wrap: balance; margin: 0; }
@@ -66,6 +74,13 @@
 .cl-card.is-selected { border-color: var(--cl-carbon); box-shadow: var(--cl-copy-2); transform: translate(-2px, -2px); }
 .cl-card--lift:focus-visible { outline: none; box-shadow: var(--cl-focus); }
 .cl-sheet { background: var(--cl-paper-1); border: 1px solid var(--cl-rule-strong); border-radius: var(--cl-radius-xl); box-shadow: var(--cl-shadow-2); }
+.cl-sticky { --cl-sticky-ground: var(--cl-paper-0); position: relative; background: linear-gradient(180deg, var(--cl-sticky-strip) 0 10px, var(--cl-sticky) 10px); border: 1px solid var(--cl-sticky-edge); border-radius: 2px 2px var(--cl-radius-md) 3px; box-shadow: var(--cl-sticky-shadow); padding: 20px 18px 16px; color: var(--cl-ink); min-width: 0; transition: transform var(--cl-dur-2) var(--cl-ease-out), box-shadow var(--cl-dur-2) var(--cl-ease-out); }
+.cl-sticky::after { content: ""; position: absolute; right: -1px; bottom: -1px; width: 15px; height: 15px; background: linear-gradient(315deg, var(--cl-sticky-ground) 47%, var(--cl-sticky-edge) 47% 53%, var(--cl-sticky-strip) 53%); border-top: 1px solid var(--cl-sticky-edge); border-left: 1px solid var(--cl-sticky-edge); pointer-events: none; }
+.cl-sticky--tilt { transform: rotate(-1deg); }
+.cl-sticky--tilt-r { transform: rotate(0.9deg); }
+.cl-sticky--tilt:hover, .cl-sticky--tilt-r:hover { transform: rotate(0deg); }
+.cl-sticky--blue { background: linear-gradient(180deg, var(--cl-carbon-copy) 0 10px, var(--cl-carbon-wash) 10px); border-color: var(--cl-carbon); }
+.cl-sticky--blue::after { background: linear-gradient(315deg, var(--cl-sticky-ground) 47%, var(--cl-carbon) 47% 53%, var(--cl-carbon-copy) 53%); border-color: var(--cl-carbon); }
 .cl-well { background: var(--cl-paper-2); border-radius: var(--cl-radius-md); padding: 10px 12px; color: var(--cl-ink-2); font: var(--cl-text-small); }
 .cl-rule { border: 0; border-top: 1px solid var(--cl-rule); margin: 0; }
 
@@ -125,9 +140,9 @@
 .cl-memory.is-superseded .cl-memory__title { text-decoration: line-through; text-decoration-thickness: 1.5px; color: var(--cl-ink-3); }
 .cl-memory.is-dormant .cl-memory__title { color: var(--cl-ink-2); }
 
-/* ---- Quest card: a work order with a tear-off stub. Its ground must match the page behind it (--cl-quest-ground) ---- */
+/* ---- Quest card: a sticky-note stubbed work order. Its ground must match the page behind it (--cl-quest-ground) ---- */
 .cl-quest { --cl-quest-ground: var(--cl-paper-0); position: relative; display: grid; grid-template-columns: 72px minmax(0, 1fr); background: var(--cl-paper-1); border: 1px solid var(--cl-rule-strong); border-radius: var(--cl-radius-lg); box-shadow: var(--cl-shadow-1); overflow: hidden; min-width: 0; }
-.cl-quest__stub { position: relative; display: grid; align-content: start; justify-items: center; gap: 4px; padding: 14px 6px; border-right: 1.5px dashed var(--cl-rule-strong); text-align: center; }
+.cl-quest__stub { position: relative; display: grid; align-content: start; justify-items: center; gap: 4px; padding: 14px 6px; background: linear-gradient(180deg, var(--cl-sticky-strip) 0 6px, var(--cl-sticky) 6px); border-right: 1.5px dashed var(--cl-sticky-edge); text-align: center; }
 .cl-quest__stub::before, .cl-quest__stub::after { content: ""; position: absolute; right: -7px; width: 12px; height: 12px; border-radius: 50%; background: var(--cl-quest-ground); border: 1px solid var(--cl-rule-strong); }
 .cl-quest__stub::before { top: -7px; }
 .cl-quest__stub::after { bottom: -7px; }
@@ -143,6 +158,7 @@
 .cl-quest__for { font: var(--cl-text-mono); font-size: 11.5px; color: var(--cl-ink-3); }
 .cl-quest__for b { color: var(--cl-ink-2); font-weight: 600; }
 .cl-quest.is-done { background: var(--cl-paper-0); }
+.cl-quest.is-done .cl-quest__stub { background: var(--cl-paper-2); border-right-color: var(--cl-rule-strong); }
 .cl-quest.is-done .cl-quest__title { color: var(--cl-ink-2); }
 
 /* ---- Empty state: always says what fills it, and offers the one action that does ---- */

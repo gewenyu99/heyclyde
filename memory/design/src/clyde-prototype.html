@@ -305,13 +305,14 @@ function memCard(m){
  <div class="cl-memory__foot"><span>recalled ${m.recalls}×</span><span>${linksOf(m)} link${linksOf(m)===1?"":"s"}</span>${m.ctx!=="work"?`<span>${m.ctx==="both"?"work + personal":m.ctx}</span>`:""}</div></article>`;
 }
 const opts=(list,v,all)=>`<option value="">${all}</option>`+list.map(x=>`<option value="${x}"${x===v?" selected":""}>${cap(x)}</option>`).join("");
-const EMPTY_ART=`<svg class="cl-empty__art cl-ill" viewBox="0 0 112 80" aria-hidden="true"><rect class="copy" x="26" y="18" width="70" height="50" rx="6"/><rect class="sheet" x="16" y="8" width="70" height="50" rx="6"/><path class="line" d="M27 24h40M27 33h48M27 42h30"/><path class="pen" d="M27 24h14"/></svg>`;
+const EMPTY_ART=`<div style="--cl-logo-h:72px;display:inline-block"><!-- @logo mark --></div>`;
 
 function vMemories(){
  const q=S.q.toLowerCase(),f=S.f;
  const rows=M.filter(m=>(!q||(m.title+" "+m.body).toLowerCase().includes(q))&&(!f.kind||m.kind===f.kind)&&(!f.agent||m.agent===f.agent)&&(!f.machine||m.machine===f.machine)&&(!f.project||m.project===f.project)&&(!f.ctx||m.ctx===f.ctx||m.ctx==="both")&&(!f.state||m.state===f.state));
  const filtered=q||Object.values(f).some(Boolean);
- return `<div class="head"><div><span class="cl-label">Clyde</span><h1 class="cl-title-1">Memories</h1><p class="cl-lead">Everything your agents remembered, in every app, with who filed it and where.</p></div><span class="count">${rows.length} of ${M.length}</span></div>
+ return `<div class="head"><div><span class="cl-label">Clyde</span><h1 class="cl-title-1">Memories</h1><p class="cl-lead">Everything your agents jotted down across Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok — with who wrote it and where.</p></div><span class="count">${rows.length} of ${M.length}</span></div>
+ <div class="cl-sticky" style="margin-bottom:16px;padding:10px 14px;font:var(--cl-text-small)"><b>Fair warning:</b> this is an indie tool, not a vault — don't put passwords, API keys, or serious secrets in here.</div>
  <form class="search" id="sform" role="search"><label class="cl-label" for="q" style="position:absolute;left:-9999px">Search memories</label><input class="cl-input" id="q" type="search" placeholder="Search titles and bodies" value="${esc(S.q)}"><button class="cl-btn" type="submit">${svg(ICON.search)}Search</button></form>
  <div class="filters">
   <select class="cl-select" id="f-kind" aria-label="Kind">${opts(KINDS,f.kind,"Any kind")}</select>
@@ -322,7 +323,7 @@ function vMemories(){
   <select class="cl-select" id="f-state" aria-label="State">${opts(["settled","trial","dormant","superseded"],f.state,"Any state")}</select>
  </div>
  ${rows.length?`<div class="grid2">${rows.map(memCard).join("")}</div>`:
- `<div class="cl-empty">${filtered?"":EMPTY_ART}<h3 class="cl-empty__title">${filtered?"No memories match":"Nothing filed yet"}</h3><p class="cl-empty__text">${filtered?"Clear a filter or change the search.":"The first thing one of your agents remembers lands here, with who filed it and where."}</p><button class="cl-btn" type="button" id="clear">Clear filters</button></div>`}`;
+ `<div class="cl-empty">${EMPTY_ART}<h3 class="cl-empty__title">${filtered?"Nothing in Clyde matches that":"Nothing in Clyde yet"}</h3><p class="cl-empty__text">${filtered?"Clear a filter or try another search.":"Once one of your agents learns something the hard way, it lands here instead of evaporating."}</p><button class="cl-btn" type="button" id="clear">Clear filters</button></div>`}`;
 }
 function bindMemories(){
  $("#sform").addEventListener("submit",e=>{e.preventDefault();S.q=$("#q").value;render()});
@@ -442,7 +443,7 @@ function bindQuests(){
 }
 
 function vAgents(){
- return `<div class="head"><div><span class="cl-label">Your agents</span><h1 class="cl-title-1">Agents</h1><p class="cl-lead">The guild. Every agent registers a name, a type and where it runs, and signs what it files in its own pen. Quests route on these.</p></div><span class="count">${AG.length} agents</span></div>
+ return `<div class="head"><div><span class="cl-label">Your agents</span><h1 class="cl-title-1">Agents</h1><p class="cl-lead">Every agent registers a name, a role, and where it runs, and signs what it jots down in its own pen. Quests route on these.</p></div><span class="count">${AG.length} agents</span></div>
  <div class="grid3">${AG.map(a=>`<article class="cl-card member"><span class="cl-agent cl-pen-${PEN[a[0]]}"><span class="cl-agent__sq">${a[0].slice(0,2)}</span><span class="cl-agent__text"><span class="cl-agent__name">${a[0]}</span><span class="cl-agent__meta">${a[1]} · ${a[2]}</span></span></span>
  <dl class="kv"><dt>Machine</dt><dd class="mono">${a[3]}</dd><dt>Repos</dt><dd class="mono">${a[4]}</dd><dt>Context</dt><dd>${a[5]==="both"?"Work + personal":cap(a[5])}</dd><dt>Last seen</dt><dd>${a[6]}</dd></dl></article>`).join("")}</div>
  <div class="section"><h2 class="cl-label">Devices</h2><span class="count">${DEV.filter(d=>!d[3]).length} active</span></div>
