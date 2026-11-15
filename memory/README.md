@@ -57,6 +57,16 @@ The first pass found an implementation bug, not a design limit. Hybrid's fusion 
 - **`remember(...)`.** Writes one note. It needs only `pattern`, `title`, `body` and `evidence`. The scope defaults to `global` and the project to the agent's own notes project, made the first time. An agent's writes are labelled drafts, under its own session as the source, with an id memory generates, and every recall serves them at once.
 - **`feedback(retrieval_id, entries, nothing_useful)`.** The agent's report on a recall, after every recall: a verdict (`used`, `irrelevant` or `wrong`) for each entry it was shown, or `nothing_useful`, once per recall. The older `verdict` and `entry_id` form still works. Every MCP packet ends with a line asking for it, and while one is missing the session's tool replies end with a reminder naming the retrieval. The learner reads it with the recall's other signals, and `/api/v1/overview` reports the share of recalls that got it.
 
+## Cards in chat apps
+
+Chat apps show Clyde as interactive cards inside the chat (R67, #72), on the MCP Apps extension (`io.modelcontextprotocol/ui`, spec 2026-01-26) that claude.ai, Claude Desktop and mobile, and ChatGPT render. Coding apps (Claude Code, Codex, Gemini CLI, Antigravity) never see any of it: their initialize, tools/list and tool results are byte for byte the same.
+
+- **Who gets cards.** A client that declares the extension in initialize (or per request, protocol 2026-07-28), or whose clientInfo.name starts `claude-ai`, `anthropic`, `openai-mcp` or `chatgpt`. The choice is stored on `memory.mcp_client.ui`.
+- **What they get.** `capabilities.resources` and the extension in initialize; `_meta.ui.resourceUri` (with the `ui/resourceUri` and `openai/outputTemplate` aliases) on the 12 tools that have a card; `resources/list` and `resources/read` for `ui://clyde/{recall,entry,remembered,artifact,quests,agent}.html`; and each result's card data in `_meta["clyde/card"]`, which hosts give the card and never the model. The text is unchanged.
+- **The cards** are in [supabase/functions/memory/ui/](supabase/functions/memory/ui/): one self-contained HTML page each, tokens, CSS and script inline. The recall card marks each memory Used or Wrong and sends one feedback call; Open calls get_entry, an artifact chip calls get_blob, and the quest board claims and completes. Everything from memory enters the page as text, never HTML. `harness/test/memory/ui.test.ts` renders them in headless Chrome, light and dark, at 640 and 360 px.
+- **claude.ai.** Settings → Connectors → Add custom connector → `https://memory.heyclyde.me/mcp`, then sign in with the email link.
+- **ChatGPT.** Custom MCP servers need developer mode, on the plans OpenAI allows it (Business, Enterprise and Edu for full MCP; check [OpenAI's help page](https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt)). In ChatGPT: Plugins (Apps) → + → Add custom MCP server → name Clyde, URL `https://memory.heyclyde.me/mcp`, authentication OAuth → create, install, then ask it to recall something. Its OAuth callbacks on `chatgpt.com` are allowed. A listing in ChatGPT's directory is R57 (#62).
+
 ## Runs and blobs
 
 Each clyde-flow run gets its own scope, `run:<id>`. Its stages leave notes there, and the next stage recalls them.

@@ -124,7 +124,8 @@ test('R67 code clients see the pre-R67 initialize and tools', { skip: SKIP }, as
 })
 
 test('R67 cards add _meta and leave the text alone', { skip: SKIP }, async () => {
-  const writer = await open('claude-code')
+  // A third app writes, so neither reader is told "(you wrote this)", which provenance says only to the writer.
+  const writer = await open('r67-writer')
   const made = await writer.send('remember', note(`r67 entry ${nonce()}`, { artifacts: [{ name: 'notes.txt', kind: 'document', text: 'r67 artifact text' }] }))
   assert.equal(made.isError, undefined, textOf(made))
   const e = idOf(textOf(made)), sha = /Blob notes\.txt: ([0-9a-f]{64})/.exec(textOf(made))![1]
