@@ -12,7 +12,7 @@ import {
   CLIENT_RELEASES, CLIENT_SURFACE_HASHES, CLIENT_VERSION, clientStatus, compareVersions, installerNote, parseVersion, reportable, SERVER_SURFACE_HASHES,
   SERVER_VERSION,
 } from '../../../memory/supabase/functions/memory/version.ts'
-import { checkSurface, clientSurfaceHash, hashHistory, parseHashes, readText, serverSurfaceHash } from './surface-hash.ts'
+import { AGENT_APP_FILES, CLIENT_SURFACE_FILES, checkSurface, clientSurfaceHash, hashHistory, parseHashes, readText, serverSurfaceHash } from './surface-hash.ts'
 
 const FUNCTION = join(repoRoot(), 'memory', 'supabase', 'functions', 'memory')
 const VERSION_FILE = 'memory/supabase/functions/memory/version.ts'
@@ -30,6 +30,33 @@ test('the client files hash to the entry for CLIENT_VERSION, so changing one nee
   const hash = clientSurfaceHash((name) => readText(join(FUNCTION, 'client', name)))
   const problems = checkSurface({ version: CLIENT_VERSION, hash, hashes: CLIENT_SURFACE_HASHES, history: hashHistory(repoRoot(), VERSION_FILE, 'CLIENT_SURFACE_HASHES') })
   assert.deepEqual(problems, [], `Bump CLIENT_VERSION (and add its CLIENT_RELEASES entry) in ${VERSION_FILE}, then pin ${hash}.`)
+})
+
+// R45 (#50): the Gemini and Antigravity files ship like the rest. deploy.sh signs them, the function serves them, an update
+// fetches and verifies them, and the installer fetches them. A file left off one list would never reach a computer.
+test('every list of client files names the Gemini and Antigravity files, and the lists agree', () => {
+  const surface = [...CLIENT_SURFACE_FILES].sort()
+  for (const f of AGENT_APP_FILES) assert.ok(surface.includes(f), `${f} is in the client surface`)
+  const words = (text: string) => text.split(/[\s,'"]+/).filter(Boolean).sort()
+  const deploy = /^FILES = \[(.*)\]$/m.exec(readText(join(repoRoot(), 'memory', 'deploy.sh')))
+  assert.ok(deploy, 'deploy.sh has a FILES list')
+  assert.deepEqual(words(deploy[1]), surface, 'deploy.sh signs every client file')
+  const served = /^const CLIENT_FILES = \[(.*)\];$/m.exec(readText(join(FUNCTION, 'index.ts')))
+  assert.ok(served, 'index.ts has a CLIENT_FILES list')
+  assert.deepEqual(words(served[1]), surface, 'the function serves every client file')
+  const update = /^  for f in (.*); do$/m.exec(readText(join(FUNCTION, 'client', 'memory-hook')))
+  assert.ok(update, "memory-hook's update has a file loop")
+  assert.deepEqual(words(update[1]), surface, 'an update fetches and verifies every client file')
+  const install = /^  for f in (.*); do$/m.exec(readText(join(FUNCTION, 'client', 'install.sh')))
+  assert.ok(install, 'install.sh has a fetch loop')
+  assert.deepEqual(words(install[1]), surface.filter((f) => f !== 'install.sh'), 'a curl | sh install fetches every other client file')
+})
+
+// R45 (#50): the release that brings the Gemini and Antigravity files is a client bump with its own pin.
+test('CLIENT_VERSION moved past 20261102.1 for the Gemini and Antigravity files, with a release and a pin', () => {
+  assert.ok(compareVersions(CLIENT_VERSION, '20261102.1') > 0, CLIENT_VERSION)
+  assert.ok(CLIENT_RELEASES.some((r) => r.version === CLIENT_VERSION))
+  assert.match(CLIENT_SURFACE_HASHES[CLIENT_VERSION] ?? '', /^[0-9a-f]{64}$/)
 })
 
 // R31 fix 7: the server surface is pinned to SERVER_VERSION.
