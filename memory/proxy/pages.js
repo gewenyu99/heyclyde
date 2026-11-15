@@ -69,8 +69,8 @@ const HOME_CSS = `
 .sheet-copy{position:absolute;inset:0;border:1px dashed var(--cl-carbon);border-radius:var(--cl-radius-lg);background:var(--cl-carbon-wash);
 transform:translate(calc(var(--i) * 16px),calc(var(--i) * 16px));z-index:calc(4 - var(--i))}
 .sheet-copy span{position:absolute;right:12px;bottom:0;height:16px;font:var(--cl-text-label);line-height:16px;letter-spacing:.06em;text-transform:uppercase;color:var(--cl-carbon-ink);white-space:nowrap}
-@media (prefers-reduced-motion:no-preference){.sheet-copy{animation:fan var(--cl-dur-4) var(--cl-ease-out) calc(200ms + var(--i) * 110ms) both}}
-@keyframes fan{from{transform:none;opacity:.4}}
+@media (prefers-reduced-motion:no-preference){.sheet-copy{animation:fan var(--cl-dur-4) var(--cl-ease-out) calc(var(--i) * 90ms) both}}
+@keyframes fan{from{transform:translate(calc(var(--i) * 6px),calc(var(--i) * 6px))}}
 .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font:var(--cl-text-mono);font-size:11.5px;color:var(--cl-ink-3)}
 .legend b{color:var(--cl-carbon-ink);font-weight:600}
 .section{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 14px;padding-top:18px;border-top:1px solid var(--cl-rule)}
