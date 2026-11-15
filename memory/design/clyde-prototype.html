@@ -1,0 +1,491 @@
+<title>Clyde site prototype</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: clyde-v2 shell. Sticky left sidebar, one working surface. Collapses to a top bar under 760px. */
+:root{
+  --page:#f4f4f1;--paper:#fff;--ink:#20211f;--muted:#777a75;--line:#e4e5e0;--line-strong:#d4d6cf;
+  --blue:#2f5fd0;--blue-soft:#eaf1ff;--blue-ink:#234ea9;
+  --green:#1f8a45;--green-soft:#e8f6ec;--amber:#c86a12;--amber-soft:#fff1e2;
+  --purple:#6c46c8;--purple-soft:#f1ecfb;--red:#b91c1c;--red-soft:#fde8e8;
+  --teal:#0f7a6a;--teal-soft:#e2f4f0;--gray-soft:#eef0ec;
+  --mark:#262825;--mark-ink:#fff;--primary:#253f7b;--primary-ink:#fff;
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --page:#171816;--paper:#1f201e;--ink:#ecece6;--muted:#9a9d96;--line:#30322e;--line-strong:#454842;
+  --blue:#7ea0f0;--blue-soft:#1f2b47;--blue-ink:#b5c8f7;
+  --green:#5cc486;--green-soft:#173222;--amber:#e39a52;--amber-soft:#3a2714;
+  --purple:#ad93ef;--purple-soft:#2b2240;--red:#f08a8a;--red-soft:#3d1c1c;
+  --teal:#5cc8b6;--teal-soft:#15312c;--gray-soft:#2a2c28;
+  --mark:#ecece6;--mark-ink:#1f201e;--primary:#7ea0f0;--primary-ink:#11141c;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --page:#171816;--paper:#1f201e;--ink:#ecece6;--muted:#9a9d96;--line:#30322e;--line-strong:#454842;
+  --blue:#7ea0f0;--blue-soft:#1f2b47;--blue-ink:#b5c8f7;
+  --green:#5cc486;--green-soft:#173222;--amber:#e39a52;--amber-soft:#3a2714;
+  --purple:#ad93ef;--purple-soft:#2b2240;--red:#f08a8a;--red-soft:#3d1c1c;
+  --teal:#5cc8b6;--teal-soft:#15312c;--gray-soft:#2a2c28;
+  --mark:#ecece6;--mark-ink:#1f201e;--primary:#7ea0f0;--primary-ink:#11141c;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--ink);font:13px/1.45 var(--font);margin:0}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+a{color:var(--blue)}
+.shell{display:grid;grid-template-columns:216px minmax(0,1fr);gap:16px;padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));align-items:start;max-width:1320px;margin:0 auto}
+.surface{background:var(--paper);border:1px solid var(--line);border-radius:12px}
+.sidebar{padding:16px 12px;position:sticky;top:calc(16px + env(safe-area-inset-top,0px))}
+.brand{display:flex;align-items:center;gap:10px;padding:0 8px 20px;font-size:15px;font-weight:680;letter-spacing:-.3px}
+.brand-mark{width:24px;height:24px;border-radius:7px;background:var(--mark);color:var(--mark-ink);display:grid;place-items:center;font-size:15px;font-weight:600}
+.group{font-size:11px;color:var(--muted);font-weight:650;letter-spacing:.09em;text-transform:uppercase;padding:14px 8px 6px}
+.nav{display:grid;gap:2px}
+.navrow{display:flex;align-items:center;gap:10px;min-height:34px;border-radius:7px;padding:7px 8px;color:var(--ink);opacity:.82;text-decoration:none;border:0;background:none;width:100%;text-align:left}
+.navrow:hover{background:var(--gray-soft);opacity:1}
+.navrow.selected{background:var(--blue-soft);color:var(--blue-ink);font-weight:650;opacity:1}
+.navrow .count{margin-left:auto;font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px;background:var(--gray-soft);color:var(--muted)}
+.navrow.selected .count{background:var(--paper);color:var(--blue-ink)}
+.side-foot{border-top:1px solid var(--line);margin:18px 8px 0;padding-top:14px;color:var(--muted);font-size:11px;display:grid;gap:6px}
+.main{min-width:0;padding:24px;min-height:calc(100vh - 32px)}
+.eyebrow{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:740}
+h1{font-size:24px;line-height:32px;letter-spacing:-.6px;margin:6px 0 4px;font-weight:690;text-wrap:balance}
+h2{font-size:11px;letter-spacing:.11em;text-transform:uppercase;margin:0;font-weight:750;color:var(--muted)}
+h3{font-size:14px;margin:0 0 4px;font-weight:680}
+.subtle{color:var(--muted);margin:0}
+.head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.section{margin-top:28px}
+.section>h2{margin-bottom:10px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.card{border:1px solid var(--line);border-radius:10px;padding:14px 15px;background:var(--paper);min-width:0}
+.btn{border:1px solid var(--line-strong);background:var(--paper);border-radius:6px;padding:7px 12px;font-size:12px;font-weight:650}
+.btn:hover{background:var(--gray-soft)}
+.btn.primary{background:var(--primary);color:var(--primary-ink);border-color:var(--primary)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.danger{color:var(--red);border-color:var(--red)}
+.btn.danger.solid{background:var(--red);color:var(--paper)}
+.btn.small{padding:4px 9px;font-size:11px}
+input[type=text],input[type=email],input[type=search],select,textarea{border:1px solid var(--line-strong);background:var(--paper);border-radius:6px;padding:7px 10px;min-width:0}
+textarea{width:100%;min-height:72px;resize:vertical}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:5px;white-space:nowrap}
+.k-decision{background:var(--blue-soft);color:var(--blue-ink)}
+.k-preference{background:var(--purple-soft);color:var(--purple)}
+.k-observation{background:var(--gray-soft);color:var(--muted)}
+.k-fact{background:var(--green-soft);color:var(--green)}
+.k-plan{background:var(--amber-soft);color:var(--amber)}
+.k-reference{background:var(--teal-soft);color:var(--teal)}
+.s-settled{color:var(--green)}.s-trial{color:var(--amber)}.s-dormant{color:var(--muted)}.s-superseded{color:var(--red)}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor}
+.list{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 16px;padding:12px 14px;border-top:1px solid var(--line);cursor:pointer;background:var(--paper)}
+.item:first-child{border-top:0}
+.item:hover{background:var(--gray-soft)}
+.item .t{font-weight:650;min-width:0}
+.item .m{color:var(--muted);font-size:11.5px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.item .r{text-align:right;color:var(--muted);font-size:11.5px;font-variant-numeric:tabular-nums}
+.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:10px 0 14px}
+.filters label{display:grid;gap:3px;font-size:10.5px;color:var(--muted);font-weight:650;text-transform:uppercase;letter-spacing:.06em}
+.search{display:flex;gap:8px}
+.search input{flex:1}
+.kv{display:grid;grid-template-columns:110px minmax(0,1fr);gap:6px 12px;font-size:12.5px}
+.kv dt{color:var(--muted)}.kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.mono{font-family:var(--mono);font-size:11.5px}
+.body-text{font-size:14px;line-height:1.6;max-width:68ch}
+.bar{height:6px;border-radius:3px;background:var(--gray-soft);overflow:hidden}
+.bar>span{display:block;height:100%;background:var(--blue)}
+.bar.warn>span{background:var(--amber)}
+.notice{border:1px solid var(--line);background:var(--gray-soft);border-radius:8px;padding:10px 12px;font-size:12px}
+.notice.amber{background:var(--amber-soft);border-color:transparent;color:var(--ink)}
+.overlay{background:color-mix(in srgb,var(--ink) 35%,transparent);border-radius:12px;padding:24px 16px;display:flex;justify-content:center;margin-top:16px}
+.dialog{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:20px;max-width:440px;width:100%}
+.cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start}
+.col{background:var(--gray-soft);border-radius:10px;padding:10px;display:grid;gap:8px;min-width:0}
+.col-head{display:flex;justify-content:space-between;font-weight:700;font-size:12px;padding:2px 4px}
+.qcard{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:11px 12px;display:grid;gap:6px;min-width:0}
+.qcard .dw{font-size:11.5px;border-left:2px solid var(--green);padding-left:8px;color:var(--muted)}
+.tag{font-size:10.5px;color:var(--muted);background:var(--gray-soft);border-radius:4px;padding:1px 6px}
+.p-high{color:var(--red)}.p-normal{color:var(--blue)}.p-low{color:var(--muted)}
+.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:12.5px}
+th,td{text-align:left;padding:9px 12px;border-top:1px solid var(--line);vertical-align:top}
+th{border-top:0;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;background:var(--paper)}
+td{background:var(--paper)}
+.num{font-variant-numeric:tabular-nums;text-align:right}
+.app-card{display:grid;gap:10px}
+.app-top{display:flex;align-items:center;gap:10px}
+.app-badge{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;font-weight:700;font-size:13px;background:var(--gray-soft);color:var(--ink);flex:none}
+.status-ok{color:var(--green);font-weight:650;font-size:11.5px}
+.status-off{color:var(--muted);font-weight:650;font-size:11.5px}
+.seg{display:inline-flex;border:1px solid var(--line-strong);border-radius:7px;overflow:hidden}
+.seg button{border:0;background:var(--paper);padding:6px 12px;font-size:12px;font-weight:600}
+.seg button[aria-pressed="true"]{background:var(--blue-soft);color:var(--blue-ink)}
+.big{font-size:28px;font-weight:700;letter-spacing:-.6px;font-variant-numeric:tabular-nums}
+.toggle{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 0;border-top:1px solid var(--line)}
+.toggle:first-of-type{border-top:0}
+.switch{position:relative;width:34px;height:20px;flex:none}
+.switch input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
+.switch span{position:absolute;inset:0;border-radius:10px;background:var(--line-strong);transition:background .15s}
+.switch span::after{content:"";position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:var(--paper);transition:transform .15s}
+.switch input:checked+span{background:var(--blue)}
+.switch input:checked+span::after{transform:translateX(14px)}
+.auth{max-width:420px;margin:24px auto;display:grid;gap:14px}
+.auth .card{padding:22px}
+.otp{display:flex;gap:6px}
+.otp input{width:40px;text-align:center;font-size:18px;font-family:var(--mono)}
+.err{color:var(--red);font-size:12px;min-height:16px}
+.ok{color:var(--green);font-size:12px;min-height:16px}
+.graph-wrap{border:1px solid var(--line);border-radius:10px;background:var(--paper);overflow:hidden}
+.graph-wrap svg{display:block;width:100%;height:auto}
+.gnode{cursor:pointer}
+.gnode:hover circle{stroke-width:3}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin-top:10px}
+.mobilebar{display:none}
+@media (max-width:760px){
+  .shell{grid-template-columns:minmax(0,1fr);padding-top:0}
+  .sidebar{display:none}
+  .mobilebar{display:flex;position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--page);padding:10px 0;gap:10px;align-items:center;border-bottom:1px solid var(--line)}
+  .mobilebar select{flex:1}
+  .main{padding:18px 14px}
+  .cols{grid-template-columns:minmax(0,1fr)}
+  .kv{grid-template-columns:96px minmax(0,1fr)}
+  .item{grid-template-columns:minmax(0,1fr)}
+  .item .r{text-align:left}
+}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--page)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+
+<div class="shell">
+  <div class="mobilebar">
+    <div class="brand" style="padding:0"><span class="brand-mark">c</span>clyde</div>
+    <select id="mnav" aria-label="Go to"></select>
+  </div>
+  <aside class="surface sidebar">
+    <div class="brand"><span class="brand-mark">c</span>clyde</div>
+    <nav class="nav" id="nav"></nav>
+    <div class="side-foot">
+      <div id="who">wen@heyclyde.me</div>
+      <div id="planline">Owner plan</div>
+    </div>
+  </aside>
+  <main class="surface main" id="view" aria-live="polite"></main>
+</div>
+
+<script>
+const NAV=[
+  {g:"Clyde",items:[["memories","Memories"],["graph","Graph"],["quests","Quest board"]]},
+  {g:"Your agents",items:[["agents","Agents and devices"],["apps","Connected apps"]]},
+  {g:"Account",items:[["billing","Usage and billing"],["account","Account"]]},
+  {g:"Flows",items:[["signin","Sign in"],["consent","Connect an app"]]}
+];
+const KINDS=["decision","preference","observation","fact","plan","reference"];
+const AGENTS=["atlas","juniper","quill","scout","patch"];
+const MACHINES=["studio","mbp-work","cloud"];
+const PROJECTS=["clyde","like-vincent","journeymate","docs","home"];
+const M=[
+ ["Deploys go through deploy.sh, never the dashboard","decision","atlas","mbp-work","clyde","work","settled",0.93,"Every Clyde deploy runs deploy.sh, which applies migrations by file name and checks healthz. A dashboard deploy skips the migration check and once left the function on old code."],
+ ["Write tests before the change, then watch them fail","preference","quill","studio","like-vincent","work","settled",0.9,"Each acceptance check exists and fails before the change lands. Then it passes after. A check written after the code proves nothing."],
+ ["Recall p95 is 2.1 s on Micro compute","fact","scout","cloud","clyde","work","settled",0.86,"Measured over 219 recalls in 7 days. Most of it is the relevance judge round trip, not the database."],
+ ["Short sentences, no em dashes, no semicolons","preference","juniper","studio","docs","both","settled",0.95,"All prose follows the voice rules. Median sentence around 13 words. Claim first."],
+ ["Move hook events to a 30-day window","plan","atlas","mbp-work","clyde","work","trial",0.64,"Hook events are the biggest table at 85 MB. A 30-day window keeps the learner's inputs and caps disk."],
+ ["Polar pays out to a Canadian individual","fact","scout","cloud","clyde","work","settled",0.88,"Stripe Connect Express, personal bank account, manual payouts with a $10 minimum."],
+ ["Oolong steeps at 90 C for three minutes","preference","patch","studio","home","personal","settled",0.8,"Second steep goes four minutes. Never boiling water."],
+ ["Store listings come before the manual URL","decision","atlas","mbp-work","clyde","work","settled",0.97,"A pasted MCP URL is too awkward. Every app gets a store listing first."],
+ ["Supabase Auth OAuth server is still beta","reference","scout","cloud","clyde","work","settled",0.78,"No separate charge. Users count as MAU. A breaking change would stop sign-ins until fixed."],
+ ["Weekly researcher proposed halfvec storage","observation","quill","cloud","clyde","work","trial",0.55,"Halving the vector size would free about 7 MB now and keep Micro's RAM clear at 1,000 users."],
+ ["Journeymate builds on Xcode 17 only","fact","juniper","studio","journeymate","personal","settled",0.82,"The iOS target needs the new SwiftData migration API."],
+ ["Docs IA uses verb-first headings","decision","juniper","mbp-work","docs","work","settled",0.84,"Headings are two to four words, verb first. Never How to."],
+ ["The old allowlist rule","decision","atlas","mbp-work","clyde","work","superseded",0.3,"Only allowlisted emails got in. Replaced by entitlements."],
+ ["Grocery run on Saturdays","plan","patch","studio","home","personal","dormant",0.35,"Saturday mornings before ten."],
+ ["Quests carry a done-when line","decision","quill","studio","clyde","work","settled",0.87,"Every quest names the check that proves it is done."],
+ ["Codex agents prefer small PRs","observation","scout","cloud","like-vincent","work","trial",0.6,"Codex finished 9 of 10 quests under 300 lines and 3 of 6 over."],
+ ["Region block: EU, UK, CH, Quebec","decision","atlas","mbp-work","clyde","work","settled",0.92,"One constant feeds sign-up, checkout and the webhook check."],
+ ["Never print secrets in logs","preference","atlas","mbp-work","clyde","work","settled",0.98,"Credentials are read with $(cat ...) and never echoed."],
+ ["Gemini app callback is undocumented","reference","scout","cloud","clyde","work","trial",0.5,"Approve https on gemini.google.com only and log any refused redirect."],
+ ["Run on Supabase, no local Docker","preference","quill","studio","clyde","work","settled",0.91,"Test on a preview branch or in CI."],
+ ["Pick a Mac mini for the home box","plan","patch","studio","home","personal","dormant",0.4,"Waits for hardware. Local models replace the AI provider."],
+ ["Antigravity callback is antigravity.google","fact","juniper","mbp-work","clyde","work","settled",0.85,"https://antigravity.google/oauth-callback with dynamic registration."],
+ ["Recall feedback coverage is 96%","fact","scout","cloud","clyde","work","settled",0.83,"211 of 219 recalls got feedback in the last 7 days."],
+ ["Price the base plan at $9.99","decision","atlas","mbp-work","clyde","work","settled",0.94,"One plan with covered limits. Usage beyond is billed at cost plus a fixed 50% margin."],
+ ["Weekend climbing at the gym","preference","patch","studio","home","personal","settled",0.7,"Sunday afternoons."]
+].map((r,i)=>({id:i,title:r[0],kind:r[1],agent:r[2],machine:r[3],project:r[4],ctx:r[5],state:r[6],conf:r[7],body:r[8],age:[1,2,3,5,6,8,9,12,14,16,20,24,30][i%13],recalls:(i*37)%61+2}));
+const LINKS=[[0,17,"supports"],[0,19,"relates"],[7,23,"relates"],[12,16,"derived_from"],[2,9,"relates"],[4,2,"relates"],[1,15,"supports"],[3,11,"supports"],[5,23,"supports"],[8,18,"relates"],[18,21,"relates"],[14,15,"relates"],[6,24,"relates"],[13,20,"relates"],[10,11,"relates"],[9,4,"supports"],[22,2,"relates"],[16,5,"relates"],[19,1,"supports"],[12,7,"contradicts"],[20,9,"relates"],[3,1,"relates"]];
+const QUESTS=[
+ {id:41,title:"Backfill owner_id on every row",brief:"Add owner_id with Wen as owner one, then turn on forced RLS.",dw:"tenancy.test.ts passes and zero rows lack an owner.",tags:["tenancy","sql"],pri:"high",type:"coding",env:"mbp-work · like-vincent · work",state:"open"},
+ {id:42,title:"Draft the privacy policy",brief:"Name every processor and the retention window.",dw:"Page is live at heyclyde.me/privacy.",tags:["legal","store"],pri:"high",type:"research",env:"any machine · work",state:"open"},
+ {id:43,title:"Compare halfvec recall quality",brief:"Run the held eval with halfvec(1024).",dw:"Hybrid stays at 90% or better on train.",tags:["eval"],pri:"normal",type:"exploration",env:"cloud · clyde · work",state:"open"},
+ {id:38,title:"Write the Claude directory submission",brief:"Fill every field, attach icon and test account.",dw:"Submission id recorded in the issue.",tags:["store"],pri:"high",type:"ops",env:"studio · work",state:"claimed",by:"atlas",lease:"84 min left"},
+ {id:39,title:"Review the consent page copy",brief:"Check every sign-in state against the voice rules.",dw:"Zero voice findings.",tags:["ui"],pri:"normal",type:"review",env:"any machine · work",state:"claimed",by:"juniper",lease:"31 min left"},
+ {id:35,title:"Measure hook event growth",brief:"Bytes per day for 14 days.",dw:"Number recorded as a fact with evidence.",tags:["capacity"],pri:"low",type:"research",env:"cloud · clyde · work",state:"done",by:"scout"},
+ {id:36,title:"Rename tool text to Clyde",brief:"No user-facing string says memory.",dw:"grep finds zero hits in tool text.",tags:["naming"],pri:"normal",type:"coding",env:"mbp-work · like-vincent · work",state:"done",by:"quill"}
+];
+const AG=[
+ ["atlas","coding","Claude Code","mbp-work","like-vincent, clyde","work","2 min ago"],
+ ["quill","coding","Codex","studio","like-vincent","work","18 min ago"],
+ ["scout","research","claude.ai","cloud","none","work","1 h ago"],
+ ["juniper","review","Antigravity","mbp-work","docs, journeymate","both","3 h ago"],
+ ["patch","exploration","ChatGPT","cloud","none","personal","yesterday"],
+ ["ember","ops","Grok","cloud","none","work","4 days ago"]
+];
+const DEV=[["mbp-work","macOS, Claude Code and Codex hooks","Nov 2"],["studio","macOS, Claude Code hooks","Oct 12"],["ci-runner","Linux, nightly export","Oct 20"]];
+const APPS=[
+ ["Claude","claude.ai chats, Cowork, desktop, phone","Claude connectors directory",true,"C"],
+ ["Claude Code","Plugin with opt-in hooks","Claude plugin directory",true,"CC"],
+ ["ChatGPT","Chats and projects","ChatGPT app directory",true,"G"],
+ ["Codex","CLI and desktop","ChatGPT and Codex plugin directory",true,"Cx"],
+ ["Antigravity","IDE and CLI","Antigravity plugin marketplace",true,"A"],
+ ["Gemini","gemini.google.com Connected Apps","Gemini Connected Apps",false,"Ge"],
+ ["Grok","grok.com connectors","Grok connectors",false,"Gk"]
+];
+let S={sel:0,q:"",f:{kind:"",agent:"",machine:"",project:"",ctx:"",state:""},plan:"clyde",confirm:null,graphProject:"",appModal:null,editing:false,signinStep:"email",consent:null,newQuest:false,spend:25,questsPosted:[]};
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const stateLabel={settled:"Settled",trial:"On trial",dormant:"Dormant",superseded:"Superseded"};
+const stateCls={settled:"s-settled",trial:"s-trial",dormant:"s-dormant",superseded:"s-superseded"};
+const ROUTES=["memories","detail","graph","quests","agents","apps","billing","account","signin","consent"];
+function route(){const h=location.hash.slice(1);return ROUTES.includes(h)?h:"memories"}
+function go(r){if(location.hash.slice(1)===r)render();else location.hash=r}
+function renderNav(){
+  const cur=route()==="detail"?"memories":route();
+  $("#nav").innerHTML=NAV.map(g=>`<div class="group">${g.g}</div>`+g.items.map(([k,l])=>{
+    const c=k==="memories"?`<span class="count">${M.length}</span>`:k==="quests"?`<span class="count">${QUESTS.filter(q=>q.state!=="done").length}</span>`:"";
+    return `<a class="navrow${k===cur?" selected":""}" href="#${k}">${l}${c}</a>`}).join("")).join("");
+  $("#mnav").innerHTML=NAV.flatMap(g=>g.items).map(([k,l])=>`<option value="${k}"${k===cur?" selected":""}>${l}</option>`).join("");
+  $("#planline").textContent={free:"Free allocation",clyde:"Clyde plan, $9.99/mo",owner:"Owner plan, no limits"}[S.plan];
+}
+$("#mnav").addEventListener("change",e=>go(e.target.value));
+function kindPill(k){return `<span class="pill k-${k}">${k}</span>`}
+function opts(list,v,all){return `<option value="">${all}</option>`+list.map(x=>`<option${x===v?" selected":""}>${x}</option>`).join("")}
+
+function vMemories(){
+  const q=S.q.toLowerCase(),f=S.f;
+  const rows=M.filter(m=>(!q||(m.title+" "+m.body).toLowerCase().includes(q))&&(!f.kind||m.kind===f.kind)&&(!f.agent||m.agent===f.agent)&&(!f.machine||m.machine===f.machine)&&(!f.project||m.project===f.project)&&(!f.ctx||m.ctx===f.ctx||m.ctx==="both")&&(!f.state||m.state===f.state));
+  return `<div class="head"><div><div class="eyebrow">Clyde</div><h1>Memories</h1><p class="subtle">Everything your agents remembered, across every app.</p></div><div class="row"><span class="subtle">${rows.length} of ${M.length}</span></div></div>
+  <form class="search" id="sform" role="search"><input type="search" id="q" placeholder="Search titles and bodies" value="${esc(S.q)}" aria-label="Search memories"><button class="btn primary">Search</button></form>
+  <div class="filters">
+   <label>Kind<select id="f-kind">${opts(KINDS,f.kind,"Any kind")}</select></label>
+   <label>Agent<select id="f-agent">${opts(AGENTS,f.agent,"Any agent")}</select></label>
+   <label>Machine<select id="f-machine">${opts(MACHINES,f.machine,"Any machine")}</select></label>
+   <label>Project<select id="f-project">${opts(PROJECTS,f.project,"Any project")}</select></label>
+   <label>Context<select id="f-ctx">${opts(["work","personal"],f.ctx,"Work and personal")}</select></label>
+   <label>State<select id="f-state">${opts(["settled","trial","dormant","superseded"],f.state,"Any state")}</select></label>
+  </div>
+  ${rows.length?`<div class="list">${rows.map(m=>`<div class="item" data-open="${m.id}" tabindex="0" role="button"><div class="t">${esc(m.title)}</div><div class="r">${Math.round(m.conf*100)}% confidence</div><div class="m">${kindPill(m.kind)}<span class="${stateCls[m.state]}"><span class="dot"></span> ${stateLabel[m.state]}</span><span>${m.agent} on ${m.machine}</span><span>${m.project}</span></div><div class="r">${m.age} d ago</div></div>`).join("")}</div>`:`<div class="notice">No memories match. Clear a filter or change the search.</div>`}`;
+}
+function bindMemories(){
+  $("#sform").addEventListener("submit",e=>{e.preventDefault();S.q=$("#q").value;render()});
+  ["kind","agent","machine","project","ctx","state"].forEach(k=>$("#f-"+k).addEventListener("change",e=>{S.f[k]=e.target.value;render()}));
+}
+function chart(m){
+  const pts=[0.5,0.55,0.6,0.58,0.66,0.72,0.75,m.conf-0.05,m.conf].map((v,i)=>[i,Math.max(0.05,Math.min(0.99,m.state==="superseded"?0.8-i*0.06:v))]);
+  const W=320,H=110,px=x=>32+x*(W-44)/8,py=y=>H-22-y*(H-34);
+  const d=pts.map(([x,y],i)=>(i?"L":"M")+px(x).toFixed(1)+" "+py(y).toFixed(1)).join(" ");
+  const last=pts[pts.length-1];
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Confidence history" style="width:100%;max-width:420px;height:auto">
+   ${[0,0.5,1].map(t=>`<line x1="32" x2="${W-12}" y1="${py(t)}" y2="${py(t)}" stroke="var(--line)"/><text x="26" y="${py(t)+3}" font-size="9" fill="var(--muted)" text-anchor="end">${t*100}%</text>`).join("")}
+   <path d="${d} L ${px(8)} ${py(0)} L ${px(0)} ${py(0)} Z" fill="var(--blue-soft)"/>
+   <path d="${d}" fill="none" stroke="var(--blue)" stroke-width="1.6"/>
+   <circle cx="${px(last[0])}" cy="${py(last[1])}" r="3.5" fill="var(--blue)"/>
+   <text x="${px(0)}" y="${H-6}" font-size="9" fill="var(--muted)">Written</text>
+   <text x="${px(8)}" y="${H-6}" font-size="9" fill="var(--muted)" text-anchor="end">Today</text></svg>`;
+}
+function vDetail(){
+  const m=M[S.sel]||M[0];
+  const links=LINKS.filter(l=>l[0]===m.id||l[1]===m.id).map(l=>({other:M[l[0]===m.id?l[1]:l[0]],type:l[2]}));
+  const arts=m.id%3===0?[["deploy-log.txt","document","4.2 KB","healthz 200 ok=true after 3 tries"],["migration-check.png","image","88 KB","Screenshot of migrations applied 23/23"]]:m.id%3===1?[["notes.md","document","1.1 KB","The full reasoning, with sources"]]:[];
+  let confirm="";
+  if(S.confirm==="delete")confirm=`<div class="overlay"><div class="dialog" role="dialog" aria-label="Delete memory"><h3>Delete this memory?</h3><p class="subtle">It's removed for every agent, with its links and artifacts. This can't be undone. Prune keeps it out of recall but lets you bring it back.</p><div class="row" style="margin-top:14px"><button class="btn danger solid" data-act="do-delete">Delete for good</button><button class="btn" data-act="cancel">Cancel</button></div></div></div>`;
+  if(S.confirm==="supersede")confirm=`<div class="overlay"><div class="dialog" role="dialog" aria-label="Supersede memory"><h3>Supersede with</h3><p class="subtle">Recall serves the replacement. This one stays in history, struck through.</p><select id="sup" style="width:100%;margin-top:10px">${M.filter(x=>x.id!==m.id&&x.state!=="superseded").map(x=>`<option value="${x.id}">${esc(x.title)}</option>`).join("")}</select><div class="row" style="margin-top:14px"><button class="btn primary" data-act="do-supersede">Supersede</button><button class="btn" data-act="cancel">Cancel</button></div></div></div>`;
+  return `<div class="head"><div><a href="#memories" class="subtle" style="font-size:12px">Memories</a><h1>${esc(m.title)}</h1><div class="row">${kindPill(m.kind)}<span class="${stateCls[m.state]}"><span class="dot"></span> ${stateLabel[m.state]}</span><span class="subtle">${m.ctx==="both"?"Work and personal":m.ctx[0].toUpperCase()+m.ctx.slice(1)}</span></div></div>
+  <div class="row"><button class="btn" data-act="edit">${S.editing?"Cancel edit":"Edit"}</button><button class="btn" data-act="prune">${m.state==="dormant"?"Restore":"Prune"}</button><button class="btn" data-act="supersede">Supersede</button><button class="btn danger" data-act="delete">Delete</button></div></div>
+  <div id="flash" class="ok"></div>
+  ${confirm}
+  ${S.editing?`<form id="editf" class="card" style="display:grid;gap:8px"><label for="et" class="eyebrow">Title</label><input type="text" id="et" value="${esc(m.title)}"><label for="eb" class="eyebrow">Body, under 500 characters</label><textarea id="eb" maxlength="500">${esc(m.body)}</textarea><div class="row"><button class="btn primary">Save</button><span class="subtle">Saving re-screens and re-embeds the note.</span></div></form>`:`<p class="body-text">${esc(m.body)}</p>`}
+  <div class="grid2 section">
+   <div class="card"><h2>Confidence</h2><div class="big" style="margin:6px 0">${Math.round(m.conf*100)}%</div>${chart(m)}<p class="subtle" style="font-size:11.5px">Recalled ${m.recalls} times. Used in ${Math.round(m.recalls*0.7)}, marked wrong in ${m.state==="superseded"?4:0}.</p></div>
+   <div class="card"><h2>Provenance</h2><dl class="kv" style="margin-top:10px"><dt>Agent</dt><dd>${m.agent}</dd><dt>Machine</dt><dd>${m.machine}</dd><dt>Session</dt><dd class="mono">s_${(m.id*7919).toString(16).padStart(6,"0")}</dd><dt>Repo</dt><dd>${m.project==="home"?"none":"gewenyu99/"+m.project}</dd><dt>Evidence</dt><dd>${m.kind==="fact"?"Tool output, event "+(36000+m.id*13):"Summary of the session"}</dd><dt>Written</dt><dd>${m.age} days ago</dd></dl></div>
+  </div>
+  <div class="section"><h2>Artifacts</h2>${arts.length?`<div class="grid3" style="margin-top:10px">${arts.map(a=>`<div class="card"><div class="row" style="justify-content:space-between"><b class="mono">${a[0]}</b><span class="tag">${a[1]}</span></div><p class="subtle" style="font-size:11.5px;margin:6px 0">${a[2]}</p><div class="notice mono" style="font-size:11px">${a[3]}</div></div>`).join("")}</div>`:`<p class="subtle" style="margin-top:8px">No artifacts. Agents attach logs, images and files with remember.</p>`}</div>
+  <div class="section"><h2>Links</h2>${links.length?`<div class="list" style="margin-top:10px">${links.map(l=>`<div class="item" data-open="${l.other.id}" tabindex="0" role="button"><div class="t">${esc(l.other.title)}</div><div class="r"><span class="pill ${l.type==="contradicts"?"k-plan":"k-observation"}">${l.type.replace("_"," ")}</span></div></div>`).join("")}</div>`:`<p class="subtle" style="margin-top:8px">No links yet. Memories used together get linked.</p>`}</div>`;
+}
+function bindDetail(){
+  const m=M[S.sel];
+  document.querySelectorAll("[data-act]").forEach(b=>b.addEventListener("click",()=>{
+    const a=b.dataset.act,fl=()=>$("#flash");
+    if(a==="edit"){S.editing=!S.editing;render()}
+    if(a==="prune"){m.state=m.state==="dormant"?"settled":"dormant";render();fl().textContent=m.state==="dormant"?"Pruned. Recall skips it. Restore any time.":"Restored."}
+    if(a==="delete"||a==="supersede"){S.confirm=a;render()}
+    if(a==="cancel"){S.confirm=null;render()}
+    if(a==="do-supersede"){const to=M[+$("#sup").value];m.state="superseded";LINKS.push([to.id,m.id,"derived_from"]);S.confirm=null;render();fl().textContent="Superseded by: "+to.title}
+    if(a==="do-delete"){const t=m.title;M.splice(M.indexOf(m),1);M.forEach((x,i)=>x.id=i);S.confirm=null;S.sel=0;go("memories");setTimeout(()=>{},0);}
+  }));
+  const ef=$("#editf");if(ef)ef.addEventListener("submit",e=>{e.preventDefault();const t=$("#et").value.trim();if(!t){$("#flash").className="err";$("#flash").textContent="Give it a title first.";return}m.title=t;m.body=$("#eb").value;S.editing=false;render();$("#flash").textContent="Saved. Re-screened and re-embedded."});
+}
+const KCOL={decision:"var(--blue)",preference:"var(--purple)",observation:"var(--muted)",fact:"var(--green)",plan:"var(--amber)",reference:"var(--teal)"};
+let LAYOUT=null;
+function layout(){
+  const W=680,H=440,n=M.length;let P=M.map((m,i)=>({x:W/2+Math.cos(i*2.4)*(60+i*7),y:H/2+Math.sin(i*2.4)*(50+i*6),vx:0,vy:0}));
+  const pc={};PROJECTS.forEach((p,i)=>pc[p]=[120+i*110,i%2?150:290]);
+  for(let it=0;it<320;it++){
+    for(let i=0;i<n;i++)for(let j=i+1;j<n;j++){const dx=P[i].x-P[j].x,dy=P[i].y-P[j].y,d2=Math.max(80,dx*dx+dy*dy),f=1600/d2;P[i].vx+=dx*f/40;P[i].vy+=dy*f/40;P[j].vx-=dx*f/40;P[j].vy-=dy*f/40}
+    LINKS.forEach(([a,b])=>{if(!P[a]||!P[b])return;const dx=P[b].x-P[a].x,dy=P[b].y-P[a].y;P[a].vx+=dx*0.012;P[a].vy+=dy*0.012;P[b].vx-=dx*0.012;P[b].vy-=dy*0.012});
+    P.forEach((p,i)=>{const c=pc[M[i].project];p.vx+=(c[0]-p.x)*0.01;p.vy+=(c[1]-p.y)*0.01;p.x+=p.vx;p.y+=p.vy;p.vx*=0.6;p.vy*=0.6;p.x=Math.max(30,Math.min(W-30,p.x));p.y=Math.max(30,Math.min(H-30,p.y))});
+  }
+  return P;
+}
+function vGraph(){
+  LAYOUT=layout();const P=LAYOUT,gp=S.graphProject;
+  const on=m=>!gp||m.project===gp;
+  return `<div class="head"><div><div class="eyebrow">Clyde</div><h1>Graph</h1><p class="subtle">Each dot is a memory. Lines are links. Click a dot to open it.</p></div><label class="row subtle" for="gproj">Project <select id="gproj">${opts(PROJECTS,gp,"All projects")}</select></label></div>
+  <div class="graph-wrap"><svg viewBox="0 0 680 440" role="img" aria-label="Memory graph">
+   ${LINKS.map(([a,b,t])=>P[a]&&P[b]?`<line x1="${P[a].x}" y1="${P[a].y}" x2="${P[b].x}" y2="${P[b].y}" stroke="${t==="contradicts"?"var(--amber)":"var(--line-strong)"}" stroke-width="1.2" ${t==="contradicts"?'stroke-dasharray="4 3"':""} opacity="${on(M[a])&&on(M[b])?1:0.15}"/>`:"").join("")}
+   ${M.map((m,i)=>`<g class="gnode" data-open="${m.id}" tabindex="0" role="button" aria-label="${esc(m.title)}" opacity="${on(m)?1:0.18}"><circle cx="${P[i].x}" cy="${P[i].y}" r="${6+m.recalls/12}" fill="${KCOL[m.kind]}" fill-opacity="${m.state==="superseded"||m.state==="dormant"?0.35:0.85}" stroke="var(--paper)" stroke-width="1.5"/><title>${esc(m.title)}</title>${on(m)&&gp?`<text x="${P[i].x+10}" y="${P[i].y+4}" font-size="10" fill="var(--ink)">${esc(m.title.slice(0,28))}</text>`:""}</g>`).join("")}
+  </svg></div>
+  <div class="legend">${KINDS.map(k=>`<span><span class="dot" style="color:${KCOL[k]}"></span> ${k}</span>`).join("")}<span>Dot size is recall count. Dashed amber is a contradiction.</span></div>`;
+}
+function bindGraph(){$("#gproj").addEventListener("change",e=>{S.graphProject=e.target.value;render()})}
+function qcard(q){
+  return `<div class="qcard"><div class="row" style="justify-content:space-between"><b>#${q.id} ${esc(q.title)}</b><span class="pill p-${q.pri}" style="padding:0">${q.pri}</span></div>
+   <div class="subtle" style="font-size:12px">${esc(q.brief)}</div><div class="dw">Done when: ${esc(q.dw)}</div>
+   <div class="row" style="font-size:11px"><span class="pill k-decision">${q.type}</span><span class="subtle">${esc(q.env)}</span></div>
+   <div class="row">${q.tags.map(t=>`<span class="tag">${t}</span>`).join("")}</div>
+   ${q.state==="claimed"?`<div class="row subtle" style="font-size:11px;justify-content:space-between"><span>Claimed by ${q.by}</span><span>Lease: ${q.lease}</span></div>`:q.state==="done"?`<div class="status-ok">Done by ${q.by}. Evidence linked.</div>`:`<div class="subtle" style="font-size:11px">Any ${q.type} agent in this environment can claim it.</div>`}</div>`;
+}
+function vQuests(){
+  const all=QUESTS;
+  const form=S.newQuest?`<form id="qform" class="card" style="display:grid;gap:8px;margin-bottom:16px"><h3>Post a quest</h3>
+   <label class="eyebrow" for="qt">Title</label><input type="text" id="qt" maxlength="120" placeholder="Rotate the backup key">
+   <label class="eyebrow" for="qb">Brief</label><textarea id="qb" maxlength="500" placeholder="What needs doing and why"></textarea>
+   <label class="eyebrow" for="qd">Done when</label><input type="text" id="qd" maxlength="300" placeholder="The check that proves it">
+   <div class="filters" style="margin:0"><label>Agent type<select id="qy">${["coding","exploration","research","review","ops"].map(x=>`<option>${x}</option>`).join("")}</select></label><label>Machine<select id="qm"><option>any machine</option>${MACHINES.map(x=>`<option>${x}</option>`).join("")}</select></label><label>Context<select id="qc"><option>work</option><option>personal</option></select></label><label>Priority<select id="qp"><option>normal</option><option>high</option><option>low</option></select></label></div>
+   <div class="err" id="qerr"></div><div class="row"><button class="btn primary">Post quest</button><button type="button" class="btn" id="qcancel">Cancel</button></div></form>`:"";
+  return `<div class="head"><div><div class="eyebrow">Your agents</div><h1>Quest board</h1><p class="subtle">Agents post work for each other. A quest goes to the agent type and environment it names.</p></div><button class="btn primary" id="newq">Post quest</button></div>
+  ${S.plan==="free"?`<div class="notice amber" style="margin-bottom:14px">The quest board comes with the Clyde plan. <a href="#billing">See the plan</a>.</div>`:""}
+  ${form}
+  <div class="cols">${["open","claimed","done"].map(s=>`<div class="col"><div class="col-head"><span>${{open:"Open",claimed:"Claimed",done:"Done"}[s]}</span><span class="subtle">${all.filter(q=>q.state===s).length}</span></div>${all.filter(q=>q.state===s).map(qcard).join("")}</div>`).join("")}</div>`;
+}
+function bindQuests(){
+  $("#newq").addEventListener("click",()=>{S.newQuest=true;render()});
+  const f=$("#qform");if(!f)return;
+  $("#qcancel").addEventListener("click",()=>{S.newQuest=false;render()});
+  f.addEventListener("submit",e=>{e.preventDefault();const t=$("#qt").value.trim(),b=$("#qb").value.trim(),d=$("#qd").value.trim();
+    if(!t||!b||!d){$("#qerr").textContent="Fill in the title, the brief and the done-when line.";return}
+    QUESTS.unshift({id:44+S.questsPosted.length,title:t,brief:b,dw:d,tags:["new"],pri:$("#qp").value,type:$("#qy").value,env:`${$("#qm").value} · ${$("#qc").value}`,state:"open"});S.questsPosted.push(t);S.newQuest=false;render()});
+}
+function vAgents(){
+  return `<div class="head"><div><div class="eyebrow">Your agents</div><h1>Agents and devices</h1><p class="subtle">Every agent registers a nickname, a type and where it runs. Quests route on these.</p></div></div>
+  <div class="table-wrap"><table><thead><tr><th>Nickname</th><th>Type</th><th>Harness</th><th>Machine</th><th>Repos</th><th>Context</th><th>Last seen</th></tr></thead><tbody>
+  ${AG.map(a=>`<tr><td><b>${a[0]}</b></td><td><span class="pill k-decision">${a[1]}</span></td><td>${a[2]}</td><td>${a[3]}</td><td>${a[4]}</td><td>${a[5]}</td><td>${a[6]}</td></tr>`).join("")}</tbody></table></div>
+  <div class="section"><h2>Devices</h2><p class="subtle" style="margin:6px 0 10px">Machines with a device token. Hooks send through these. Revoke one and its hooks stop at once.</p>
+  <div class="list" id="devs">${DEV.map((d,i)=>`<div class="item" style="cursor:default"><div class="t">${d[0]}</div><div class="r"><button class="btn small danger" data-rev="${i}">${d[3]?"Revoked":"Revoke"}</button></div><div class="m">${d[1]}</div><div class="r">Since ${d[2]}</div></div>`).join("")}</div></div>`;
+}
+function bindAgents(){document.querySelectorAll("[data-rev]").forEach(b=>b.addEventListener("click",()=>{const d=DEV[+b.dataset.rev];if(d[3])return;d[3]=true;render()}))}
+function vApps(){
+  const a=S.appModal!=null?APPS[S.appModal]:null;
+  return `<div class="head"><div><div class="eyebrow">Your agents</div><h1>Connected apps</h1><p class="subtle">Install Clyde from each app's own store. Every app shares the same memories.</p></div></div>
+  ${S.plan==="free"?`<div class="notice amber" style="margin-bottom:14px">Free connects 2 apps. You have 2. <a href="#billing">The Clyde plan</a> connects all of them.</div>`:""}
+  ${a?`<div class="overlay" style="margin:0 0 16px"><div class="dialog" role="dialog" aria-label="Connect ${a[0]}"><div class="app-top"><span class="app-badge">${a[4]}</span><h3 style="margin:0">Connect ${a[0]}</h3></div>
+   <p class="subtle" style="margin:12px 0">Install Clyde from the ${a[2]}. You sign in once and approve. Nothing to copy.</p>
+   <button class="btn primary" style="width:100%" data-store="${S.appModal}">Install from ${a[2]}</button>
+   <details style="margin-top:14px"><summary class="subtle" style="cursor:pointer">Can't find it in the store?</summary><p class="subtle" style="font-size:12px">Add a custom connector with this address, then sign in.</p><div class="row"><code class="mono notice" id="mcpurl" style="flex:1">https://heyclyde.me/mcp</code><button class="btn small" id="copy">Copy</button></div><div class="ok" id="copied"></div></details>
+   <div class="row" style="margin-top:14px"><button class="btn" id="closeapp">Close</button></div></div></div>`:""}
+  <div class="grid3">${APPS.map((x,i)=>`<div class="card app-card"><div class="app-top"><span class="app-badge">${x[4]}</span><div style="min-width:0"><h3>${x[0]}</h3><div class="subtle" style="font-size:11.5px">${x[1]}</div></div></div>
+   <div class="row" style="justify-content:space-between">${x[3]?`<span class="status-ok">Connected</span><button class="btn small" data-disc="${i}">Disconnect</button>`:`<span class="status-off">Not connected</span><button class="btn small primary" data-conn="${i}">Connect</button>`}</div></div>`).join("")}</div>`;
+}
+function bindApps(){
+  document.querySelectorAll("[data-conn]").forEach(b=>b.addEventListener("click",()=>{S.appModal=+b.dataset.conn;render()}));
+  document.querySelectorAll("[data-disc]").forEach(b=>b.addEventListener("click",()=>{APPS[+b.dataset.disc][3]=false;render()}));
+  const c=$("#closeapp");if(c)c.addEventListener("click",()=>{S.appModal=null;render()});
+  const st=document.querySelector("[data-store]");if(st)st.addEventListener("click",()=>{APPS[+st.dataset.store][3]=true;S.appModal=null;render()});
+  const cp=$("#copy");if(cp)cp.addEventListener("click",()=>{const done=()=>{$("#copied").textContent="Copied."};try{navigator.clipboard.writeText("https://heyclyde.me/mcp").then(done,()=>{getSelection().selectAllChildren($("#mcpurl"));$("#copied").textContent="Selected. Press copy."})}catch(e){getSelection().selectAllChildren($("#mcpurl"))}});
+}
+const METERS=[["AI usage","$0.50 at cost",0.41,0.5,"$",["2.3x the AI provider's list price"]],["Storage","5 GB",3.2,5,"GB",["$0.05 per GB-month"]],["Egress","2 GB",2.6,2,"GB",["$0.21 per GB"]],["Requests","100,000",71400,100000,"",["$4.60 per million"]],["Database","0.5 GB",0.31,0.5,"GB",["$0.29 per GB-month"]]];
+function fmt(v,u){return u==="$"?"$"+v.toFixed(2):u?v.toFixed(1)+" "+u:v.toLocaleString()}
+function vBilling(){
+  const seg=`<div class="seg" role="group" aria-label="Plan view">${[["free","Free"],["clyde","Clyde"],["owner","Owner"]].map(([k,l])=>`<button aria-pressed="${S.plan===k}" data-plan="${k}">${l}</button>`).join("")}</div>`;
+  let body="";
+  if(S.plan==="clyde"){
+    const over=0.6*0.21;
+    body=`<div class="grid2"><div class="card"><h2>Your plan</h2><div class="row" style="margin-top:8px;align-items:baseline"><span class="big">$9.99</span><span class="subtle">per month, renews Dec 1</span></div><p class="subtle" style="margin-top:6px">One plan. It covers the allowances below. Use past them is billed at cost plus a fixed 50% margin, at the end of the month.</p></div>
+     <div class="card"><h2>This month</h2><div class="row" style="margin-top:8px;align-items:baseline"><span class="big">$${(9.99+over).toFixed(2)}</span><span class="subtle">projected</span></div><p class="subtle" style="margin-top:6px">$9.99 plan plus $${over.toFixed(2)} of egress over the allowance.</p></div></div>
+     <div class="section"><h2>Included this month</h2><div class="table-wrap" style="margin-top:10px"><table><thead><tr><th>Meter</th><th>Included</th><th>Used</th><th style="width:28%">Of allowance</th><th>Past the allowance</th></tr></thead><tbody>
+     ${METERS.map(m=>{const p=Math.min(100,m[2]/m[3]*100);return `<tr><td><b>${m[0]}</b></td><td>${m[1]}</td><td class="num">${fmt(m[2],m[4])}</td><td><div class="bar${m[2]>m[3]?" warn":""}"><span style="width:${p}%"></span></div><span class="subtle" style="font-size:11px">${Math.round(m[2]/m[3]*100)}%</span></td><td>${m[5][0]}</td></tr>`}).join("")}
+     </tbody></table></div></div>
+     <div class="section card"><h2>Usage spend limit</h2><p class="subtle" style="margin:6px 0 10px">Usage past the allowance stops at this amount each month. Reads keep working.</p><div class="row"><input type="range" id="spend" min="0" max="500" step="5" value="${S.spend}" style="flex:1;min-width:160px" aria-label="Usage spend limit"><b id="spendv" class="num" style="min-width:56px">$${S.spend}</b></div></div>
+     <div class="section"><h2>Invoices</h2><div class="list" style="margin-top:10px">${[["Nov 1, 2026","$10.14","Paid"],["Oct 1, 2026","$9.99","Paid"]].map(r=>`<div class="item" style="cursor:default"><div class="t">${r[0]}</div><div class="r num">${r[1]}</div><div class="m"><span class="status-ok">${r[2]}</span></div><div class="r">Receipt from Polar</div></div>`).join("")}</div><p class="subtle" style="margin-top:10px;font-size:11.5px">Billed by Polar, the merchant of record. Polar handles tax, receipts and refunds.</p></div>`;
+  }else if(S.plan==="free"){
+    const L=[["Memories","64 of 100"],["Artifacts","None on Free"],["Recalls","212 of 300 this month"],["Writes","31 of 50 this month"],["Apps","2 of 2"],["Agents","2 of 2"],["Quest board","Clyde plan"],["Learning","Clyde plan"]];
+    body=`<div class="notice amber">You're one of the first 1,000 people on Clyde, so you have a free allocation. It doesn't renew into a bill. Upgrade when you outgrow it.</div>
+    <div class="grid3 section">${L.map(l=>`<div class="card"><h2>${l[0]}</h2><div style="font-size:16px;font-weight:650;margin-top:6px">${l[1]}</div></div>`).join("")}</div>
+    <div class="section"><button class="btn primary" id="upgrade">Upgrade to Clyde, $9.99/month</button> <span class="subtle" id="upmsg"></span></div>`;
+  }else{
+    body=`<div class="card"><h2>Owner plan</h2><div style="font-size:16px;font-weight:650;margin:6px 0">No limits. No billing.</div><p class="subtle">The owner account. Every meter still counts, so you can see what Clyde costs to run.</p></div>
+    <div class="section"><h2>This month, at cost</h2><div class="table-wrap" style="margin-top:10px"><table><thead><tr><th>Meter</th><th>Used</th><th>Cost to run</th></tr></thead><tbody>${[["AI usage","35M tokens","$3.92"],["Storage","0.01 GB","$0.00"],["Egress","3.6 GB","$0.32"],["Requests","71,400","$0.14"],["Database","0.38 GB","$0.05"]].map(r=>`<tr><td><b>${r[0]}</b></td><td class="num">${r[1]}</td><td class="num">${r[2]}</td></tr>`).join("")}</tbody></table></div></div>`;
+  }
+  return `<div class="head"><div><div class="eyebrow">Account</div><h1>Usage and billing</h1><p class="subtle">Preview: switch plans to see each view.</p></div>${seg}</div>${body}`;
+}
+function bindBilling(){
+  document.querySelectorAll("[data-plan]").forEach(b=>b.addEventListener("click",()=>{S.plan=b.dataset.plan;renderNav();render()}));
+  const r=$("#spend");if(r)r.addEventListener("input",e=>{S.spend=+e.target.value;$("#spendv").textContent="$"+S.spend});
+  const u=$("#upgrade");if(u)u.addEventListener("click",()=>{$("#upmsg").textContent="Opens Polar checkout."});
+}
+function vAccount(){
+  return `<div class="head"><div><div class="eyebrow">Account</div><h1>Account</h1></div></div>
+  <div class="grid2"><div class="card"><h2>Profile</h2><dl class="kv" style="margin-top:10px"><dt>Email</dt><dd>wen@heyclyde.me</dd><dt>Signed up</dt><dd>Oct 12, 2026</dd><dt>Data region</dt><dd>Canada (Central). Clyde isn't offered in the EU, EEA, UK, Switzerland or Quebec.</dd></dl></div>
+  <div class="card"><h2>Sessions</h2><div class="list" style="margin-top:10px">${[["This browser","Toronto, now"],["Safari on iPhone","Toronto, 2 days ago"]].map((s,i)=>`<div class="item" style="cursor:default"><div class="t">${s[0]}</div><div class="r">${i?'<button class="btn small" data-out>Sign out</button>':"Current"}</div><div class="m">${s[1]}</div></div>`).join("")}</div></div></div>
+  <div class="section card"><h2>Privacy</h2>
+   <div class="toggle"><div><b>Hooks send full prompts</b><div class="subtle" style="font-size:12px">Off: hooks send tool names and timings only. On: the learner reads your prompts to learn from pushback.</div></div><label class="switch"><input type="checkbox" id="hk" aria-label="Hooks send full prompts"><span></span></label></div>
+   <div class="toggle"><div><b>New memories are private by default</b><div class="subtle" style="font-size:12px">Private memories reach the AI provider by title only.</div></div><label class="switch"><input type="checkbox" id="pv" aria-label="Private by default"><span></span></label></div>
+   <div class="toggle"><div><b>Work memories stay out of personal agents</b><div class="subtle" style="font-size:12px">A personal agent's recall skips memories marked work.</div></div><label class="switch"><input type="checkbox" id="ws" checked aria-label="Separate work and personal"><span></span></label></div>
+  </div>
+  <div class="section grid2"><div class="card"><h2>Export</h2><p class="subtle" style="margin:6px 0 10px">Every memory, link and artifact as one file.</p><button class="btn" id="exp">Export everything</button><div class="ok" id="expmsg"></div></div>
+  <div class="card"><h2>Delete account</h2><p class="subtle" style="margin:6px 0 10px">Deletes every memory, artifact, agent and device. Your subscription ends today.</p>${S.confirm==="acct"?`<div class="notice amber"><p style="margin:0 0 8px">Type <b>delete</b> to confirm. This can't be undone.</p><div class="row"><input type="text" id="delc" aria-label="Type delete"><button class="btn danger solid" id="delgo">Delete account</button><button class="btn" id="delno">Cancel</button></div><div class="err" id="delerr"></div></div>`:`<button class="btn danger" id="del">Delete account</button>`}</div></div>`;
+}
+function bindAccount(){
+  $("#exp").addEventListener("click",()=>{$("#expmsg").textContent="Export started. We'll email the link when it's ready."});
+  const d=$("#del");if(d)d.addEventListener("click",()=>{S.confirm="acct";render()});
+  const n=$("#delno");if(n)n.addEventListener("click",()=>{S.confirm=null;render()});
+  const g=$("#delgo");if(g)g.addEventListener("click",()=>{if($("#delc").value.trim()!=="delete"){$("#delerr").textContent="Type delete to confirm.";return}$("#delerr").className="ok";$("#delerr").textContent="In the real site, this deletes the account. The prototype keeps it."});
+  document.querySelectorAll("[data-out]").forEach(b=>b.addEventListener("click",()=>{b.textContent="Signed out";b.disabled=true}));
+}
+function vSignin(){
+  const step=S.signinStep;
+  return `<div class="auth"><div class="brand" style="justify-content:center;padding:0"><span class="brand-mark">c</span>clyde</div>
+  <div class="card">${step==="email"?`<h1 style="font-size:20px;margin-top:0">Sign in or sign up</h1><p class="subtle">Everything your agents learn, shared by all of them. We email you a code, so there's no password.</p>
+   <form id="ef" style="display:grid;gap:8px;margin-top:14px"><label for="em" class="eyebrow">Email</label><input type="email" id="em" placeholder="you@example.com" autocomplete="email"><div class="err" id="eerr"></div><button class="btn primary">Email me a code</button></form>`:
+   step==="code"?`<h1 style="font-size:20px;margin-top:0">Check your email</h1><p class="subtle">Enter the 6-digit code we sent. It works for 10 minutes.</p>
+   <form id="cf" style="display:grid;gap:10px;margin-top:14px"><div class="otp">${[0,1,2,3,4,5].map(i=>`<input type="text" inputmode="numeric" maxlength="1" id="o${i}" aria-label="Digit ${i+1}">`).join("")}</div><div class="err" id="cerr"></div><button class="btn primary">Continue</button><button type="button" class="btn" id="back">Use another email</button></form>`:
+   `<h1 style="font-size:20px;margin-top:0">You're in</h1><p class="subtle">You got one of the first 1,000 free allocations. Connect your first app next.</p><div class="row" style="margin-top:14px"><a class="btn primary" href="#apps" style="text-decoration:none">Connect an app</a><a class="btn" href="#memories" style="text-decoration:none">Browse memories</a></div>`}</div>
+  <p class="subtle" style="font-size:11.5px;text-align:center">Clyde isn't offered in the EU, EEA, UK, Switzerland or Quebec. Sign-ups from there are refused and nothing is stored.</p></div>`;
+}
+function bindSignin(){
+  const ef=$("#ef");if(ef)ef.addEventListener("submit",e=>{e.preventDefault();const v=$("#em").value.trim();if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)){$("#eerr").textContent="Enter an email address like you@example.com.";return}S.signinStep="code";render();$("#o0").focus()});
+  const cf=$("#cf");if(cf){
+    document.querySelectorAll(".otp input").forEach((inp,i,all)=>inp.addEventListener("input",()=>{inp.value=inp.value.replace(/\D/g,"");if(inp.value&&all[i+1])all[i+1].focus();$("#cerr").textContent=""}));
+    cf.addEventListener("submit",e=>{e.preventDefault();const c=[...document.querySelectorAll(".otp input")].map(i=>i.value).join("");if(c.length<6){$("#cerr").textContent="Enter all 6 digits.";return}S.signinStep="done";render()});
+    $("#back").addEventListener("click",()=>{S.signinStep="email";render()});
+  }
+}
+function vConsent(){
+  if(S.consent)return `<div class="auth"><div class="brand" style="justify-content:center;padding:0"><span class="brand-mark">c</span>clyde</div><div class="card"><h1 style="font-size:20px;margin-top:0">${S.consent==="ok"?"Connected":"Refused"}</h1><p class="subtle">${S.consent==="ok"?"Claude can now recall and remember with Clyde. You can close this tab.":"Claude wasn't connected. Nothing was shared."}</p><button class="btn" id="again" style="margin-top:12px">Show the request again</button></div></div>`;
+  return `<div class="auth"><div class="brand" style="justify-content:center;padding:0"><span class="brand-mark">c</span>clyde</div>
+  <div class="card"><div class="app-top"><span class="app-badge">C</span><h1 style="font-size:20px;margin:0">Claude wants to connect to Clyde</h1></div>
+   <dl class="kv" style="margin-top:14px"><dt>App</dt><dd>Claude</dd><dt>Sends you back to</dt><dd class="mono">claude.ai</dd><dt>Signed in as</dt><dd>wen@heyclyde.me</dd></dl>
+   <p class="subtle" style="margin-top:12px">Claude will recall and remember notes, and read and post quests. It can't see billing or delete your account.</p>
+   <div class="row" style="margin-top:14px"><button class="btn primary" id="appr">Approve</button><button class="btn" id="deny">Deny</button></div>
+   <p class="subtle" style="font-size:11.5px;margin-top:12px">Didn't start this? Deny it. Clyde only approves callbacks from apps it knows.</p></div></div>`;
+}
+function bindConsent(){
+  const a=$("#appr");if(a){a.addEventListener("click",()=>{S.consent="ok";render()});$("#deny").addEventListener("click",()=>{S.consent="no";render()})}
+  const g=$("#again");if(g)g.addEventListener("click",()=>{S.consent=null;render()});
+}
+const VIEWS={memories:[vMemories,bindMemories],detail:[vDetail,bindDetail],graph:[vGraph,bindGraph],quests:[vQuests,bindQuests],agents:[vAgents,bindAgents],apps:[vApps,bindApps],billing:[vBilling,bindBilling],account:[vAccount,bindAccount],signin:[vSignin,bindSignin],consent:[vConsent,bindConsent]};
+function render(){
+  const r=route(),[v,b]=VIEWS[r];
+  $("#view").innerHTML=v();b();renderNav();
+  document.querySelectorAll("[data-open]").forEach(el=>{const open=()=>{S.sel=+el.dataset.open;S.confirm=null;S.editing=false;go("detail")};el.addEventListener("click",open);el.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();open()}})});
+}
+let last=null;
+window.addEventListener("hashchange",()=>{const r=route();if(r!==last){S.confirm=null;S.appModal=null;S.newQuest=false}last=r;render();window.scrollTo(0,0)});
+last=route();render();
+</script>
