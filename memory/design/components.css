@@ -130,12 +130,13 @@
 .cl-quest__pri { font: var(--cl-text-label); letter-spacing: 0.06em; text-transform: uppercase; color: var(--cl-ink-3); }
 .cl-quest__pri.is-high { color: var(--cl-bad); }
 .cl-quest__main { display: grid; gap: 8px; padding: 14px 16px; min-width: 0; }
-.cl-quest__title { font: 600 15px/21px var(--cl-font-sans); letter-spacing: -0.01em; margin: 0; padding-right: 96px; }
+.cl-quest__head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 6px 12px; min-width: 0; }
+.cl-quest__head .cl-stamp { margin-top: 1px; }
+.cl-quest__title { flex: 1 1 14ch; min-width: 0; font: 600 15px/21px var(--cl-font-sans); letter-spacing: -0.01em; margin: 0; text-wrap: pretty; }
 .cl-quest__brief { font: var(--cl-text-small); color: var(--cl-ink-2); margin: 0; }
 .cl-quest__done { display: grid; gap: 3px; padding: 8px 10px; border-radius: var(--cl-radius-sm); background: var(--cl-paper-2); font: var(--cl-text-small); color: var(--cl-ink); }
 .cl-quest__for { font: var(--cl-text-mono); font-size: 11.5px; color: var(--cl-ink-3); }
 .cl-quest__for b { color: var(--cl-ink-2); font-weight: 600; }
-.cl-quest > .cl-stamp, .cl-quest > .cl-chip { position: absolute; top: 14px; right: 14px; }
 .cl-quest.is-done { background: var(--cl-paper-0); }
 .cl-quest.is-done .cl-quest__title { color: var(--cl-ink-2); }
 
