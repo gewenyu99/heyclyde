@@ -47,7 +47,7 @@ const header = `<header class="bar wrap"><a class="logo" href="/" aria-label="cl
 <span class="acts"><a class="cl-btn cl-btn--ghost" href="/signin">Sign in</a><a class="cl-btn cl-btn--primary" href="${CONNECT}">Get Clyde</a></span></header>`;
 
 const footer = `<footer class="foot"><div class="wrap"><span class="brand">${MARK()}clyde · one memory for every agent</span>
-<nav><a href="${CONNECT}">Connect your apps</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="${DESIGN_URL}">Design system</a></nav>
+<nav><a href="${CONNECT}">Connect your apps</a><a href="/signin">Sign in</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="${DESIGN_URL}">Design system</a></nav>
 <span class="legal">App names and marks belong to their owners. Listing an app doesn't mean its maker endorses Clyde.</span></div></footer>`;
 
 const page = (nonce, title, css, main, status = 200) => ({
