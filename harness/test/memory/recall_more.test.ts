@@ -512,7 +512,7 @@ test('R29: tools/list describes recall_more and recall\'s depth', { skip: SKIP }
   const { rpc } = await mcp()
   const tools: any[] = (await rpc('tools/list')).result.tools
   // 11 tools before R29: register_agent, recall, get_entry, get_blob, upload_blob, remember, feedback and the three message tools.
-  assert.equal(tools.length, 12)
+  assert.equal(tools.length, 18, '12 tools, plus the six quest tools of R47 (#52)')
   const named = tools.filter((t) => t.name === 'recall_more')
   assert.equal(named.length, 1)
   assert.deepEqual(named[0].inputSchema.required, ['retrieval_id'])
