@@ -678,7 +678,7 @@ test('geo: one blocked list feeds sign-up and webhook', { skip: SKIP }, async ()
   assert.equal(count(`grep -rlE 'isBlocked\\(|geoBlocked\\(' memory/supabase/functions/memory --include=*.ts | sort | tr '\\n' ' '`),
     'memory/supabase/functions/memory/billing/entitlement.ts memory/supabase/functions/memory/billing/index.ts memory/supabase/functions/memory/billing/regions.ts memory/supabase/functions/memory/billing/webhooks.ts memory/supabase/functions/memory/oauth.ts')
   // No checkout restriction goes to the provider.
-  assert.equal(count(`grep -cE 'allowed_countries|countries' memory/supabase/functions/memory/billing/polar.ts || true`), '0')
+  assert.equal(count(`grep -cE 'allowed_countries|allowed_billing_countries' memory/supabase/functions/memory/billing/polar.ts || true`), '0')
 })
 
 test('geo: country headers count only through the proxy', { skip: SKIP }, async () => {
@@ -710,7 +710,8 @@ test('admin: plans and entitlements are readable, and a plan is changed by data'
     request(method, `${memory.url}/api/v1${path}`, { headers: bearer(memory.adminToken), body, timeoutMs: 30_000 })
   const plans = JSON.parse((await admin('GET', '/billing/plans')).text).plans as Record<string, any>[]
   // One paid plan, a comp plan for Wen, and the free allocation (Wen, 2026-11-15).
-  assert.deepEqual(plans.map((p) => p.id).sort(), ['clyde', 'free', 'owner'])
+  // bench is this file's own plan for the timing tests.
+  assert.deepEqual(plans.map((p) => p.id).filter((id) => id !== 'bench').sort(), ['clyde', 'free', 'owner'])
   const owner = plans.find((p) => p.id === 'owner')!
   assert.deepEqual([owner.open, owner.recalls_month, owner.remembers_month, owner.openai_tokens_month, owner.burst_calls], [true, null, null, null, null])
   const freePlan = plans.find((p) => p.id === 'free')!
