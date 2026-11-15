@@ -350,13 +350,16 @@ test('/oauth/consent sends at most 3 sign-in emails in 15 minutes, all to the ow
   for (const e of emails) assert.deepEqual([e.body.email, e.body.create_user], [ownerEmail(), false])
 })
 
-// R45 (#50): Antigravity's and Grok's callbacks are approved, and any other is refused with its redirect_uri in admin_audit.
+// R45 (#50): Antigravity's, Grok's and the Gemini app's callbacks are approved, and any other is refused with its
+// redirect_uri in admin_audit. accounts.google.com is not allowed until there's evidence the Gemini app uses it.
 test('oauth: agent app callbacks allowed, others denied and logged', { skip: SKIP }, async () => {
   const cases: [string, string, 'approve' | 'deny'][] = [
     ['antigravity', 'https://antigravity.google/oauth-callback', 'approve'],
     ['grok', 'https://grok.com/connectors/oauth/callback', 'approve'],
     ['xai', 'https://x.ai/oauth/callback', 'approve'],
+    ['gemini-app', 'https://gemini.google.com/oauth/callback', 'approve'],
     ['evil', 'https://evil.example/cb', 'deny'],
+    ['evil-google', 'https://accounts.google.com/o/oauth2/callback', 'deny'],
     ['evil-http', 'http://grok.com/connectors/oauth/callback', 'deny'],
     ['evil-sub', 'https://grok.com.evil.example/cb', 'deny'],
   ]

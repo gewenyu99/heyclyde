@@ -10,9 +10,13 @@ import { sql } from "./db.ts";
 const AUTH = () => `${Deno.env.get("SUPABASE_URL")}/auth/v1`;
 const ID = /^[A-Za-z0-9_-]{8,100}$/;
 const FRESH = "15 minutes";
-// Where an approved code may go: Claude's own callbacks, and a program on this computer (Claude Code and other local
-// clients). Anything else is refused, so a client someone registered for themselves can't collect a code.
-const CLIENT_HOSTS = new Set(["claude.ai", "claude.com"]);
+// Where an approved code may go, over https: Claude's callbacks, Antigravity's (https://antigravity.google/oauth-callback),
+// Grok's and the Gemini app's (R45). Grok and the Gemini app don't document their callbacks, so both of xAI's hosts and
+// gemini.google.com are allowed, each exactly, never a subdomain. No other Google host is, without evidence it's used.
+// A program on this computer (Claude Code, Gemini CLI and other local clients) may use http too. Anything else is refused
+// and its redirect_uri logged to admin_audit as oauth_deny, so a client someone registered for themselves can't collect a
+// code, and an app whose real callback differs shows it on its first try.
+const CLIENT_HOSTS = new Set(["claude.ai", "claude.com", "antigravity.google", "grok.com", "x.ai", "gemini.google.com"]);
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
 // At most this many sign-in emails in 15 minutes, so the open consent page can't flood the owner's inbox.
 const MAX_EMAILS = 3;
@@ -124,8 +128,9 @@ async function approve(id: string, code: string | null, error: string | null) {
       values (${`oauth_${action}`}, ${`client:${details.body.client?.id ?? details.body.client?.client_id ?? "?"}`},
         ${sql.json({ name, redirect_uri: target })})`;
     if (action === "deny") {
+      console.warn(`memory: oauth_deny for ${name}: redirect_uri ${target}`);
       await sql`update memory.oauth_consent set redirect_url = ${redirect!} where authorization_id = ${id}`;
-      return text(`memory: refused ${name}. Its callback, ${target}, isn't Claude's or this computer's.`, 403);
+      return text(`memory: refused ${name}. Its callback, ${target}, isn't one memory approves (Claude, Antigravity, Grok, the Gemini app or this computer).`, 403);
     }
   }
   await sql`update memory.oauth_consent set redirect_url = ${redirect!}, client_name = ${name} where authorization_id = ${id}`;

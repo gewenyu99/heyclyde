@@ -180,7 +180,8 @@ async function exportPage(url: URL) {
 // bakes ./client into ./client/files.ts: it stamps memory-hook with CLIENT_VERSION, writes a manifest of the version and
 // every file's sha256, and signs that manifest with the offline key. A computer verifies the manifest against the public key
 // it saved at install, then each file against its line, so only files of one signed release install.
-const CLIENT_FILES = ["install.sh", "memory-hook", "claude-settings.json", "codex-hooks.json", "signing-pub.pem"];
+const CLIENT_FILES = ["install.sh", "memory-hook", "claude-settings.json", "codex-hooks.json", "signing-pub.pem", "gemini-hook",
+  "gemini-hooks.json", "gemini-extension.json", "antigravity-mcp.json"];
 const SERVED = new Set([...CLIENT_FILES, "manifest", "manifest.sig"]);
 const CLAIM = /^[A-Za-z0-9_-]{20,100}$/;
 

@@ -47,7 +47,7 @@ from pathlib import Path
 
 client = Path(os.environ["FUNCTION"]) / "client"
 key, trusted = os.environ["MEMORY_SIGNING_KEY"], os.environ["MEMORY_TRUSTED_PUB"]
-FILES = ["memory-hook", "claude-settings.json", "codex-hooks.json", "install.sh", "signing-pub.pem"]
+FILES = ["memory-hook", "claude-settings.json", "codex-hooks.json", "install.sh", "signing-pub.pem", "gemini-hook", "gemini-hooks.json", "gemini-extension.json", "antigravity-mcp.json"]
 
 def fail(why):
     sys.exit(f"deploy.sh: {why}")

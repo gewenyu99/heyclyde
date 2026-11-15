@@ -22,6 +22,7 @@ memory is allowlist only. An email outside `memory.allowed_email` stops at the f
 
 - **Claude Code.** The MCP server `memory` at user scope, and the hooks merged into `~/.claude/settings.json`.
 - **Codex.** `[mcp_servers.memory]` in `~/.codex/config.toml` and the hooks in `~/.codex/hooks.json`. Run `/hooks` in the Codex CLI once to trust them.
+- **Gemini CLI and Antigravity**, when they're here. See [Connect your apps](#connect-your-apps).
 - **Old entries go.** A rerun replaces earlier `memory` and `kb` entries. Your own hooks stay.
 
 It needs `curl`, `python3` and Claude Code, on macOS or Linux. Supabase's built-in email only sends to members of the Supabase organization, and about two an hour.
@@ -38,7 +39,81 @@ claude.ai takes memory as a custom connector. Add it once and it's in every chat
 
 Chats get recall, remember, feedback and messages. They have no hooks, so nothing logs a chat's events or puts the inbox in front of it unasked.
 
-How it works: Supabase Auth's OAuth 2.1 server runs the protocol, and claude.ai registers itself there. Supabase sends the sign-in to `/oauth/consent` on the function, which stands in for the consent page because Supabase serves no HTML on its own domain. It emails the one allowlisted address and keeps the PKCE verifier. The window reloads `/oauth/wait` every few seconds. The click lands on `/oauth/approve`, which signs the owner in on the server and approves the request, but only when its callback is on claude.ai, claude.com or this computer. Anything else is refused and logged to `admin_audit`. `/mcp` takes the access token the client gets for an allowlisted email and treats it as a device with metadata-only hooks. Such a token can't mint device tokens. At most three sign-in emails go out in 15 minutes. If a link arrives that you didn't ask for, don't click it: the click is what grants access.
+How it works: Supabase Auth's OAuth 2.1 server runs the protocol, and claude.ai registers itself there. Supabase sends the sign-in to `/oauth/consent` on the function, which stands in for the consent page because Supabase serves no HTML on its own domain. It emails the one allowlisted address and keeps the PKCE verifier. The window reloads `/oauth/wait` every few seconds. The click lands on `/oauth/approve`, which signs the owner in on the server and approves the request, but only when its callback is https on claude.ai, claude.com, antigravity.google, grok.com, x.ai or gemini.google.com (those hosts exactly), or on this computer. Anything else is refused and logged to `admin_audit` as `oauth_deny`, with the `redirect_uri` it asked for, and to the function's log. `/mcp` takes the access token the client gets for an allowlisted email and treats it as a device with metadata-only hooks. Such a token can't mint device tokens. At most three sign-in emails go out in 15 minutes. If a link arrives that you didn't ask for, don't click it: the click is what grants access.
+
+## Connect your apps
+
+Every app reaches the same server, `https://memory.heyclyde.me/mcp`, and what memory does stays on the server. The apps that sign in through OAuth get no token: the sign-in is the email link described above. Hooks need this computer's device token, which only the installer gets.
+
+### Claude Code, with the plugin
+
+The plugin brings the MCP server (signed in through OAuth) and the hooks.
+
+1. In Claude Code, run `/plugin marketplace add gewenyu99/like-vincent`, then `/plugin install memory@like-vincent`.
+2. Run `/memory:connect`. It asks for your email if this computer has no token yet, and runs the installer with `MEMORY_CLAUDE=plugin`, so the installer gives the hooks a token and `memory-hook` and leaves Claude Code to the plugin. If the installer set up Claude Code here before, its `memory` MCP server and its hooks in `~/.claude/settings.json` come out, so nothing is there twice. Codex, Gemini CLI and Antigravity are set up too when they're here.
+3. Start a new session. The first time it uses memory's tools, Claude Code opens the OAuth sign-in. Click the link in your email.
+
+Until `/memory:connect` has run, the plugin's hooks print one line at the start of each session saying to run it, and do nothing else. A computer whose `settings.json` still has the installer's own hooks forwards through those, and the plugin's stay quiet.
+
+### Claude Code, with the installer
+
+```bash
+curl -fsSL https://memory.heyclyde.me/install | sh
+```
+
+This adds the `memory` MCP server at user scope with this computer's token in its header, and merges the hooks into `~/.claude/settings.json`. Use the plugin or the installer, not both.
+
+### claude.ai
+
+A custom connector. See [Connect Claude chats, Cowork and the phone](#connect-claude-chats-cowork-and-the-phone).
+
+### Gemini CLI
+
+1. Run the installer, or `/memory:connect` in Claude Code. It sets Gemini CLI up when `gemini` is on PATH or `~/.gemini` exists.
+2. It writes the extension `~/.gemini/extensions/memory`: `gemini-extension.json` with `mcpServers.memory.httpUrl` and no token, and `hooks/hooks.json`, which runs `~/.config/memory/gemini-hook` on SessionStart, BeforeAgent, AfterTool (memory's tools) and AfterAgent.
+3. Start Gemini CLI. It finds memory's OAuth server by discovery and opens the sign-in. If it doesn't, run `/mcp auth memory`. Click the link in your email.
+4. Check with `/mcp`, which lists memory's tools, and `/extensions`, which lists `memory`. If memory's hooks don't run, update Gemini CLI to a version with hooks.
+
+`gemini-hook` maps Gemini's events onto memory's: SessionStart to SessionStart, BeforeAgent to UserPromptSubmit, AfterTool to PostToolUse, AfterAgent to Stop (its `prompt_response` also goes as `last_assistant_message`). It forwards through `memory-hook` as the agent `gemini`, so Gemini has its own inbox. It prints JSON only, since Gemini CLI turns plain stdout into a message the model never sees: what memory says at SessionStart and BeforeAgent goes in `hookSpecificOutput.additionalContext`, and every other answer is `{}`.
+
+### Antigravity
+
+1. Run the installer, or `/memory:connect` in Claude Code. It sets Antigravity up when `~/.gemini/config` exists or an `antigravity` or `agy` binary is on PATH.
+2. It merges one entry into `~/.gemini/config/mcp_config.json`, beside your other servers, which stay as they are:
+
+   ```json
+   { "mcpServers": { "memory": { "serverUrl": "https://memory.heyclyde.me/mcp" } } }
+   ```
+
+   To add it by hand, put that `memory` entry in the file yourself. A rerun of the installer writes nothing when the entry is already there.
+3. Restart Antigravity, or refresh its MCP servers. It registers itself with memory's OAuth server and opens the sign-in, with the callback `https://antigravity.google/oauth-callback`. Click the link in your email.
+4. Check that memory's tools are listed in Antigravity's MCP servers. Antigravity has no hooks, so like claude.ai it gets the tools only.
+
+### The Gemini app
+
+The Gemini app at gemini.google.com takes remote MCP servers as custom apps. It may need a Google AI Ultra plan, or an account in the US, before the option shows.
+
+1. In gemini.google.com, open Settings, then **Connected Apps**, and add a custom app.
+2. Give it the URL `https://memory.heyclyde.me/mcp`.
+3. Connect. Gemini opens memory's sign-in in the browser. Click the link in your email.
+4. Ask Gemini to recall "memory's domain". The answer names heyclyde.me.
+
+Google doesn't document the app's OAuth callback, so memory approves https callbacks on gemini.google.com only. If the window says memory refused it, the refused callback is in `admin_audit`, found with the query under Grok below. Add that host to `CLIENT_HOSTS` and deploy.
+
+### Grok
+
+1. Open [grok.com/connectors](https://grok.com/connectors), choose **Custom**, and give it the URL `https://memory.heyclyde.me/mcp`.
+2. Connect. Grok opens memory's sign-in. Click the link in your email.
+3. Ask Grok to recall "memory's domain". The answer names heyclyde.me.
+
+Grok doesn't document its OAuth callback, so memory approves https callbacks on grok.com and x.ai. If the window says memory refused Grok, the refused callback is in `admin_audit`:
+
+```sql
+select created_at, after->>'name' as client, after->>'redirect_uri' as redirect_uri
+from memory.admin_audit where action = 'oauth_deny' order by created_at desc limit 5;
+```
+
+Add that host to `CLIENT_HOSTS` in [oauth.ts](supabase/functions/memory/oauth.ts) and deploy.
 
 ## The tokens
 
@@ -145,7 +220,7 @@ The server holds the researcher to its limits whatever the skill says. It makes 
 
 Two versions, each a date and a serial like `20261102.1`, both in [version.ts](supabase/functions/memory/version.ts):
 
-- **`CLIENT_VERSION`** covers the client files computers update themselves from: `client/memory-hook`, `install.sh`, both hook configs and `signing-pub.pem`. It drives self-update. Every response carries it as `x-memory-client-latest`, and `/healthz` reports it as `client_version`.
+- **`CLIENT_VERSION`** covers the client files computers update themselves from: `client/memory-hook`, `install.sh`, both hook configs, `signing-pub.pem`, and the Gemini CLI and Antigravity files (`gemini-hook`, `gemini-hooks.json`, `gemini-extension.json`, `antigravity-mcp.json`). It drives self-update. Every response carries it as `x-memory-client-latest`, and `/healthz` reports it as `client_version`.
 - **`SERVER_VERSION`** covers the MCP tools and the server instructions. `/healthz` and the MCP `initialize` report it, and every response carries it as `x-memory-version`. Editing a tool description bumps only this one, and no computer updates itself for it: MCP clients read tools and instructions fresh at each `initialize`.
 
 **Every change to a surface bumps its version.** Each version is pinned to the hash of its surface: `CLIENT_SURFACE_HASHES` and `SERVER_SURFACE_HASHES` are maps of `{ version: hash }`. After a change, bump the version (a new serial the same day, a new date otherwise), add the new entry with the hash `harness/test/memory/version.test.ts` prints, and for a client change add the release to `CLIENT_RELEASES` with today's date. The test fails unless the surface on disk hashes to the entry for the current version, fails if two versions share a hash, and fails if an entry that `origin/main` already has changed or went missing. `deploy.sh` runs it before it deploys, with deno required.
@@ -165,8 +240,8 @@ A computer installs only files of a release signed by an offline key. When `depl
 - **Hooks.** Every hook call sends `x-memory-client-version`. When the answer's `x-memory-client-latest` is newer, an installed hook runs `memory-hook --update` detached, which costs the hook a few milliseconds. The update:
   - starts only when the server that answered is the one in `~/.config/memory/url` (a `MEMORY_URL` in the environment, which a project's settings could set, doesn't count), reads only that server, and refuses any URL that isn't `https` and any redirect to one that isn't;
   - fetches the manifest and `manifest.sig` and verifies the signature against `~/.config/memory/signing-pub.pem`. A missing or bad signature aborts the update and writes `update-failed`. A manifest whose version isn't newer than the running hook's is a no-op (nothing installed, no failure noted), which also stops a replayed old release;
-  - fetches memory-hook, install.sh, both hook configs and the public key into a temp dir and checks each one's sha256 against its own name's line in the manifest. Because the key is one of those files, a rollback to an older key fails with the manifest. It also requires the manifest's version to equal the fetched memory-hook's `VERSION`;
-  - refuses anything empty, unparseable or without a shebang, then runs `install.sh --update` from that verified directory (it never fetches anything itself). That merges each hook config on its own (one that won't parse stops only that client, and its file stays as it was), then moves memory-hook into place atomically and, only if that worked, the new key. It asks nothing and keeps `~/.config/memory/token` and `url`.
+  - fetches every client file (memory-hook, install.sh, the hook configs, the Gemini and Antigravity files and the public key) into a temp dir and checks each one's sha256 against its own name's line in the manifest. Because the key is one of those files, a rollback to an older key fails with the manifest. It also requires the manifest's version to equal the fetched memory-hook's `VERSION`;
+  - refuses anything empty, unparseable or without a shebang, then runs `install.sh --update` from that verified directory (it never fetches anything itself). That merges each hook config on its own (one that won't parse stops only that client, and its file stays as it was), refreshes `gemini-hook` and the Gemini extension's files on a computer that has the extension, then moves memory-hook into place atomically and, only if that worked, the new key. It asks nothing and keeps `~/.config/memory/token` and `url`.
 
   The update counts as done when the installed memory-hook carries the manifest's `VERSION`, whatever one client's config did on the way. `update-failed` is cleared when that is so, and also whenever the hook is at or past the version the pinned server announces.
 

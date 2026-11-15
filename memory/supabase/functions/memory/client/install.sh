@@ -1,11 +1,16 @@
 #!/bin/sh
-# Connect this computer's Claude Code and Codex to Wen's memory server. No checkout needed:
+# Connect this computer's Claude Code, Codex, Gemini CLI and Antigravity to Wen's memory server. No checkout needed:
 #   curl -fsSL https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory/install | sh
 # memory is allowlist only. A computer with no token signs in with a link to an allowlisted email, clicked from any
-# device, and gets a token of its own named after this computer (or MEMORY_DEVICE). On a work computer, set
-# MEMORY_HOOKS=metadata so memory keeps no prompts or tool output from its hooks. Rerun it any time: it replaces only
-# its own entries, the old kb ones too.
-# The token lands in ~/.config/memory/token, ~/.claude.json and ~/.codex/config.toml, all readable by you only.
+# device, and gets a token of its own named after this computer (or MEMORY_DEVICE). MEMORY_EMAIL names the email, so the
+# installer asks nothing, which is how the Claude Code plugin's /memory:connect runs it with no terminal. On a work
+# computer, set MEMORY_HOOKS=metadata so memory keeps no prompts or tool output from its hooks. Rerun it any time: it
+# replaces only its own entries, the old kb ones too.
+# The token lands in ~/.config/memory/token, ~/.claude.json and ~/.codex/config.toml, all readable by you only. Gemini CLI
+# (an extension in ~/.gemini/extensions/memory) and Antigravity (an entry in ~/.gemini/config/mcp_config.json) sign in to
+# memory's MCP server through OAuth, so neither gets the token; Gemini CLI's hooks reach memory through gemini-hook, which
+# forwards through memory-hook. MEMORY_CLAUDE=plugin leaves Claude Code to the memory plugin, which brings the MCP server
+# and the hooks itself, and takes out the installer's own Claude Code entries so nothing is there twice.
 # It also saves memory's public signing key to ~/.config/memory/signing-pub.pem. memory-hook installs an update only if
 # every file in it is signed by that key, so the key a computer has is the one it trusts until a file signed by it brings
 # a new one. Rerunning this installer is how a computer that lost its key, or never had one, gets it again.
@@ -36,10 +41,13 @@ if [ ! -f "$HERE/memory-hook" ]; then
   [ -z "$UPDATE" ] || { echo "install.sh --update: no memory-hook beside it to install." >&2; exit 1; }
   HERE=$(mktemp -d)
   trap 'rm -rf "$HERE"' EXIT
-  for f in memory-hook claude-settings.json codex-hooks.json signing-pub.pem; do
+  for f in memory-hook claude-settings.json codex-hooks.json signing-pub.pem gemini-hook gemini-hooks.json gemini-extension.json antigravity-mcp.json; do
     curl -fsS -m 15 "$URL/install/files/$f" -o "$HERE/$f"
   done
 fi
+
+# A line for the person running this: on the terminal, or on stderr when there is none (the plugin's /memory:connect).
+say() { { printf '%s\n' "$*" >/dev/tty; } 2>/dev/null || printf '%s\n' "$*" >&2; }
 
 field() { python3 -c 'import json, sys; print(json.load(sys.stdin).get(sys.argv[1]) or "")' "$1"; }
 
@@ -56,7 +64,11 @@ probe() {
 sign_in() {
   conf=$(curl -fsS -m 15 "$URL/install/config")
   auth=$(printf '%s' "$conf" | field auth); key=$(printf '%s' "$conf" | field key)
-  printf 'Your email: ' >/dev/tty; read -r email </dev/tty
+  if [ -n "${MEMORY_EMAIL:-}" ]; then
+    email=$MEMORY_EMAIL
+  else
+    printf 'Your email: ' >/dev/tty; read -r email </dev/tty
+  fi
   # memory is allowlist only. Anyone else stops here, before any email is sent.
   python3 -c 'import json, sys; print(json.dumps({"email": sys.argv[1]}))' "$email" |
     curl -sS -m 15 -X POST "$URL/install/check" -H "Content-Type: application/json" --data-binary @- |
@@ -69,7 +81,7 @@ print(v, base64.urlsafe_b64encode(hashlib.sha256(v.encode()).digest()).rstrip(b"
   python3 -c 'import json, sys; print(json.dumps({"email": sys.argv[1], "create_user": False, "code_challenge": sys.argv[2], "code_challenge_method": "s256"}))' \
     "$email" "$challenge" | curl -fsS -m 15 -o /dev/null -X POST "$auth/otp?redirect_to=$redirect" \
     -H "apikey: $key" -H "Content-Type: application/json" --data-binary @-
-  echo "Check $email and click the sign-in link, from any device. Waiting..." >/dev/tty
+  say "Check $email and click the sign-in link, from any device. Waiting..."
   code=
   for _ in $(seq 1 300); do
     got=$(curl -sS -m 10 "$URL/install/claim/$claim" || true)
@@ -105,10 +117,56 @@ put_pub() {
   cp "$HERE/signing-pub.pem" "$new" && chmod 600 "$new" && mv -f "$new" "$DIR/signing-pub.pem"
 }
 
+# put <source> <target> <mode>: the target becomes the source's bytes, moved into place in one step, and is not touched
+# when it already has them.
+put() {
+  cmp -s "$1" "$2" 2>/dev/null && return 0
+  mkdir -p "$(dirname "$2")" && cp "$1" "$2.new.$$" && chmod "$3" "$2.new.$$" && mv -f "$2.new.$$" "$2"
+}
+
+# Gemini CLI: gemini-hook beside memory-hook, and the memory extension, which is all ours: its manifest, with the MCP
+# server Gemini CLI signs in to through OAuth, and its hooks.
+GEMINI_EXT=$HOME/.gemini/extensions/memory
+put_gemini() {
+  put "$HERE/gemini-hook" "$DIR/gemini-hook" 700 &&
+    put "$HERE/gemini-extension.json" "$GEMINI_EXT/gemini-extension.json" 644 &&
+    put "$HERE/gemini-hooks.json" "$GEMINI_EXT/hooks/hooks.json" 644
+}
+
+# Antigravity: memory's entry merged into ~/.gemini/config/mcp_config.json beside the other servers, which stay as they
+# are. A file that already has exactly this entry is not written, and one that won't parse is left alone.
+put_antigravity() {
+  python3 - "$HOME/.gemini/config/mcp_config.json" "$HERE/antigravity-mcp.json" <<'PY'
+import json, os, stat, sys, tempfile
+from pathlib import Path
+path, entry = Path(sys.argv[1]), json.loads(Path(sys.argv[2]).read_text())["mcpServers"]["memory"]
+text = path.read_text() if path.exists() else ""
+doc = json.loads(text) if text.strip() else {}
+servers = doc.setdefault("mcpServers", {}) if isinstance(doc, dict) else None
+if not isinstance(servers, dict):
+    sys.exit(f"{path} has no mcpServers object")
+if text.strip() and servers.get("memory") == entry:
+    sys.exit(0)
+servers["memory"] = entry
+path.parent.mkdir(parents=True, exist_ok=True)
+fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+try:
+    with os.fdopen(fd, "w") as out:
+        out.write(json.dumps(doc, indent=2) + "\n")
+    if path.exists():
+        os.chmod(tmp, stat.S_IMODE(path.stat().st_mode))
+    os.replace(tmp, path)
+except BaseException:
+    if os.path.exists(tmp):
+        os.unlink(tmp)
+    raise
+PY
+}
+
 if [ -z "$UPDATE" ]; then
   TOKEN=${MEMORY_TOKEN:-$(cat "$DIR/token" 2>/dev/null || true)}
   if [ -n "$TOKEN" ] && [ "$(probe "$TOKEN")" = 200 ]; then
-    echo "This computer is already connected as $DEVICE, so no sign-in. Refreshing its Claude Code and Codex setup."
+    echo "This computer is already connected as $DEVICE, so no sign-in. Refreshing its apps' setup."
   else
     TOKEN=$(sign_in)
   fi
@@ -224,6 +282,11 @@ if [ -n "$UPDATE" ]; then
       failed=1
     fi
   fi
+  # Gemini CLI, only where its extension is, and only from a release that has the files: a memory-hook from before R45
+  # fetches only the five files it knows, and this runs beside those.
+  if [ -d "$GEMINI_EXT" ] && [ -f "$HERE/gemini-hook" ]; then
+    put_gemini || failed=1
+  fi
   newpub=$DIR/.signing-pub.$$
   cp "$HERE/signing-pub.pem" "$newpub" && chmod 600 "$newpub" || failed=1
   # The key moves in only after memory-hook did, so a key never arrives without the client that came with it.
@@ -248,7 +311,24 @@ claude_cli() {
   return 1
 }
 
-if CLAUDE=$(claude_cli); then
+# Which apps are here, decided before anything below writes to ~/.gemini.
+GEMINI= ANTIGRAVITY=
+if command -v gemini >/dev/null 2>&1 || [ -d "$HOME/.gemini" ]; then GEMINI=1; fi
+if [ -d "$HOME/.gemini/config" ] || command -v antigravity >/dev/null 2>&1 || command -v agy >/dev/null 2>&1; then ANTIGRAVITY=1; fi
+
+if [ "${MEMORY_CLAUDE:-}" = plugin ]; then
+  # The plugin brings the MCP server and the hooks, so the installer's own come out: no second server, no event twice.
+  if CLAUDE=$(claude_cli); then
+    for old in kb memory; do "$CLAUDE" mcp remove "$old" --scope user >/dev/null 2>&1 || true; done
+  fi
+  if grep -qs memory-hook "$HOME/.claude/settings.json"; then
+    none=$(mktemp)
+    echo '{"hooks": {}}' > "$none"
+    merge ~/.claude/settings.json "$none" >/dev/null
+    rm -f "$none"
+  fi
+  echo "Claude Code: the memory plugin brings the MCP server and the hooks, which forward through memory-hook as $DEVICE."
+elif CLAUDE=$(claude_cli); then
   for old in kb memory; do "$CLAUDE" mcp remove "$old" --scope user >/dev/null 2>&1 || true; done
   "$CLAUDE" mcp add --transport http --scope user memory "$URL/mcp" --header "Authorization: Bearer $TOKEN"
   merge ~/.claude/settings.json "$HERE/claude-settings.json" >/dev/null
@@ -278,3 +358,19 @@ path.write_text(text)
 path.chmod(0o600)
 PY
 echo "Codex: connected as $DEVICE. Run /hooks in the Codex CLI once to trust the two memory-hook entries."
+
+if [ -n "$GEMINI" ]; then
+  put_gemini
+  echo "Gemini CLI: the memory extension is in ~/.gemini/extensions/memory. Sign in when Gemini CLI asks, or run /mcp auth memory in it."
+else
+  echo "Gemini CLI: not found, skipped."
+fi
+if [ -n "$ANTIGRAVITY" ]; then
+  if put_antigravity; then
+    echo "Antigravity: memory is in ~/.gemini/config/mcp_config.json. Sign in when Antigravity asks."
+  else
+    echo "Antigravity: couldn't read ~/.gemini/config/mcp_config.json, so it was left as it was." >&2
+  fi
+else
+  echo "Antigravity: not found, skipped."
+fi

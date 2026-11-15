@@ -41,7 +41,7 @@ test('every list of client files names the Gemini and Antigravity files, and the
   const deploy = /^FILES = \[(.*)\]$/m.exec(readText(join(repoRoot(), 'memory', 'deploy.sh')))
   assert.ok(deploy, 'deploy.sh has a FILES list')
   assert.deepEqual(words(deploy[1]), surface, 'deploy.sh signs every client file')
-  const served = /^const CLIENT_FILES = \[(.*)\];$/m.exec(readText(join(FUNCTION, 'index.ts')))
+  const served = /^const CLIENT_FILES = \[([^\]]*)\];$/m.exec(readText(join(FUNCTION, 'index.ts')))
   assert.ok(served, 'index.ts has a CLIENT_FILES list')
   assert.deepEqual(words(served[1]), surface, 'the function serves every client file')
   const update = /^  for f in (.*); do$/m.exec(readText(join(FUNCTION, 'client', 'memory-hook')))
@@ -141,7 +141,8 @@ test('a client is expired only when it is behind a version released more than th
     { version: '20261110.1', released: '2026-11-10' },
   ]
   const now = new Date(Date.UTC(2026, 10, 20))
-  const status = (v: string | null | undefined, cutoff = 30) => clientStatus(v, cutoff, now, releases)
+  // Against this list's own newest release, whatever CLIENT_VERSION is now.
+  const status = (v: string | null | undefined, cutoff = 30) => clientStatus(v, cutoff, now, releases, releases.at(-1)!.version)
   assert.equal(status('20261110.1'), 'current')
   assert.equal(status('29991231.1'), 'current', 'newer than the latest counts as current')
   assert.equal(status('dev'), 'current')
@@ -167,8 +168,10 @@ test('the real release list marks today\'s client current and an older one behin
   const released = new Date(`${CLIENT_RELEASES.at(-1)!.released}T00:00:00Z`)
   const inside = new Date(released.getTime() + 29 * 86_400_000)
   const outside = new Date(released.getTime() + 31 * 86_400_000)
-  assert.equal(clientStatus('20200101.1', 30, inside), 'behind')
-  assert.equal(clientStatus('20200101.1', 30, outside), 'expired')
+  // The release before the newest is behind only the newest, so it has until the cutoff from the newest's day.
+  const previous = CLIENT_RELEASES.at(-2)?.version ?? '20200101.1'
+  assert.equal(clientStatus(previous, 30, inside), 'behind')
+  assert.equal(clientStatus(previous, 30, outside), 'expired')
 })
 
 test('the installer note goes only to a client with no version, or one that is expired and reports a failed update', () => {
