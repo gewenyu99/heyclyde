@@ -46,6 +46,10 @@ export type SurfaceCheck = {
  * first deploy, so the clients running 20261102.1 have only ever had 70276…. Add nothing here for a version that shipped. */
 export const NEVER_SHIPPED: Record<string, string[]> = {
   '20261102.1': ['c5c9c8f997093c90726d3a43d9c13283279e6baaeb7bdc0c215c9c4d7f7c08bf'],
+  // R67's branch pinned 20261115.2 three times while the design system's CSS moved under the cards (558f… with R46's
+  // placeholder tokens, 8a85… with the first components.css). The branch reached main before any deploy, which shipped
+  // ed27… first.
+  '20261115.2': ['558ff788dd3c921c129b59dc9e6b5ca8cda51738a5fd01c26bf4e4257b96e6bf', '8a8599305cbb8fd36244b9b6237ce6b29eb054846f6bab79b028ed97be4a7d45'],
 }
 
 /** What is wrong with the pin, as sentences. Empty when the surface, its version and the history agree. */
