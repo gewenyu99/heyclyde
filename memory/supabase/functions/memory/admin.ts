@@ -865,8 +865,8 @@ async function putSecret(name: string, data: Row) {
 // Tables /import fills, the same set /export writes, and the serial columns whose sequences follow the rows in.
 const IMPORTABLE = new Set(["source", "entry", "link", "co_use", "question", "qrel", "blob", "entry_blob", "entry_provenance", "agent", "agent_binding", "mcp_session", "mcp_client",
   "retrieval", "event", "feedback", "message", "message_delivery", "admin_audit", "link_type_weight", "device", "embed_usage", "param_set",
-  "allocation", "openai_usage"]);
-const SERIAL = ["event", "feedback", "message", "message_delivery", "admin_audit", "device"];
+  "allocation", "openai_usage", "quest", "quest_note", "quest_blob"]);
+const SERIAL = ["event", "feedback", "message", "message_delivery", "admin_audit", "device", "quest", "quest_note"];
 // jsonb columns go in through sql.json, or a list of strings would be sent as text[].
 const JSONB = new Set(["payload", "candidates", "delivered", "rejected", "on_trial", "context", "before", "after", "params"]);
 const MAX_IMPORT = 8 * 1024 * 1024;
@@ -1205,7 +1205,11 @@ async function groomSessions() {
     sessions.get(key)!.prompts.push({ event_id: r.id, at: r.received_at, text: r.prompt });
   }
   const [{ last }] = await sql`select coalesce(max(id), 0) as last from memory.event`;
-  return { after, through: rows.length ? rows.at(-1)!.id : last, more: rows.length === 300, sessions: [...sessions.values()] };
+  // R47: quests open or claimed for over 30 days, for the groom to flag: chase the poster, or abandon what nobody will do.
+  const stale = await sql`select id, title, state, posted_by, claimed_by, created_at,
+      floor(extract(epoch from now() - created_at) / 86400)::int as age_days
+    from memory.quest where state in ('open', 'claimed') and created_at < now() - interval '30 days' order by id limit 100`;
+  return { after, through: rows.length ? rows.at(-1)!.id : last, more: rows.length === 300, sessions: [...sessions.values()], stale_quests: stale };
 }
 
 async function setting_(name: string) {

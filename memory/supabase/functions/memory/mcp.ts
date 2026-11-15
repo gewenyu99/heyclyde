@@ -4,6 +4,7 @@
 import type { Principal } from "./auth.ts";
 import { config } from "./config.ts";
 import { sql } from "./db.ts";
+import * as quests from "./quests.ts";
 import * as service from "./service.ts";
 import { clientStatus, installerNote, SERVER_VERSION } from "./version.ts";
 import { Refused, remember } from "./write.ts";
@@ -23,7 +24,12 @@ export const INSTRUCTIONS = "Wen's memory. Register once with register_agent (na
   "some results under On trial, new notes still earning their place, so judge those too. Keep each memory under 500 " +
   "characters and put the details in artifacts: remember takes artifacts: [{name, kind, text or base64 or sha256}], and " +
   "recall lists a memory's artifacts by name and kind. Open one with get_blob. A file too big to send inline goes " +
-  "through upload_blob.";
+  "through upload_blob. memory also keeps a quest board, where agents hand each other work. post_quest puts a task up: a " +
+  "title, a short brief, done_when (how anyone can tell it's finished), and the details in artifacts. list_quests shows the " +
+  "open quests for your context. claim_quest takes one under a 2-hour lease, so no other agent works on it. update_quest " +
+  "reports progress and renews the lease, and a lease that runs out puts the quest back on the board. When done_when holds, " +
+  "remember what the work produced, then call complete_quest with the evidence and that entry's id. abandon_quest gives a " +
+  "claimed quest back, or withdraws one you posted. Done quests stay in memory as history that recall finds.";
 
 const str = (description: string) => ({ type: "string", description });
 const int = (description: string) => ({ type: "integer", description });
@@ -167,7 +173,8 @@ export const TOOLS = [
   {
     name: "post_message",
     description: "Leave a message for Wen's other agents. to: claude, codex, all, or another agent memory has seen in the last " +
-      "30 days. They see it at their next check or prompt. A message to all that no other agent could receive isn't posted.",
+      "30 days. all reaches the registered agents and claude and codex. They see it at their next check or prompt. A message " +
+      "to all that no other agent could receive isn't posted. For work another agent should pick up, post_quest instead.",
     inputSchema: { type: "object", required: ["to", "body"], properties: { to: str("claude, codex, all or another agent's name"), body: str("The message") } },
   },
   {
@@ -183,6 +190,89 @@ export const TOOLS = [
     inputSchema: {
       type: "object", required: ["ids"],
       properties: { ids: { type: "array", items: { type: "integer" }, description: "Message ids from check_messages" } },
+    },
+  },
+  {
+    name: "post_quest",
+    description: "Put a task on memory's quest board for Wen's other agents to claim, like a mission board. Use it for work " +
+      "another agent should pick up, not to tell one agent something (that's post_message).\n\n" +
+      "title: up to 120 characters.\n" +
+      "brief: what to do and why, up to 500 characters. Put the details in artifacts.\n" +
+      "done_when: one line any agent can check to tell the quest is finished, up to 300 characters.\n" +
+      "tags: up to 8 lowercase words.\n" +
+      "priority: high, normal (default) or low.\n" +
+      "context: work, personal or both. Default: your registered context.\n" +
+      "for: who may claim it: any (default), claude, codex, or one agent's name.\n" +
+      "artifacts: [{name, sha256}] of files memory already holds, like a plan you saved with remember. get_entry lists them.\n" +
+      "Returns the quest's id. Every agent sees it at session start and in list_quests.",
+    inputSchema: {
+      type: "object", required: ["title", "brief", "done_when"],
+      properties: {
+        title: str("Up to 120 characters"), brief: str("What to do and why, up to 500 characters"),
+        done_when: str("How anyone can tell it's finished, up to 300 characters"),
+        tags: { type: "array", items: { type: "string" }, description: "Up to 8 lowercase words" },
+        priority: str("high, normal (default) or low"), context: str("work, personal or both. Default: yours"),
+        for: str("any (default), claude, codex, or an agent's name"),
+        artifacts: { type: "array", items: { type: "object" }, description: "[{name, sha256}] of files memory holds" },
+      },
+    },
+  },
+  {
+    name: "list_quests",
+    description: "Read memory's quest board. By default, the open quests you may claim in your context, high priority first.\n\n" +
+      "show: open (default), mine (quests you posted or claimed), done (finished, with their evidence and entries) or all.\n" +
+      "tag: only quests with this tag.\n" +
+      "context: work, personal, both or all. Default: your registered context, else all.\n" +
+      "limit: how many, 1 to 50, default 20.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        show: str("open (default), mine, done or all"), tag: str("One tag"), context: str("work, personal, both or all"),
+        limit: int("1 to 50, default 20"),
+      },
+    },
+  },
+  {
+    name: "claim_quest",
+    description: "Take a quest from the board, so no other agent works on it. The claim is a lease, 2 hours unless you say " +
+      "otherwise: update_quest renews it, and if it runs out the quest goes back on the board. The reply has the brief, " +
+      "done_when, the artifacts and the latest notes. Only one agent can hold a quest.",
+    inputSchema: {
+      type: "object", required: ["id"],
+      properties: { id: int("The quest's id from list_quests"), lease_minutes: int("15 to 480, default 120") },
+    },
+  },
+  {
+    name: "update_quest",
+    description: "Report progress on a quest you claimed. The note goes on the quest for every agent to read, and your lease " +
+      "starts over.",
+    inputSchema: {
+      type: "object", required: ["id", "note"],
+      properties: { id: int("The quest's id"), note: str("What you did and what's left, up to 1000 characters") },
+    },
+  },
+  {
+    name: "complete_quest",
+    description: "Finish a quest you claimed, once its done_when holds. First remember what the work produced, then pass that " +
+      "entry's id. memory writes a history note linked to it, so recall can say what agents did.\n\n" +
+      "evidence: how you know done_when holds, up to 2000 characters.\n" +
+      "entry_id: the memory entry the work produced.\n" +
+      "artifacts: optional [{name, sha256}] of files memory holds that back the evidence.",
+    inputSchema: {
+      type: "object", required: ["id", "evidence", "entry_id"],
+      properties: {
+        id: int("The quest's id"), evidence: str("How you know done_when holds"), entry_id: str("The entry the work produced"),
+        artifacts: { type: "array", items: { type: "object" }, description: "[{name, sha256}] of files memory holds" },
+      },
+    },
+  },
+  {
+    name: "abandon_quest",
+    description: "Let go of a quest. If you claimed it, it goes back on the board for another agent, with your reason in its " +
+      "notes. If you posted it, it's withdrawn for good.",
+    inputSchema: {
+      type: "object", required: ["id", "reason"],
+      properties: { id: int("The quest's id"), reason: str("Why, up to 500 characters") },
     },
   },
   {
@@ -265,6 +355,12 @@ function mailboxes(c: Pick<Call, "agent" | "client">): string[] {
   return c.agent ? [c.agent.name, ...(own === "claude" || own === "codex" ? [own] : [])] : [own];
 }
 
+/** The agent a quest tool acts as (R47). */
+const questor = (c: Call): quests.Who => ({
+  name: nameOf(c), family: service.agentName(c.client), principal: c.principal, session: c.session,
+  context: c.agent?.context ?? null, profile: c.agent ? `${c.agent.name}, a ${c.agent.context} agent on ${c.agent.surface}` : null,
+});
+
 const RUN: Record<string, (c: Call) => Promise<string>> = {
   register_agent: register,
   recall: (c) => service.recall(c.session, s(c.args.query), s(c.args.task), c.client, s(c.args.scope) || null, c.principal, nameOf(c),
@@ -298,6 +394,12 @@ const RUN: Record<string, (c: Call) => Promise<string>> = {
   check_messages: async (c) => ((await service.checkMessages(mailboxes(c))) || "No new messages.") + (c.note ? `\n${c.note}` : ""),
   ack_messages: (c) => service.ackMessages(mailboxes(c), c.args.ids),
   dismiss_messages: (c) => service.dismissMessages(mailboxes(c), c.args.ids),
+  post_quest: (c) => quests.postQuest(questor(c), c.args),
+  list_quests: (c) => quests.listQuests(questor(c), c.args),
+  claim_quest: (c) => quests.claimQuest(questor(c), c.args),
+  update_quest: (c) => quests.updateQuest(questor(c), c.args),
+  complete_quest: (c) => quests.completeQuest(questor(c), c.args),
+  abandon_quest: (c) => quests.abandonQuest(questor(c), c.args),
 };
 
 type RpcMessage = { jsonrpc?: string; id?: string | number | null; method?: string; params?: any };

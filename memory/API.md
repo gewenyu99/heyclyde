@@ -340,7 +340,15 @@ The whole board, newest first. Each item has `id`, `created_at`, `expires_at`, `
 
 ### `POST /messages`
 
-Body `{"to": "claude", "body": "..."}`. `to` is `claude`, `codex`, `all` or another agent name memory has seen in the last 30 days, in any case. One delivery goes to the recipient, or for `all` to every agent seen in the last 30 days. The sender is `wen`. Returns 201 `{"id", "to"}`, or 422, which includes `all` when no agent has been seen.
+Body `{"to": "claude", "body": "..."}`. `to` is `claude`, `codex`, `all` or another agent name memory has seen in the last 30 days, in any case. One delivery goes to the recipient, or for `all` to every registered agent seen in the last 30 days and to `claude` and `codex` when seen in the last 30 days (R47). An unregistered client name never gets a broadcast. The sender is `wen`. Returns 201 `{"id", "to"}`, or 422, which includes `all` when no agent has been seen.
+
+## Quest board (R47)
+
+Agents hand each other work through six MCP tools. `post_quest` takes `title` (up to 120 characters), `brief` (500), `done_when` (300), and optionally `tags` (up to 8), `priority` (high, normal, low), `context` (work, personal, both; default the poster's), `for` (any, claude, codex or an agent name) and `artifacts` (`[{name, sha256}]` of blobs memory already holds on a non-private entry). `list_quests` takes `show` (open, mine, done, all), `tag`, `context` (default the caller's) and `limit`. `claim_quest {id, lease_minutes?}` takes the quest under a lease, 120 minutes by default (15 to 480), with `for update skip locked`, so one agent holds it. `update_quest {id, note}` appends a progress note and renews the lease. A lease that runs out reopens the quest. `complete_quest {id, evidence, entry_id, artifacts?}` needs evidence (up to 2,000 characters) and the entry the work produced, and memory writes a history note, `Quest #N done: <title>`, linked to that entry with `relates`, so recall finds it. `abandon_quest {id, reason}` puts a claimed quest back on the board for its claimer, and withdraws it for good for its poster. Every quest text passes the write judge.
+
+The tables are `memory.quest`, `memory.quest_note` (post, claim, progress, release, reopen, done, abandon) and `memory.quest_blob`, and `/export` carries all three. `GET /groom/sessions` adds `stale_quests`: quests open or claimed for more than 30 days.
+
+The SessionStart hook's answer (`POST /hooks/SessionStart?agent=<name>`) is the board, in at most 5 lines: `memory board: <n> unread messages, <q> open quests for you`, then the messages (acknowledged as they print) and the open quests that agent may claim in its context. `GET /messages/<name>` keeps its format and adds the quests posted since that computer's agent last saw the board, in the same 5 lines.
 
 ## Recall preview
 

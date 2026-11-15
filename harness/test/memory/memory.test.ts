@@ -755,6 +755,10 @@ test('queue: fan-out and purge', { skip: SKIP }, async () => {
   sql(`delete from memory.event where agent is not null`)
   sql(`insert into memory.event (event, payload, agent) values ('SessionStart', '{}', 'gemini'), ('SessionStart', '{}', 'opencode')`)
   sql(`insert into memory.event (event, payload, agent, received_at) values ('SessionStart', '{}', 'oldbot', now() - interval '40 days')`)
+  // R47 (#52): all reaches registered agents and the claude and codex families, so gemini and opencode register.
+  sql(`insert into memory.agent (name, context, surface, description, registered_by) values
+    ('gemini', 'work', 'gemini-cli', 'Tier 3.', 'clyde-test'), ('opencode', 'work', 'opencode', 'Tier 3.', 'clyde-test')
+    on conflict (name) do update set last_seen = now()`)
   const claude = await mcpSession(memory.token, 'claude-code')
   const readers: Record<string, Awaited<ReturnType<typeof mcpSession>>> = {}
   for (const [name, client] of [['codex', 'codex-cli'], ['gemini', 'gemini'], ['opencode', 'opencode']]) {
@@ -900,7 +904,8 @@ test('queue: the tool surface only grows, and the console API, export and import
     JSON.parse((await call('POST', '/mcp', { ...bearer(memory.token), 'mcp-session-id': session }, { jsonrpc: '2.0', id, method, params })).text).result
   const tools: Record<string, any> = Object.fromEntries((await rpc(2, 'tools/list')).tools.map((t: any) => [t.name, t]))
   assert.deepEqual(Object.keys(tools).sort(),
-    ['ack_messages', 'check_messages', 'dismiss_messages', 'feedback', 'get_blob', 'get_entry', 'post_message', 'recall', 'recall_more', 'register_agent', 'remember', 'upload_blob'])
+    ['abandon_quest', 'ack_messages', 'check_messages', 'claim_quest', 'complete_quest', 'dismiss_messages', 'feedback', 'get_blob', 'get_entry',
+      'list_quests', 'post_message', 'post_quest', 'recall', 'recall_more', 'register_agent', 'remember', 'update_quest', 'upload_blob'])
   assert.deepEqual(tools.post_message.inputSchema.required, ['to', 'body'])
   assert.deepEqual(tools.recall.inputSchema.required, ['query'])
   assert.deepEqual(tools.check_messages.inputSchema.required ?? [], [])
@@ -990,8 +995,8 @@ test('queue: the purge keeps an unexpired message that has no delivery yet', { s
 })
 
 // R39 (#43): an agent's name is derived the same way in the function and in sql. A client name with spaces or dots
-// becomes a hyphenated name that 'all' reaches and post_message accepts.
-test('queue: a client named with spaces or dots gets broadcasts and direct messages', { skip: SKIP }, async () => {
+// becomes a hyphenated name that post_message accepts. R47 (#52): 'all' reaches codex, but no unregistered client name.
+test('queue: a client named with spaces or dots gets direct messages, and only codex of them gets broadcasts', { skip: SKIP }, async () => {
   const names: [string, string][] = [['Visual Studio Code', 'visual-studio-code'], ['chatgpt.com', 'chatgpt-com'],
     ['Cursor 1.2', 'cursor-1-2'], ['claude-code', 'claude'], ['codex-cli', 'codex'], ['x'.repeat(60), 'x'.repeat(40)]]
   const sessions: Record<string, Awaited<ReturnType<typeof mcpSession>>> = {}
@@ -1008,8 +1013,9 @@ test('queue: a client named with spaces or dots gets broadcasts and direct messa
   const said = await sessions['claude-code']('post_message', { to: 'all', body })
   const id = Number((/^Posted message (\d+) to all\.$/.exec(said) ?? assert.fail(said))[1])
   const got = sql(`select recipient from memory.message_delivery where message_id = ${id}`).map((r) => r.recipient)
-  for (const [, name] of names.filter(([, n]) => n !== 'claude')) assert.ok(got.includes(name), `${name} gets the broadcast: ${got}`)
-  assert.ok(messageIds(await sessions['Visual Studio Code']('check_messages', {})).includes(id))
+  assert.ok(got.includes('codex'), `codex gets the broadcast: ${got}`)
+  for (const [, name] of names.filter(([, n]) => n !== 'claude' && n !== 'codex')) assert.ok(!got.includes(name), `${name} is not registered: ${got}`)
+  assert.ok(!messageIds(await sessions['Visual Studio Code']('check_messages', {})).includes(id))
   assert.match(await sessions['claude-code']('post_message', { to: 'visual-studio-code', body: `Direct ${randomUUID()}.` }),
     /^Posted message \d+ to visual-studio-code\.$/)
 })
@@ -1019,6 +1025,7 @@ test('queue: a message to all that reaches no one is refused, not posted', { ski
   sql(`delete from memory.message`)
   sql(`delete from memory.mcp_client`)
   sql(`delete from memory.event where agent is not null`)
+  sql(`update memory.agent set last_seen = now() - interval '40 days'`)
   const lonely = await mcpSession(memory.token, 'queue15-lonely')
   const body = `Is anyone there ${randomUUID()}?`
   assert.match(await lonely('post_message', { to: 'all', body }), /^No other agent has been seen in the last 30 days, so nobody got it\.$/)

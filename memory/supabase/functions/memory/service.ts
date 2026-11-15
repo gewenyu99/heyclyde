@@ -448,10 +448,11 @@ export async function postMessage(db: Sql, sender: string, to: string, body: str
     }
     if (why) return `Not posted: ${why}`;
   }
-  // One statement, so a message never exists without its deliveries. All fans out to every agent name seen lately but
-  // the sender's own, and when that's no one, nothing is posted.
+  // One statement, so a message never exists without its deliveries. All fans out to registered agents and the claude and
+  // codex families seen lately (R47), never an unregistered client name, and never the sender. When that's no one, nothing
+  // is posted.
   const [row] = await db`with r as (
-      select a as name from memory.agent_names() a where ${to}::text = 'all' and a <> ${sender}::text
+      select a as name from memory.board_agents() a where ${to}::text = 'all' and a <> ${sender}::text
       union select ${to}::text where ${to}::text <> 'all'),
     m as (insert into memory.message (sender, recipient, body)
       select ${sender}::text, ${to}::text, ${body}::text where exists (select 1 from r) returning id),
@@ -467,7 +468,7 @@ const count = (k: number, one: string) => `${k} ${one}${k === 1 ? "" : "s"}`;
 /** Up to 20 of my waiting deliveries, oldest first, claimed in one statement: each is hidden for 30 minutes and counted
  * as delivered, and with `ack` it's acknowledged on the spot. skip locked keeps two readers at once from claiming the
  * same one. A delivery already out three times without an ack is dropped here first, with a note to its sender. */
-async function claimMessages(mine: string | string[], ack: boolean) {
+export async function claimMessages(mine: string | string[], ack: boolean, limit: number | null = null) {
   const me = Array.isArray(mine) ? mine : [mine];
   return await sql.begin(async (tx) => {
     for (const name of me) await tx`select memory.drop_exhausted(${name}::text)`;
@@ -479,7 +480,7 @@ async function claimMessages(mine: string | string[], ack: boolean) {
           select d2.id from memory.message_delivery d2 join memory.message m on m.id = d2.message_id
           where d2.recipient = any(${me}::text[]) and d2.acked_at is null and d2.dropped_at is null and d2.visible_after <= now()
             and m.expires_at > now()
-          order by d2.id limit 20 for update of d2 skip locked)
+          order by d2.id limit coalesce(${limit}::int, 20) for update of d2 skip locked)
         returning d.id, d.message_id)
       select p.id, p.message_id, m.sender, m.recipient, m.body, m.created_at
       from picked p join memory.message m on m.id = p.message_id order by p.id`;
@@ -492,21 +493,21 @@ function once(rows: Row[]) {
   return rows.filter((r) => !seen.has(String(r.message_id)) && seen.add(String(r.message_id)));
 }
 
-const line = (r: Row, id: number) => `- #${id} from ${r.sender} to ${r.recipient} at ${stamp(r.created_at)} UTC: ${r.body}`;
+export const messageLine = (r: Row, id: number) => `- #${id} from ${r.sender} to ${r.recipient} at ${stamp(r.created_at)} UTC: ${r.body}`;
 
 /** The hook inbox: my waiting messages as text, acknowledged as they print, since the agent sees them in its context.
  * Hooks have read this format since before the queue, message ids and all. */
 export async function readMessages(me: string | string[]) {
   const rows = once(await claimMessages(me, true));
   if (!rows.length) return "";
-  return "Messages from your other agents (reply with post_message):\n" + rows.map((r) => line(r, r.message_id)).join("\n") + "\n";
+  return "Messages from your other agents (reply with post_message):\n" + rows.map((r) => messageLine(r, r.message_id)).join("\n") + "\n";
 }
 
 /** check_messages: the same list, numbered by message id the same way, left waiting until ack_messages or a dismiss. */
 export async function checkMessages(me: string | string[]) {
   const rows = once(await claimMessages(me, false));
   if (!rows.length) return "";
-  return "Messages from your other agents (reply with post_message):\n" + rows.map((r) => line(r, r.message_id)).join("\n") + "\n" +
+  return "Messages from your other agents (reply with post_message):\n" + rows.map((r) => messageLine(r, r.message_id)).join("\n") + "\n" +
     `Call ack_messages with ids [${rows.map((r) => r.message_id).join(", ")}] once you've handled them. A message you don't ` +
     `acknowledge comes back in ${REDELIVER_MINUTES} minutes, up to 3 times.\n`;
 }

@@ -10,6 +10,7 @@ import { learn } from "./learn.ts";
 import * as mcp from "./mcp.ts";
 import * as oauth from "./oauth.ts";
 import * as service from "./service.ts";
+import * as quests from "./quests.ts";
 import * as store from "./blobs.ts";
 import { CLIENT_VERSION, clientStatus, installerNote, SERVER_VERSION } from "./version.ts";
 import { Refused, remember } from "./write.ts";
@@ -28,7 +29,7 @@ const WRITE_DEADLINE_MS = 1500;
 const EXPORT = ["source", "entry", "link", "co_use", "question", "qrel", "blob", "entry_blob", "entry_provenance", "agent", "agent_binding", "mcp_session",
   "mcp_client", "retrieval",
   "event", "feedback", "message", "message_delivery", "admin_audit", "link_type_weight", "device", "embed_usage", "param_set", "allocation",
-  "openai_usage"];
+  "openai_usage", "quest", "quest_note", "quest_blob"];
 
 const json = (body: unknown, status = 200) => Response.json(body, { status });
 const text = (body: string, status = 200) => new Response(body, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
@@ -63,7 +64,15 @@ async function hooks(req: Request, event: string, url: URL, who: Principal) {
   let body = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : { body: payload };
   if (who.hooks === "metadata") body = Object.fromEntries(HOOK_METADATA.filter((k) => k in body).map((k) => [k, body[k]]));
   await service.hook(event, body, AGENT.test(agent) ? agent : null);
-  // Empty on purpose: memory-hook prints whatever comes back into the agent's context, so an answer is a decision to make.
+  // memory-hook prints whatever comes back into the agent's context, so an answer is a decision to make. SessionStart's is the
+  // board (R47): unread messages and open quests, in at most 5 lines. A board that fails costs the session nothing.
+  if (event === "SessionStart" && AGENT.test(agent)) {
+    try {
+      return new Response(await quests.board(who.device ?? who.role, agent, "start"), { headers: { "content-type": "text/plain; charset=utf-8" } });
+    } catch (e) {
+      console.error(e);
+    }
+  }
   return new Response("");
 }
 
@@ -105,7 +114,7 @@ async function httpRecall(req: Request, who: Principal) {
 const ORDER: Record<string, string> = {
   source: "id", entry: "id", link: "src, dst, type", co_use: "src, dst", question: "id", qrel: "question_id, entry_id", blob: "sha256",
   entry_blob: "entry_id, name", entry_provenance: "entry_id", agent: "name", agent_binding: "principal, client", mcp_session: "id", mcp_client: "session_id", retrieval: "created_at, id", event: "id",
-  feedback: "id", message: "id", message_delivery: "id", admin_audit: "id", link_type_weight: "src_pattern, link_type, dst_pattern", device: "id",
+  feedback: "id", message: "id", message_delivery: "id", quest: "id", quest_note: "id", quest_blob: "quest_id, name", admin_audit: "id", link_type_weight: "src_pattern, link_type, dst_pattern", device: "id",
   embed_usage: "month", param_set: "id", allocation: "param_set", openai_usage: "month, kind",
 };
 // A blob page is cut by bytes as well as rows (exportBlobs), so its row count is only the most it takes.
@@ -243,7 +252,8 @@ async function route(req: Request): Promise<Response> {
   let match;
   if (m === "POST" && (match = /^\/hooks\/([^/]+)$/.exec(path))) return hooks(req, decodeURIComponent(match[1]), url, who);
   if (m === "GET" && (match = /^\/messages\/([^/]+)$/.exec(path))) {
-    const messages = await service.readMessages(decodeURIComponent(match[1]).toLowerCase());
+    // The inbox and the quests posted since this computer's agent last saw the board, in at most 5 lines (R47).
+    const messages = await quests.board(who.device ?? who.role, decodeURIComponent(match[1]).toLowerCase(), "prompt");
     // A hook that sends no version predates self-update and can't fix itself or print its own line, so it hears it here.
     // One that does send a version prints its own, when its update has failed.
     const note = who.role === "device" && !who.device?.startsWith("oauth:")
