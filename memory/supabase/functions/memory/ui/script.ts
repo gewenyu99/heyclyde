@@ -39,7 +39,7 @@ var PATHS = {
 };
 function icon(name) {
   var s = document.createElementNS(NS, "svg"), p = document.createElementNS(NS, "path");
-  s.setAttribute("viewBox", "0 0 16 16"); s.setAttribute("class", "i"); s.setAttribute("aria-hidden", "true");
+  s.setAttribute("viewBox", "0 0 16 16"); s.setAttribute("class", "c-i"); s.setAttribute("aria-hidden", "true");
   p.setAttribute("d", PATHS[name] || PATHS.file); s.appendChild(p); return s;
 }
 function size(b) { b = Number(b) || 0; return b < 1024 ? b + " B" : b < 1048576 ? (b / 1024).toFixed(1) + " KB" : (b / 1048576).toFixed(1) + " MB"; }
@@ -86,8 +86,6 @@ function theme(t) { if (t === "dark" || t === "light") document.documentElement.
 function context(c) {
   if (!c) return;
   theme(c.theme);
-  var vars = c.styles && c.styles.variables;
-  if (vars && vars["--font-sans"]) document.documentElement.style.setProperty("--font", vars["--font-sans"]);
 }
 var lastH = 0;
 function resized() {
@@ -112,58 +110,73 @@ window.addEventListener("message", function (ev) {
 });
 
 // ---------- pieces ----------
-function badge(b) {
+var PENS = ["blue", "red", "green", "violet", "amber", "teal", "graphite"];
+function penOf(name) { var n = 0, s = String(name || ""); for (var i = 0; i < s.length; i++) n = (n * 31 + s.charCodeAt(i)) >>> 0; return "cl-pen-" + PENS[n % PENS.length]; }
+function initials(name) { var p = String(name || "").split(/[^a-z0-9]+/i).filter(Boolean); return ((p[0] || "?").charAt(0) + (p[1] || p[0] || "").charAt(p[1] ? 0 : 1)).toUpperCase(); }
+function agentBadge(b, big) {
   if (!b) return null;
   var on = !!b.registered;
-  return h("span", { class: "badge" + (on ? " on" : ""), title: on ? (b.name + ", a " + (b.context || "") + " agent on " + (b.surface || "")) : "This app hasn't registered with Clyde yet" },
-    h("span", { class: "dot" }), on ? h("b", { text: b.name }) : h("span", { text: "not registered" }),
-    on && b.context ? h("span", { text: b.context }) : null);
+  return h("span", { class: "cl-agent " + (big ? "c-big " : "cl-agent--sm ") + penOf(b.name), title: on ? b.name + ", a " + (b.context || "") + " agent on " + (b.surface || "") : "This app hasn't registered with Clyde yet" },
+    h("span", { class: "cl-agent__sq", text: initials(b.name) }),
+    h("span", { class: "cl-agent__text" }, h("span", { class: "cl-agent__name", text: b.name }),
+      h("span", { class: "cl-agent__meta", text: on ? [b.context, b.surface].filter(Boolean).join(" · ") : "not registered" })));
 }
-function bar(what, b) {
-  return h("div", { class: "bar" }, h("span", { class: "mark", "aria-hidden": "true", text: "c" }), h("span", { class: "brand", text: "Clyde" }),
-    h("span", { class: "what", text: what || "" }), badge(b));
+function head(what, b) {
+  return h("div", { class: "c-head" }, h("span", { class: "cl-mark", "aria-hidden": "true", text: "c" }), h("span", { class: "c-word", text: "clyde" }),
+    h("span", { class: "c-what", text: what || "" }), agentBadge(b, false));
 }
-function meter(v) { var i = h("i"); i.style.width = Math.round(Math.max(0, Math.min(1, Number(v) || 0)) * 100) + "%"; return h("span", { class: "meter" }, i); }
+function sheet(what, b) { var s = h("div", { class: "clyde" }); s.appendChild(head(what, b)); return s; }
+function desk() { return h("div", { class: "c-desk" }); }
+function meter(v) { var i = h("i"); i.style.width = Math.round(Math.max(0, Math.min(1, Number(v) || 0)) * 100) + "%"; return h("span", { class: "c-meter" }, i); }
+var KIND_CHIP = { fact: "cl-chip--ok", wen: "cl-chip--carbon", plan: "cl-chip--warn" };
 function kindChip(kind, verified) {
   var k = String(kind || "observation");
-  return h("span", { class: "chip " + (k === "fact" || k === "wen" || k === "plan" ? k : ""), text: k + (verified === false ? " · unverified" : "") });
+  return h("span", { class: "cl-chip " + (KIND_CHIP[k] || ""), text: k + (verified === false ? " · unverified" : "") });
 }
 function artChips(list, openable) {
   if (!list || !list.length) return null;
-  return h("div", { class: "arts" }, list.map(function (a) {
+  return h("div", { class: "c-row" }, list.map(function (a) {
     var label = h("span", { text: a.name + " · " + a.kind + " · " + size(a.size) });
-    if (openable && a.sha256) return h("button", { class: "art", type: "button", title: "Preview " + a.name, onclick: function () { preview(this, a); } }, icon(a.kind === "image" ? "image" : "file"), label);
-    return h("span", { class: "art" }, icon(a.kind === "image" ? "image" : "file"), label);
+    var ic = icon(a.kind === "image" ? "image" : "file");
+    if (openable && a.sha256) return h("button", { class: "c-art", type: "button", title: "Preview " + a.name, onclick: function () { preview(this, a); } }, ic, label);
+    return h("span", { class: "c-art" }, ic, label);
   }));
 }
-function memoryMeta(m) {
-  return h("div", { class: "meta" }, kindChip(m.kind, m.verified),
-    h("span", { class: "conf", title: "confidence" }, meter(m.confidence), Number(m.confidence || 0).toFixed(2)),
-    m.unreviewed ? h("span", { class: "chip warn", text: "unreviewed" }) : null,
-    m.trial ? h("span", { class: "chip accent", text: "on trial" + (m.chance ? " · " + m.chance + " of 3" : "") }) : null,
-    m.superseded_by ? h("span", { class: "chip bad", text: "replaced by " + m.superseded_by }) : null,
-    m.private ? h("span", { class: "chip", text: "private" }) : null);
+function memoryTop(m) {
+  var state = m.superseded_by ? ["superseded", "superseded"] : m.trial ? ["trial", "on trial" + (m.chance ? " · " + m.chance + " of 3" : "")] : ["settled", m.unreviewed ? "unreviewed" : "settled"];
+  return h("div", { class: "cl-memory__top" }, kindChip(m.kind, m.verified),
+    h("span", { class: "cl-state cl-state--" + state[0], text: state[1] }),
+    m.private ? h("span", { class: "cl-chip", text: "private" }) : null,
+    h("span", { class: "cl-memory__conf", title: "confidence" }, meter(m.confidence), Math.round(Number(m.confidence || 0) * 100) + "%"));
 }
-function memoryBody(m, full) {
-  return [h("h3", { text: m.title }), m.body ? h("p", { class: full ? "" : "clamp", text: m.body }) : null,
-    m.quote ? h("blockquote", { text: "Wen: “" + m.quote + "”" }) : null,
-    m.provenance ? h("div", { class: "prov" }, icon("from"), h("span", { text: m.provenance })) : null];
+function provLine(m) {
+  if (!m.provenance) return null;
+  var who = /^from (\S+)/.exec(m.provenance), rest = who ? m.provenance.slice(who[0].length) : m.provenance;
+  return h("div", { class: "cl-prov " + (who ? penOf(who[1]) : "") }, who ? h("span", null, "from ", h("span", { class: "cl-prov__who", text: who[1] })) : null, h("span", { text: rest.trim() }),
+    m.valid_from ? h("span", { class: "cl-prov__sep", text: "·" }) : null, m.valid_from ? h("span", { text: m.valid_from }) : null);
 }
-function status(el, text, ok) { el.textContent = text; el.className = "status " + (ok ? "ok" : "bad"); el.hidden = false; resized(); }
+function memoryParts(m, full) {
+  return [memoryTop(m), h("h3", { class: "cl-memory__title", text: m.title }),
+    m.body ? h("p", { class: "cl-memory__body" + (full ? " is-open" : ""), text: m.body }) : null,
+    m.quote ? h("p", { class: "c-quote", text: "Wen: “" + m.quote + "”" }) : null,
+    m.superseded_by ? h("p", { class: "c-text", text: "Superseded by " + m.superseded_by + "." }) : null,
+    provLine(m)];
+}
+function say(el, text, ok) { el.textContent = text; el.className = "c-say " + (ok ? "is-ok" : "is-bad"); el.hidden = false; resized(); }
 
 // ---------- open: get_entry and get_blob inside a card ----------
 function entryDetail(e) {
   var parts = [];
   if (e.links && e.links.length) {
-    parts.push(h("h4", { text: "Links" }), h("ul", { class: "links" }, e.links.map(function (l) {
-      return h("li", null, icon("link"), h("span", { class: "muted", text: (l.dir === "to" ? "" : "from ") + l.type }), h("span", { text: l.title }));
+    parts.push(h("span", { class: "cl-label", text: "Links" }), h("ul", { class: "c-links" }, e.links.map(function (l) {
+      return h("li", null, icon("link"), h("span", { class: "cl-muted cl-mono", text: (l.dir === "to" ? "" : "from ") + l.type }), h("span", { text: l.title }));
     })));
   }
-  if (e.artifacts && e.artifacts.length) parts.push(h("h4", { text: "Artifacts" }), artChips(e.artifacts, true));
-  parts.push(h("div", { class: "small muted mono", text: [e.id, e.pattern, e.scope, e.valid_from].filter(Boolean).join(" · ") }));
+  if (e.artifacts && e.artifacts.length) parts.push(h("span", { class: "cl-label", text: "Artifacts" }), artChips(e.artifacts, true));
+  parts.push(h("div", { class: "cl-memory__foot" }, [e.id, e.pattern, e.scope].filter(Boolean).map(function (t) { return h("span", { text: t }); })));
   return parts;
 }
-function openEntry(btn, m, holder) {
+function openEntry(btn, m, holder, card) {
   if (holder.firstChild) { holder.hidden = !holder.hidden; btn.setAttribute("aria-expanded", String(!holder.hidden)); resized(); return; }
   btn.disabled = true;
   callTool("get_entry", { id: m.id }).then(function (r) {
@@ -171,66 +184,66 @@ function openEntry(btn, m, holder) {
     var d = cardOf(r);
     holder.hidden = false; btn.setAttribute("aria-expanded", "true");
     if (d && d.entry) {
-      var body = holder.parentNode.querySelector("p.clamp"); if (body) { body.textContent = d.entry.body; body.className = ""; }
+      var body = card.querySelector(".cl-memory__body"); if (body) { body.textContent = d.entry.body; body.className = "cl-memory__body is-open"; }
       add(holder, entryDetail(d.entry));
-    } else add(holder, h("pre", { text: textOf(r) }));
+    } else add(holder, h("p", { class: "c-text", text: textOf(r) }));
     resized();
-  }, function (e) { btn.disabled = false; add(holder, h("div", { class: "status bad", text: e.message })); holder.hidden = false; resized(); });
+  }, function (e) { btn.disabled = false; holder.hidden = false; add(holder, h("p", { class: "c-say is-bad", text: e.message })); resized(); });
 }
 function preview(btn, a) {
-  var item = btn.closest(".item") || root, box = item.querySelector(".preview[data-sha='" + a.sha256 + "']");
+  var card = btn.closest(".cl-memory") || btn.closest(".clyde"), box = card.querySelector(".c-preview[data-sha='" + a.sha256 + "']");
   if (box) { box.hidden = !box.hidden; resized(); return; }
-  box = h("div", { class: "preview detail", "data-sha": a.sha256 }, h("div", { class: "skel" }));
-  item.appendChild(box); resized();
+  box = h("div", { class: "c-preview", "data-sha": a.sha256 }, h("div", { class: "c-skel" }));
+  card.appendChild(box); resized();
   callTool("get_blob", { sha256: a.sha256 }).then(function (r) {
     box.textContent = "";
     var d = cardOf(r);
-    add(box, d && d.artifact ? artifactView(d.artifact) : h("pre", { text: textOf(r) }));
+    add(box, d && d.artifact ? artifactView(d.artifact) : h("p", { class: "c-text", text: textOf(r) }));
     resized();
-  }, function (e) { box.textContent = ""; add(box, h("div", { class: "status bad", text: e.message })); resized(); });
+  }, function (e) { box.textContent = ""; add(box, h("p", { class: "c-say is-bad", text: e.message })); resized(); });
 }
 function artifactView(a) {
   var url = safeUrl(a.url), img = url && /^image\//.test(a.media_type || "");
-  var head = h("div", { class: "meta" }, icon(img ? "image" : "file"), h("b", { text: a.name, style: null }),
-    h("span", { text: [a.media_type, a.size ? size(a.size) : a.total ? a.total + " characters" : ""].filter(Boolean).join(" · ") }));
-  var out = [head];
-  if (img) out.push(h("div", { class: "preview", style: null }, h("img", { src: url, alt: a.name, loading: "lazy", onload: resized })));
-  else if (url) out.push(h("div", { class: "actions" }, h("button", { class: "btn primary", type: "button", onclick: function () { openLink(url); } }, icon("open"), "Download")));
+  var file = h("div", { class: "cl-file" });
+  var info = [a.media_type, a.size ? size(a.size) : a.total ? a.total + " characters" : ""].filter(Boolean).join(" · ");
+  var dl = url && !img ? h("button", { class: "cl-btn cl-btn--sm", type: "button", onclick: function () { openLink(url); } }, icon("open"), "Download") : null;
+  file.appendChild(h("div", { class: "cl-file__head" }, h("span", { class: "c-row" }, icon(img ? "image" : "file"), h("span", { text: a.name })), h("span", { text: info }), dl));
+  if (img) file.appendChild(h("div", { style: null }, h("img", { class: "c-img", src: url, alt: a.name, loading: "lazy", onload: resized })));
   if (a.text !== null && a.text !== undefined) {
-    var pre = h("pre", { text: a.text }); out.push(h("div", { style: null }, pre));
+    var pre = h("pre", { text: a.text }); file.appendChild(pre);
     if (a.next) {
-      var more = h("button", { class: "btn", type: "button", onclick: function () {
+      var note = h("span", { class: "cl-muted", text: "Showing " + a.to + " of " + a.total + " characters" });
+      var more = h("button", { class: "cl-btn cl-btn--sm cl-btn--ghost", type: "button", onclick: function () {
         more.disabled = true;
         callTool("get_blob", { sha256: a.sha256, offset: a.next }).then(function (r) {
           var d = cardOf(r);
-          if (d && d.artifact) { pre.textContent += d.artifact.text; a.next = d.artifact.next; } else pre.textContent += "\n" + textOf(r);
-          more.disabled = false; if (!a.next) more.remove(); resized();
+          if (d && d.artifact) { pre.textContent += d.artifact.text; a.next = d.artifact.next; a.to = d.artifact.to; } else pre.textContent += "\n" + textOf(r);
+          more.disabled = false; note.textContent = "Showing " + a.to + " of " + a.total + " characters"; if (!a.next) more.remove(); resized();
         }, function () { more.disabled = false; });
       } }, icon("more"), "Load more");
-      out.push(h("div", { class: "actions" }, more, h("span", { class: "small muted", text: "Showing " + a.to + " of " + a.total + " characters" })));
+      file.appendChild(h("div", { class: "cl-file__head" }, note, more));
     }
   }
-  return out;
+  return file;
 }
 
 // ---------- cards ----------
 function recallCard(d) {
   var items = d.items || [];
-  var title = (d.page === "more" ? "More results for " : "Recall: ") + "“" + (d.query || "") + "”";
-  var shell = h("div", { class: "clyde" }, bar(title, d.badge));
-  if (d.degraded) shell.appendChild(h("div", { class: "item small", style: null }, h("span", { class: "chip warn", text: "degraded" }), " ", d.degraded));
+  var s = sheet((d.page === "more" ? "more for " : "recall · ") + "“" + (d.query || "") + "”", d.badge), dk = desk();
+  if (d.degraded) dk.appendChild(h("p", { class: "c-text" }, h("span", { class: "cl-chip cl-chip--warn", text: "degraded" }), " ", d.degraded));
   if (!items.length) {
-    shell.appendChild(h("div", { class: "empty" }, h("div", { text: "Nothing in Clyde matches yet." }),
-      h("div", { class: "small", text: "Ask for more results, or tell Clyde what to remember." })));
-    return shell;
+    dk.appendChild(h("div", { class: "cl-empty" }, h("p", { class: "cl-empty__title", text: "Nothing filed matches yet." }),
+      h("p", { class: "cl-empty__text", text: "Ask for more results, or tell your agent what to remember." })));
+    s.appendChild(dk); return s;
   }
-  var count = h("span", { class: "muted" });
-  var send = h("button", { class: "btn primary", type: "button", onclick: function () { sendFeedback(false); } }, icon("check"), "Send feedback");
-  var none = h("button", { class: "btn ghost", type: "button", onclick: function () { sendFeedback(true); } }, "Nothing helped");
-  var msg = h("div", { class: "status", hidden: true });
+  var count = h("span", { class: "c-note" });
+  var send = h("button", { class: "cl-btn cl-btn--primary cl-btn--sm", type: "button", onclick: function () { sendFeedback(false); } }, icon("check"), "Send feedback");
+  var none = h("button", { class: "cl-btn cl-btn--ghost cl-btn--sm", type: "button", onclick: function () { sendFeedback(true); } }, "None helped");
+  var msg = h("p", { class: "c-say", hidden: true });
   function refresh() {
     var n = Object.keys(st.verdicts).length;
-    count.textContent = st.sent ? "Feedback sent." : n ? n + " of " + items.length + " marked. The rest count as not used." : "Mark what you used, then send it once.";
+    count.textContent = st.sent ? "Feedback logged." : n ? n + " of " + items.length + " marked. The rest count as not used." : "Mark what you used, then send it once.";
     send.disabled = st.sent || st.busy || !n; none.disabled = st.sent || st.busy || n > 0;
   }
   function sendFeedback(nothing) {
@@ -241,15 +254,15 @@ function recallCard(d) {
     callTool("feedback", args).then(function (r) {
       st.busy = false; var t = textOf(r), ok = /^Logged\./.test(t);
       st.sent = ok || /^Already logged/.test(t);
-      status(msg, ok ? "Thanks. Clyde will rank these better next time." : t, ok); refresh();
-      var bs = shell.querySelectorAll("button.used,button.wrong"); for (var i = 0; i < bs.length; i++) bs[i].disabled = st.sent;
-    }, function (e) { st.busy = false; status(msg, e.message, false); refresh(); });
+      say(msg, ok ? "Logged. Clyde ranks what you used higher next time." : t, ok); refresh();
+      var bs = s.querySelectorAll("button.c-used,button.c-wrong"); for (var i = 0; i < bs.length; i++) bs[i].disabled = st.sent;
+    }, function (e) { st.busy = false; say(msg, e.message, false); refresh(); });
   }
-  var list = h("div", { class: "list" });
   items.forEach(function (m) {
-    var holder = h("div", { class: "detail", hidden: true });
-    var used = h("button", { class: "btn used", type: "button", "aria-pressed": "false" }, icon("check"), "Used");
-    var wrong = h("button", { class: "btn wrong", type: "button", "aria-pressed": "false" }, icon("x"), "Wrong");
+    var card = h("article", { class: "cl-card cl-memory" + (m.superseded_by ? " is-superseded" : ""), "data-id": m.id });
+    var holder = h("div", { class: "c-detail", hidden: true });
+    var used = h("button", { class: "cl-btn cl-btn--sm c-used", type: "button", "aria-pressed": "false" }, icon("check"), "Used");
+    var wrong = h("button", { class: "cl-btn cl-btn--sm c-wrong", type: "button", "aria-pressed": "false" }, icon("x"), "Wrong");
     function pick(v) {
       if (st.sent) return;
       if (st.verdicts[m.id] === v) delete st.verdicts[m.id]; else st.verdicts[m.id] = v;
@@ -257,112 +270,110 @@ function recallCard(d) {
       refresh();
     }
     used.addEventListener("click", function () { pick("used"); }); wrong.addEventListener("click", function () { pick("wrong"); });
-    var open = h("button", { class: "btn ghost", type: "button", "aria-expanded": "false" }, "Open", icon("open"));
-    open.addEventListener("click", function () { openEntry(open, m, holder); });
-    list.appendChild(h("article", { class: "item", "data-id": m.id }, memoryMeta(m), memoryBody(m, false), artChips(m.artifacts, false),
-      h("div", { class: "actions" }, used, wrong, h("span", { class: "sp" }), open), holder));
+    var open = h("button", { class: "cl-btn cl-btn--sm cl-btn--ghost c-open", type: "button", "aria-expanded": "false" }, "Open", icon("open"));
+    open.addEventListener("click", function () { openEntry(open, m, holder, card); });
+    add(card, [memoryParts(m, false), artChips(m.artifacts, false), h("div", { class: "c-row" }, used, wrong, h("span", { class: "c-sp" }), open), holder]);
+    dk.appendChild(card);
   });
-  shell.appendChild(list);
-  var foot = h("div", { class: "foot" }, count, none, send);
-  shell.appendChild(foot);
-  msg.style.margin = "0"; msg.style.padding = "0 14px 10px"; shell.appendChild(msg);
+  s.appendChild(dk);
+  s.appendChild(h("div", { class: "c-foot" }, count, none, send));
+  s.appendChild(msg);
   refresh();
-  return shell;
+  return s;
 }
 function entryCard(d, saved) {
-  var e = d.entry;
-  var shell = h("div", { class: "clyde" }, bar(saved ? "Remembered" : "Memory", d.badge));
-  if (saved) shell.appendChild(h("div", { class: "hero" }, h("span", { class: "tick" }, icon("check")),
-    h("div", null, h("div", { style: null }, h("b", { text: "Saved to Clyde." })),
-      h("div", { class: "small muted", text: "Every agent can recall it now." }))));
-  shell.appendChild(h("article", { class: "item" }, memoryMeta(e), memoryBody(e, true), entryDetail(e)));
-  return shell;
+  var e = d.entry, s = sheet(saved ? "remember" : "memory", d.badge), dk = desk();
+  if (saved) s.appendChild(h("div", { class: "c-hero" }, h("span", { class: "cl-stamp cl-stamp--ok is-new", text: "Filed" }),
+    h("div", null, h("div", { text: "Every agent can recall it now." }), h("div", { class: "c-sub cl-mono", text: e.id }))));
+  dk.appendChild(h("article", { class: "cl-card cl-memory" }, memoryParts(e, true), h("div", { class: "c-detail" }, entryDetail(e))));
+  s.appendChild(dk);
+  return s;
 }
-function artifactCard(d) {
-  return h("div", { class: "clyde" }, bar("Artifact", d.badge), h("div", { class: "item" }, artifactView(d.artifact)));
-}
-function questRow(q, d) {
+function artifactCard(d) { var s = sheet("artifact", d.badge), dk = desk(); dk.appendChild(artifactView(d.artifact)); s.appendChild(dk); return s; }
+var STAMP = { open: "cl-stamp--carbon", claimed: "cl-stamp--warn", done: "cl-stamp--ok", abandoned: "cl-stamp--bad" };
+function questCard(q, d) {
   var me = d.badge && d.badge.registered ? d.badge.name : null;
-  var msg = h("div", { class: "status", hidden: true });
-  var stateClass = q.state === "done" ? "ok" : q.state === "claimed" ? "accent" : q.state === "abandoned" ? "bad" : "";
-  var who = ["posted by " + q.posted_by];
-  if (q.assignee && q.assignee !== "any") who.push("for " + q.assignee);
-  if (q.claimed_by && q.state === "claimed") who.push("claimed by " + q.claimed_by + (q.lease_until ? " until " + when(q.lease_until) : ""));
-  if (q.state === "done") who.push("done by " + q.claimed_by + (q.closed_at ? " on " + when(q.closed_at) : ""));
-  var actions = h("div", { class: "actions" }), form = null;
-  var row = h("article", { class: "item", "data-quest": q.id },
-    h("div", { class: "meta" }, h("span", { class: "prio " + q.priority, text: q.priority }), h("span", { class: "chip " + stateClass, text: q.state }),
-      h("span", { class: "mono", text: "#" + q.id }), h("span", { text: q.context })),
-    h("h3", { text: q.title }), h("p", { class: "clamp", text: q.brief }),
-    h("div", { class: "done" }, h("b", { text: "Done when" }), q.done_when),
-    q.evidence ? h("blockquote", { text: q.evidence }) : null,
-    q.tags && q.tags.length ? h("div", { class: "arts" }, q.tags.map(function (t) { return h("span", { class: "chip", text: "#" + t }); })) : null,
-    h("div", { class: "prov" }, icon("flag"), h("span", { text: who.join(" \u00b7 ") })), actions);
+  var msg = h("p", { class: "c-say", hidden: true }), row = h("div", { class: "c-row" });
+  var who = [h("span", null, "posted by ", h("b", { text: q.posted_by }))];
+  if (q.assignee && q.assignee !== "any") who.push(h("span", null, " · for ", h("b", { text: q.assignee })));
+  if (q.state === "claimed" && q.claimed_by) who.push(h("span", null, " · claimed by ", h("b", { text: q.claimed_by }), q.lease_until ? " until " + when(q.lease_until) : ""));
+  if (q.state === "done") who.push(h("span", null, " · done by ", h("b", { text: q.claimed_by || "" }), q.closed_at ? " " + when(q.closed_at) : ""));
+  var main = h("div", { class: "cl-quest__main" },
+    h("div", { class: "cl-quest__head" }, h("h3", { class: "cl-quest__title", text: q.title }), h("span", { class: "cl-stamp " + (STAMP[q.state] || ""), text: q.state })),
+    h("p", { class: "cl-quest__brief", text: q.brief }),
+    h("div", { class: "cl-quest__done" }, h("span", { class: "cl-label", text: "Done when" }), h("span", { class: "c-text", text: q.done_when })),
+    q.evidence ? h("p", { class: "c-quote", text: q.evidence }) : null,
+    q.tags && q.tags.length ? h("div", { class: "c-row" }, q.tags.map(function (t) { return h("span", { class: "cl-chip", text: t }); })) : null,
+    h("div", { class: "cl-quest__for" }, who, " · " + q.context), row, msg);
+  var card = h("article", { class: "cl-quest" + (q.state === "done" ? " is-done" : ""), "data-quest": q.id },
+    h("div", { class: "cl-quest__stub" }, h("span", { class: "cl-quest__pri" + (q.priority === "high" ? " is-high" : ""), text: q.priority }),
+      h("span", { class: "cl-quest__no", text: "Nº" + q.id })), main);
   function act(name, args, btn) {
     btn.disabled = true;
     callTool(name, args).then(function (r) {
       var t = textOf(r), dd = cardOf(r), fresh = dd && dd.quests && dd.quests.filter(function (x) { return x.id === q.id; })[0];
-      if ((r && r.isError) || !fresh) { btn.disabled = false; status(msg, t.split("\n")[0], false); return; }
-      var next = questRow(fresh, d); row.replaceWith(next); status(next.querySelector(".status"), t.split("\n")[0], true);
-    }, function (e) { btn.disabled = false; status(msg, e.message, false); });
+      if ((r && r.isError) || !fresh) { btn.disabled = false; say(msg, t.split("\n")[0], false); return; }
+      var next = questCard(fresh, d); card.replaceWith(next); say(next.querySelector(".c-say"), t.split("\n")[0], true);
+      var stamp = next.querySelector(".cl-stamp"); if (stamp) stamp.className += " is-new";
+    }, function (e) { btn.disabled = false; say(msg, e.message, false); });
   }
   if (q.state === "open") {
-    var claim = h("button", { class: "btn primary", type: "button" }, icon("bolt"), "Claim");
+    var claim = h("button", { class: "cl-btn cl-btn--primary cl-btn--sm c-claim", type: "button" }, icon("bolt"), "Claim");
     claim.addEventListener("click", function () { act("claim_quest", { id: q.id }, claim); });
-    actions.appendChild(claim);
+    row.appendChild(claim);
   }
   if (q.state === "claimed" && me && q.claimed_by === me) {
-    form = h("form", { class: "complete", hidden: true });
-    var ev = h("textarea", { name: "evidence", maxlength: "2000", required: true, placeholder: "How you know done_when holds" });
-    var en = h("input", { name: "entry", required: true, placeholder: "The memory the work produced, like a1b2c3", autocomplete: "off" });
-    var go = h("button", { class: "btn primary", type: "submit" }, icon("check"), "Complete quest");
-    add(form, [h("label", { text: "Evidence" }), ev, h("label", { text: "Entry id" }), en, h("div", { class: "actions" }, go)]);
+    var ev = h("textarea", { class: "cl-textarea", name: "evidence", maxlength: "2000", required: true, placeholder: "How you know done-when holds" });
+    var en = h("input", { class: "cl-input", name: "entry", required: true, placeholder: "The memory the work produced", autocomplete: "off" });
+    var go = h("button", { class: "cl-btn cl-btn--primary cl-btn--sm", type: "submit" }, icon("check"), "Complete quest");
+    var form = h("form", { class: "c-complete", hidden: true }, h("div", { class: "cl-field" }, h("label", { text: "Evidence" }), ev),
+      h("div", { class: "cl-field" }, h("label", { text: "Memory id" }), en), h("div", { class: "c-row" }, go));
     form.addEventListener("submit", function (e) { e.preventDefault(); act("complete_quest", { id: q.id, evidence: ev.value.trim(), entry_id: en.value.trim() }, go); });
-    var done = h("button", { class: "btn primary", type: "button" }, icon("check"), "Complete");
+    var done = h("button", { class: "cl-btn cl-btn--sm", type: "button" }, icon("check"), "Complete");
     done.addEventListener("click", function () { form.hidden = !form.hidden; resized(); });
-    actions.appendChild(done);
-    row.appendChild(form);
+    row.appendChild(done); main.insertBefore(form, msg);
   }
-  row.appendChild(msg);
-  return row;
+  if (!row.firstChild) row.hidden = true;
+  return card;
 }
 function questsCard(d) {
-  var shell = h("div", { class: "clyde" }, bar("Quest board", d.badge));
-  var qs = d.quests || [];
-  if (d.head) shell.appendChild(h("div", { class: "item small muted", text: d.head }));
-  if (!qs.length) { shell.appendChild(h("div", { class: "empty", text: "No quests here." })); return shell; }
-  var list = h("div", { class: "list" }); qs.forEach(function (q) { list.appendChild(questRow(q, d)); });
-  shell.appendChild(list);
-  return shell;
+  var s = sheet("quest board", d.badge), dk = desk(), qs = d.quests || [];
+  if (d.head) dk.appendChild(h("p", { class: "c-text", text: d.head }));
+  if (!qs.length) dk.appendChild(h("div", { class: "cl-empty" }, h("p", { class: "cl-empty__title", text: "No quests on the board." }),
+    h("p", { class: "cl-empty__text", text: "Ask your agent to post one, with a done-when line anyone can check." })));
+  qs.forEach(function (q) { dk.appendChild(questCard(q, d)); });
+  s.appendChild(dk);
+  return s;
 }
 function agentCard(d) {
-  var a = d.agent;
-  return h("div", { class: "clyde" }, bar("Agent", d.badge),
-    h("div", { class: "hero" }, h("span", { class: "avatar", text: String(a.name).replace(/[^a-z0-9]/gi, "").slice(0, 2) || "?" }),
-      h("div", { style: null }, h("h3", { text: a.name }),
-        h("div", { class: "meta" }, h("span", { class: "chip accent", text: a.context }), h("span", { class: "chip", text: a.surface }),
-          a.since ? h("span", { text: "since " + a.since }) : null))),
-    a.description ? h("div", { class: "item" }, h("p", { text: a.description })) : null);
+  var a = d.agent, s = sheet("agent", d.badge), dk = desk();
+  dk.appendChild(h("div", { class: "cl-card" }, h("div", { class: "c-hero" }, agentBadge({ name: a.name, context: a.context, surface: a.surface, registered: true }, true),
+    h("span", { class: "c-sp" }), a.since ? h("span", { class: "cl-label", text: "since " + a.since }) : null),
+    a.description ? h("p", { class: "c-text c-say", text: a.description }) : null));
+  s.appendChild(dk);
+  return s;
 }
 function errorCard(d) {
-  return h("div", { class: "clyde" }, bar("", d.badge), h("div", { class: "hero bad" }, h("span", { class: "tick" }, icon("x")), h("p", { text: d.error })));
+  var s = sheet("", d.badge);
+  s.appendChild(h("div", { class: "c-hero" }, h("span", { class: "cl-stamp cl-stamp--bad", text: "Refused" }), h("p", { class: "c-text", text: d.error })));
+  return s;
 }
 function failed(text) { root.textContent = ""; root.appendChild(errorCard({ error: text })); resized(); }
 function show(result) {
   var d = cardOf(result);
   root.textContent = "";
   st = { data: d, verdicts: {}, sent: false, busy: false };
-  if (!d) { root.appendChild(h("div", { class: "clyde" }, bar("", null), h("div", { class: "item" }, h("pre", { text: textOf(result) })))); resized(); return; }
+  if (!d) { var s = sheet("", null); s.appendChild(h("div", { class: "c-desk" }, h("p", { class: "c-text", text: textOf(result) }))); root.appendChild(s); resized(); return; }
   var el = d.error ? errorCard(d) : d.card === "recall" ? recallCard(d) : d.card === "entry" ? entryCard(d, false)
     : d.card === "remembered" ? entryCard(d, true) : d.card === "artifact" ? artifactCard(d) : d.card === "quests" ? questsCard(d)
     : d.card === "agent" ? agentCard(d) : null;
-  root.appendChild(el || h("pre", { text: textOf(result) }));
+  root.appendChild(el || h("p", { class: "c-text", text: textOf(result) }));
   root.setAttribute("data-ready", d.card);
   resized();
 }
 
 // ---------- start ----------
-root.appendChild(h("div", { class: "clyde" }, bar("", null), h("div", { class: "item" }, h("div", { class: "skel" }), h("div", { class: "skel" }))));
+(function () { var s = sheet("", null); s.appendChild(h("div", { class: "c-desk" }, h("div", { class: "c-skel" }), h("div", { class: "c-skel" }))); root.appendChild(s); })();
 if (typeof ResizeObserver === "function") new ResizeObserver(resized).observe(document.documentElement);
 if (oa) {
   theme(oa.theme);

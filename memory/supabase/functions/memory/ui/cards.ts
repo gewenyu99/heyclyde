@@ -2,7 +2,7 @@
 // with nothing fetched from anywhere. The chat app loads it into a sandboxed iframe and hands it the tool result.
 import { CARD_JS } from "./script.ts";
 import { CARD_CSS } from "./style.ts";
-import { TOKENS_CSS } from "./tokens.ts";
+import { COMPONENTS_CSS, TOKENS_CSS } from "./design.ts";
 
 /** Every card, by name, and what it shows. The names are the ui:// resources' paths. */
 export const CARDS: Record<string, string> = {
@@ -26,6 +26,6 @@ export function cardHtml(card: string): string {
   if (!(card in CARDS)) throw new Error(`No card ${card}`);
   return `<!doctype html><html lang="en" data-card="${card}"><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width,initial-scale=1"><title>Clyde</title>` +
-    `<style>${TOKENS_CSS}${CARD_CSS}</style></head><body><div id="root" aria-live="polite"></div>` +
+    `<style>${TOKENS_CSS}${COMPONENTS_CSS}${CARD_CSS}</style></head><body><div id="root" aria-live="polite"></div>` +
     `<script>${CARD_JS}</script></body></html>`;
 }

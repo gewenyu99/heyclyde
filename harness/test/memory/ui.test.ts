@@ -12,7 +12,8 @@ import { repoRoot } from '../../src/config.ts'
 import { readUiResource, uiResources, uriOf, wantsUi, UI_EXTENSION, UI_MIME } from '../../../memory/supabase/functions/memory/ui/apps.ts'
 import { CARDS, cardHtml } from '../../../memory/supabase/functions/memory/ui/cards.ts'
 import { CARD_CSS } from '../../../memory/supabase/functions/memory/ui/style.ts'
-import { TOKENS_CSS } from '../../../memory/supabase/functions/memory/ui/tokens.ts'
+import { COMPONENTS_CSS, TOKENS_CSS } from '../../../memory/supabase/functions/memory/ui/design.ts'
+import * as design from '../../../memory/design/css.js'
 import { CALLS, FIXTURES, RID } from './ui-fixtures.ts'
 import { findChrome, hostPage, render, type Frame } from './ui-host.ts'
 
@@ -66,12 +67,14 @@ test('R67 cards are small and self-contained', () => {
 })
 
 test('R67 the cards use only the design tokens', () => {
-  const file = join(repoRoot(), 'memory', 'design', 'tokens.css')
-  if (existsSync(file)) assert.equal(TOKENS_CSS, readFileSync(file, 'utf8'), 'paste memory/design/tokens.css into ui/tokens.ts')
-  const defined = new Set([...TOKENS_CSS.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((m) => m[1]))
+  // The function's copy of Clyde's design system is memory/design/css.js's, word for word.
+  assert.equal(TOKENS_CSS, design.TOKENS_CSS, 'copy TOKENS_CSS from memory/design/css.js into ui/design.ts')
+  assert.equal(COMPONENTS_CSS, design.COMPONENTS_CSS, 'copy COMPONENTS_CSS from memory/design/css.js into ui/design.ts')
+  const defined = new Set([...(TOKENS_CSS + COMPONENTS_CSS).matchAll(/(--[a-z0-9-]+)\s*:/g)].map((m) => m[1]))
   const used = new Set([...CARD_CSS.matchAll(/var\((--[a-z0-9-]+)/g)].map((m) => m[1]))
   assert.ok(used.size > 10)
-  for (const name of used) assert.ok(defined.has(name), `${name} is not a token`)
+  for (const name of used) assert.ok(defined.has(name), `${name} is not a design token`)
+  assert.equal((CARD_CSS.match(/#[0-9a-f]{3,8}\b|rgb\(/gi) ?? []).length, 0, 'the card CSS has no literal colors')
 })
 
 test('R67 cards render and escape everything from memory', { skip: NO_CHROME }, () => {
@@ -89,8 +92,8 @@ test('R67 cards render and escape everything from memory', { skip: NO_CHROME }, 
 
 test('R67 card buttons call the tools', { skip: NO_CHROME }, () => {
   const report = run(frames('light', 640, {
-    recall: ['article[data-id="e-1"] button.used', 'div.foot button.primary', 'article[data-id="e-1"] button.ghost'],
-    quests: ['article[data-quest="12"] button.primary'],
+    recall: ['article[data-id="e-1"] button.c-used', 'div.c-foot button.cl-btn--primary', 'article[data-id="e-1"] button.c-open'],
+    quests: ['article[data-quest="12"] button.c-claim'],
   }))
   const calls = report.calls.map((c: any) => ({ name: c.name, arguments: c.arguments }))
   assert.deepEqual(calls, [
@@ -107,7 +110,7 @@ test('R67 cards follow the host theme and fit chat width', { skip: NO_CHROME }, 
       const report = run(frames(theme, width))
       for (const [id, f] of Object.entries<any>(report.frames)) {
         assert.equal(f.theme, theme, `${id} ${theme} ${width}`)
-        assert.equal(f.background, theme === 'light' ? 'rgb(255, 255, 255)' : 'rgb(31, 32, 30)', `${id} ${theme}`)
+        assert.equal(f.background, theme === 'light' ? 'rgb(255, 255, 255)' : 'rgb(27, 28, 26)', `${id} ${theme}`)
         assert.equal(f.overflow, false, `${id} at ${width} px scrolls sideways`)
         checked++
       }
