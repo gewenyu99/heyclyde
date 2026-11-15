@@ -435,9 +435,11 @@ test('oauth JSON mode: each sign-in state comes back as JSON through the Worker'
     const nocode = await get('/oauth/approve?authorization_id=json-test-0003')
     assert.deepEqual([nocode.status, nocode.body?.state], [400, 'error'], nocode.text)
 
-    const capped = await get('/oauth/consent?authorization_id=json-test-0004')
+    // The cap counts sign-ins in flight: 0001 finished and its row is gone, so 0002, 0003 and 0004 fill it.
+    assert.equal((await get('/oauth/consent?authorization_id=json-test-0004')).body?.state, 'check_email')
+    const capped = await get('/oauth/consent?authorization_id=json-test-0005')
     assert.deepEqual([capped.status, capped.body?.state], [429, 'error'], capped.text)
-    assert.equal(emails(), before + 3, '3 emails in 15 minutes, no more')
+    assert.equal(emails(), before + 4, 'no email for the capped request')
 
     // Straight to Supabase: asking for JSON, with no secret or a wrong one, still gets text.
     for (const headers of [{ accept: 'application/json' }, { accept: 'application/json', 'x-memory-proxy': 'wrong-secret' }]) {
