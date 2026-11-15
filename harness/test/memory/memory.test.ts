@@ -381,6 +381,76 @@ test('oauth: agent app callbacks allowed, others denied and logged', { skip: SKI
   }
 })
 
+// R46 (#51): through the Worker at memory.heyclyde.me, the sign-in routes answer JSON the Worker renders as pages. The
+// Worker proves itself with x-memory-proxy. Without that secret, the same request still gets the text replies.
+test('oauth JSON mode: each sign-in state comes back as JSON through the Worker', { skip: SKIP }, async () => {
+  const secret = `proxy-${randomBytes(12).toString('hex')}`
+  sql(`insert into memory.setting (name, value) values ('proxy_secret_sha256', '${createHash('sha256').update(secret).digest('hex')}')
+    on conflict (name) do update set value = excluded.value`)
+  sql('delete from memory.oauth_consent')
+  try {
+    const worker = { accept: 'application/json', 'x-memory-proxy': secret }
+    const owner = ownerEmail()
+    const emails = () => memory.auth.calls.filter((c) => c.path === '/auth/v1/otp').length
+    const before = emails()
+    const get = async (path: string, headers: Record<string, string> = worker) => {
+      const r = await call('GET', path, headers)
+      return { ...r, body: /^application\/json/.test(String(r.headers['content-type'])) ? JSON.parse(r.text) : null }
+    }
+
+    const sent = await get('/oauth/consent?authorization_id=json-test-0001')
+    assert.equal(sent.status, 200, sent.text)
+    assert.equal(sent.body?.state, 'check_email', sent.text)
+    assert.match(sent.body.email, /•/)
+    assert.ok(!sent.text.includes(owner), 'the owner\'s address stays masked')
+    const again = await get('/oauth/consent?authorization_id=json-test-0001')
+    assert.equal(again.body?.state, 'check_email', again.text)
+    assert.equal(emails(), before + 1, 'a request already emailed sends nothing more')
+
+    const waiting = await get('/oauth/wait?authorization_id=json-test-0001')
+    assert.equal(waiting.status, 200, waiting.text)
+    assert.equal(waiting.body?.state, 'waiting', waiting.text)
+
+    memory.auth.signIns['pkce-json'] = owner
+    memory.auth.authorizations['json-test-0001'] = { client: { id: 'json-claude', name: 'Claude' }, redirect_uri: 'https://claude.ai/api/mcp/auth_callback' }
+    const connected = await get('/oauth/approve?authorization_id=json-test-0001&code=pkce-json')
+    assert.equal(connected.status, 200, connected.text)
+    assert.deepEqual([connected.body?.state, connected.body?.client], ['connected', 'Claude'], connected.text)
+    const moved = await get('/oauth/wait?authorization_id=json-test-0001')
+    assert.equal(moved.status, 302, moved.text)
+    assert.match(String(moved.headers.location), /^https:\/\/claude\.ai\/api\/mcp\/auth_callback\?code=code-json-test-0001/)
+    const gone = await get('/oauth/wait?authorization_id=json-test-0001')
+    assert.deepEqual([gone.status, gone.body?.state], [410, 'expired'], gone.text)
+
+    assert.equal((await get('/oauth/consent?authorization_id=json-test-0002')).body?.state, 'check_email')
+    memory.auth.authorizations['json-test-0002'] = { client: { id: 'json-evil', name: 'Evil' }, redirect_uri: 'https://evil.example/cb' }
+    const refused = await get('/oauth/approve?authorization_id=json-test-0002&code=pkce-json')
+    assert.equal(refused.status, 403, refused.text)
+    assert.deepEqual([refused.body?.state, refused.body?.client, refused.body?.callback], ['refused', 'Evil', 'https://evil.example/cb'], refused.text)
+    assert.equal(sql(`select count(*)::int as n from memory.admin_audit where action = 'oauth_deny' and target = 'client:json-evil' and after->>'redirect_uri' = 'https://evil.example/cb'`)[0].n, 1)
+
+    const unknown = await get('/oauth/approve?authorization_id=json-test-none&code=pkce-json')
+    assert.deepEqual([unknown.status, unknown.body?.state], [410, 'expired'], unknown.text)
+    assert.equal((await get('/oauth/consent?authorization_id=json-test-0003')).body?.state, 'check_email')
+    const nocode = await get('/oauth/approve?authorization_id=json-test-0003')
+    assert.deepEqual([nocode.status, nocode.body?.state], [400, 'error'], nocode.text)
+
+    const capped = await get('/oauth/consent?authorization_id=json-test-0004')
+    assert.deepEqual([capped.status, capped.body?.state], [429, 'error'], capped.text)
+    assert.equal(emails(), before + 3, '3 emails in 15 minutes, no more')
+
+    // Straight to Supabase: asking for JSON, with no secret or a wrong one, still gets text.
+    for (const headers of [{ accept: 'application/json' }, { accept: 'application/json', 'x-memory-proxy': 'wrong-secret' }]) {
+      const plain = await get('/oauth/wait?authorization_id=json-test-0003', headers)
+      assert.match(String(plain.headers['content-type']), /^text\/plain/)
+      assert.match(plain.text, /^memory: /)
+    }
+  } finally {
+    sql(`delete from memory.setting where name = 'proxy_secret_sha256'`)
+    sql('delete from memory.oauth_consent')
+  }
+})
+
 // R8 (#11): a note with an API key is stored with it redacted.
 test('a note with an API key is stored with it redacted, and the judge never saw the key', { skip: SKIP }, async () => {
   const rt = new Memory(memory.url, memory.runtimeToken)
