@@ -10,8 +10,7 @@ button,input,textarea{font:inherit;color:inherit}
 .clyde{background:var(--cl-paper-1);border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-lg);box-shadow:var(--cl-shadow-1);
 overflow:hidden;max-width:100%}
 .c-head{display:flex;align-items:center;gap:var(--cl-space-2);padding:10px var(--cl-space-3);border-bottom:1px solid var(--cl-rule);min-width:0}
-.c-head .cl-mark{--size:20px}
-.c-word{font:680 15px/1 var(--cl-font-sans);letter-spacing:-0.03em}
+.c-head{--cl-logo-h:17px}.c-head .cl-wordmark{flex:none}
 .c-what{flex:1;min-width:0;color:var(--cl-ink-3);font:var(--cl-text-small);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .c-head .cl-agent{flex:none;max-width:46%}
 .c-desk{display:grid;gap:var(--cl-space-2);padding:var(--cl-space-3);background:var(--cl-paper-0)}

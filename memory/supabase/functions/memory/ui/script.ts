@@ -122,9 +122,10 @@ function agentBadge(b, big) {
       h("span", { class: "cl-agent__meta", text: on ? [b.context, b.surface].filter(Boolean).join(" · ") : "not registered" })));
 }
 function head(what, b) {
-  return h("div", { class: "c-head" }, h("span", { class: "cl-mark", "aria-hidden": "true", text: "c" }), h("span", { class: "c-word", text: "clyde" }),
-    h("span", { class: "c-what", text: what || "" }), agentBadge(b, false));
+  return h("div", { class: "c-head" }, logo(), h("span", { class: "c-what", text: what || "" }), agentBadge(b, false));
 }
+var LOGO = document.getElementById("clyde-logo");
+function logo() { var w = h("span", { class: "cl-wordmark" }); if (LOGO) w.appendChild(LOGO.content.cloneNode(true)); return w; }
 function sheet(what, b) { var s = h("div", { class: "clyde" }); s.appendChild(head(what, b)); return s; }
 function desk() { return h("div", { class: "c-desk" }); }
 function meter(v) { var i = h("i"); i.style.width = Math.round(Math.max(0, Math.min(1, Number(v) || 0)) * 100) + "%"; return h("span", { class: "c-meter" }, i); }

@@ -2,7 +2,7 @@
 // with nothing fetched from anywhere. The chat app loads it into a sandboxed iframe and hands it the tool result.
 import { CARD_JS } from "./script.ts";
 import { CARD_CSS } from "./style.ts";
-import { COMPONENTS_CSS, TOKENS_CSS } from "./design.ts";
+import { COMPONENTS_CSS, LOGO_LOCKUP, TOKENS_CSS } from "./design.ts";
 
 /** Every card, by name, and what it shows. The names are the ui:// resources' paths. */
 export const CARDS: Record<string, string> = {
@@ -27,5 +27,7 @@ export function cardHtml(card: string): string {
   return `<!doctype html><html lang="en" data-card="${card}"><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width,initial-scale=1"><title>Clyde</title>` +
     `<style>${TOKENS_CSS}${COMPONENTS_CSS}${CARD_CSS}</style></head><body><div id="root" aria-live="polite"></div>` +
+    // The logo is the design system's own SVG (memory/design/brand.js), never redrawn. The script clones it into each header.
+    `<template id="clyde-logo">${LOGO_LOCKUP}</template>` +
     `<script>${CARD_JS}</script></body></html>`;
 }

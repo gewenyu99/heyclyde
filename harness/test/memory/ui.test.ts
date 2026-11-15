@@ -12,7 +12,8 @@ import { repoRoot } from '../../src/config.ts'
 import { readUiResource, uiResources, uriOf, wantsUi, UI_EXTENSION, UI_MIME } from '../../../memory/supabase/functions/memory/ui/apps.ts'
 import { CARDS, cardHtml } from '../../../memory/supabase/functions/memory/ui/cards.ts'
 import { CARD_CSS } from '../../../memory/supabase/functions/memory/ui/style.ts'
-import { COMPONENTS_CSS, TOKENS_CSS } from '../../../memory/supabase/functions/memory/ui/design.ts'
+import { COMPONENTS_CSS, LOGO_LOCKUP, TOKENS_CSS } from '../../../memory/supabase/functions/memory/ui/design.ts'
+import { LOGO_LOCKUP as BRAND_LOCKUP } from '../../../memory/design/brand.js'
 import * as design from '../../../memory/design/css.js'
 import { CALLS, FIXTURES, RID } from './ui-fixtures.ts'
 import { findChrome, hostPage, render, type Frame } from './ui-host.ts'
@@ -68,8 +69,10 @@ test('R67 cards are small and self-contained', () => {
 
 test('R67 the cards use only the design tokens', () => {
   // The function's copy of Clyde's design system is memory/design/css.js's, word for word.
-  assert.equal(TOKENS_CSS, design.TOKENS_CSS, 'copy TOKENS_CSS from memory/design/css.js into ui/design.ts')
-  assert.equal(COMPONENTS_CSS, design.COMPONENTS_CSS, 'copy COMPONENTS_CSS from memory/design/css.js into ui/design.ts')
+  assert.equal(TOKENS_CSS, design.TOKENS_CSS, 'run node memory/design/build.mjs')
+  assert.equal(COMPONENTS_CSS, design.COMPONENTS_CSS, 'run node memory/design/build.mjs')
+  assert.equal(LOGO_LOCKUP, BRAND_LOCKUP, 'the logo is brand.js\'s: run node memory/design/build.mjs')
+  for (const card of Object.keys(CARDS)) assert.ok(cardHtml(card).includes(BRAND_LOCKUP), `${card} carries the logo`)
   const defined = new Set([...(TOKENS_CSS + COMPONENTS_CSS).matchAll(/(--[a-z0-9-]+)\s*:/g)].map((m) => m[1]))
   const used = new Set([...CARD_CSS.matchAll(/var\((--[a-z0-9-]+)/g)].map((m) => m[1]))
   assert.ok(used.size > 10)
