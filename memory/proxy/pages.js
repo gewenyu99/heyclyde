@@ -36,7 +36,7 @@ const SIGN_CSS = `
 main.sign{flex:1;display:flex;align-items:center;justify-content:center;padding:8px max(16px,env(safe-area-inset-left,0px)) 40px}
 .ticket{width:100%;max-width:460px;overflow:hidden}
 .ticket-head{display:flex;justify-content:space-between;gap:12px;padding:12px 20px;border-bottom:1.5px dashed var(--cl-rule-strong);background:var(--cl-paper-1)}
-.ticket-body{display:grid;gap:14px;padding:28px 28px 30px}
+.ticket-body{display:grid;gap:14px;padding:28px 28px 30px;grid-template-columns:minmax(0,1fr)}
 @media (max-width:480px){.ticket-body{padding:24px 20px 26px}}
 .ticket h1{margin:4px 0 0}
 .ticket .cl-lead strong{color:var(--cl-ink);font-weight:600;overflow-wrap:anywhere}
