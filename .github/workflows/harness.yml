@@ -7,6 +7,13 @@ on:
     paths: ['harness/**', 'memory/**', 'skills/**', 'plugins/**', '.claude-plugin/**', '.github/workflows/harness.yml']
   pull_request:
     paths: ['harness/**', 'memory/**', 'skills/**', 'plugins/**', '.claude-plugin/**', '.github/workflows/harness.yml']
+  # By hand, tier 3 can run a few files: only = "tenancy plans" runs test/memory/tenancy.test.ts and plans.test.ts.
+  workflow_dispatch:
+    inputs:
+      only:
+        description: Tier-3 test files to run, by name without .test.ts, space separated. Empty runs them all.
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -73,4 +80,11 @@ jobs:
         working-directory: harness
       - name: Tier 3, the memory function
         working-directory: harness
-        run: npm run test:memory
+        env:
+          ONLY: ${{ inputs.only }}
+        run: |
+          if [ -n "$ONLY" ]; then
+            node --test --test-concurrency=1 $(for t in $ONLY; do printf 'test/memory/%s.test.ts ' "$t"; done)
+          else
+            npm run test:memory
+          fi

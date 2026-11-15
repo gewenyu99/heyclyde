@@ -44,6 +44,22 @@ export function apply(file: string): void {
   database(['apply', file])
 }
 
+/** Schema memory rebuilt from every migration (all of them, or those before `until`), with the tea vault seeded only when
+ * all of them ran. */
+export function resetDatabase(until?: string): void {
+  database(until ? ['until', until] : ['reset'])
+}
+
+/** Several statements in one round trip, as postgres. */
+export function exec(statements: string): void {
+  database(['exec', statements])
+}
+
+/** One statement as role memory_tenant with memory.owner = owner ('' leaves it unset): its rows, or {error, code}. */
+export function asTenant(owner: string, statement: string): Record<string, any>[] | { error: string; code: string | null } {
+  return JSON.parse(database(['tenant', owner, statement]))
+}
+
 /** Runs memory.purge_messages() and reports how long the database took, in ms. */
 export function purge(): { ms: number; result: unknown } {
   return JSON.parse(database(['purge']))

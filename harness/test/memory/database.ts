@@ -5,11 +5,16 @@
  * the way auth.ts reads them, with
  * MEMORY_TEST_CRON_SECRET in Vault. `drop` removes the schema again. `sql <statement>` prints its rows as JSON, for what
  * no route shows. `apply <migration file>` runs one migration file again, and `purge` runs memory.purge_messages() and prints
- * how long it took in ms. pg_cron only lives in the postgres database, so the tests reset a schema rather than create a database.
+ * how long it took in ms. `until <migration file>` rebuilds schema memory from the migrations before that file and seeds
+ * nothing, `exec <statements>` runs several statements in one round trip, and `tenant <owner> <statement>` runs one statement
+ * as role memory_tenant with memory.owner set to owner ('' leaves it unset) and prints its rows, or {error, code}. Wen, the
+ * tenant every seeded row belongs to (R48), is WEN_ID. pg_cron only lives in the postgres database, so the tests reset a schema rather than create a database.
  */
 import postgres from 'npm:postgres@3.4.7'
 
 const MIGRATIONS = new URL('../../../memory/supabase/migrations/', import.meta.url)
+/** Wen's owner id in the tests: setting owner_id, which every row written as postgres with no memory.owner belongs to. */
+export const WEN_ID = '7e570000-0000-4000-8000-00000000c1de'
 
 const SOURCES = [
   ['src-a', 'claude_chat', 'Test chat', 'https://example.com/a', '2026-09-01'],
@@ -55,11 +60,20 @@ async function putSecret(name: string, value: string) {
   else await sql`select vault.create_secret(${value}, ${name})`
 }
 
-async function reset() {
+/** Rebuilds schema memory from every migration whose file name sorts before `until`, or from all of them. */
+async function migrate(until?: string) {
   await drop()
-  const files = [...Deno.readDirSync(MIGRATIONS)].map((f) => f.name).filter((n) => n.endsWith('.sql')).sort()
+  const files = [...Deno.readDirSync(MIGRATIONS)].map((f) => f.name).filter((n) => n.endsWith('.sql') && (!until || n < until)).sort()
   for (const name of files) await sql.unsafe(await Deno.readTextFile(new URL(name, MIGRATIONS))).simple()
   await unschedule()
+}
+
+async function reset() {
+  await migrate()
+  // The tenancy migration takes Wen's owner from Supabase Auth, which the CI database has no user in, so the tests name him.
+  if (await sql`select 1 from information_schema.columns where table_schema = 'memory' and table_name = 'entry' and column_name = 'owner_id'`.then((r) => r.length)) {
+    await sql`insert into memory.setting (name, value) values ('owner_id', ${WEN_ID}) on conflict (name) do update set value = excluded.value`
+  }
   for (const [id, kind, title, uri, date] of SOURCES) {
     await sql`insert into memory.source (id, kind, title, uri, date) values (${id}, ${kind}, ${title}, ${uri}, ${date})`
   }
@@ -83,11 +97,25 @@ try {
   else if (Deno.args[0] === 'drop') await drop()
   else if (Deno.args[0] === 'sql') console.log(JSON.stringify(await sql.unsafe(Deno.args[1])))
   else if (Deno.args[0] === 'apply') await sql.unsafe(await Deno.readTextFile(new URL(Deno.args[1], MIGRATIONS))).simple()
+  else if (Deno.args[0] === 'until') await migrate(Deno.args[1])
+  else if (Deno.args[0] === 'exec') await sql.unsafe(Deno.args[1]).simple()
+  else if (Deno.args[0] === 'tenant') {
+    try {
+      const rows = await sql.begin(async (tx) => {
+        await tx.unsafe('set local role memory_tenant')
+        if (Deno.args[1]) await tx`select set_config('memory.owner', ${Deno.args[1]}, true)`
+        return await tx.unsafe(Deno.args[2])
+      })
+      console.log(JSON.stringify(rows))
+    } catch (e) {
+      console.log(JSON.stringify({ error: (e as Error).message, code: (e as { code?: string }).code ?? null }))
+    }
+  }
   else if (Deno.args[0] === 'purge') {
     const started = performance.now()
     const [row] = await sql`select memory.purge_messages() as result`
     console.log(JSON.stringify({ ms: performance.now() - started, result: row.result }))
-  } else throw new Error('usage: database.ts reset|drop|sql <statement>|apply <file>|purge')
+  } else throw new Error('usage: database.ts reset|drop|sql <statement>|apply <file>|until <file>|exec <statements>|tenant <owner> <statement>|purge')
 } finally {
   await sql.end()
 }
