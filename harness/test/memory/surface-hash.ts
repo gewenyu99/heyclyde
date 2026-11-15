@@ -25,8 +25,10 @@ export function clientSurfaceHash(read: (name: string) => string): string {
   return sha256(JSON.stringify({ client }))
 }
 
-/** SHA-256 of the server instructions and the tool list. Nothing about the client files goes into it. */
-export const serverSurfaceHash = (instructions: string, tools: unknown): string => sha256(JSON.stringify({ instructions, tools }))
+/** SHA-256 of the server instructions and the tool list, and since R67 what card-rendering chat apps read (`ui`). Nothing
+ * about the client files goes into it. */
+export const serverSurfaceHash = (instructions: string, tools: unknown, ui?: unknown): string =>
+  sha256(JSON.stringify(ui === undefined ? { instructions, tools } : { instructions, tools, ui }))
 
 export type SurfaceCheck = {
   /** The version now in force. */
