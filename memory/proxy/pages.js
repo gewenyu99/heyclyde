@@ -7,19 +7,19 @@ export const INSTALL = "curl -fsSL https://memory.heyclyde.me/install | sh";
 const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 export const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ESC[c]);
 
-// clyde's brand mark, as in harness/paseo-plugin/design/clyde-v2.html: a dark rounded square with a lowercase c.
+// Clyde's mark, per memory/CLYDE-DESIGN.md's icon brief: a #262825 rounded square (29% corners) with a lowercase c at 62%.
 const MARK = `<span class="mark" aria-hidden="true">c</span>`;
 const FAVICON = "data:image/svg+xml," + encodeURIComponent(
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="#262825"/>` +
-  `<text x="16" y="22.5" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="20" font-weight="600" fill="#fff">c</text></svg>`);
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="9.3" fill="#262825"/>` +
+  `<text x="16" y="22.5" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="19.8" font-weight="600" fill="#fff">c</text></svg>`);
 
 const CSS = `
 :root{color-scheme:light dark;--bg:#f4f4f1;--bg-2:#eef0ec;--surface:#fff;--border:#e4e5e0;--text:#20211f;--muted:#777a75;
---accent:#2f5fd0;--accent-soft:#eaf1ff;--on-accent:#fff;--ok:#1f8a45;--ok-soft:#e8f6ec;--bad:#b91c1c;--bad-soft:#fdeceb;
+--accent:#2f5fd0;--accent-soft:#eaf1ff;--on-accent:#fff;--ok:#1f8a45;--ok-soft:#e8f6ec;--bad:#b91c1c;--bad-soft:#fde8e8;
 --warn:#c86a12;--warn-soft:#fff1e2;--code:#f8f9f6;--brand:#262825;--on-brand:#fff;--shadow:0 1px 2px #1c1c1a08,0 8px 24px -14px #1c1c1a24}
-@media (prefers-color-scheme:dark){:root{--bg:#121311;--bg-2:#1b1c1a;--surface:#191a18;--border:#2b2d29;--text:#ecece8;
---muted:#9a9d96;--accent:#7ea2f2;--accent-soft:#1c2740;--on-accent:#121311;--ok:#5cc489;--ok-soft:#16301f;--bad:#f08a80;
---bad-soft:#3a1c1a;--warn:#eaa05a;--warn-soft:#352514;--code:#151614;--brand:#ecece8;--on-brand:#121311;--shadow:0 1px 2px #0000004d,0 12px 32px -16px #00000099}}
+@media (prefers-color-scheme:dark){:root{--bg:#171816;--bg-2:#2a2c28;--surface:#1f201e;--border:#30322e;--text:#ecece6;
+--muted:#9a9d96;--accent:#7ea0f0;--accent-soft:#1f2b47;--on-accent:#11141c;--ok:#5cc486;--ok-soft:#173222;--bad:#f08a8a;
+--bad-soft:#3d1c1c;--warn:#e39a52;--warn-soft:#3a2714;--code:#191a18;--brand:#ecece6;--on-brand:#1f201e;--shadow:0 1px 2px #0000004d,0 12px 32px -16px #00000099}}
 *{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--text);font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,
 "Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;flex-direction:column}
@@ -159,13 +159,13 @@ export function statePage(data, nonce) {
       break;
     case "connected":
       tone = "ok"; icon = ICON.ok; h1 = "Connected"; title = "Connected";
-      lead = `${app()} can now use clyde's memory.`;
+      lead = `${app()} can now recall and remember with Clyde.`;
       extra = `<p class="note">Go back to the window that asked. It finishes by itself, and you can close this tab.</p>`;
       break;
     case "refused":
       tone = "bad"; icon = ICON.no; h1 = "Refused"; title = "Refused";
-      lead = `clyde didn't connect ${app("this app")}.`;
-      extra = `<p class="note">Its callback${data?.callback ? `, <code>${esc(data.callback)}</code>,` : ""} isn't one of the agent apps clyde knows, or this computer. The attempt is logged.</p>`;
+      lead = `${app("This app")} wasn't connected. Nothing was shared.`;
+      extra = `<p class="note">Its callback${data?.callback ? `, <code>${esc(data.callback)}</code>,` : ""} isn't one of the agent apps Clyde knows, or this computer. The attempt is logged.</p>`;
       break;
     case "expired":
       tone = "warn"; icon = ICON.late; h1 = "Link expired"; title = "Link expired";
@@ -177,7 +177,7 @@ export function statePage(data, nonce) {
   }
   const body = `<header class="top sign-top wrap"><a class="brand" href="/">${MARK}clyde</a></header>
 <main class="sign"><section class="card ${tone}"><div class="badge">${icon}</div><h1>${h1}</h1><p class="lead">${lead}</p>${extra}</section></main>`;
-  return shell({ nonce, title: `${title} · clyde`, css: SIGN_CSS, body });
+  return shell({ nonce, title: `${title} · Clyde`, css: SIGN_CSS, body });
 }
 
 // ---- Connect your apps ----
@@ -187,7 +187,7 @@ const APPS = [
     id: "claude-ai", name: "Claude", sub: "claude.ai, Cowork and mobile", tag: "Connector", glyph: "C",
     body: `<ol class="steps"><li><span>Open <span class="k">Settings → Connectors</span> and choose <span class="k">Add custom connector</span>.</span></li>
 <li><span>Paste the URL and click <span class="k">Add</span>, then <span class="k">Connect</span>.</span></li>
-<li><span>Open the sign-in link clyde emails you. The connector syncs to Cowork and the mobile apps.</span></li></ol>${copyBox(MCP_URL)}`,
+<li><span>Open the sign-in link Clyde emails you. The connector syncs to Cowork and the mobile apps.</span></li></ol>${copyBox(MCP_URL)}`,
   },
   {
     id: "claude-code", name: "Claude Code and Codex", sub: "Terminal agents on your computer", tag: "Installer", glyph: "&gt;_",
@@ -202,14 +202,14 @@ ${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { memory: { serverUrl:
     id: "gemini", name: "Gemini app", sub: "gemini.google.com", tag: "Custom app", glyph: "G",
     body: `<ol class="steps"><li><span>Open <span class="k">Settings → Connected Apps</span>.</span></li>
 <li><span>Add a <span class="k">custom app</span> with the URL.</span></li>
-<li><span>Approve with the sign-in link clyde emails you.</span></li></ol>${copyBox(MCP_URL)}
+<li><span>Approve with the sign-in link Clyde emails you.</span></li></ol>${copyBox(MCP_URL)}
 <p class="fine">Custom apps may need Google AI Ultra or a US account.</p>`,
   },
   {
     id: "grok", name: "Grok", sub: "grok.com", tag: "Connector", glyph: "X",
     body: `<ol class="steps"><li><span>Open <a href="https://grok.com/connectors" rel="noopener noreferrer" target="_blank">grok.com/connectors</a> and choose <span class="k">Custom</span>.</span></li>
 <li><span>Paste the URL and connect.</span></li>
-<li><span>Open the sign-in link clyde emails you.</span></li></ol>${copyBox(MCP_URL)}`,
+<li><span>Open the sign-in link Clyde emails you.</span></li></ol>${copyBox(MCP_URL)}`,
   },
   {
     id: "antigravity-cloud", name: "Antigravity cloud", sub: "Agents that can't open a browser", tag: "HTTPS token", glyph: "A",
@@ -224,16 +224,16 @@ export function homePage(nonce) {
   const body = `<header class="top wrap"><a class="brand" href="/">${MARK}clyde</a>
 <span class="pill" id="status" role="status"><i class="dot"></i><span>Checking…</span></span></header>
 <main class="wrap">
-<section class="hero"><span class="eyebrow">clyde memory</span><h1>Connect your apps</h1>
-<p>One memory for every agent Wen uses. Point an app at one URL, approve the sign-in email, and what one agent learns, the others can recall.</p>
+<section class="hero"><span class="eyebrow">Clyde</span><h1>Connect your apps</h1>
+<p>One shared memory for every agent you use. Point an app at one URL, approve the sign-in email, and what one agent learns, the others can recall.</p>
 <p class="label">Server URL</p>${copyBox(MCP_URL)}</section>
 <h3 class="section">Pick your app</h3>
 <section class="grid">${cards}</section>
 <section class="how" aria-label="How sign-in works">
 <div><span class="n">1</span><b>Add the URL</b><p>Each app registers itself through OAuth. There's no password and no key to paste.</p></div>
-<div><span class="n">2</span><b>Click the email link</b><p>clyde emails its one owner a sign-in link. Open it on any device, and the app's window moves on by itself.</p></div>
-<div><span class="n">3</span><b>Only known apps get in</b><p>clyde approves Claude, Antigravity, Gemini, Grok and this computer. Anything else is refused and logged.</p></div>
+<div><span class="n">2</span><b>Click the email link</b><p>Clyde emails you a sign-in link. Open it on any device, and the app's window moves on by itself.</p></div>
+<div><span class="n">3</span><b>Only known apps get in</b><p>Clyde approves Claude, Antigravity, Gemini, Grok and your own computer. Anything else is refused and logged.</p></div>
 </section></main>
-<footer><div class="wrap"><span>clyde · memory.heyclyde.me</span><a href="/healthz">Status JSON</a></div></footer>`;
-  return shell({ nonce, title: "Connect your apps · clyde", css: HOME_CSS, body, script: COPY_JS + STATUS_JS });
+<footer><div class="wrap"><span>Clyde · heyclyde.me</span><a href="/healthz">Status JSON</a></div></footer>`;
+  return shell({ nonce, title: "Connect your apps · Clyde", css: HOME_CSS, body, script: COPY_JS + STATUS_JS });
 }
