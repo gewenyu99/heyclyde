@@ -24,7 +24,7 @@
 .cl-kbd { font: 600 11px/1 var(--cl-font-mono); padding: 3px 5px; border: 1px solid var(--cl-rule-strong); border-bottom-width: 2px; border-radius: var(--cl-radius-xs); background: var(--cl-paper-1); color: var(--cl-ink-2); }
 
 /* ---- Buttons ---- */
-.cl-btn { appearance: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 14px; border: 1px solid var(--cl-edge); border-radius: var(--cl-radius-md); background: var(--cl-paper-1); color: var(--cl-ink); font: 600 13.5px/1 var(--cl-font-sans); letter-spacing: -0.005em; white-space: nowrap; cursor: pointer; text-decoration: none; transition: transform var(--cl-dur-2) var(--cl-ease-out), box-shadow var(--cl-dur-2) var(--cl-ease-out), background var(--cl-dur-2) var(--cl-ease-out), border-color var(--cl-dur-2) var(--cl-ease-out); }
+.cl-btn { box-sizing: border-box; appearance: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 14px; border: 1px solid var(--cl-edge); border-radius: var(--cl-radius-md); background: var(--cl-paper-1); color: var(--cl-ink); font: 600 13.5px/1 var(--cl-font-sans); letter-spacing: -0.005em; white-space: nowrap; cursor: pointer; text-decoration: none; transition: transform var(--cl-dur-2) var(--cl-ease-out), box-shadow var(--cl-dur-2) var(--cl-ease-out), background var(--cl-dur-2) var(--cl-ease-out), border-color var(--cl-dur-2) var(--cl-ease-out); }
 .cl-btn:hover { transform: translate(-1px, -1px); box-shadow: var(--cl-copy-1); border-color: var(--cl-ink-3); }
 .cl-btn:active { transform: translate(1px, 1px); box-shadow: none; transition-duration: var(--cl-dur-1); }
 .cl-btn:focus-visible { outline: none; box-shadow: var(--cl-focus); }
@@ -43,9 +43,9 @@
 .cl-btn.is-done { color: var(--cl-ok); border-color: var(--cl-ok); box-shadow: none; transform: none; }
 
 /* ---- Fields: labels read like a form's printed captions ---- */
-.cl-field { display: grid; gap: 6px; min-width: 0; }
+.cl-field { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; min-width: 0; }
 .cl-field > label, .cl-field__label { font: var(--cl-text-label); letter-spacing: var(--cl-track-label); text-transform: uppercase; color: var(--cl-ink-2); }
-.cl-input, .cl-select, .cl-textarea { width: 100%; min-width: 0; height: 40px; padding: 0 12px; border: 1px solid var(--cl-edge); border-radius: var(--cl-radius-sm); background: var(--cl-paper-1); color: var(--cl-ink); font: 400 15px/1.3 var(--cl-font-sans); transition: box-shadow var(--cl-dur-2) var(--cl-ease-out), border-color var(--cl-dur-2) var(--cl-ease-out); }
+.cl-input, .cl-select, .cl-textarea { box-sizing: border-box; width: 100%; min-width: 0; height: 40px; padding: 0 12px; border: 1px solid var(--cl-edge); border-radius: var(--cl-radius-sm); background: var(--cl-paper-1); color: var(--cl-ink); font: 400 15px/1.3 var(--cl-font-sans); transition: box-shadow var(--cl-dur-2) var(--cl-ease-out), border-color var(--cl-dur-2) var(--cl-ease-out); }
 .cl-textarea { height: auto; min-height: 96px; padding: 10px 12px; line-height: 1.5; resize: vertical; }
 .cl-select { appearance: none; padding-right: 30px; background-image: linear-gradient(45deg, transparent 50%, var(--cl-ink-3) 50%), linear-gradient(135deg, var(--cl-ink-3) 50%, transparent 50%); background-position: calc(100% - 15px) 52%, calc(100% - 10px) 52%; background-size: 5px 5px; background-repeat: no-repeat; }
 .cl-input::placeholder, .cl-textarea::placeholder { color: var(--cl-ink-3); }

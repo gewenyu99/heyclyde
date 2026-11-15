@@ -17,7 +17,9 @@ Clyde gives every agent a person runs one shared memory, so work picked up weeks
 - **`/me` API.** The site's only door to a user's data, with the user's own JWT.
 - **Agent identity v2.** Nickname, type, harness, machine, repos and work flag. Quests target type and environment.
 
-The prototype: [Clyde site prototype](https://claude.ai/artifact/FBkXSUX6NgUWE81SkvidLt), source in [design/clyde-prototype.html](design/clyde-prototype.html).
+The prototype: [Clyde site prototype](https://claude.ai/artifact/FBkXSUX6NgUWE81SkvidLt), source in [design/src/clyde-prototype.html](design/src/clyde-prototype.html).
+
+The look (R68, #73): the Carbon copy design system. Brand brief in [design/BRAND.md](design/BRAND.md), tokens in [design/tokens.css](design/tokens.css), components in [design/components.css](design/components.css), the reasons in [design/PRINCIPLES.md](design/PRINCIPLES.md). Every Clyde surface (the site, memory.heyclyde.me's pages, the chat cards) builds on those two CSS files. The browsable system is the artifact [Clyde Design System](https://claude.ai/artifact/5QD8QLiTQo5dMiaqaMueq1), and the three directions it was picked from are [Clyde Directions](https://claude.ai/artifact/3usQ13GnTPUnGyxJPw7rAa).
 
 ## Intent
 
