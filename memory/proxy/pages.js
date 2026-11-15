@@ -12,15 +12,15 @@ const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;
 export const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ESC[c]);
 
 /** An image with a dark-mode twin: <picture> switches on the system theme (these pages have no theme toggle). */
-const themed = (light, dark, alt, w, h, cls = "") => `<picture${cls ? ` class="${cls}"` : ""}><source media="(prefers-color-scheme: dark)" srcset="${dark}">` +
+export const themed = (light, dark, alt, w, h, cls = "") => `<picture${cls ? ` class="${cls}"` : ""}><source media="(prefers-color-scheme: dark)" srcset="${dark}">` +
   `<img src="${light}" alt="${alt}" width="${w}" height="${h}"></picture>`;
 // Clyde's logo (memory/design/BRAND.md, Logo): the lockup is 324 x 86 units, the mark 64 x 64.
-const LOGO = (h = 30) => themed("/_clyde/brand/clyde-lockup-light.svg", "/_clyde/brand/clyde-lockup-dark.svg", "clyde", Math.round(h * 324 / 86), h);
-const MARK = (h = 20) => themed("/_clyde/brand/clyde-mark-light.svg", "/_clyde/brand/clyde-mark-dark.svg", "", h, h);
-const WORDMARK = `<a class="logo" href="/" aria-label="clyde home">${LOGO()}</a>`;
+export const LOGO = (h = 30) => themed("/_clyde/brand/clyde-lockup-light.svg", "/_clyde/brand/clyde-lockup-dark.svg", "clyde", Math.round(h * 324 / 86), h);
+export const MARK = (h = 20) => themed("/_clyde/brand/clyde-mark-light.svg", "/_clyde/brand/clyde-mark-dark.svg", "", h, h);
+const WORDMARK = `<a class="logo" href="https://heyclyde.me/" aria-label="clyde home">${LOGO()}</a>`;
 
 // Page frame shared by every page: a bar, the main column and a footer, on desk paper with a faint grain.
-const PAGE_CSS = `
+export const PAGE_CSS = `
 body{margin:0;min-height:100vh;display:flex;flex-direction:column;background-image:url(/_clyde/brand/grain.svg)}
 a{color:var(--cl-carbon)}
 :focus-visible{outline:2px solid var(--cl-carbon);outline-offset:2px}
@@ -69,7 +69,7 @@ form.ask{display:grid;gap:14px;margin-top:4px}
 
 // Connect your apps: a hero that shows Clyde working inside two chat apps, a row of the apps it works with, a card
 // per app, and three steps. Ruled paper behind the hero; the cards in the scene lift like the rest of the system.
-const HOME_CSS = `
+export const HOME_CSS = `
 .hero{position:relative;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.02fr);gap:56px;align-items:center;padding-block:40px 72px}
 @media (max-width:960px){.hero{grid-template-columns:minmax(0,1fr);gap:44px;padding-block:20px 56px}}
 .hero::before{content:"";position:absolute;inset:0 0 0 46%;z-index:-1;background:repeating-linear-gradient(to bottom,transparent 0 31px,var(--cl-rule) 31px 32px);-webkit-mask-image:radial-gradient(70% 70% at 60% 50%,#000,transparent);mask-image:radial-gradient(70% 70% at 60% 50%,#000,transparent)}
@@ -133,7 +133,7 @@ ol.steps li::before{content:counter(s);font:600 11px/1 var(--cl-font-mono);color
 .how p{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2)}
 `;
 
-const COPY_JS = `document.querySelectorAll('[data-copy]').forEach(function(b){b.addEventListener('click',function(){
+export const COPY_JS = `document.querySelectorAll('[data-copy]').forEach(function(b){b.addEventListener('click',function(){
 var t=b.getAttribute('data-copy');function ok(){b.textContent='Copied';b.classList.add('is-done');setTimeout(function(){b.textContent='Copy';b.classList.remove('is-done')},1600)}
 if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(ok,function(){})}else{var a=document.createElement('textarea');
 a.value=t;document.body.appendChild(a);a.select();try{document.execCommand('copy');ok()}catch(e){}a.remove()}})});`;
@@ -143,7 +143,7 @@ fetch('/healthz',{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;return r.
 p.className='cl-status is-ok';p.textContent='Online';if(d&&d.version){var v=document.createElement('span');v.className='v';
 v.textContent='v'+d.version;p.appendChild(document.createTextNode(' \\u00b7 '));p.appendChild(v)}}).catch(function(){p.className='cl-status is-bad';p.textContent='Offline'})})();`;
 
-function shell({ nonce, title, css, body, script = "" }) {
+export function shell({ nonce, title, css, body, script = "" }) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>${esc(title)}</title><meta name="color-scheme" content="light dark"><meta name="robots" content="noindex">
 <link rel="icon" href="/_clyde/brand/favicon.svg" type="image/svg+xml"><style nonce="${nonce}">${FONTS_CSS}${TOKENS_CSS}${COMPONENTS_CSS}${(PAGE_CSS + css).replace(/\n/g, "")}</style></head><body class="cl-root">${body}${
@@ -156,7 +156,7 @@ const copyPre = (name, value) =>
   `<div class="cl-file"><div class="cl-file__head"><span>${esc(name)}</span><button class="cl-btn cl-btn--sm" type="button" data-copy="${esc(value)}">Copy</button></div>` +
   `<pre><code>${esc(value)}</code></pre></div>`;
 const footer = `<footer class="foot"><div class="wrap"><span class="brand">${MARK()}clyde · one memory for every agent</span>
-<nav><a href="${DESIGN_URL}">Design system</a><a href="/healthz">Status JSON</a><a href="https://heyclyde.me">heyclyde.me</a></nav>
+<nav><a href="https://heyclyde.me/privacy">Privacy</a><a href="https://heyclyde.me/terms">Terms</a><a href="${DESIGN_URL}">Design system</a><a href="/healthz">Status</a></nav>
 <span class="legal">App names and marks belong to their owners. Listing an app doesn't mean its maker endorses Clyde.</span></div></footer>`;
 
 // ---- Sign-in states ----
@@ -246,9 +246,9 @@ export function statePage(data, nonce, id = "") {
 
 // The apps' logos (memory/design/APP-LOGOS.md). Only marks whose owners allow third-party use without approval ship;
 // today that's Grok's, unaltered from x.ai. The rest show their name in a neutral Clyde tile until approval comes.
-const APP_LOGO = { grok: ["/_clyde/apps/grok.svg", "/_clyde/apps/grok-dark.svg"] };
+export const APP_LOGO = { grok: ["/_clyde/apps/grok.svg", "/_clyde/apps/grok-dark.svg"] };
 const MONO = { claude: "C", "claude-code": "&gt;_", codex: "&gt;_", gemini: "G", antigravity: "Ag", chatgpt: "G" };
-const appLogo = (slug, size = 24) => {
+export const appLogo = (slug, size = 24) => {
   const files = APP_LOGO[slug];
   if (!files) return `<span class="mono-tile" aria-hidden="true">${MONO[slug]}</span>`;
   const [light, dark] = files;
@@ -291,11 +291,11 @@ ${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { memory: { serverUrl:
   },
 ];
 
-const WORKS = [["claude", "Claude"], ["claude-code", "Claude Code"], ["codex", "Codex"], ["gemini", "Gemini"], ["antigravity", "Antigravity"], ["grok", "Grok"], ["chatgpt", "ChatGPT", "soon"]];
+export const WORKS = [["claude", "Claude"], ["claude-code", "Claude Code"], ["codex", "Codex"], ["gemini", "Gemini"], ["antigravity", "Antigravity"], ["grok", "Grok"], ["chatgpt", "ChatGPT", "soon"]];
 
 // The hero's picture: a question asked in Claude, answered from a memory atlas filed in Claude Code; Codex recalling the
 // same memory in a terminal; and a quest atlas claimed. Example data, drawn with the real components.
-const SCENE = `<div class="scene" aria-label="Clyde answering in Claude and in Codex from the same memory">
+export const SCENE = `<div class="scene" aria-label="Clyde answering in Claude and in Codex from the same memory">
 <div class="win w1"><div class="win-top"><i class="dots"></i>Claude<span>chat</span></div><div class="body">
 <div class="ask">What did we decide about deploys?</div><p class="say">You decided three weeks ago. Clyde has it:</p>
 <article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-chip">Decision</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">93%</span></div>
@@ -312,15 +312,15 @@ export function homePage(nonce) {
   const cards = APPS.map((a) => `<article class="cl-card app" data-app="${a.id}"><div class="app-head"><span class="app-logo">${appLogo(a.logo)}</span>
 <div><h3 class="cl-title-3">${esc(a.name)}</h3><p class="sub">${esc(a.sub)}</p></div><span class="cl-chip">${esc(a.tag)}</span></div>${a.body}</article>`).join("\n");
   const works = WORKS.map(([slug, name, soon]) => `<li>${APP_LOGO[slug] ? appLogo(slug, 20) : ""}${name}${soon ? ` <small>${soon}</small>` : ""}</li>`).join("");
-  const body = `<header class="bar wrap">${WORDMARK}<nav class="topnav"><a href="#apps">Apps</a><a href="#how">How it works</a><a href="${DESIGN_URL}">Design</a></nav>
+  const body = `<header class="bar wrap">${WORDMARK}<nav class="topnav"><a href="https://heyclyde.me/">Home</a><a href="#apps">Apps</a><a href="#how">How it works</a></nav>
 <span class="cl-status" id="status" role="status">Checking</span></header>
 <main>
-<section class="hero wrap"><div class="hero-text"><span class="cl-label">Shared memory for AI agents</span>
-<h1 class="cl-display">Your agents forget. <em>Clyde remembers.</em></h1>
-<p class="cl-lead">What one agent learns in Claude Code, the next one recalls in Claude, Codex, Gemini or Grok. One URL, one sign-in email, every app.</p>
-<div class="cta"><a class="cl-btn cl-btn--primary cl-btn--lg" href="#apps">Connect your apps</a><a class="cl-btn cl-btn--ghost cl-btn--lg" href="#how">How it works</a></div>
+<section class="hero wrap"><div class="hero-text"><span class="cl-label">Get Clyde</span>
+<h1 class="cl-display">Connect your <em>apps.</em></h1>
+<p class="cl-lead">Point each app at one URL and approve one email. What one agent learns, every other agent can recall.</p>
+<div class="cta"><a class="cl-btn cl-btn--primary cl-btn--lg" href="#apps">Pick your app</a><a class="cl-btn cl-btn--ghost cl-btn--lg" href="https://heyclyde.me/">What is Clyde?</a></div>
 <div class="works"><span class="cl-label">Connects to</span><ul>${works}</ul></div></div>${SCENE}</section>
-<section class="wrap" id="apps"><div class="apps-head"><div class="section"><span class="cl-label">Connect</span><h2 class="cl-title-1">Connect your apps</h2>
+<section class="wrap" id="apps"><div class="apps-head"><div class="section"><span class="cl-label">Connect</span><h2 class="cl-title-1">Pick your app</h2>
 <p class="cl-lead">Point each app at one URL and approve the sign-in email. Every app's agents then share the same memories.</p></div>
 <div class="cl-field"><span class="cl-field__label">Server URL</span>${copyBox(MCP_URL)}</div></div>
 <div class="apps">${cards}</div></section>

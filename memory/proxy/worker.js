@@ -5,6 +5,7 @@
 // It also serves the web pages (R46). Supabase won't serve HTML from its own domain, so on the three sign-in routes the
 // Worker asks the function for JSON and renders the page here. A browser asking for / gets the "connect your apps" page.
 import { homePage, statePage } from "./pages.js";
+import { sitePage } from "./site.js";
 
 const ORIGIN = "https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory";
 const SIGN_IN = new Set(["/oauth/consent", "/oauth/wait", "/oauth/approve"]);
@@ -35,21 +36,22 @@ function nonce() {
   return btoa(String.fromCharCode(...b)).replace(/[+/=]/g, "");
 }
 
-/** An HTML reply, locked down: scripts and styles only from this response, nothing framed, no referrer to leak a code. */
+/** Headers for an HTML reply, locked down: scripts and styles only from this response, nothing framed, no referrer. */
+function locked(n, headers = {}) {
+  return {
+    "content-type": "text/html; charset=utf-8",
+    "content-security-policy": `default-src 'none'; script-src 'nonce-${n}'; style-src 'nonce-${n}'; img-src 'self' data:; font-src 'self'; ` +
+      "connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+    "x-frame-options": "DENY",
+    "x-content-type-options": "nosniff",
+    "referrer-policy": "no-referrer",
+    ...headers,
+  };
+}
+
 function html(render, status = 200, headers = {}) {
   const n = nonce();
-  return new Response(render(n), {
-    status,
-    headers: {
-      "content-type": "text/html; charset=utf-8",
-      "content-security-policy": `default-src 'none'; script-src 'nonce-${n}'; style-src 'nonce-${n}'; img-src 'self' data:; font-src 'self'; ` +
-        "connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
-      "x-frame-options": "DENY",
-      "x-content-type-options": "nosniff",
-      "referrer-policy": "no-referrer",
-      ...headers,
-    },
-  });
+  return new Response(render(n), { status, headers: locked(n, headers) });
 }
 
 async function signIn(req, url, env) {
@@ -75,6 +77,14 @@ const wantsPage = (req) => !req.headers.has("authorization") && (req.headers.get
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
+    // heyclyde.me is Clyde's public home (R69); www goes there. Neither host reaches the function.
+    if (url.hostname === "www.heyclyde.me") return Response.redirect(`https://heyclyde.me${url.pathname}${url.search}`, 301);
+    if (url.hostname === "heyclyde.me") {
+      if (req.method !== "GET" && req.method !== "HEAD") return new Response("Method not allowed", { status: 405, headers: { allow: "GET, HEAD" } });
+      const n = nonce();
+      const page = sitePage(url.pathname, n);
+      return new Response(page.html, { status: page.status, headers: locked(n, { "cache-control": "public, max-age=300" }) });
+    }
     const read = req.method === "GET" || req.method === "HEAD";
     if (read && url.pathname === "/" && wantsPage(req)) {
       return html(homePage, 200, { "cache-control": "public, max-age=300" });

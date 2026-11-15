@@ -4,7 +4,12 @@ name = "memory-proxy"
 main = "worker.js"
 compatibility_date = "2026-10-01"
 workers_dev = false
-routes = [{ pattern = "memory.heyclyde.me", custom_domain = true }]
+# heyclyde.me and www (R69, #74): Clyde's public home, served by site.js. memory.heyclyde.me stays the API and sign-in.
+routes = [
+  { pattern = "memory.heyclyde.me", custom_domain = true },
+  { pattern = "heyclyde.me", custom_domain = true },
+  { pattern = "www.heyclyde.me", custom_domain = true },
+]
 
 # R68: fonts, the Clyde logo and allowed app logos, served as static files under /_clyde/ (memory/proxy/public).
 # Any other path falls through to worker.js.
