@@ -65,7 +65,7 @@ Deno.test('waiting pages advance by themselves and redirects pass through', asyn
     const r = await get(`/oauth/${route}?authorization_id=abc12345`)
     const advances = state === 'check_email' || state === 'waiting'
     assert.equal(r.headers.get('refresh'), advances ? '3; url=/oauth/wait?authorization_id=abc12345' : null, state)
-    assert.equal(r.headers.get('cache-control'), 'no-store', state)
+    assert.equal(r.headers.get('cache-control'), 'no-store, no-transform', state)
   }
   stub(() => new Response(null, { status: 302, headers: { location: 'https://claude.ai/api/mcp/auth_callback?code=c' } }))
   const moved = await get('/oauth/wait?authorization_id=abc12345')
@@ -87,6 +87,7 @@ Deno.test('every page is locked down', async () => {
     const nonce = /script-src 'nonce-([^']+)'/.exec(csp)?.[1]
     assert.ok(nonce && nonce.length >= 16, csp)
     assert.equal(r.headers.get('x-frame-options'), 'DENY')
+    assert.match(String(r.headers.get('cache-control')), /no-transform/, 'Cloudflare may not inject scripts')
     const html = await r.text()
     assert.ok(html.includes('<meta name="robots" content="noindex">'), 'memory.heyclyde.me pages carry noindex')
     assert.ok(!/<script[^>]*\ssrc=/i.test(html), 'no script loads from anywhere')

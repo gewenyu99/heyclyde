@@ -46,6 +46,8 @@ function locked(n, headers = {}) {
     "x-content-type-options": "nosniff",
     "referrer-policy": "no-referrer",
     ...headers,
+    // no-transform keeps Cloudflare from rewriting the page, such as injecting its analytics beacon from another origin.
+    "cache-control": `${headers["cache-control"] ? `${headers["cache-control"]}, ` : ""}no-transform`,
   };
 }
 

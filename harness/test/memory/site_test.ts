@@ -87,6 +87,7 @@ Deno.test('every heyclyde.me page is locked down, and public pages are indexable
     assert.match(csp, /default-src 'none'/, path)
     assert.match(csp, /script-src 'nonce-[A-Za-z0-9]{16,}'/, path)
     assert.equal(r.headers.get('x-frame-options'), 'DENY', path)
+    assert.match(String(r.headers.get('cache-control')), /no-transform/, `${path}: Cloudflare may not inject scripts`)
     assert.ok(!/\sstyle="/.test(html), `${path}: no style attributes`)
     const loads = [...html.matchAll(/<(?:script|link|img|source|iframe)[^>]*\s(?:src|href|srcset)="([^"]+)"/gi)].map((m) => m[1])
     for (const u of loads) {
