@@ -35,6 +35,7 @@ Deno.test('the home page has the logo, pricing and its links', async () => {
   assert.ok(html.includes('id="honest"') && html.includes('cl-sticky'), 'sticky-note warning section')
   assert.ok(text(html).includes("This is not advanced space-age technology, and it's probably not even very secure."))
   assert.ok(text(html).includes('Shared memory') && text(html).includes('A sticky-note quest board'))
+  assert.ok(html.includes('@media (max-width:960px){.site-hero{grid-template-columns:minmax(0,1fr)'), 'the hero is one column on a phone')
   assert.ok(new TextEncoder().encode(html).length <= 50_000, `${html.length} bytes`)
 })
 

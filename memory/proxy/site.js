@@ -10,6 +10,7 @@ const SITE_CSS = `
 .topnav{margin-left:auto}
 @media (max-width:720px){.bar .acts .cl-btn--ghost{display:none}}
 .site-hero{grid-template-columns:minmax(0,1.12fr) minmax(0,.88fr);gap:44px}
+@media (max-width:960px){.site-hero{grid-template-columns:minmax(0,1fr);gap:32px}}
 .hero-h1{font-size:clamp(33px,4.2vw,54px);line-height:1.06;max-width:19ch}
 .doodle-arrow{width:54px;height:20px;color:var(--cl-carbon);flex:none}
 @media (max-width:560px){.doodle-arrow{display:none}}
