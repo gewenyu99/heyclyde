@@ -3,7 +3,7 @@
 import "jsr:@supabase/functions-js@2/edge-runtime.d.ts";
 import * as admin from "./admin.ts";
 import { servingArms } from "./allocation.ts";
-import { allowed, authenticate, baseOf, type Principal } from "./auth.ts";
+import { allowed, authenticate, baseOf, type Principal, viaProxy } from "./auth.ts";
 import { config } from "./config.ts";
 import { sql } from "./db.ts";
 import { learn } from "./learn.ts";
@@ -242,7 +242,11 @@ async function route(req: Request): Promise<Response> {
   }
   if (path === "/mcp" || path === "/mcp/") return mcp.handle(req, who);
   if (path.startsWith("/.well-known/oauth-protected-resource")) return oauth.resourceMetadata(await baseOf(req));
-  if (path.startsWith("/oauth/")) return oauth.handle(await baseOf(req), path, url);
+  if (path.startsWith("/oauth/")) {
+    // The Worker asks for JSON and renders the pages (R46). Anyone else, a caller straight to Supabase included, gets text.
+    const asJson = (req.headers.get("accept") ?? "").includes("application/json") && await viaProxy(req);
+    return oauth.handle(await baseOf(req), path, url, asJson);
+  }
   if (path === "/install" || path.startsWith("/install/")) return install(req, path, url);
   if (m === "POST" && path === "/devices/claim") return admin.claimDevice(await admin.readJson(req));
   if (path.startsWith("/api/v1") || path === "/") {
