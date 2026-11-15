@@ -96,9 +96,12 @@
 .cl-stamp.is-new { animation: cl-stamp var(--cl-dur-4) var(--cl-ease-stamp) both; }
 @keyframes cl-stamp { from { transform: rotate(-9deg) scale(1.5); opacity: 0; } 60% { opacity: 1; } to { transform: rotate(-3deg) scale(1); opacity: 1; } }
 
-/* ---- Agent badge: each agent signs in its own pen. Set --pen to one of --cl-pen-* ---- */
-.cl-agent { --pen: var(--cl-pen-blue); display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
-.cl-agent__sq { width: 24px; height: 24px; flex: none; display: inline-grid; place-items: center; border: 1.5px solid var(--pen); border-radius: var(--cl-radius-xs); color: var(--pen); background: var(--cl-paper-1); font: 700 10.5px/1 var(--cl-font-mono); letter-spacing: 0.02em; text-transform: uppercase; }
+/* ---- Agent badge: each agent signs in its own pen. Add a cl-pen-* class (inline style attributes break under a strict CSP) ---- */
+.cl-pen-blue { --pen: var(--cl-pen-blue); } .cl-pen-red { --pen: var(--cl-pen-red); } .cl-pen-green { --pen: var(--cl-pen-green); }
+.cl-pen-violet { --pen: var(--cl-pen-violet); } .cl-pen-amber { --pen: var(--cl-pen-amber); } .cl-pen-teal { --pen: var(--cl-pen-teal); }
+.cl-pen-graphite { --pen: var(--cl-pen-graphite); }
+.cl-agent { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.cl-agent__sq { width: 24px; height: 24px; flex: none; display: inline-grid; place-items: center; border: 1.5px solid var(--pen, var(--cl-pen-blue)); border-radius: var(--cl-radius-xs); color: var(--pen, var(--cl-pen-blue)); background: var(--cl-paper-1); font: 700 10.5px/1 var(--cl-font-mono); letter-spacing: 0.02em; text-transform: uppercase; }
 .cl-agent__text { display: grid; gap: 2px; min-width: 0; }
 .cl-agent__name { font: 600 13.5px/1.2 var(--cl-font-sans); color: var(--cl-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cl-agent__meta { font: var(--cl-text-mono); font-size: 11px; line-height: 14px; color: var(--cl-ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -107,7 +110,7 @@
 
 /* ---- Provenance: who filed it, from where, when. Always one line of mono under the thing it describes ---- */
 .cl-prov { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 7px; font: var(--cl-text-mono); font-size: 11.5px; line-height: 16px; color: var(--cl-ink-3); min-width: 0; }
-.cl-prov__who { --pen: var(--cl-pen-blue); color: var(--pen); font-weight: 700; }
+.cl-prov__who { color: var(--pen, var(--cl-pen-blue)); font-weight: 700; }
 .cl-prov__sep { color: var(--cl-rule-strong); }
 
 /* ---- Memory card ---- */

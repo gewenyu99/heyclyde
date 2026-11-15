@@ -78,5 +78,6 @@ Deno.test('every Worker page carries the tokens and the components', () => {
     assert.ok(html.includes(TOKENS_CSS), 'tokens inlined')
     assert.ok(html.includes(COMPONENTS_CSS), 'components inlined')
     assert.ok(html.includes('class="cl-mark"'), 'the clyde mark')
+    assert.ok(!/\sstyle="/.test(html), 'no style attributes: the CSP allows only the nonce\'d <style>')
   }
 })

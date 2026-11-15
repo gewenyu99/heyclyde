@@ -65,6 +65,7 @@ const HOME_CSS = `
 .stack{margin:0;min-width:0}
 .pile{position:relative;margin:0 48px 48px 0}
 .stack .cl-memory{position:relative;z-index:4;box-shadow:var(--cl-shadow-2);border-color:var(--cl-rule-strong)}
+.c1{--i:1}.c2{--i:2}.c3{--i:3}
 .sheet-copy{position:absolute;inset:0;border:1px dashed var(--cl-carbon);border-radius:var(--cl-radius-lg);background:var(--cl-carbon-wash);
 transform:translate(calc(var(--i) * 16px),calc(var(--i) * 16px));z-index:calc(4 - var(--i))}
 .sheet-copy span{position:absolute;right:12px;bottom:0;height:16px;font:var(--cl-text-label);line-height:16px;letter-spacing:.06em;text-transform:uppercase;color:var(--cl-carbon-ink);white-space:nowrap}
@@ -245,8 +246,8 @@ ${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { memory: { serverUrl:
 
 // The hero's picture: one memory atlas filed, and the carbon copy each app's agent gets.
 const STACK = `<figure class="stack" aria-label="One memory, copied to every app"><div class="pile">
-<div class="sheet-copy" style="--i:3"><span>gemini</span></div><div class="sheet-copy" style="--i:2"><span>codex</span></div>
-<div class="sheet-copy" style="--i:1"><span>claude.ai</span></div>
+<div class="sheet-copy c3"><span>gemini</span></div><div class="sheet-copy c2"><span>codex</span></div>
+<div class="sheet-copy c1"><span>claude.ai</span></div>
 <article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-chip">Decision</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">93%</span></div>
 <h3 class="cl-memory__title">Deploys go through deploy.sh, never the dashboard</h3>
 <p class="cl-memory__body">A dashboard deploy skips the migration check and once left the function on old code.</p>
