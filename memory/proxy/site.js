@@ -52,7 +52,7 @@ const footer = `<footer class="foot"><div class="wrap"><span class="brand">${MAR
 
 const page = (nonce, title, css, main, status = 200) => ({
   status,
-  html: shell({ nonce, title, css, body: `${header}${main}${footer}`, script: COPY_JS }),
+  html: shell({ nonce, title, css, body: `${header}${main}${footer}`, script: COPY_JS, noindex: false }),
 });
 
 // One memory: a question in a chat, answered from a memory another agent filed. A quest board: a quest posted in one

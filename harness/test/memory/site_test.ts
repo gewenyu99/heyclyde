@@ -65,7 +65,7 @@ Deno.test('the other pages, the 404 and the www redirect', async () => {
   assert.equal(calls, 0)
 })
 
-Deno.test('every heyclyde.me page is locked down', async () => {
+Deno.test('every heyclyde.me page is locked down, and public pages are indexable', async () => {
   for (const path of ['/', '/signin', '/privacy', '/terms', '/nope']) {
     const { r, html } = await get(`https://heyclyde.me${path}`)
     const csp = String(r.headers.get('content-security-policy'))
@@ -75,5 +75,6 @@ Deno.test('every heyclyde.me page is locked down', async () => {
     assert.ok(!/\sstyle="/.test(html), `${path}: no style attributes`)
     const loads = [...html.matchAll(/<(?:script|link|img|source|iframe)[^>]*\s(?:src|href|srcset)="([^"]+)"/gi)].map((m) => m[1])
     for (const u of loads) assert.ok(!/^(https?:)?\/\//.test(u), `${path} loads ${u}`)
+    if (path !== '/nope') assert.equal((html.match(/noindex/gi) ?? []).length, 0, `${path} must not carry noindex`)
   }
 })

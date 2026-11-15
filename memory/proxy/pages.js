@@ -143,9 +143,9 @@ fetch('/healthz',{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;return r.
 p.className='cl-status is-ok';p.textContent='Online';if(d&&d.version){var v=document.createElement('span');v.className='v';
 v.textContent='v'+d.version;p.appendChild(document.createTextNode(' \\u00b7 '));p.appendChild(v)}}).catch(function(){p.className='cl-status is-bad';p.textContent='Offline'})})();`;
 
-export function shell({ nonce, title, css, body, script = "" }) {
+export function shell({ nonce, title, css, body, script = "", noindex = true }) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>${esc(title)}</title><meta name="color-scheme" content="light dark"><meta name="robots" content="noindex">
+<title>${esc(title)}</title><meta name="color-scheme" content="light dark">${noindex ? '<meta name="robots" content="noindex">' : ""}
 <link rel="icon" href="/_clyde/brand/favicon.svg" type="image/svg+xml"><style nonce="${nonce}">${FONTS_CSS}${TOKENS_CSS}${COMPONENTS_CSS}${(PAGE_CSS + css).replace(/\n/g, "")}</style></head><body class="cl-root">${body}${
     script ? `<script nonce="${nonce}">${script}</script>` : ""}</body></html>`;
 }

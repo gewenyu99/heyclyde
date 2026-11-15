@@ -87,3 +87,19 @@ Deno.test('every Worker page carries the tokens and the components', () => {
     assert.ok(!/\sstyle="/.test(html), 'no style attributes: the CSP allows only the nonce\'d <style>')
   }
 })
+
+Deno.test('built design artifacts carry the logo, the live MCP URL, and current typeface docs', () => {
+  for (const f of ['src/directions.html', 'directions.html']) {
+    const html = read(f)
+    assert.equal((html.match(/class="cl-mark"/g) ?? []).length, 0, `${f} has no removed .cl-mark span`)
+  }
+  assert.ok(read('directions.html').includes('class="cl-logo"'), 'directions.html inlines brand.js logo')
+  for (const f of ['src/clyde-prototype.html', 'clyde-prototype.html']) {
+    const html = read(f)
+    assert.equal((html.match(/https:\/\/heyclyde\.me\/mcp/g) ?? []).length, 0, `${f} has no root-host /mcp URL`)
+    assert.ok(html.includes('https://memory.heyclyde.me/mcp'), `${f} uses https://memory.heyclyde.me/mcp`)
+  }
+  const principles = read('PRINCIPLES.md')
+  assert.equal((principles.match(/system faces only/gi) ?? []).length, 0, 'PRINCIPLES.md reflects self-hosted web fonts')
+  assert.ok(principles.includes('Bricolage Grotesque') && principles.includes('fonts.css'), 'PRINCIPLES.md names the web faces and fonts.css')
+})

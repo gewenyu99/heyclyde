@@ -88,6 +88,7 @@ Deno.test('every page is locked down', async () => {
     assert.ok(nonce && nonce.length >= 16, csp)
     assert.equal(r.headers.get('x-frame-options'), 'DENY')
     const html = await r.text()
+    assert.ok(html.includes('<meta name="robots" content="noindex">'), 'memory.heyclyde.me pages carry noindex')
     assert.ok(!/<script[^>]*\ssrc=/i.test(html), 'no script loads from anywhere')
     for (const tag of html.match(/<script[^>]*>/g) ?? []) assert.ok(tag.includes(`nonce="${nonce}"`), tag)
   }

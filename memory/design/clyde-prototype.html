@@ -459,7 +459,7 @@ function vApps(){
  ${a?`<div class="cl-sheet modal" role="dialog" aria-labelledby="mt"><div class="app-head"><span class="glyph" aria-hidden="true">${a[4]}</span><h2 class="cl-title-2" id="mt">Connect ${a[0]}</h2></div>
  <p style="margin:0;color:var(--cl-ink-2)">Install Clyde from the ${a[2]}. You sign in once and approve. There's nothing to copy.</p>
  <button class="cl-btn cl-btn--primary cl-btn--lg" data-store="${S.appModal}" type="button">Install from the ${a[2]}</button>
- <div class="cl-field"><span class="cl-field__label">Not in the store yet? Add a custom connector</span><div class="cl-copy"><code id="mcpurl">https://heyclyde.me/mcp</code><button class="cl-btn cl-btn--sm" id="copy" type="button">Copy</button></div></div>
+ <div class="cl-field"><span class="cl-field__label">Not in the store yet? Add a custom connector</span><div class="cl-copy"><code id="mcpurl">https://memory.heyclyde.me/mcp</code><button class="cl-btn cl-btn--sm" id="copy" type="button">Copy</button></div></div>
  <button class="cl-btn cl-btn--ghost" id="closeapp" type="button" style="justify-self:start">Close</button></div>`:""}
  <div class="grid3">${APPS.map((x,i)=>`<article class="cl-card app"><div class="app-head"><span class="glyph" aria-hidden="true">${x[4]}</span><div><h3 class="cl-title-3">${x[0]}</h3><p class="cl-hint">${x[1]}</p></div>${x[3]?`<span class="cl-state cl-state--settled">Connected</span>`:`<span class="cl-state cl-state--dormant">Not connected</span>`}</div>
  <p class="cl-hint">From the ${x[2]}</p>${x[3]?`<button class="cl-btn cl-btn--sm" data-disc="${i}" type="button" style="justify-self:start">Disconnect</button>`:`<button class="cl-btn cl-btn--sm cl-btn--primary" data-conn="${i}" type="button" style="justify-self:start">Connect</button>`}</article>`).join("")}</div>`;
@@ -469,7 +469,7 @@ function bindApps(){
  document.querySelectorAll("[data-disc]").forEach(b=>b.addEventListener("click",()=>{const x=APPS[+b.dataset.disc];x[3]=false;render();toast("Disconnected",x[0]+" can't recall or remember now.",()=>{x[3]=true;render()})}));
  const c=$("#closeapp");if(c)c.addEventListener("click",()=>{S.appModal=null;render()});
  const st=document.querySelector("[data-store]");if(st)st.addEventListener("click",()=>{const x=APPS[+st.dataset.store];x[3]=true;S.appModal=null;render();toast("Connected",x[0]+" can recall and remember with Clyde.")});
- const cp=$("#copy");if(cp)cp.addEventListener("click",()=>{const ok=()=>{cp.textContent="Copied";cp.classList.add("is-done")};try{navigator.clipboard.writeText("https://heyclyde.me/mcp").then(ok,()=>getSelection().selectAllChildren($("#mcpurl")))}catch(e){getSelection().selectAllChildren($("#mcpurl"))}});
+ const cp=$("#copy");if(cp)cp.addEventListener("click",()=>{const ok=()=>{cp.textContent="Copied";cp.classList.add("is-done")};try{navigator.clipboard.writeText("https://memory.heyclyde.me/mcp").then(ok,()=>getSelection().selectAllChildren($("#mcpurl")))}catch(e){getSelection().selectAllChildren($("#mcpurl"))}});
 }
 
 const METERS=[["AI tokens","1.5M",1.23,1.5,"M","$0.30 per million past it"],["Storage","5 GB",3.2,5,"GB","$0.05 per GB-month past it"],["Egress","2 GB",2.6,2,"GB","$0.21 per GB past it"],["Recalls","2,000",1420,2000,"","Billed as the tokens they use"],["Remembers","500",210,500,"","Billed as the tokens they use"]];

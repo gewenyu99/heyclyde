@@ -59,7 +59,7 @@ Studied 2026-11-15 for Clyde's design system ([BRAND.md](BRAND.md), [tokens.css]
 
 - The site uses only the system font stack and `ui-monospace`. The personality comes from craft and screenshots.
 
-**Clyde takes:** system faces only. The Worker's CSP and the chat cards can't load fonts, and Things shows the system stack carries a brand when the details are right.
+**Clyde takes:** chat cards can't load external fonts, so every stack in [tokens.css](tokens.css) falls back cleanly to the system face and `ui-monospace`. Web pages self-host Bricolage Grotesque, Geist and Geist Mono ([fonts.css](fonts.css)), while Things shows the system fallback still carries the brand inside a chat card.
 
 ### Rauno Freiberg, "Invisible details of interaction design"
 [rauno.me/craft/interaction-design](https://rauno.me/craft/interaction-design)
@@ -158,7 +158,7 @@ Could not be fetched (the archive is blocked for the fetch tool). *From memory:*
 1. Color by role. Paper, ink and carbon, never "blue-500" in a component.
 2. One accent. Carbon blue means "Clyde's copy": links, focus, selection and the offset behind a chosen sheet.
 3. Agents bring their own colors (pens). The brand never borrows them.
-4. System faces. Personality from weight, tracking and mono labels.
+4. Three OFL faces on the web (Bricolage Grotesque, Geist, Geist Mono, self-hosted in [fonts.css](fonts.css)), backed by system stacks in chat cards. Personality from optical size, weight, tracking and mono labels.
 5. Every text color passes 4.5:1 in both themes, checked in CI.
 6. Frequent actions don't animate. Rare, meaningful ones do, once.
 7. Headlines are plain sentences. Bad news says what happened, then the one step.
