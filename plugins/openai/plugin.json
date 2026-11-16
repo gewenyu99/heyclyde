@@ -28,6 +28,7 @@
         "developerName": "Pennywhistle Software",
         "category": "Productivity",
         "capabilities": [
+          "Interactive",
           "Read",
           "Write"
         ],
