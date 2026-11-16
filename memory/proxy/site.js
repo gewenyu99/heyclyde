@@ -371,7 +371,7 @@ const WALL_CSS = `
 .clyde-says{padding:12px 14px;font:var(--cl-text-small);color:var(--cl-ink-2)}
 .clyde-says b{display:block;font:var(--cl-text-label);letter-spacing:.06em;text-transform:uppercase;color:var(--cl-carbon);margin-bottom:4px}
 `;
-const says = (a) => `<div class="clyde-says cl-card"><b>Clyde</b>${esc(a)}</div>`;
+const says = (a) => `<div class="clyde-says cl-card"><b>With Clyde</b>${esc(a)}</div>`;
 const WALL = `<section class="wrap" id="complaints"><div class="section"><span class="cl-label">Real complaints</span><h2 class="cl-title-1">Things people keep telling their agents.</h2></div>
 <div class="cm-wall">${COMPLAINTS.map((c) => `<article class="complaint"><div class="cl-sticky cm-q"><p>${esc(c.q)}</p><a href="${c.src}" rel="nofollow noopener noreferrer">${c.site}</a></div>${says(c.a)}</article>`).join("")}
 ${MADE_UP.map(([q, a]) => `<article class="complaint-made"><div class="cl-sticky cm-q"><p>${esc(q)}</p><span class="cm-made">made up</span></div>${says(a)}</article>`).join("")}</div></section>`;
