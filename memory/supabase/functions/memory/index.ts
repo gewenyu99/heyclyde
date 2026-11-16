@@ -307,6 +307,12 @@ async function serve(req: Request, url: URL, path: string, who: Principal): Prom
       headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
     });
   }
+  // OpenAI plugin / app verification reads its token from memory.setting so submitting takes a row update, not a deploy.
+  if (path === "/.well-known/openai-apps-challenge") {
+    return new Response((await setting("openai_apps_challenge")).trim(), {
+      headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+    });
+  }
   if (path.startsWith("/oauth/")) {
     // The Worker asks for JSON and renders the pages (R46). Anyone else, a caller straight to Supabase included, gets text.
     const asJson = (req.headers.get("accept") ?? "").includes("application/json") && await viaProxy(req);

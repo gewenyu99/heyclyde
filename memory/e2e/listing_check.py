@@ -9,13 +9,16 @@ Each section prints PASS or FAIL with its reasons. The exit code is the number o
 standard library, so it runs anywhere. The live sections fetch the site; "listing copy" and "submission answers" read
 memory/listing/ from this checkout. Add a section by adding a function to SECTIONS.
 """
+import io
 import json
 import re
 import struct
 import sys
+import tarfile
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -253,6 +256,146 @@ def google_verification_file(errs):
             errs.append(f"{host}: status {status}, content-type {ctype!r}")
 
 
+def openai_verification_file(errs):
+    for host in ("heyclyde.me", "memory.heyclyde.me"):
+        status, ctype, _ = get_exact(f"https://{host}/.well-known/openai-apps-challenge")
+        if status != 200 or not ctype.startswith("text/plain"):
+            errs.append(f"{host}: status {status}, content-type {ctype!r}")
+
+
+PLUGIN_REPO = "gewenyu99/heyclyde"
+RAW_REPO = f"https://raw.githubusercontent.com/{PLUGIN_REPO}/main"
+
+
+def fetch_raw(url, accept="*/*"):
+    req = urllib.request.Request(url, headers={"accept": accept, "user-agent": "clyde-listing-check/1"})
+    try:
+        with urllib.request.urlopen(req, timeout=25) as r:
+            return r.status, r.headers.get("content-type", ""), r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.headers.get("content-type", ""), e.read()
+
+
+def fetch_json(url, errs, label, accept="application/json"):
+    status, _, body = fetch_raw(url, accept=accept)
+    if status != 200:
+        errs.append(f"{label}: status {status}")
+        return None
+    try:
+        return json.loads(body)
+    except ValueError as e:
+        errs.append(f"{label}: invalid JSON ({e})")
+        return None
+
+
+def gemini_cli_repo(errs):
+    repo = fetch_json(f"https://api.github.com/repos/{PLUGIN_REPO}", errs, "github repo", "application/vnd.github+json")
+    if repo is not None:
+        if repo.get("private", True):
+            errs.append(f"{PLUGIN_REPO} is not public")
+        if "gemini-cli-extension" not in repo.get("topics", []):
+            errs.append(f"{PLUGIN_REPO} missing topic 'gemini-cli-extension'")
+    ext = fetch_json(f"{RAW_REPO}/gemini-extension.json", errs, "gemini-extension.json")
+    if ext is not None:
+        if ext.get("name") != "clyde":
+            errs.append(f"gemini-extension.json name={ext.get('name')!r}")
+        if ext.get("mcpServers", {}).get("clyde", {}).get("httpUrl") != CONNECTOR:
+            errs.append("gemini-extension.json missing clyde httpUrl")
+
+
+def claude_plugin_bundle(errs):
+    manifest = fetch_json(f"{RAW_REPO}/plugins/claude/.claude-plugin/plugin.json", errs, "claude plugin.json")
+    if manifest is not None:
+        if manifest.get("name") != "clyde":
+            errs.append(f"claude plugin.json name={manifest.get('name')!r}")
+        if manifest.get("userConfig", {}).get("hook_mode", {}).get("default") != "off":
+            errs.append("claude plugin.json hook_mode default is not 'off'")
+    mcp = fetch_json(f"{RAW_REPO}/plugins/claude/.mcp.json", errs, "claude .mcp.json")
+    if mcp is not None and mcp.get("mcpServers", {}).get("clyde", {}).get("url") != CONNECTOR:
+        errs.append("claude .mcp.json missing clyde url")
+    mp = fetch_json(f"{RAW_REPO}/.claude-plugin/marketplace.json", errs, "claude marketplace.json")
+    if mp is not None and not any(p.get("source") == "./plugins/claude" for p in mp.get("plugins", [])):
+        errs.append("claude marketplace.json missing ./plugins/claude")
+    status, _, body = fetch_raw(f"{RAW_REPO}/plugins/claude/README.md")
+    if status != 200:
+        errs.append(f"claude README.md: status {status}")
+    else:
+        txt = body.decode("utf-8", "replace")
+        no_code = re.sub(r"```[\s\S]*?```", " ", txt)
+        if words(no_code) < 40:
+            errs.append(f"claude README.md has {words(no_code)} non-code words, want >= 40")
+        if "/plugin install clyde --marketplace gewenyu99/heyclyde" not in txt:
+            errs.append("claude README.md missing install command")
+        if "OAuth" not in txt:
+            errs.append("claude README.md missing OAuth disclosure")
+
+
+def antigravity_plugin_bundle(errs):
+    manifest = fetch_json(f"{RAW_REPO}/plugins/antigravity/plugin.json", errs, "antigravity plugin.json")
+    if manifest is not None:
+        desc = manifest.get("description", "")
+        if not (120 <= len(desc) <= 160):
+            errs.append(f"antigravity description len={len(desc)}, want 120..160")
+        if any(desc.startswith(p) for p in ("Antigravity", "Gemini", "Claude", "Cursor")):
+            errs.append("antigravity description starts with disallowed product name")
+        if any(desc.endswith(s) for s in ("Plugin", "MCP")):
+            errs.append("antigravity description ends with disallowed suffix")
+        if not manifest.get("$schema"):
+            errs.append("antigravity plugin.json missing $schema")
+    mcp = fetch_json(f"{RAW_REPO}/plugins/antigravity/mcp_config.json", errs, "antigravity mcp_config.json")
+    if mcp is not None and mcp.get("mcpServers", {}).get("clyde", {}).get("serverUrl") != CONNECTOR:
+        errs.append("antigravity mcp_config.json missing clyde serverUrl")
+    status, _, body = fetch_raw(f"{RAW_REPO}/plugins/antigravity/assets/logo.svg")
+    if status != 200:
+        errs.append(f"antigravity logo.svg: status {status}")
+    else:
+        try:
+            svg = ET.fromstring(body)
+            vb = [float(v) for v in svg.get("viewBox", "0 0 0 0").replace(",", " ").split()]
+            if len(vb) != 4 or vb[2] != vb[3]:
+                errs.append(f"antigravity logo.svg viewBox {vb} not square")
+        except ET.ParseError as e:
+            errs.append(f"antigravity logo.svg parse error: {e}")
+    status, _, body = fetch_raw(f"{RAW_REPO}/plugins/antigravity/skills/clyde/SKILL.md")
+    if status != 200 or not body.decode("utf-8", "replace").startswith("---\nname: clyde\n"):
+        errs.append("antigravity SKILL.md missing or bad frontmatter")
+
+
+def openai_plugin_release(errs):
+    rel = fetch_json(f"https://api.github.com/repos/{PLUGIN_REPO}/releases/tags/v1.0.0", errs, "release v1.0.0", "application/vnd.github+json")
+    if rel is None:
+        return
+    assets = {a.get("name"): a.get("browser_download_url") for a in rel.get("assets", [])}
+    want_assets = ("clyde-openai-plugin.zip", "clyde.tar.gz", "clyde-claude-plugin.zip", "clyde-antigravity-plugin.zip")
+    missing = [a for a in want_assets if a not in assets]
+    if missing:
+        errs.append(f"release v1.0.0 missing assets: {missing}")
+        return
+    status, _, zbytes = fetch_raw(assets["clyde-openai-plugin.zip"])
+    if status != 200:
+        errs.append(f"clyde-openai-plugin.zip: status {status}")
+    else:
+        with zipfile.ZipFile(io.BytesIO(zbytes)) as zf:
+            names = set(zf.namelist())
+            if "plugin.json" not in names or "mcp.json" not in names:
+                errs.append("clyde-openai-plugin.zip missing root plugin.json or mcp.json")
+            if any(n == "hooks.json" or n.startswith("hooks/") for n in names):
+                errs.append("clyde-openai-plugin.zip must not contain hooks")
+            if "mcp.json" in names:
+                mcp = json.loads(zf.read("mcp.json"))
+                clyde = mcp.get("mcpServers", {}).get("clyde", {})
+                if clyde.get("url") != CONNECTOR:
+                    errs.append(f"openai mcp.json url={clyde.get('url')!r}")
+    status, _, tbytes = fetch_raw(assets["clyde.tar.gz"])
+    if status != 200:
+        errs.append(f"clyde.tar.gz: status {status}")
+    else:
+        with tarfile.open(fileobj=io.BytesIO(tbytes), mode="r:gz") as tf:
+            tnames = set(tf.getnames())
+            if "gemini-extension.json" not in tnames:
+                errs.append("clyde.tar.gz missing root gemini-extension.json")
+
+
 INDEXED = ["/", "/docs", "/how-it-works", "/faq", "/privacy", "/terms"]
 
 
@@ -316,6 +459,11 @@ SECTIONS = {
     "resource metadata per host": resource_metadata,
     "google discovery": google_discovery,
     "google verification file": google_verification_file,
+    "openai verification file": openai_verification_file,
+    "gemini cli repo": gemini_cli_repo,
+    "claude plugin bundle": claude_plugin_bundle,
+    "antigravity plugin bundle": antigravity_plugin_bundle,
+    "openai plugin release": openai_plugin_release,
     "site seo": site_seo,
     "complaint sources": complaint_sources,
 }

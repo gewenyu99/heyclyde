@@ -214,6 +214,7 @@ Deno.test('R53 heyclyde.me serves /mcp and nothing else of the function', async 
     ['/.well-known/oauth-protected-resource', {}],
     ['/.well-known/oauth-protected-resource/mcp', {}],
     ['/.well-known/google-connected-apps', {}],
+    ['/.well-known/openai-apps-challenge', {}],
   ] as [string, RequestInit][]) {
     stub(json({ ok: true }))
     const r = await at(`https://heyclyde.me${path}`, init)
