@@ -347,9 +347,20 @@ test('R70 project, computer and spreading-graph boundaries stay isolated', { ski
   const idClyde = idOf(clydeNote.text), idPenny = idOf(pennyNote.text)
   const idLaptop = idOf(laptopNote.text), idMini = idOf(miniNote.text)
 
+  // Register a second Clyde agent so beyondForbidden uses its own notes-a-clyde-other hub rather than notes-a-clyde.
+  const aClydeOther = await registerAgent({
+    name: 'a-clyde-other',
+    context: 'hobby',
+    surface: 'claude-code',
+    description: 'Second Clyde agent.',
+    projects: ['clyde'],
+    computer: 'work-laptop',
+    strict_projects: true,
+  }, devLaptop, 'r70-clyde-other-app')
+
   // Two graph-only targets with zero shared query tokens; embeddings are deleted after syncEmbeddings()
   // so only spreading can reach them. idAllowed connects directly from idClyde; idBeyond connects ONLY via forbidden idPenny.
-  const beyondForbidden = await aClyde.send('remember', note('Unrelated graph target', {
+  const beyondForbidden = await aClydeOther.send('remember', note('Unrelated graph target', {
     body: 'This has no query tokens and should not be reached across a forbidden link.',
     transferability: 'project',
     project_slug: 'clyde',
@@ -385,7 +396,7 @@ test('R70 project, computer and spreading-graph boundaries stay isolated', { ski
   await syncEmbeddings()
   sql(`delete from memory.entry_embedding where entry_id in ('${idBeyond}', '${idAllowed}')`)
   // Settle these entries so spreading.v5's 3-slot On trial lane does not drop tokenless idAllowed behind the 3 query-token seeds.
-  sql(`update memory.entry set chances_left = 0 where id in ('${idClyde}', '${idLaptop}', '${idBridged}', '${idAllowed}')`)
+  sql(`update memory.entry set chances_left = 0 where id in ('${idClyde}', '${idLaptop}', '${idBridged}', '${idAllowed}', '${idBeyond}')`)
 
   for (const arm of ['spreading.v5', 'spreading.v1', 'hybrid.v1', 'index.v1']) {
     await serve(arm)
