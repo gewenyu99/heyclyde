@@ -24,8 +24,10 @@ const INDEXED = ['/', '/docs', '/how-it-works', '/faq', '/privacy', '/terms']
 // Pages the site dropped when it shrank, and where each one went.
 const REDIRECTS: Record<string, string> = { '/research': '/how-it-works', '/support': '/docs#support', '/docs/grok': '/docs#grok', '/signin': '/docs' }
 const SUPPORT = 'support@heyclyde.me'
-// The home page carries the app picker and the recall carousel, so it gets more room than the other pages.
-const HOME_MAX = 75_000
+// One ceiling for every page (Wen, 2026-11-16: the old 40 to 75 KB budgets were arbitrary). It still catches real bloat,
+// like an image inlined by accident.
+const PAGE_MAX = 150_000
+const HOME_MAX = PAGE_MAX
 const h1s = (html: string) => [...html.matchAll(/<h1[^>]*>([\s\S]*?)<\/h1>/g)].map((m) => m[1].replace(/<[^>]+>/g, '').trim())
 const text = (html: string) => html.replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
 
@@ -61,11 +63,11 @@ Deno.test('the home page has an app picker, a recall carousel and one bottom but
 
   // The picker: one radio and one label per app, Claude checked, each panel the same steps /docs shows.
   const how = section('how')
-  const ids = ['claude-ai', 'claude-code', 'antigravity', 'gemini', 'grok', 'chatgpt']
+  const ids = ['claude-ai', 'claude-code', 'antigravity', 'gemini', 'grok', 'chatgpt', 'other']
   const radios = [...how.matchAll(/<input[^>]*type="radio"[^>]*>/g)].map((m) => m[0])
   assert.deepEqual(radios.map((r) => /id="pick-([^"]+)"/.exec(r)?.[1]), ids, 'one radio per app, in order')
   assert.equal(new Set(radios.map((r) => /name="([^"]+)"/.exec(r)?.[1])).size, 1, 'the radios share one name, so arrow keys move between them')
-  assert.deepEqual(radios.map((r) => / checked/.test(r)), [true, false, false, false, false, false], 'Claude is checked by default')
+  assert.deepEqual(radios.map((r) => / checked/.test(r)), [true, false, false, false, false, false, false], 'Claude is checked by default')
   for (const id of ids) {
     const app = appSteps(id)
     const label = new RegExp(`<label for="pick-${id}">([\\s\\S]*?)</label>`).exec(how)?.[1] ?? ''
@@ -85,11 +87,21 @@ Deno.test('the home page has an app picker, a recall carousel and one bottom but
   const built = section('built')
   const slides = built.match(/<article class="cl-card rc-slide">/g) ?? []
   assert.equal(slides.length, 6, 'six slides')
-  assert.equal((built.match(/<svg[^>]*role="img"[^>]*aria-label="[^"]+"/g) ?? []).length, 3, 'a labelled graph on each of the three recalls')
-  assert.equal((built.match(/class="rc-q"/g) ?? []).length, 3, 'a query on each of the three recalls')
-  assert.ok((built.match(/class="cl-stamp[^"]*"/g) ?? []).length >= 8, 'verdict stamps')
+  const stories = built.match(/<ol class="rc-story">[\s\S]*?<\/ol>/g) ?? []
+  assert.equal(stories.length, 3, 'three saved-then-recalled stories, first')
+  assert.ok(built.indexOf('<ol class="rc-story">') < built.indexOf('<svg'), 'the stories lead the carousel')
+  for (const st of stories) {
+    assert.equal((st.match(/<li>/g) ?? []).length, 3, 'a story is three steps: saved, recalled, what it did')
+    assert.equal((st.match(/<article class="cl-card cl-memory">/g) ?? []).length, 1, 'the saved note is a memory card')
+    assert.equal((st.match(/class="rc-q"/g) ?? []).length, 1, 'the query that recalled it')
+    assert.equal((st.match(/class="cl-stamp cl-stamp--ok"/g) ?? []).length, 1, 'a used stamp')
+    assert.equal((st.match(/class="cl-sticky /g) ?? []).length, 1, 'what the agent did, on a sticky note')
+    assert.ok(/class="cl-label">\d+ days later/.test(st), 'how many days passed')
+  }
+  assert.equal((built.match(/<svg[^>]*role="img"[^>]*aria-label="[^"]+"/g) ?? []).length, 1, 'a labelled graph on the spreading recall')
+  assert.equal((built.match(/class="rc-q"/g) ?? []).length, 4, 'a query on each recall')
+  assert.ok((built.match(/class="cl-stamp[^"]*"/g) ?? []).length >= 6, 'verdict stamps')
   assert.equal((built.match(/<li class="cl-sticky /g) ?? []).length, 6, 'the quest timeline is six sticky notes')
-  assert.equal((built.match(/<i class="is-spent"><\/i>|<i><\/i>/g) ?? []).length, 3, 'three pips on the trial note')
   assert.equal((built.match(/<i class="rc-w\d+"><\/i>/g) ?? []).length, 3, 'three bars')
   for (const w of attr(built, /<i class="rc-w(\d+)"><\/i>/g)) assert.ok(html.includes(`.rc-w${w}{width:${w}%}`), `the ${w}% bar is ${w}% wide`)
   assert.ok(/\.rc-track\{[^}]*overflow-x:auto[^}]*scroll-snap-type:x mandatory/.test(html), 'the track scrolls sideways and snaps')
@@ -199,7 +211,7 @@ Deno.test('the store pages', async () => {
     assert.deepEqual(h1s(html), [title], path)
     assert.equal(calls, 0, `${path} needs nothing from the function`)
     const bytes = new TextEncoder().encode(html).length
-    assert.ok(bytes <= 50_000, `${path}: ${bytes} bytes`)
+    assert.ok(bytes <= PAGE_MAX, `${path}: ${bytes} bytes`)
     const t = text(html)
     for (const w of words) assert.ok(t.includes(w), `${path} mentions ${w}`)
   }
@@ -265,7 +277,7 @@ Deno.test('every page has the same header nav and footer', async () => {
     const foot = /<footer[\s\S]*?<\/footer>/.exec(html)?.[0] ?? ''
     assert.deepEqual(attr(foot, /href="([^"]+)"/g), ['/docs', '/how-it-works', '/faq', `mailto:${SUPPORT}`, '/privacy', '/terms', DESIGN_URL], `${path}: footer links`)
     const bytes = new TextEncoder().encode(html).length
-    assert.ok(bytes <= (path === '/' ? HOME_MAX : 50_000), `${path}: ${bytes} bytes`)
+    assert.ok(bytes <= PAGE_MAX, `${path}: ${bytes} bytes`)
   }
 })
 
@@ -283,7 +295,7 @@ Deno.test('every page has its own SEO tags', async () => {
     assert.deepEqual(meta(html, 'og:image'), ['https://heyclyde.me/brand/og-banner.png'], `${path}: og:image`)
     assert.deepEqual(meta(html, 'twitter:card'), ['summary_large_image'], `${path}: twitter:card`)
     const bytes = new TextEncoder().encode(html).length
-    assert.ok(bytes <= (path === '/' ? HOME_MAX : 50_000), `${path}: ${bytes} bytes`)
+    assert.ok(bytes <= PAGE_MAX, `${path}: ${bytes} bytes`)
   }
   assert.equal(titles.size, INDEXED.length, 'every title is different')
   assert.equal(descs.size, INDEXED.length, 'every description is different')
