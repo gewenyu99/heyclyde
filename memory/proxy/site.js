@@ -193,9 +193,9 @@ const FEATURES = `<section class="wrap" id="what"><div class="section"><span cla
 
 // How Clyde was used to build Clyde: six slides copied from the store. One recall that followed links, drawn as a graph,
 // three notes saved in one place and recalled days later in another, a quest and the feedback counts. Nothing here is made up.
-// The graph lights in 8 steps over a 16 s loop: query, search, seeds, links, hop 1, links, hop 2, verdicts. Each number is
+// The graph lights in 6 steps over a 16 s loop: query, search, seeds, links, hop 1, verdicts. Each number is
 // the percent of the loop where a step starts. Notes pop in (rc-s). Links draw from their source and column heads fade in (rc-d).
-const RC_STEPS = [3, 7.5, 12.5, 20, 25, 32.5, 37.5, 45];
+const RC_STEPS = [3, 7.5, 12.5, 20, 25, 32.5];
 const RC_STEPS_CSS = RC_STEPS.map((a, i) => `.rc-s${i + 1}{animation:rc-s${i + 1} 16s infinite both}.rc-d${i + 1}{animation:rc-d${i + 1} 16s infinite both}
 @keyframes rc-s${i + 1}{0%,${a}%{opacity:0;transform:scale(.5)}${a + 1.5}%{opacity:1;transform:scale(1.2)}${a + 3}%,92%{opacity:1;transform:scale(1)}96%,100%{opacity:0;transform:scale(1)}}
 @keyframes rc-d${i + 1}{0%,${a}%{opacity:0;stroke-dashoffset:1}${a + .2}%{opacity:1;stroke-dashoffset:1}${a + 4.5}%,92%{opacity:1;stroke-dashoffset:0}96%,100%{opacity:0;stroke-dashoffset:0}}`).join("\n");
@@ -317,16 +317,16 @@ const rcSeed = (n, title, score, pct, verdict = "") => `<li><i class="rc-dot${ve
   `${verdict ? `<span class="cl-stamp cl-stamp--ok">${verdict}</span>` : ""}</span><span class="rc-score"><span class="rc-bar"><i class="rc-p${pct}"></i></span><b>${score}</b></span></span></li>`;
 // The spreading recall's graph. Where each note sits, the seeds' hybrid scores, and the links the spread followed:
 // [from, to, link type, learned weight, the step that draws it, a sideways shift for a second link between the same notes].
-const RC_AT = { Q: [30, 136], 1: [120, 46], 2: [120, 106], 3: [120, 166], 4: [120, 226], 5: [250, 170], 6: [250, 268], 7: [250, 46], 8: [336, 46] };
+const RC_AT = { Q: [30, 136], 1: [120, 46], 2: [120, 106], 3: [120, 166], 4: [120, 226], 5: [250, 170], 6: [250, 268] };
 const RC_SCORE = { 1: "0.0645", 2: "0.0460", 3: "0.0321", 4: "0.0307" };
-const RC_LINKS = [[4, 5, "relates", "1.0", 4, 0], [4, 6, "co_used", "0.1", 4, 0], [7, 8, "relates", "1.2", 6, -4.5], [7, 8, "co_used", "0.3", 6, 4]];
-const RC_LIT = { Q: 1, 1: 3, 2: 3, 3: 3, 4: 3, 5: 5, 6: 5, 7: 5, 8: 7 };
+const RC_LINKS = [[4, 5, "relates", "1.0", 4, 0], [4, 6, "co_used", "0.1", 4, 0]];
+const RC_LIT = { Q: 1, 1: 3, 2: 3, 3: 3, 4: 3, 5: 5, 6: 5 };
 const RC_USED = [[4, 70, 262], [6, 306, 262]];
 function rcGraph(alt) {
   const r1 = (v) => Math.round(v * 10) / 10;
   const dot = (id, cls, tcls) => `<circle class="rc-n${cls}" cx="${RC_AT[id][0]}" cy="${RC_AT[id][1]}" r="${id === "Q" ? 12 : 11}"/>` +
     `<text class="rc-t${tcls}" x="${RC_AT[id][0]}" y="${RC_AT[id][1] + 3.5}" text-anchor="middle">${id}</text>`;
-  const heads = [[30, "QUERY", 1], [120, "SEEDS", 3], [250, "HOP 1", 5], [336, "HOP 2", 7]].map(([x, t, step]) =>
+  const heads = [[30, "QUERY", 1], [120, "SEEDS", 3], [250, "HOP 1", 5]].map(([x, t, step]) =>
     `<text class="rc-l" x="${x}" y="12" text-anchor="middle">${t}</text><g class="rc-on rc-d${step}"><text class="rc-l rc-ll" x="${x}" y="12" text-anchor="middle">${t}</text></g>`).join("");
   // A search hit is a dashed line of one width. It isn't a link, so it has no weight. It stays dashed when lit, so it fades in.
   const hits = [1, 2, 3, 4].map((n) => `M${RC_AT.Q.join(" ")}L${RC_AT[n].join(" ")}`).map((d) =>
@@ -342,8 +342,8 @@ function rcGraph(alt) {
   const scores = Object.entries(RC_SCORE).map(([n, v]) => `<text class="rc-k" x="${RC_AT[n][0]}" y="${RC_AT[n][1] + 25}" text-anchor="middle">${v}</text>`).join("");
   const ids = Object.keys(RC_LIT).sort((a, b) => (a === "Q") - (b === "Q"));
   const lit = ids.map((id) => `<g class="rc-on rc-s${RC_LIT[id]}">${dot(id, id === "Q" ? " rc-nq" : " rc-nl", " rc-tl")}</g>`).join("");
-  const used = RC_USED.map(([id, sx, sy]) => `<g class="rc-on rc-s8">${dot(id, " rc-nu", " rc-tu")}<circle class="rc-ring" cx="${RC_AT[id][0]}" cy="${RC_AT[id][1]}" r="16"/></g>` +
-    `<g class="rc-on rc-s8"><g transform="rotate(-6 ${sx} ${sy})"><rect class="rc-st" x="${sx - 22}" y="${sy - 9.5}" width="44" height="19" rx="2"/><text class="rc-stt" x="${sx + 1}" y="${sy + 4}" text-anchor="middle">USED</text></g></g>`).join("");
+  const used = RC_USED.map(([id, sx, sy]) => `<g class="rc-on rc-s6">${dot(id, " rc-nu", " rc-tu")}<circle class="rc-ring" cx="${RC_AT[id][0]}" cy="${RC_AT[id][1]}" r="16"/></g>` +
+    `<g class="rc-on rc-s6"><g transform="rotate(-6 ${sx} ${sy})"><rect class="rc-st" x="${sx - 22}" y="${sy - 9.5}" width="44" height="19" rx="2"/><text class="rc-stt" x="${sx + 1}" y="${sy + 4}" text-anchor="middle">USED</text></g></g>`).join("");
   return `<figure class="rc-fig"><svg viewBox="0 0 368 296" role="img" aria-label="${alt}">${heads}${hits}${links}${scores}${ids.map((id) => dot(id, "", "")).join("")}${lit}${used}</svg>` +
     `<figcaption>A line is as thick as its link's learned weight. Dashed lines are search hits.</figcaption></figure>`;
 }
@@ -361,29 +361,27 @@ const RECALLS = [
   rcSlide("Spreading activation", "865 ms · 7 Nov 2026 · spreading.v6", `<p class="rc-q"><b>recall</b> "requirements for lists and responses format; store plans in memory with artifacts"</p>
 <div class="rc-mech">${["Keyword plus vector", "Reciprocal rank, k=10", "Personalized PageRank", "Restart 0.5", "20 iterations", "Paths up to 3 hops"].map((c) => `<span class="cl-chip">${c}</span>`).join("")}</div>
 <div class="rc-body">${rcGraph("The query's search finds four seed notes. From note 4, a relates link of weight 1.0 reaches note 5 and a co_used link of weight 0.1 reaches note 6. " +
-    "Note 7 links to note 8 by a relates link of weight 1.2 and a co_used link of weight 0.3. Notes 4 and 6 were marked used.")}
+    "Notes 4 and 6 were marked used.")}
 <div class="rc-list">${rcGroup("Seeds, by hybrid score", [
     rcSeed(1, "memory on Supabase, connectors and heyclyde.me", RC_SCORE[1], 100),
     rcSeed(2, "Clyde's project package", RC_SCORE[2], 71),
     rcSeed(3, "Your personal knowledge graph", RC_SCORE[3], 50),
     rcSeed(4, "Plans live in memory, with the plan files as artifacts", RC_SCORE[4], 48, "Used")])}${rcGroup("Along the links", [
     rcNote(5, "Write a memory handoff per task, with dependencies and a plan", "relates 1.0 from note 4"),
-    rcNote(6, "Before starting, give me a short requirements checklist", "co_used 0.1 from note 4", "Used"),
-    rcNote(7, "Agents check memory before touching the filesystem"),
-    rcNote(8, "Every turn starts by checking memory and ends by saving to it", "relates 1.2 and co_used 0.3 from note 7")])}
+    rcNote(6, "Before starting, give me a short requirements checklist", "co_used 0.1 from note 4", "Used")])}
 <div class="rc-tally"><span>2 notes</span><span class="cl-stamp cl-stamp--ok">Used</span><span>4 others</span><span class="cl-stamp">Irrelevant</span></div></div></div>`),
   rcStory("You said it once", "Claude Code to Antigravity",
     ["7 Nov 2026", "claude-code", "Your words, in a Claude Code chat", "After fixing, an independent audit agent reviews the changes before I see them."],
-    ["9 days later · 16 Nov", "antigravity", "Antigravity", "It was working on a different project. It got that note and marked it used.", "gemini decisions, secrets, relevance", "2.6 s"],
+    ["9 days later · 16 Nov", "antigravity", "Antigravity", "While working on a different project, it recalled that note and marked it used.", "gemini decisions, secrets, relevance", "2.6 s"],
     `Antigravity's handoff that night listed "run an independent audit agent before shipping".`),
   rcStory("Line by line", "Claude Code to Antigravity",
     ["11 Nov 2026", "claude-code", "Your words, in Claude Code", "Never search and replace across docs or PRs; make each change line by line."],
-    ["5 days later · 16 Nov", "antigravity", "Antigravity", "It was about to edit heyclyde.me's copy. It marked that note used.", "site SEO pages, landing page, docs, locked lines", "958 ms"],
+    ["5 days later · 16 Nov", "antigravity", "Antigravity", "Before editing heyclyde.me's copy, it recalled that note and marked it used.", "site SEO pages, landing page, docs, locked lines", "958 ms"],
     "It edited the site copy line by line."),
   rcStory("How you ship", "One Claude Code session to another",
     ["9 Nov 2026", "claude-code", "One Claude Code session", "like-vincent changes go straight to main, then install right after."],
     ["4 days later · 13 Nov", "claude-code", "Another Claude Code session", "It asked how to publish a change and marked that note used.", "how to publish a like-vincent plugin change: release, version bump, branch, PR", "2.4 s"],
-    "It pushed to main and reinstalled, with no PR and no version-bump detour."),
+    "It pushed to main and reinstalled, with no PR or version bump."),
   rcSlide("The quest board", "Quest #8 · 15 to 16 Nov 2026", `<ol class="rc-line">${[
     rcStep(1, "claude-code", "Claude Code", "Posted a handoff quest."),
     rcStep(2, "antigravity", "Antigravity", "Claimed it."),
@@ -401,11 +399,11 @@ const WORKS_PANEL = [
   ["Seeds", "Hybrid search picks starting notes by keyword and by meaning, merged by reciprocal rank."],
   ["Spread", "Activation flows from the seeds over typed links by personalized PageRank (restart 0.5, 20 rounds), up to 3 hops."],
   ["Weights", "Each link counts as its type's weight times its own learned weight."],
-  ["Ants", "An ant colony (<code>eval/ants.py</code>) trains the link-type weights on test questions: 3 hops, α 1, β 2, 10% exploration. It hasn't beaten plain weights yet, so they're all 1.0."],
-  ["Learning", "When an agent uses two notes together, their <code>co_used</code> link gains 0.1, up to 1. It only counts after 2 different sessions, and it loses 0.05 for every 200 times one shows up without the other."],
-  ["Feedback", "A new note gets 3 showings On trial, and its confidence moves 0.12 per verdict. A settled note moves 0.02. Under 0.15 it goes dormant: never deleted, just skipped."],
-  ["Temperature", "Recency and use are scored ACT-R style, on the recall clock (decay 0.5, floored at −3, the last 1,000 recalls). A use or the owner's confirmation counts 3, an open counts 1. Notes don't cool while you're away."],
-  ["Three rankers", "Keyword, hybrid and spreading split traffic 1:2:2, and a fourth (log-odds with temperature) runs in shadow. Agents' verdicts decide which one wins."],
+  ["Ants", "An ant colony (<code>eval/ants.py</code>, 3 hops, α 1, β 2, 10% exploration) trains the link-type weights on test questions and hasn't beaten plain weights yet, so they're all 1.0."],
+  ["Learning", "When an agent uses two notes together, their <code>co_used</code> link gains 0.1, up to 1, counts only after 2 different sessions, and loses 0.05 for every 200 times one shows up without the other."],
+  ["Feedback", "A new note gets 3 showings On trial and its confidence moves 0.12 per verdict, a settled note moves 0.02, and under 0.15 a note goes dormant, where it's skipped and never deleted."],
+  ["Temperature", "Recency and use are scored ACT-R style on the recall clock (decay 0.5, floored at −3, the last 1,000 recalls), where a use or the owner's confirmation counts 3 and an open counts 1, so notes don't cool while you're away."],
+  ["Three rankers", "Keyword, hybrid and spreading split traffic 1:2:2 while a fourth (log-odds with temperature) runs in shadow, and agents' verdicts decide which one wins."],
 ];
 const BUILT = `<section class="wrap built" id="built"><div class="section"><h2 class="cl-title-1">How it was used to build Clyde</h2></div>
 <div class="rc-works"><h3 class="cl-title-3">How the spreading works</h3><ol>${WORKS_PANEL.map(([lead, say]) => `<li><b>${lead}.</b> ${say}</li>`).join("")}</ol></div>

@@ -107,14 +107,14 @@ Deno.test('the home page has an app picker, a recall carousel and one bottom but
   }
   assert.equal((built.match(/<svg[^>]*role="img"[^>]*aria-label="[^"]+"/g) ?? []).length, 1, 'a labelled graph on the spreading recall')
   assert.equal((built.match(/class="rc-q"/g) ?? []).length, 4, 'a query on each recall')
-  // The graph: it lights in eight steps, links are as thick as their weights and labelled, and two notes end stamped used.
+  // The graph: it lights in six steps, links are as thick as their weights and labelled, and two notes end stamped used.
   const graph = /<svg[\s\S]*?<\/svg>/.exec(built)?.[0] ?? ''
   const steps = new Set(attr(graph, /class="[^"]*\brc-[sd](\d)\b[^"]*"/g))
-  assert.deepEqual([...steps].sort(), ['1', '2', '3', '4', '5', '6', '7', '8'], 'eight steps: query, search, seeds, links, hop 1, links, hop 2, verdicts')
+  assert.deepEqual([...steps].sort(), ['1', '2', '3', '4', '5', '6'], 'six steps: query, search, seeds, links, hop 1, verdicts')
   for (const n of steps) assert.ok(html.includes(`@keyframes rc-s${n}{`) && html.includes(`@keyframes rc-d${n}{`), `step ${n} has its keyframes`)
-  assert.deepEqual(attr(graph, /<text class="rc-l"[^>]*>([^<]+)</g), ['QUERY', 'SEEDS', 'HOP 1', 'HOP 2'], 'the waves, in order')
+  assert.deepEqual(attr(graph, /<text class="rc-l"[^>]*>([^<]+)</g), ['QUERY', 'SEEDS', 'HOP 1'], 'the waves, in order')
   const links = [...graph.matchAll(/<path class="rc-e" stroke-width="([\d.]+)"[^>]*\/><path class="rc-e rc-el rc-d\d" pathLength="1" stroke-width="\1"[^>]*\/><text class="rc-k"[^>]*>(relates|co_used) (\d\.\d)</g)]
-  assert.equal(links.length, 4, 'four links, each drawn dim and lit, with its type and weight')
+  assert.equal(links.length, 2, 'two links, each drawn dim and lit, with its type and weight')
   const byWeight = links.map((m) => [Number(m[3]), Number(m[1])]).sort((a, b) => a[0] - b[0])
   for (let i = 1; i < byWeight.length; i++) assert.ok(byWeight[i][1] > byWeight[i - 1][1], `a link of weight ${byWeight[i][0]} is thicker than one of ${byWeight[i - 1][0]}`)
   assert.equal((graph.match(/<text class="rc-stt"[^>]*>USED</g) ?? []).length, 2, 'two used stamps in the graph')
