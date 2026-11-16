@@ -257,3 +257,13 @@ test('R58 the Google Connected Apps verification file serves the setting', { ski
   assert.match(String(r.headers['content-type']), /^text\/plain/)
   assert.equal(r.text, token)
 })
+
+test('R56 the OpenAI verification file serves the setting trimmed', { skip: SKIP }, async () => {
+  const token = `openai-verify-${nonce()}`
+  sql(`insert into memory.setting (name, value) values ('openai_apps_challenge', '  ${token}\n')
+    on conflict (name) do update set value = excluded.value`)
+  const r = await bed.call('GET', '/.well-known/openai-apps-challenge')
+  assert.equal(r.status, 200, r.text)
+  assert.match(String(r.headers['content-type']), /^text\/plain/)
+  assert.equal(r.text, token)
+})
