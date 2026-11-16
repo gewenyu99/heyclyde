@@ -317,16 +317,18 @@ const rcSeed = (n, title, score, pct, verdict = "") => `<li><i class="rc-dot${ve
   `${verdict ? `<span class="cl-stamp cl-stamp--ok">${verdict}</span>` : ""}</span><span class="rc-score"><span class="rc-bar"><i class="rc-p${pct}"></i></span><b>${score}</b></span></span></li>`;
 // The spreading recall's graph. Where each note sits, the seeds' hybrid scores, and the links the spread followed:
 // [from, to, link type, learned weight, the step that draws it, a sideways shift for a second link between the same notes].
-const RC_AT = { Q: [30, 136], 1: [120, 46], 2: [120, 106], 3: [120, 166], 4: [120, 226], 5: [250, 170], 6: [250, 268] };
+// Three columns 140 apart, centred in the 368-wide viewBox: the query, the seeds, and the notes one hop out.
+const RC_AT = { Q: [40, 136], 1: [180, 46], 2: [180, 106], 3: [180, 166], 4: [180, 226], 5: [320, 136], 6: [320, 226] };
 const RC_SCORE = { 1: "0.0645", 2: "0.0460", 3: "0.0321", 4: "0.0307" };
 const RC_LINKS = [[4, 5, "relates", "1.0", 4, 0], [4, 6, "co_used", "0.1", 4, 0]];
 const RC_LIT = { Q: 1, 1: 3, 2: 3, 3: 3, 4: 3, 5: 5, 6: 5 };
-const RC_USED = [[4, 70, 262], [6, 306, 262]];
+// [note, stamp x, stamp y]: each USED stamp sits under its note, below note 4's score.
+const RC_USED = [[4, 180, 274], [6, 320, 274]];
 function rcGraph(alt) {
   const r1 = (v) => Math.round(v * 10) / 10;
   const dot = (id, cls, tcls) => `<circle class="rc-n${cls}" cx="${RC_AT[id][0]}" cy="${RC_AT[id][1]}" r="${id === "Q" ? 12 : 11}"/>` +
     `<text class="rc-t${tcls}" x="${RC_AT[id][0]}" y="${RC_AT[id][1] + 3.5}" text-anchor="middle">${id}</text>`;
-  const heads = [[30, "QUERY", 1], [120, "SEEDS", 3], [250, "HOP 1", 5]].map(([x, t, step]) =>
+  const heads = [[RC_AT.Q[0], "QUERY", 1], [RC_AT[1][0], "SEEDS", 3], [RC_AT[5][0], "HOP 1", 5]].map(([x, t, step]) =>
     `<text class="rc-l" x="${x}" y="12" text-anchor="middle">${t}</text><g class="rc-on rc-d${step}"><text class="rc-l rc-ll" x="${x}" y="12" text-anchor="middle">${t}</text></g>`).join("");
   // A search hit is a dashed line of one width. It isn't a link, so it has no weight. It stays dashed when lit, so it fades in.
   const hits = [1, 2, 3, 4].map((n) => `M${RC_AT.Q.join(" ")}L${RC_AT[n].join(" ")}`).map((d) =>
@@ -373,7 +375,7 @@ const RECALLS = [
   rcStory("You said it once", "Claude Code to Antigravity",
     ["7 Nov 2026", "claude-code", "Your words, in a Claude Code chat", "After fixing, an independent audit agent reviews the changes before I see them."],
     ["9 days later · 16 Nov", "antigravity", "Antigravity", "While working on a different project, it recalled that note and marked it used.", "gemini decisions, secrets, relevance", "2.6 s"],
-    `Antigravity's handoff that night listed "run an independent audit agent before shipping".`),
+    `Its handoff that night listed "run an independent audit agent before shipping".`),
   rcStory("Line by line", "Claude Code to Antigravity",
     ["11 Nov 2026", "claude-code", "Your words, in Claude Code", "Never search and replace across docs or PRs; make each change line by line."],
     ["5 days later · 16 Nov", "antigravity", "Antigravity", "Before editing heyclyde.me's copy, it recalled that note and marked it used.", "site SEO pages, landing page, docs, locked lines", "958 ms"],
@@ -402,7 +404,7 @@ const WORKS_PANEL = [
   ["Ants", "An ant colony (<code>eval/ants.py</code>, 3 hops, α 1, β 2, 10% exploration) trains the link-type weights on test questions and hasn't beaten plain weights yet, so they're all 1.0."],
   ["Learning", "When an agent uses two notes together, their <code>co_used</code> link gains 0.1, up to 1, counts only after 2 different sessions, and loses 0.05 for every 200 times one shows up without the other."],
   ["Feedback", "A new note gets 3 showings On trial and its confidence moves 0.12 per verdict, a settled note moves 0.02, and under 0.15 a note goes dormant, where it's skipped and never deleted."],
-  ["Temperature", "Recency and use are scored ACT-R style on the recall clock (decay 0.5, floored at −3, the last 1,000 recalls), where a use or the owner's confirmation counts 3 and an open counts 1, so notes don't cool while you're away."],
+  ["Temperature", "Recency and use are scored ACT-R style on the recall clock (decay 0.5, floored at −3, the last 1,000 recalls), so notes don't cool while you're away. A use or the owner's confirmation counts 3 and an open counts 1."],
   ["Three rankers", "Keyword, hybrid and spreading split traffic 1:2:2 while a fourth (log-odds with temperature) runs in shadow, and agents' verdicts decide which one wins."],
 ];
 const BUILT = `<section class="wrap built" id="built"><div class="section"><h2 class="cl-title-1">How it was used to build Clyde</h2></div>
