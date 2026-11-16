@@ -408,7 +408,7 @@ const WORKS_PANEL = [
   ["Three rankers", "Keyword, hybrid and spreading split traffic 1:2:2 while a fourth (log-odds with temperature) runs in shadow, and agents' verdicts decide which one wins."],
 ];
 const BUILT = `<section class="wrap built" id="built"><div class="section"><h2 class="cl-title-1">How it was used to build Clyde</h2></div>
-<div class="rc-works"><h3 class="cl-title-3">How the spreading works</h3><ol>${WORKS_PANEL.map(([lead, say]) => `<li><b>${lead}.</b> ${say}</li>`).join("")}</ol></div>
+<div class="rc-works"><h3 class="cl-title-3">How the spreading works</h3><ol>${WORKS_PANEL.map(([lead, say]) => `<li><b>${lead}</b> ${say}</li>`).join("")}</ol></div>
 <div class="rc" id="rc"><div class="rc-nav" hidden><button class="cl-btn cl-btn--sm" type="button" aria-label="Previous slide">←</button><span class="rc-count">1 / ${RECALLS.length}</span><button class="cl-btn cl-btn--sm" type="button" aria-label="Next slide">→</button></div>
 <div class="rc-track" tabindex="0" role="group" aria-label="${RECALLS.length} slides">${RECALLS.join("\n")}</div>
 <p class="rc-foot"><a href="/how-it-works#built">See the counts</a></p></div></section>`;
