@@ -184,7 +184,7 @@ const copyPre = (name, value) =>
   `<div class="cl-file"><div class="cl-file__head"><span>${esc(name)}</span><button class="cl-btn cl-btn--sm" type="button" data-copy="${esc(value)}">Copy</button></div>` +
   `<pre><code>${esc(value)}</code></pre></div>`;
 export const LEGAL = "Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok are trademarks of their respective owners. None of them endorse Clyde. Not available in the EU, EEA, UK, Switzerland, or Quebec.";
-const footer = `<footer class="foot"><div class="wrap"><span class="brand">${MARK(22)}clyde · shared memory for agents</span>
+const footer = `<footer class="foot"><div class="wrap"><span class="brand">${MARK(22)}clyde · a boring memory system</span>
 <nav><a href="https://heyclyde.me/privacy">Privacy</a><a href="https://heyclyde.me/terms">Terms</a><a href="${DESIGN_URL}">Design system</a><a href="/healthz">Status</a></nav>
 <span class="legal">${LEGAL}</span></div></footer>`;
 
@@ -321,7 +321,7 @@ export const SCENE = `<div class="scene" aria-label="The same Clyde note showing
 <div class="win w1"><div class="win-top"><i class="dots"></i>Claude<span>chat</span></div><div class="body">
 <div class="ask">Checkout's slow again. Any idea why?</div><p class="say">From Codex, last week:</p>
 <article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-chip">Decision</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">94% sure</span></div>
-<h3 class="cl-memory__title">The tax API retries 5 times, so raising the timeout made checkout slower.</h3>
+<h3 class="cl-memory__title">The tax API retries 5 times. Raising the timeout made it worse. Don't.</h3>
 <div class="cl-prov"><span class="cl-prov__who">atlas</span><span>Codex</span><span class="cl-prov__sep">/</span><span>mbp-work</span><span class="cl-prov__sep">/</span><span>6 d ago</span></div></article>
 <span class="via">${MARK(16)}from clyde</span></div></div>
 <div class="win w2"><div class="win-top"><i class="dots"></i>Codex<span>terminal</span></div><pre><b>›</b> fix checkout latency

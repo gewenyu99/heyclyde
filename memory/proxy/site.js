@@ -109,7 +109,7 @@ const header = `<header class="bar wrap"><a class="logo" href="/" aria-label="cl
 <nav class="topnav"><a href="/docs">Docs</a><a href="/how-it-works">How it works</a><a href="/faq">FAQ</a></nav>
 <span class="acts"><a class="cl-btn cl-btn--primary" href="${CONNECT}">Get Clyde</a></span></header>`;
 
-const footer = `<footer class="foot"><div class="wrap"><span class="brand">${MARK(22)}clyde · shared memory for agents</span>
+const footer = `<footer class="foot"><div class="wrap"><span class="brand">${MARK(22)}clyde · a boring memory system</span>
 <nav><a href="/docs">Docs</a><a href="/how-it-works">How it works</a><a href="/faq">FAQ</a><a href="mailto:${SUPPORT}">${SUPPORT}</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="${DESIGN_URL}">Design system</a></nav>
 <span class="legal">${LEGAL}</span></div></footer>`;
 
@@ -173,7 +173,7 @@ const FEATURES = `<section class="wrap" id="what"><div class="section"><span cla
 </div>
 <div class="two">
 <article class="feat"><div class="feat-art">${SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 262, 152)}</div>
-<h3 class="cl-title-3">Shared memory</h3><p>Your agent writes notes as it works and <b class="hl hl--blue">looks up the ones about what you're doing</b>. Notes nobody uses fade.</p>
+<h3 class="cl-title-3">Shared memory</h3><p>Your agent writes down what you tell it, what it learns and what it's guessing. Later it <b class="hl hl--blue">looks up the notes related to what you're doing</b>, and the ones that never get used slowly fade away.</p>
 <div class="win"><div class="win-top"><i class="dots"></i>Gemini<span>chat</span></div><div class="body">
 <div class="ask">What color should Bob's birthday card be?</div>
 <article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-chip">Fact</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">82% sure</span></div>
@@ -206,7 +206,7 @@ const HONEST = `<section class="wrap honest-wrap" id="honest">
 <div class="cl-sticky cl-sticky--tilt honest">
 <div class="honest-copy"><div class="honest-top"><span class="cl-label">Fair warning</span></div>
 <h2 class="cl-title-1">This is not <s class="strike">advanced technology</s>. It's probably not even very secure 😶</h2>
-<p>It's Postgres, some embeddings and an MCP URL taped together. <b class="hl hl--red">Use with caution.</b> Put normal context and preferences in it, like the time you called the Q3 roadmap <b class="hl hl--violet">a dumpster fire</b>.</p></div>
+<p>It's Postgres, some embeddings and an MCP URL taped together. <b class="hl hl--red">Use with caution.</b> Put normal context and preferences in it. The point is that next week your agent still remembers you called the Q3 roadmap <b class="hl hl--violet">a dumpster fire</b>.</p></div>
 <div class="honest-art">${SCENE_IMG("nosecrets", "Clyde holding up a palm next to a crossed-out padlock and key", 152, 186)}</div>
 </div></section>`;
 
@@ -214,7 +214,7 @@ const PLANS = `<section class="wrap" id="pricing"><div class="section"><span cla
 <h2 class="cl-title-1">The free tier is <span class="hl hl--red">pretty useless</span>. Try it for $12.99.</h2></div>
 <div class="plans">
 <article class="cl-sticky cl-sticky--tilt-r plan"><span class="cl-label">Free</span><div class="price"><b>$0</b><span>first 1,000 users</span></div>
-<ul><li>Up to 100 notes stored</li><li>300 recalls and 50 writes / month</li><li>2 computers, no card needed</li><li class="no">No file attachments or quest board</li></ul></article>
+<ul><li>Up to 100 notes stored</li><li>300 recalls and 50 writes / month</li><li>2 computers, no credit card required</li><li class="no">No file attachments or quest board</li></ul></article>
 <article class="cl-card plan pick"><span class="cl-label">Clyde</span><div class="price"><b>$12.99</b><span>a month</span></div>
 <ul><li>2,000 recalls and 500 writes / month</li><li>5 GB file storage for logs, docs, and screenshots</li><li>1.5M tokens included for search and ranking</li>
 <li>Up to 10 computers, all supported apps, plus the quest board</li><li>Overage is raw cost + 50%, capped at a monthly limit you set ($20 default)</li></ul></article>
@@ -223,12 +223,12 @@ const PLANS = `<section class="wrap" id="pricing"><div class="section"><span cla
 function home(nonce) {
   const works = WORKS.map(([slug, name]) => `<li>${APP_LOGO[slug] ? appLogo(slug, 20) : ""}${name}${SOON.has(slug) ? '<span class="soon" aria-label="work in progress">*</span>' : ""}</li>`).join("");
   return page(nonce, {
-    title: "Clyde · Shared memory for AI agents", path: "/",
-    description: "Clyde is a shared memory for AI agents. Your agents in Claude, ChatGPT, Gemini, Codex and Grok read and write the same notes.",
+    title: "Clyde · Shared memory for your goldfish-brained AI agents", path: "/",
+    description: "Your AI agents have the memory of a goldfish. Clyde is a boring shared memory for Claude, ChatGPT, Gemini, Codex and Grok, so they stop forgetting.",
     css: HERO_CSS + SCENE_CSS + SITE_HOME_CSS + BUILT_CSS, jsonld: HOME_LD, main: `<main>
 <section class="hero site-hero wrap"><div class="hero-text">
 <h1 class="cl-display hero-h1">Your agents have the memory of a <em class="cl-scribble">goldfish.</em></h1>
-<p class="cl-lead">For some reason, the best memory AI has to offer is <b class="hl">a few Word documents with stuff stuck in them</b>. Your agents can't remember what happened last time or talk to each other across <b class="hl hl--blue">computers, projects or apps</b>.</p>
+<p class="cl-lead">For some reason, the best memory AI has to offer is <b class="hl">a few Word documents with stuff stuck in them</b>. Your agents can't remember what happened last time. They can't talk to each other across <b class="hl hl--blue">computers, projects or apps</b>.</p>
 <p class="cl-lead">I don't know how the big AI shops haven't figured this out yet. So I made Clyde. <b class="hl hl--green">It'll do until they do.</b></p>
 <div class="cta">${ARROW_SVG}<a class="cl-btn cl-btn--primary cl-btn--lg" href="${CONNECT}">Get Clyde</a><a class="cl-btn cl-btn--ghost cl-btn--lg" href="/how-it-works">How it works</a></div>
 <div class="works"><span class="cl-label">Connects to</span><ul>${works}</ul>${SOON_NOTE}</div></div>
