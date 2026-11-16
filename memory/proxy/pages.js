@@ -22,6 +22,7 @@ export const SCENE_IMG = (slug, alt, w, h) => themed(`/_clyde/scenes/${slug}-lig
 const WORDMARK = `<a class="logo" href="https://heyclyde.me/" aria-label="clyde home">${LOGO()}</a>`;
 
 export const PAGE_CSS = `
+.soon{color:var(--cl-pen-red);font-weight:700;margin-left:2px}.soon-note{margin:6px 0 0;font:var(--cl-text-small);color:var(--cl-ink-3)}
 body{margin:0;min-height:100vh;display:flex;flex-direction:column;background-image:url(/_clyde/brand/grain.svg)}
 a{color:var(--cl-carbon)}
 :focus-visible{outline:2px solid var(--cl-carbon);outline-offset:2px}
@@ -311,6 +312,10 @@ ${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { clyde: { serverUrl: 
   },
 ];
 
+/** Apps nobody has connected to Clyde yet (no sessions from them as of 16 Nov 2026). They show a red asterisk. */
+export const SOON = new Set(["gemini", "grok", "chatgpt"]);
+const soon = (slug) => SOON.has(slug) ? '<span class="soon" aria-label="coming soon">*</span>' : "";
+export const SOON_NOTE = '<p class="soon-note"><span class="soon">*</span> Coming soon. Set up, not tested yet.</p>';
 export const WORKS = [["claude", "Claude"], ["claude-code", "Claude Code"], ["codex", "Codex"], ["gemini", "Gemini"], ["antigravity", "Antigravity"], ["grok", "Grok"], ["chatgpt", "ChatGPT"]];
 
 export const SCENE = `<div class="scene" aria-label="The same Clyde note showing up in Claude and in Codex">
@@ -327,11 +332,11 @@ export const SCENE = `<div class="scene" aria-label="The same Clyde note showing
 
 /** One card per app with its install steps. The connect page and heyclyde.me/docs both show them. */
 export const appCards = () => APPS.map((a) => `<article class="cl-card app" data-app="${a.id}" id="${a.id}"><div class="app-head"><span class="app-logo">${appLogo(a.logo)}</span>
-<div><h3 class="cl-title-3">${esc(a.name)}</h3><p class="sub">${esc(a.sub)}</p></div><span class="cl-chip">${esc(a.tag)}</span></div>${a.body}</article>`).join("\n");
+<div><h3 class="cl-title-3">${esc(a.name)}${soon(a.logo)}</h3><p class="sub">${esc(a.sub)}</p></div><span class="cl-chip">${esc(a.tag)}</span></div>${a.body}</article>`).join("\n");
 
 export function homePage(nonce) {
   const cards = appCards();
-  const works = WORKS.map(([slug, name]) => `<li>${APP_LOGO[slug] ? appLogo(slug, 20) : ""}${name}</li>`).join("");
+  const works = WORKS.map(([slug, name]) => `<li>${APP_LOGO[slug] ? appLogo(slug, 20) : ""}${name}${soon(slug)}</li>`).join("");
   const body = `<header class="bar wrap">${WORDMARK}<nav class="topnav"><a href="https://heyclyde.me/">Home</a><a href="#apps">Apps</a><a href="#how">How it works</a></nav>
 <span class="cl-status" id="status" role="status">Checking</span></header>
 <main>
@@ -340,7 +345,7 @@ export function homePage(nonce) {
 <p class="cl-lead">Add one MCP URL and click the email sign-in link to share memory across your agents.</p>
 <div class="cl-sticky cl-sticky--tilt hero-note"><b>Use with caution.</b> Put normal context and preferences in it.</div>
 <div class="cta"><a class="cl-btn cl-btn--primary cl-btn--lg" href="#apps">Pick your app</a><a class="cl-btn cl-btn--ghost cl-btn--lg" href="https://heyclyde.me/">What is Clyde?</a></div>
-<div class="works"><span class="cl-label">Plugs into</span><ul>${works}</ul></div></div><div class="hero-art">${SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 484, 280)}</div></section>
+<div class="works"><span class="cl-label">Connects to</span><ul>${works}</ul>${SOON_NOTE}</div></div><div class="hero-art">${SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 484, 280)}</div></section>
 <section class="wrap" id="apps"><div class="apps-head"><div class="section"><span class="cl-label">Connect</span><h2 class="cl-title-1">Pick your app</h2>
 <p class="cl-lead">Add this URL to your apps (including ChatGPT custom MCP connectors) and sign in via email.</p></div>
 <div class="cl-field"><span class="cl-field__label">Server URL</span>${copyBox(MCP_URL)}</div></div>

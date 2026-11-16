@@ -2,7 +2,7 @@
 // sign-in, a 404, robots.txt and the sitemap. Served by the same Worker as memory.heyclyde.me, in Sticky-Note Forehead
 // Clyde's doodle and sticky-note design system, in Clyde's deadpan voice (R72, #77; memory/design/BRAND.md).
 // Pricing matches memory.plan (memory/supabase/migrations/20261115120000_billing.sql); site_test.ts checks it.
-import { appCards, appLogo, APP_LOGO, CONNECT_CSS, COPY_JS, copyBox, DESIGN_URL, esc, HERO_CSS, LEGAL, LOGO, MARK, MASCOT, MCP_URL, SCENE, SCENE_CSS, SCENE_IMG, shell, SITE, WORKS } from "./pages.js";
+import { SOON, SOON_NOTE, appCards, appLogo, APP_LOGO, CONNECT_CSS, COPY_JS, copyBox, DESIGN_URL, esc, HERO_CSS, LEGAL, LOGO, MARK, MASCOT, MCP_URL, SCENE, SCENE_CSS, SCENE_IMG, shell, SITE, WORKS } from "./pages.js";
 
 const CONNECT = "/docs";
 const MCP = MCP_URL;
@@ -194,6 +194,19 @@ const FEATURES = `<section class="wrap" id="what"><div class="section"><span cla
 <span class="via">${MARK(16)}from clyde</span></div></div></article>
 </div></section>`;
 
+// The short version of /how-it-works#built. Its styles sit beside it so the section moves as one piece.
+const BUILT_CSS = `
+.built{margin-bottom:76px}.built .section{margin-bottom:12px}
+.built-nums{display:flex;flex-wrap:wrap;gap:10px 32px;margin:0 0 16px;padding:14px 0;border-block:1.5px dashed var(--cl-rule-strong)}
+.built-nums div{display:grid}
+.built-nums b{font:var(--cl-text-title-2);font-variant-numeric:tabular-nums}
+.built-nums span{font:var(--cl-text-small);color:var(--cl-ink-2)}
+.built p{margin:0;max-width:64ch;font:var(--cl-text-body-l);color:var(--cl-ink-2)}
+`;
+const BUILT = `<section class="wrap built" id="built"><div class="section"><span class="cl-label">Built with it</span></div>
+<div class="built-nums"><div><b>1,198</b><span>notes since 12 Oct 2026</span></div><div><b>2,079</b><span>links between notes</span></div><div><b>834</b><span>recalls</span></div><div><b>1,461</b><span>feedback verdicts</span></div></div>
+<p>The agents that built Clyde kept their notes in Clyde, and these are the counts as of 16 Nov 2026. <a href="/how-it-works#built">See how it went</a></p></section>`;
+
 const HONEST = `<section class="wrap honest-wrap" id="honest">
 <div class="cl-sticky cl-sticky--tilt honest">
 <div class="honest-copy"><div class="honest-top"><span class="cl-label">Fair warning</span></div>
@@ -215,19 +228,20 @@ const PLANS = `<section class="wrap" id="pricing"><div class="section"><span cla
 </div></section>`;
 
 function home(nonce) {
-  const works = WORKS.map(([slug, name]) => `<li>${APP_LOGO[slug] ? appLogo(slug, 20) : ""}${name}</li>`).join("");
+  const works = WORKS.map(([slug, name]) => `<li>${APP_LOGO[slug] ? appLogo(slug, 20) : ""}${name}${SOON.has(slug) ? '<span class="soon" aria-label="coming soon">*</span>' : ""}</li>`).join("");
   return page(nonce, {
     title: "Clyde · Shared memory for your goldfish-brained AI agents", path: "/",
     description: "Your AI agents have the memory of a goldfish. Clyde is a boring shared memory for Claude, ChatGPT, Gemini, Codex and Grok, so they stop forgetting.",
-    css: HERO_CSS + SCENE_CSS + SITE_HOME_CSS, jsonld: HOME_LD, main: `<main>
+    css: HERO_CSS + SCENE_CSS + SITE_HOME_CSS + BUILT_CSS, jsonld: HOME_LD, main: `<main>
 <section class="hero site-hero wrap"><div class="hero-text">
 <h1 class="cl-display hero-h1">Your agents have the memory of a <em class="cl-scribble">goldfish.</em></h1>
 <p class="cl-lead">For some reason, the best memory AI has to offer is <b class="hl">a few Word documents with stuff stuck in them</b>. Your agents can't remember what happened last time. They can't talk to each other across <b class="hl hl--blue">computers, projects or apps</b>.</p>
 <p class="cl-lead">I don't know how the big AI shops haven't figured this out yet. So I made Clyde. <b class="hl hl--green">It'll do until they do.</b></p>
 <div class="cta">${ARROW_SVG}<a class="cl-btn cl-btn--primary cl-btn--lg" href="${CONNECT}">Get Clyde</a><a class="cl-btn cl-btn--ghost cl-btn--lg" href="/how-it-works">How it works</a></div>
-<div class="works"><span class="cl-label">Works with</span><ul>${works}</ul></div></div>
+<div class="works"><span class="cl-label">Connects to</span><ul>${works}</ul>${SOON_NOTE}</div></div>
 <div class="mascot-stage"><div class="mascot-row">${MASCOT(178)}</div>${SCENE}</div></section>
 ${FEATURES}
+${BUILT}
 ${HONEST}
 <section class="wrap" id="how"><div class="section"><span class="cl-label">Setup</span><h2 class="cl-title-1">Three steps.</h2></div>
 <ol class="how"><li><span class="n">1</span><b>Paste the URL</b><p>Add <code>https://heyclyde.me/mcp</code> to your app.</p></li>
@@ -277,7 +291,7 @@ const DOCS = `<main class="doc wrap">${hero("Docs", "Install <em>Clyde</em>",
   "Add the MCP URL to your app, then click the sign-in link sent to your email.",
   SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 230, 133), "")}
 ${copyBox(MCP)}
-<div class="apps">${appCards()}</div>
+<div class="apps">${appCards()}</div>${SOON_NOTE}
 <h2 id="then">Usage</h2>
 <p>Use your agents normally. Clyde's MCP instructions tell your agent when to save and search notes. You can also explicitly tell an agent to remember something or check Clyde.</p>
 <p>To export or delete your data, see the <a href="/privacy">Privacy policy</a>.</p>
@@ -361,7 +375,7 @@ const HOW = `<main class="doc wrap">${hero("How it works", "How it <em>works</em
 <li>Links notes that are repeatedly retrieved together.</li>
 <li>Provides a shared task board so agents can hand off work.</li>
 <li>Restricts access to Claude, ChatGPT, Gemini, Antigravity, Grok, and localhost via email magic links.</li></ul>
-<h2>How it was used to build Clyde</h2>
+<h2 id="built">How it was used to build Clyde</h2>
 <p>The agents that built Clyde kept their notes in Clyde. These are the counts as of 16 Nov 2026.</p>
 <div class="hw-stats"><div class="cl-card"><b>1,198</b><span>notes since 12 Oct 2026</span></div>
 <div class="cl-card"><b>2,079</b><span>links between notes</span></div>
