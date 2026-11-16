@@ -1,5 +1,6 @@
 /** Tier 3 support: the memory Edge Function under deno, on schema memory rebuilt from the migrations and the made-up tea vault. */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { appendFileSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
 import net from 'node:net'
 import { join } from 'node:path'
@@ -120,8 +121,10 @@ export async function startRealMemory(extraEnv: Record<string, string> = {}, opt
   }
   const child = spawn(DENO, ['run', '-A', NO_NODE_MODULES, FUNCTION], { env, stdio: ['ignore', 'pipe', 'pipe'] })
   let output = ''
-  child.stdout?.on('data', (c) => (output += c))
-  child.stderr?.on('data', (c) => (output += c))
+  // MEMORY_TEST_FUNCTION_LOG names a file that gets the function's output too, for a run whose failure shows only a 500.
+  const keep = (c: Buffer) => { output += c; if (process.env.MEMORY_TEST_FUNCTION_LOG) appendFileSync(process.env.MEMORY_TEST_FUNCTION_LOG, c) }
+  child.stdout?.on('data', keep)
+  child.stderr?.on('data', keep)
   // The deployed function's path, so routes read the way MEMORY_URL makes them.
   const url = `http://127.0.0.1:${port}/functions/v1/memory`
   const close = async () => {
