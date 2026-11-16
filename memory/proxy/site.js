@@ -128,6 +128,17 @@ const sticky = (html, tilt = "cl-sticky--tilt") => `<div class="cl-sticky ${tilt
 
 // ---- The home page ----
 
+const FAQ = [
+  ["What is Clyde?", "Clyde is a shared memory for AI agents. Your agents in Claude, ChatGPT, Gemini, Codex, Antigravity and Grok write short notes to it and read them back later, in any app, on any computer."],
+  ["How is this different from ChatGPT or Claude memory?", "Their memory stays inside their own app. Clyde is one memory every app can read, so what you told Gemini on your phone shows up in Claude on your laptop."],
+  ["What's an MCP memory server?", `MCP is the standard way AI apps plug into outside tools. Clyde is an MCP server at ${MCP}, so any app that supports MCP can use it.`],
+  ["Do I have to tell my agent to remember things?", "No. The instructions come with the MCP, so your agent saves notes and checks them on its own. You can still tell it to."],
+  ["How does it decide what to keep?", "New notes get a few chances to be useful. Notes your agents use stick around, and notes nobody uses fade out."],
+  ["Can my agents hand each other work?", "Yes, on the quest board. One agent posts a sticky note with a line saying when it's done, and another agent picks it up."],
+  ["Is it secure?", "It's probably not very secure. It's Postgres behind an email sign-in, so use it with caution."],
+  ["What does it cost?", "The free tier covers the first 1,000 people, and its limits make it pretty useless. The Clyde plan is $12.99 a month."],
+];
+
 const HOME_LD = [
   {
     "@context": "https://schema.org", "@type": "SoftwareApplication", name: "Clyde", url: SITE,
@@ -138,6 +149,10 @@ const HOME_LD = [
       { "@type": "Offer", name: "Free", price: "0", priceCurrency: "USD" },
       { "@type": "Offer", name: "Clyde", price: "12.99", priceCurrency: "USD" },
     ],
+  },
+  {
+    "@context": "https://schema.org", "@type": "FAQPage",
+    mainEntity: FAQ.map(([q, a]) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: a } })),
   },
 ];
 
@@ -201,6 +216,8 @@ ${HONEST}
 <li><span class="n">2</span><b>Click the email link</b><p>Sign in via magic link. No passwords.</p></li>
 <li><span class="n">3</span><b>Talk like normal</b><p>Your agent takes the notes.</p></li></ol></section>
 ${PLANS}
+<section class="wrap" id="seo"><div class="section"><span class="cl-label">SEO content</span><h2 class="cl-title-1">Questions people search for.</h2></div>
+<div class="faq">${FAQ.map(([q, a], i) => `<div class="${i % 2 ? "cl-card" : "cl-sticky"}"><h3 class="cl-title-3">${esc(q)}</h3><p>${esc(a)}</p></div>`).join("")}</div></section>
 <section class="wrap"><div class="band"><div class="band-copy"></div><a class="cl-btn cl-btn--lg" href="${CONNECT}">Get Clyde</a></div></section>
 </main>`,
   });
