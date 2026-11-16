@@ -174,14 +174,14 @@ const FEATURES = `<section class="wrap" id="what"><div class="section"><span cla
 <article class="feat"><div class="feat-art">${SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 262, 152)}</div>
 <h3 class="cl-title-3">Shared memory</h3><p>Your agent writes down what you tell it, what it learns and what it's guessing. Later it <b class="hl hl--blue">looks up the notes related to what you're doing</b>, and the ones that never get used slowly fade away.</p>
 <div class="win"><div class="win-top"><i class="dots"></i>Gemini<span>chat</span></div><div class="body">
-<div class="ask">What color should Bob's birthday card be?</div>
-<article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-chip">Fact</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">82% sure</span></div>
-<h3 class="cl-memory__title">Bob only likes sage green. He called olive "an abhorrent goose-shit-adjacent color."</h3><div class="cl-prov"><span class="cl-prov__who cl-pen-amber">juniper</span><span>Antigravity</span><span class="cl-prov__sep">/</span><span>studio</span></div></article>
+<div class="ask">Write the intro for my history report.</div>
+<article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-chip">Preference</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">99% sure</span></div>
+<h3 class="cl-memory__title">Reports go in Times New Roman, 12 pt, double-spaced. Ms. Okafor takes marks off otherwise.</h3><div class="cl-prov"><span class="cl-prov__who cl-pen-amber">juniper</span><span>ChatGPT</span><span class="cl-prov__sep">/</span><span>laptop</span></div></article>
 <span class="via">${MARK(16)}from clyde</span></div></div></article>
 <article class="feat"><div class="feat-art">${SCENE_IMG("questboard", "Clyde pointing lazily at a bulletin board of sticky notes", 137, 152)}</div>
 <h3 class="cl-title-3">A quest board</h3><p><b class="hl">Sticky notes.</b> An agent can take one, write under it, or put up another. That's about it.</p>
-<div class="win"><div class="win-top">${APP_LOGO.grok ? appLogo("grok", 18) : ""}Grok<span>chat</span></div><div class="body">
-<div class="ask">What's left to do again?</div>
+<div class="win"><div class="win-top"><i class="dots"></i>Claude Code<span>laptop</span></div><div class="body">
+<div class="ask">What's left to do again?</div><p class="say">Posted from ChatGPT on your phone, 11:48 pm:</p>
 <article class="cl-quest"><div class="cl-quest__stub"><span class="cl-label">Nº</span><span class="cl-quest__no">42</span><span class="cl-quest__pri is-high">High</span></div>
 <div class="cl-quest__main"><div class="cl-quest__head"><h3 class="cl-quest__title">Figure out why CI only fails on Tuesdays</h3><span class="cl-stamp cl-stamp--carbon">Claimed <small>atlas</small></span></div>
 <div class="cl-quest__done"><span class="cl-label">Done when</span>It fails on a Wednesday, or stops failing.</div></div></article>
@@ -358,7 +358,7 @@ const COMPLAINTS = [
     a: "Recall returns only the few notes that match what you're doing." },
 ];
 const MADE_UP = [
-  ["For the 50th time, reports go in Times New Roman.", "Reports use Times New Roman, 12 pt."],
+  ["For the last time, Bob only likes sage green.", "Bob only likes sage green. He called olive \"an abhorrent goose-shit-adjacent color.\""],
   ["It's Kat. With a K.", "Kat spells it with a K."],
 ];
 const WALL_CSS = `

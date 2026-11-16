@@ -334,17 +334,17 @@ const soon = (slug) => SOON.has(slug) ? '<span class="soon" aria-label="work in 
 export const SOON_NOTE = `<p class="soon-note"><span class="soon">*</span> WIP, Clyde's still workin' on it</p>`;
 export const WORKS = [["claude", "Claude"], ["claude-code", "Claude Code"], ["codex", "Codex"], ["gemini", "Gemini"], ["antigravity", "Antigravity"], ["grok", "Grok"], ["chatgpt", "ChatGPT"]];
 
-export const SCENE = `<div class="scene" aria-label="The same Clyde note showing up in Claude and in Codex">
+export const SCENE = `<div class="scene" aria-label="The same Clyde note showing up in Claude and in Gemini">
 <div class="win w1"><div class="win-top"><i class="dots"></i>Claude<span>chat</span></div><div class="body">
-<div class="ask">Checkout's slow again. Any idea why?</div><p class="say">From Codex, last week:</p>
-<article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-chip">Decision</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">94% sure</span></div>
-<h3 class="cl-memory__title">The tax API retries 5 times. Raising the timeout made it worse. Don't.</h3>
-<div class="cl-prov"><span class="cl-prov__who">atlas</span><span>Codex</span><span class="cl-prov__sep">/</span><span>mbp-work</span><span class="cl-prov__sep">/</span><span>6 d ago</span></div></article>
+<div class="ask">Plan dinners for this week.</div><p class="say">From ChatGPT, 3 weeks ago:</p>
+<article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-chip">Preference</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">97% sure</span></div>
+<h3 class="cl-memory__title">You're vegetarian. You've told every app at least twice.</h3>
+<div class="cl-prov"><span class="cl-prov__who">juniper</span><span>ChatGPT</span><span class="cl-prov__sep">/</span><span>phone</span><span class="cl-prov__sep">/</span><span>3 w ago</span></div></article>
 <span class="via">${MARK(16)}from clyde</span></div></div>
-<div class="win w2"><div class="win-top"><i class="dots"></i>Codex<span>terminal</span></div><pre><b>›</b> fix checkout latency
-<i>clyde</i> recall "checkout slow" <b>→</b> 1 note
-  Tax API retries 5x. Don't raise the timeout.
-<b>›</b> capping retries at 2 instead</pre></div></div>`;
+<div class="win w2"><div class="win-top"><i class="dots"></i>Gemini<span>phone</span></div><pre><b>›</b> make the grocery list
+<i>clyde</i> recall "diet" <b>→</b> 1 note
+  You're vegetarian.
+<b>›</b> no chicken this time</pre></div></div>`;
 
 /** One app from APPS by id: its logo slug, its name with the red asterisk when it's in SOON, and its install steps.
  * The picker on heyclyde.me's home page shows these, so the steps are written once. */
