@@ -222,3 +222,26 @@ test('R67 ChatGPT\'s OAuth callbacks are allowed', { skip: SKIP }, async () => {
     assert.equal(r.status, want === 'approve' ? 200 : 403, `${name}: ${r.text}`)
   }
 })
+
+// The Gemini app signs in through Google's OAuth redirect service (developers.google.com/identity/account-linking):
+// /r/<project> and /a/<project> on oauth-redirect.googleusercontent.com and its -sandbox and -test hosts (R58, #63).
+test('R58 Google\'s OAuth redirects are allowed', { skip: SKIP }, async () => {
+  const owner = sql('select email from memory.allowed_email')[0].email as string
+  const cases: [string, string, 'approve' | 'deny'][] = [
+    ['google-r', 'https://oauth-redirect.googleusercontent.com/r/gemini-app', 'approve'],
+    ['google-a', 'https://oauth-redirect.googleusercontent.com/a/gemini-app', 'approve'],
+    ['google-sandbox', 'https://oauth-redirect-sandbox.googleusercontent.com/r/gemini-app', 'approve'],
+    ['google-test', 'https://oauth-redirect-test.googleusercontent.com/a/gemini-app', 'approve'],
+    ['google-other-path', 'https://oauth-redirect.googleusercontent.com/x/gemini-app', 'deny'],
+    ['google-content', 'https://evil.googleusercontent.com/r/gemini-app', 'deny'],
+    ['google-http', 'http://oauth-redirect.googleusercontent.com/r/gemini-app', 'deny'],
+  ]
+  for (const [name, target, want] of cases) {
+    const id = `r58-app-${name}-0001`, code = `pkce-${name}`
+    sql(`insert into memory.oauth_consent (authorization_id, code_verifier) values ('${id}', 'verifier-${name}')`)
+    memory.auth.signIns[code] = owner
+    memory.auth.authorizations[id] = { redirect_uri: target, client: { id: `client-${name}`, name: `App ${name}` } }
+    const r = await bed.call('GET', `/oauth/approve?authorization_id=${id}&code=${code}`)
+    assert.equal(r.status, want === 'approve' ? 200 : 403, `${name}: ${r.text}`)
+  }
+})
