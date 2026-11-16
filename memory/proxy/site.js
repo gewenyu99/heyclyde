@@ -169,7 +169,7 @@ const HOME_LD = [
 ];
 
 const FEATURES = `<section class="wrap" id="what"><div class="section"><span class="cl-label">What it does</span>
-</div>
+<h2 class="cl-title-1">Start in <b class="hl">Grok</b>, continue in <b class="hl hl--blue">Claude</b>, finish with <b class="hl hl--green">Codex</b>.</h2></div>
 <div class="two">
 <article class="feat"><div class="feat-art">${SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 262, 152)}</div>
 <h3 class="cl-title-3">Shared memory</h3><p>Your agent writes down what you tell it, what it learns and what it's guessing. Later it <b class="hl hl--blue">looks up the notes related to what you're doing</b>, and the ones that never get used slowly fade away.</p>
@@ -189,8 +189,8 @@ const FEATURES = `<section class="wrap" id="what"><div class="section"><span cla
 <span class="via">${MARK(16)}from clyde</span></div></div></article>
 </div></section>`;
 
-// How Clyde was used to build Clyde: six slides of real recalls, quest updates and feedback, copied from the store.
-// Nothing here is made up. A note without a stamp is one whose verdict wasn't recorded per note.
+// How Clyde was used to build Clyde: six slides copied from the store. Three notes saved in one place and recalled days later
+// in another, one recall that followed links, a quest and the feedback counts. Nothing here is made up.
 const RECALL_CSS = `
 .built{margin-bottom:76px}
 .rc-track{display:flex;align-items:flex-start;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;overscroll-behavior-x:contain;scroll-padding:0 4px;padding:4px 4px 14px;scrollbar-width:thin}
@@ -232,12 +232,30 @@ const RECALL_CSS = `
 .rc-who b{margin-left:auto;font:700 12px/1 var(--cl-font-mono);color:var(--cl-ink-3)}
 .rc-line p,.rc-say{margin:0}
 .rc-line small{font:var(--cl-text-mono);font-size:11.5px;color:var(--cl-ink-2)}
-.rc-trial{display:grid;grid-template-columns:minmax(0,480px) minmax(0,1fr);gap:16px 28px;align-items:center}
-@media (max-width:760px){.rc-trial{grid-template-columns:minmax(0,1fr)}}
-.rc-pips{display:flex;align-items:center;gap:6px;padding-top:8px;border-top:1px dashed var(--cl-rule);font:var(--cl-text-mono);font-size:11.5px;color:var(--cl-ink-2)}
-.rc-pips i{width:12px;height:12px;border-radius:50%;border:1.5px solid var(--cl-warn);background:var(--cl-warn)}
-.rc-pips i.is-spent{background:transparent}
-.rc-pips span{margin-left:6px}
+.rc-story{list-style:none;margin:0;padding:0 0 6px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr) minmax(0,.85fr);gap:36px}
+.rc-story>li{position:relative;display:grid;grid-template-rows:auto 1fr;gap:10px;min-width:0}
+.rc-story>li+li::before{content:"→";position:absolute;left:-27px;top:calc(50% + 4px);font:700 18px/1 var(--cl-font-mono);color:var(--cl-ink-3)}
+@media (max-width:760px){.rc-story{grid-template-columns:minmax(0,1fr);gap:34px}.rc-story>li+li::before{content:"↓";left:calc(50% - 6px);top:-27px}}
+.rc-step{display:flex;align-items:center;gap:8px}
+.rc-story p{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2)}
+.rc-story .cl-memory{align-content:start;gap:12px;padding:16px;border-color:var(--cl-carbon);box-shadow:var(--cl-copy-2)}
+.rc-story .cl-memory__title{font:600 17px/25px var(--cl-font-sans);color:var(--cl-ink)}
+.rc-got{display:grid;align-content:start;gap:10px;padding:16px}
+.rc-how{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.rc-how .cl-stamp{margin-left:auto;transform:rotate(-3deg)}
+.rc-story .cl-sticky{display:grid;align-content:start;gap:10px;align-self:start;padding:22px 16px 18px}
+.rc-story .cl-sticky p{font:500 15px/22px var(--cl-font-sans);color:var(--cl-ink)}
+.rc-say{margin:0}
+.rc-line small{font:var(--cl-text-mono);font-size:11.5px;color:var(--cl-ink-2)}
+.rc-story{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:30px;align-items:start}
+.rc-story li{position:relative;display:grid;gap:8px;min-width:0}
+.rc-story li+li::before{content:"→";position:absolute;left:-23px;top:50%;font:700 16px/1 var(--cl-font-mono);color:var(--cl-ink-3)}
+@media (max-width:760px){.rc-story{grid-template-columns:minmax(0,1fr)}.rc-story li+li::before{content:"↓";left:50%;top:-23px}}
+.rc-story p{margin:0;font:var(--cl-text-small);color:var(--cl-ink)}
+.rc-story .cl-memory__title{font-weight:600}
+.rc-got{display:grid;gap:8px;padding:14px}
+.rc-how{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.rc-how .cl-stamp{margin-left:auto}
 .rc-say{font:var(--cl-text-body);color:var(--cl-ink-2);max-width:56ch}
 .rc-bars{margin:0;display:grid;gap:12px;max-width:560px}
 .rc-bars div{display:grid;grid-template-columns:104px minmax(0,1fr) 40px;gap:12px;align-items:center}
@@ -258,7 +276,7 @@ const rcNote = (n, title, how = "", verdict = "") => `<li><i class="rc-dot${verd
   verdict ? `<span class="cl-stamp${verdict === "Used" ? " cl-stamp--ok" : ""}">${verdict}</span>` : ""}</li>`;
 const rcGroup = (label, notes) => `<div class="rc-group"><span class="cl-label">${label}</span><ul class="rc-notes">${notes.join("")}</ul></div>`;
 /** The graph beside a recall: nodes are [label, x, y, kind], edges are [from, to, link type], heads are [x, text]. */
-function rcGraph(alt, heads, nodes, edges, key = true) {
+function rcGraph(alt, heads, nodes, edges) {
   const at = Object.fromEntries(nodes.map((n) => [n[0], n]));
   const lines = edges.map(([a, b, kind]) => {
     const [, x1, y1] = at[a], [, x2, y2] = at[b];
@@ -270,19 +288,37 @@ function rcGraph(alt, heads, nodes, edges, key = true) {
     `<text class="rc-t${kind === "used" ? " is-used" : ""}" x="${x}" y="${y + 3.5}" text-anchor="middle">${label}</text>`).join("");
   return `<figure class="rc-fig"><svg viewBox="0 0 300 160" role="img" aria-label="${alt}">` +
     heads.map(([x, t]) => `<text class="rc-l" x="${x}" y="11" text-anchor="middle">${t}</text>`).join("") + lines + dots + `</svg>` +
-    (key ? `<figcaption><i class="rc-dot is-used"></i>marked used</figcaption>` : "") + `</figure>`;
+    `<figcaption><i class="rc-dot is-used"></i>marked used</figcaption></figure>`;
 }
 const rcSlide = (title, meta, body) => `<article class="cl-card rc-slide"><div class="rc-head"><h3 class="cl-title-3">${title}</h3>${meta ? `<span class="rc-meta">${meta}</span>` : ""}</div>${body}</article>`;
 const rcRecall = (title, meta, query, groups, tally, graph) => rcSlide(title, meta,
   `<div class="rc-body"><div class="rc-list"><p class="rc-q"><b>recall</b> "${esc(query)}"</p>${groups.join("")}${tally ? `<div class="rc-tally">${tally}</div>` : ""}</div>${graph}</div>`);
 const rcStep = (n, slug, who, what, when = "") => `<li class="cl-sticky ${n % 2 ? "cl-sticky--tilt" : "cl-sticky--tilt-r"}"><span class="rc-who">${appLogo(slug, 18)}${who}<b>${n}</b></span><p>${what}</p>${when ? `<small>${when}</small>` : ""}</li>`;
-const QUEST8 = "Clyde quest #8: Antigravity's work reviewed, fixed and live";
+const rcWho = (slug, who) => `<span class="rc-who">${appLogo(slug, 18)}${who}</span>`;
+/** A note saved in one place and recalled days later in another: the note, the recall that found it, and what the agent did next. */
+const rcStory = (title, meta, [on, slug, by, note], [later, slug2, who, doing, query, took], did) => rcSlide(title, meta, `<ol class="rc-story">
+<li><span class="rc-step"><i class="rc-dot">1</i><span class="cl-label">Saved · ${on}</span></span><article class="cl-card cl-memory"><p class="cl-memory__title">"${esc(note)}"</p>${rcWho(slug, by)}</article></li>
+<li><span class="rc-step"><i class="rc-dot">2</i><span class="cl-label">${later}</span></span><div class="cl-card rc-got">${rcWho(slug2, who)}<p>${doing}</p><p class="rc-q"><b>recall</b> "${esc(query)}"</p>
+<div class="rc-how"><span class="cl-chip">Hybrid search</span><span class="rc-meta">${took}</span><span class="cl-stamp cl-stamp--ok">Used</span></div></div></li>
+<li><span class="rc-step"><i class="rc-dot is-used">3</i><span class="cl-label">What it did</span></span><div class="cl-sticky cl-sticky--tilt-r">${rcWho(slug2, who)}<p>${did}</p></div></li></ol>`);
 
 const RECALLS = [
+  rcStory("You said it once", "Claude Code to Antigravity",
+    ["7 Nov 2026", "claude-code", "Your words, in a Claude Code chat", "After fixing, an independent audit agent reviews the changes before I see them."],
+    ["9 days later · 16 Nov", "antigravity", "Antigravity", "It was working on a different project. It got that note and marked it used.", "gemini decisions, secrets, relevance", "2.6 s"],
+    `Antigravity's handoff that night listed "run an independent audit agent before shipping".`),
+  rcStory("Line by line", "Claude Code to Antigravity",
+    ["11 Nov 2026", "claude-code", "Your words, in Claude Code", "Never search and replace across docs or PRs; make each change line by line."],
+    ["5 days later · 16 Nov", "antigravity", "Antigravity", "It was about to edit heyclyde.me's copy. It marked that note used.", "site SEO pages, landing page, docs, locked lines", "958 ms"],
+    "It edited the site copy line by line."),
+  rcStory("How you ship", "One Claude Code session to another",
+    ["9 Nov 2026", "claude-code", "One Claude Code session", "like-vincent changes go straight to main, then install right after."],
+    ["4 days later · 13 Nov", "claude-code", "Another Claude Code session", "It asked how to publish a change and marked that note used.", "how to publish a like-vincent plugin change: release, version bump, branch, PR", "2.4 s"],
+    "It pushed to main and reinstalled, with no PR and no version-bump detour."),
   rcRecall("Spreading activation", "865 ms · 7 Nov 2026", "requirements for lists and responses format; store plans in memory with artifacts", [
     rcGroup("Search hits", [
-      rcNote(1, "memory on Supabase, connectors and heyclyde.me", "top score"),
-      rcNote(2, "Plans live in memory, with the plan files as artifacts", "4th", "Used")]),
+      rcNote(1, "memory on Supabase, connectors and heyclyde.me"),
+      rcNote(2, "Plans live in memory, with the plan files as artifacts", "", "Used")]),
     rcGroup("Reached by link", [
       rcNote(3, "Before starting, give me a short requirements checklist", "co-used link from note 2", "Used"),
       rcNote(4, "Write a memory handoff per task, with dependencies and a plan", "relates link from note 2")]),
@@ -290,27 +326,6 @@ const RECALLS = [
   rcGraph("The query finds notes 1 and 2. Note 2 links to note 3 by a co-used link and to note 4 by a relates link. Notes 2 and 3 were marked used.",
     [[28, "QUERY"], [136, "SEARCH"], [262, "LINKS"]], [["Q", 28, 84, "q"], [1, 136, 44], [2, 136, 112, "used"], [3, 262, 76, "used"], [4, 262, 140]],
     [["Q", 1], ["Q", 2], [2, 3, "co-used"], [2, 4, "relates"]])),
-  rcRecall("Hybrid search", "914 ms · 16 Nov 2026", "Clyde quests next steps R48 R49 R50 R70 quest #8 #9 #10 status", [
-    rcGroup("Top hits", [
-      rcNote(1, "Clyde handoff (Antigravity): Sticky-Note Clyde WIP, live Worker, R48-R50 blueprint"),
-      rcNote(2, QUEST8)]),
-    rcGroup("Also returned", [
-      rcNote(3, "Only claim quests for the active project"),
-      rcNote(4, "Agents check memory before touching the filesystem")]),
-    rcGroup("Linked", [
-      rcNote(5, "Every turn starts by checking memory and ends by saving to it", "relates link from note 4")]),
-  ], `<span class="cl-stamp cl-stamp--ok">Used</span><span>5 notes</span><span class="cl-stamp">Irrelevant</span><span>1 note</span>`,
-  rcGraph("The query finds notes 1, 2, 3 and 4. Note 4 has a relates link to note 5.",
-    [[28, "QUERY"], [136, "SEARCH"], [262, "LINKS"]], [["Q", 28, 86, "q"], [1, 136, 32], [2, 136, 68], [3, 136, 104], [4, 136, 140], [5, 262, 140]],
-    [["Q", 1], ["Q", 2], ["Q", 3], ["Q", 4], [4, 5, "relates"]], false)),
-  rcRecall("Keyword search", "525 ms · 15 Nov 2026", "pause and handoff quests memory abandon_quest update_quest", [
-    rcGroup("Search hits", [
-      rcNote(1, "Write a memory handoff per task, with dependencies and a plan, before starting work, so any agent can take it", "co-used link to note 2", "Used"),
-      rcNote(2, "memory becomes Clyde: shared memory, artifacts and a quest board for all your agents", "co-used link to note 1", "Used")]),
-  ], "",
-  rcGraph("The query finds notes 1 and 2. A co-used link joins them. Both were marked used.",
-    [[28, "QUERY"], [136, "SEARCH"]], [["Q", 28, 84, "q"], [1, 136, 44, "used"], [2, 136, 124, "used"]],
-    [["Q", 1], ["Q", 2], [1, 2, "co-used"]])),
   rcSlide("The quest board", "Quest #8 · 15 to 16 Nov 2026", `<ol class="rc-line">${[
     rcStep(1, "claude-code", "Claude Code", "Posted a handoff quest."),
     rcStep(2, "antigravity", "Antigravity", "Claimed it."),
@@ -319,10 +334,6 @@ const RECALLS = [
     rcStep(5, "claude-code", "Claude Code", "Claimed it back."),
     rcStep(6, "claude-code", "Claude Code", "Found 4 bugs and shipped it live."),
   ].join("")}</ol>`),
-  rcSlide("A note on trial", "", `<div class="rc-trial"><article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-stamp cl-stamp--warn">On trial</span><span class="cl-memory__conf">52% sure</span></div>
-<h3 class="cl-memory__title">${esc(QUEST8)}</h3>
-<div class="rc-pips"><i class="is-spent"></i><i></i><i></i><span>2 of 3 showings left</span></div></article>
-<p class="rc-say">This note started on trial with 3 showings. After 1 showing it had 2 left and stood at 52% sure.</p></div>`),
   rcSlide("What agents said about recalls", "30 days", `<dl class="rc-bars">${
     [["Hybrid", 60], ["Spreading", 59], ["Keyword-only", 52]].map(([k, v]) => `<div><dt>${k}</dt><dd><i class="rc-w${v}"></i></dd><b>${v}%</b></div>`).join("")}</dl>
 <p class="rc-say">Share marked used, by recall method. Under 0.5% marked wrong.</p>`),
@@ -396,7 +407,7 @@ const PLANS = `<section class="wrap" id="pricing"><div class="section"><span cla
 </div></section>`;
 
 // The app picker: radio inputs and labels, no script. Each panel is that app's steps from pages.js (appSteps).
-const PICK = ["claude-ai", "claude-code", "antigravity", "gemini", "grok", "chatgpt"].map(appSteps);
+const PICK = ["claude-ai", "claude-code", "antigravity", "gemini", "grok", "chatgpt", "other"].map(appSteps);
 const PICK_CSS = `
 #how{margin-bottom:84px}
 #how .soon-note{margin-top:16px}

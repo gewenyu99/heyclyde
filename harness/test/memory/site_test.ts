@@ -4,7 +4,7 @@
  */
 import assert from 'node:assert/strict'
 import worker from '../../../memory/proxy/worker.js'
-import { appCards, appSteps, DESIGN_URL, homePage, SOON, statePage } from '../../../memory/proxy/pages.js'
+import { APP_LOGO, appCards, appSteps, DESIGN_URL, homePage, SOON, statePage } from '../../../memory/proxy/pages.js'
 import { INDEXED as SITE_INDEXED, INDEXNOW_KEY, MOVED } from '../../../memory/proxy/site.js'
 
 const ENV = { PROXY_SECRET: 'test-proxy-secret' }
@@ -71,7 +71,7 @@ Deno.test('the home page has an app picker, a recall carousel and one bottom but
   for (const id of ids) {
     const app = appSteps(id)
     const label = new RegExp(`<label for="pick-${id}">([\\s\\S]*?)</label>`).exec(how)?.[1] ?? ''
-    assert.ok(label.includes(`/_clyde/apps/${app.logo}.svg`), `${id}: the tab shows the app's logo`)
+    assert.ok(label.includes((APP_LOGO as Record<string, string[]>)[app.logo][0]), `${id}: the tab shows the app's logo`)
     assert.equal(label.includes('class="soon"'), SOON.has(app.logo), `${id}: a red asterisk only when the app is in SOON`)
     assert.ok(how.includes(`data-pick="${id}">${app.body}</div>`), `${id}: the panel is the app's steps from pages.js`)
     assert.ok(html.includes(`#pick-${id}:checked~.pick-panels [data-pick="${id}"]`), `${id}: its radio shows its panel`)
@@ -220,7 +220,7 @@ Deno.test('the store pages', async () => {
   assert.ok(docs.includes(appCards()), '/docs carries appCards() as the connect page renders it')
   const apps = attr(docs, /data-app="([^"]+)"/g)
   assert.deepEqual(apps, attr(homePage('n0nce0000000000000000'), /data-app="([^"]+)"/g), '/docs and the connect page list the same apps')
-  assert.deepEqual(apps, ['claude-ai', 'claude-code', 'antigravity', 'gemini', 'grok', 'chatgpt', 'antigravity-cloud'])
+  assert.deepEqual(apps, ['claude-ai', 'claude-code', 'antigravity', 'gemini', 'grok', 'chatgpt', 'antigravity-cloud', 'other'])
   assert.ok(/<article[^>]*id="grok"[\s\S]*?grok\.com\/connectors[\s\S]*?https:\/\/heyclyde\.me\/mcp/.test(docs), '/docs#grok: the Grok steps with the MCP URL')
   const support = /<h2 id="support">[\s\S]*?<\/main>/.exec(docs)?.[0] ?? ''
   assert.ok(support.includes(`href="mailto:${SUPPORT}"`), '/docs#support: a mailto link to support')
