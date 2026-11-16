@@ -157,11 +157,14 @@ async function chineseRanks(db: Sql, query: string, limit: number, agentScope: A
   if (!terms.length) return [];
   const run = async (tx: Sql) => {
     await tx`set local enable_seqscan = off`;
-    return await tx`select e.id, extensions.pgroonga_score(e.tableoid, e.ctid) as score from memory.entry e
+    const rows = await tx`select e.id, extensions.pgroonga_score(e.tableoid, e.ctid) as score from memory.entry e
       where e.search_text operator(extensions.&@~) ${terms.join(" OR ")}
         and not exists (select 1 from memory.link l where l.owner_id = e.owner_id and l.dst = e.id and l.type = 'supersedes')
         ${entryWhereSql(tx, "e", agentScope, filter)}
       order by score desc, e.id limit ${limit}`;
+    // A request is one transaction (R49), so the setting is put back rather than left for the rest of it.
+    await tx`set local enable_seqscan = on`;
+    return rows;
   };
   const rows = "begin" in db ? await (db as any).begin(run) : await run(db);
   return rows.map((r: Row) => r.id);

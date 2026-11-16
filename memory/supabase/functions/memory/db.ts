@@ -12,10 +12,9 @@ import { config } from "./config.ts";
 export type Sql = postgres.Sql | postgres.TransactionSql;
 export type Row = Record<string, any>;
 
-/** postgres itself, which bypasses row-level security. Only for what no tenant may touch. */
-export const root = postgres(config.databaseUrl, {
+const client = (max: number) => postgres(config.databaseUrl, {
   prepare: false,
-  max: 3,
+  max,
   idle_timeout: 20,
   connection: { search_path: "memory,extensions,public", application_name: "memory" },
   types: {
@@ -24,6 +23,12 @@ export const root = postgres(config.databaseUrl, {
     date: { to: 1082, from: [1082], serialize: (x: string) => x, parse: (x: string) => x },
   },
 });
+
+/** postgres itself, which bypasses row-level security. Only for what no tenant may touch. Its connections are its own, so a
+ * read of a setting or an entitlement inside a request never waits behind the requests' open transactions. */
+export const root = client(3);
+/** The connections tenant transactions hold, one per request in flight. */
+const tenants = client(4);
 
 type Scope = {
   tx: postgres.TransactionSql;
@@ -58,7 +63,7 @@ export const currentOwner = () => scope.getStore()?.owner ?? null;
  * starts after the transaction commits, in a tenant transaction of its own, so a failure there never undoes the answer. */
 export async function asTenant<T>(owner: string, fn: () => Promise<T>, opts: { console?: boolean; timings?: string[] } = {}): Promise<T> {
   const s = { owner, later: [], timings: opts.timings ?? [] } as unknown as Scope;
-  const result = await root.begin(async (tx) => {
+  const result = await tenants.begin(async (tx) => {
     await tx.unsafe(opts.console ? "set local role memory_console" : "set local role memory_tenant");
     await tx`select set_config('memory.owner', ${owner}, true)`;
     s.tx = tx;

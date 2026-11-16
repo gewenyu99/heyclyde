@@ -121,7 +121,8 @@ test('paid hard caps: 429 naming the cap and its reset, reads and other users un
   await t.test('openai_tokens_month', async () => {
     const u = await paid()
     seed(u, 'openai_tokens_month', 3_999_999)
-    const first = await remember(u.oauth)
+    // Its own oolong note (R49: an owner recalls only its own), so the degraded recall below has a candidate to filter.
+    const first = await remember(u.oauth, { title: `oolong temperature ${nonce()}` })
     assert.equal(first.status, 200, first.text)
     const spent = Number(sql(`select amount from memory.usage where owner_id = '${u.id}' and kind = 'openai_tokens_month'`)[0].amount)
     assert.ok(spent >= 4_000_000, `${spent}`)

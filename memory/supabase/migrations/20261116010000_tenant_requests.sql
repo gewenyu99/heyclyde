@@ -56,6 +56,10 @@ begin
   if (select format_type(a.atttypid, a.atttypmod) from pg_attribute a
       where a.attrelid = 'memory.entry_embedding'::regclass and a.attname = 'embedding') not like '%halfvec(1024)' then
     lock table memory.entry_embedding in access exclusive mode;
+    -- Inline and uncompressed: a halfvec(1024) is 2 KB, which TOAST would otherwise move out of the row, and an exact scan
+    -- would then fetch every one of them apart.
+    alter table memory.entry_embedding alter column embedding set storage plain;
     alter table memory.entry_embedding alter column embedding type extensions.halfvec(1024) using embedding::extensions.halfvec(1024);
   end if;
 end $$;
+alter table memory.entry_embedding alter column embedding set storage plain;
