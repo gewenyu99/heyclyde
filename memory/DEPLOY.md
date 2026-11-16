@@ -263,7 +263,7 @@ In order, it: runs the version guard; bakes the installer's files from `supabase
 
 Bump the version first when the change is client-visible, as above. Not every migration is safe to rerun on a database that has the later ones: `dashboard_views` fails once `dashboard_confidence` has added its columns.
 
-Test a change end to end first with `memory/e2e/run.sh`. It brings a throwaway preview branch up to this checkout, runs [the e2e suite](e2e/README.md) against it, and deletes it.
+Test a change end to end first with `memory/e2e/run.sh`. It brings a throwaway preview branch up to this checkout, runs [the e2e suite](e2e/README.md) against it, and deletes it. In Firebase Studio (`.idx/dev.nix`) or any machine with Docker, `scripts/idx-tier3.sh` boots `supabase/postgres` locally and runs Tier 3, or one file like `scripts/idx-tier3.sh test/memory/entitlement.test.ts`.
 
 ## Embeddings
 
