@@ -120,8 +120,10 @@ async function httpRecall(req: Request, who: Principal) {
 
 // A stable order per table, so offset paging never skips or repeats a row.
 const ORDER: Record<string, string> = {
-  source: "id", entry: "id", link: "src, dst, type", co_use: "src, dst", question: "id", qrel: "question_id, entry_id", blob: "sha256",
-  entry_blob: "entry_id, name", entry_provenance: "entry_id", agent: "name", agent_binding: "principal, client", mcp_session: "id", mcp_client: "session_id", retrieval: "created_at, id", event: "id",
+  source: "owner_id, id", entry: "owner_id, id", link: "owner_id, src, dst, type", co_use: "owner_id, src, dst", question: "id",
+  qrel: "question_id, entry_id", blob: "owner_id, sha256", entry_blob: "owner_id, entry_id, name", entry_provenance: "owner_id, entry_id",
+  agent: "owner_id, name", agent_binding: "owner_id, principal, client", mcp_session: "owner_id, id", mcp_client: "owner_id, session_id",
+  retrieval: "created_at, id", event: "id",
   feedback: "id", message: "id", message_delivery: "id", quest: "id", quest_note: "id", quest_blob: "quest_id, name", admin_audit: "id", link_type_weight: "src_pattern, link_type, dst_pattern", device: "id",
   embed_usage: "month", param_set: "id", allocation: "param_set", openai_usage: "month, kind",
 };

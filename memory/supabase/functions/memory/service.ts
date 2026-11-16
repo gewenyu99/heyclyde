@@ -272,7 +272,7 @@ export async function readBlob(sha: string): Promise<Row | null> {
   const [row] = await sql`select b.media_type, b.size, b.content, b.stored,
       coalesce(bool_or(e.sensitivity <> 'private'), false) as public
     from memory.blob b left join memory.entry_blob x on x.sha256 = b.sha256 left join memory.entry e on e.id = x.entry_id
-    where b.sha256 = ${sha.trim().toLowerCase()} group by b.sha256`;
+    where b.sha256 = ${sha.trim().toLowerCase()} group by b.owner_id, b.sha256`;
   return row ?? null;
 }
 

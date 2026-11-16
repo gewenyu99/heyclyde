@@ -325,7 +325,7 @@ test('R15: a recall scoped to another run still serves the draft, below its own 
   const e = /^Remembered (\S+?)\./.exec(await tool('remember', note('run:k15b')))![1]
   for (const arm of ARMS) {
     sql(`insert into memory.mcp_session (id, arm, param_set, unit) values ('http-run:k15b', '${arm}', '${arm}.v1', 'run:k15b')
-      on conflict (id) do update set arm = excluded.arm, param_set = excluded.param_set, unit = excluded.unit`)
+      on conflict (owner_id, id) do update set arm = excluded.arm, param_set = excluded.param_set, unit = excluded.unit`)
     const r = await call('POST', '/recall', memory.token, { query: `${tag} oolong canary`, scope: 'run:k15b' })
     assert.equal(r.status, 200, r.text)
     assert.ok(r.text.includes(d) && r.text.includes(e), `${arm} serves both`)

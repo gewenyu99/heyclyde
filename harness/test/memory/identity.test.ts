@@ -423,15 +423,16 @@ test('R19: the overview counts a registered agent\'s unread messages', { skip: S
   await reader.send('dismiss_messages', { ids: 'all' })
 })
 
-// #23 criterion 33 and 34, with R41's table.
+// #23 criterion 33 and 34, with R41's table. Since R48 (#53) every key carries owner_id, and rerunning these migrations
+// leaves that shape alone.
 test('R19: the agent schema is idempotent and keyed and cascades as designed', { skip: SKIP }, async () => {
   apply('20261103050000_identity.sql')
   apply('20261103050000_identity.sql')
   const defs = (table: string) => sql(`select pg_get_constraintdef(c.oid) as def from pg_constraint c where c.conrelid = 'memory.${table}'::regclass`).map((r) => r.def as string).join('\n')
-  for (const part of ['PRIMARY KEY (name)', '^[a-z0-9][a-z0-9-]{1,39}$', "'work'::text"]) assert.ok(defs('agent').includes(part), `agent: ${part}\n${defs('agent')}`)
-  for (const part of ['PRIMARY KEY (principal, client)', 'REFERENCES memory.agent(name) ON DELETE CASCADE']) assert.ok(defs('agent_binding').includes(part), part)
-  assert.ok(defs('mcp_client').includes('REFERENCES memory.agent(name) ON DELETE SET NULL'))
-  for (const part of ['PRIMARY KEY (entry_id)', 'REFERENCES memory.entry(id) ON DELETE CASCADE']) assert.ok(defs('entry_provenance').includes(part), part)
+  for (const part of ['PRIMARY KEY (owner_id, name)', '^[a-z0-9][a-z0-9-]{1,39}$', "'work'::text"]) assert.ok(defs('agent').includes(part), `agent: ${part}\n${defs('agent')}`)
+  for (const part of ['PRIMARY KEY (owner_id, principal, client)', 'REFERENCES memory.agent(owner_id, name) ON DELETE CASCADE']) assert.ok(defs('agent_binding').includes(part), `${part}\n${defs('agent_binding')}`)
+  assert.ok(defs('mcp_client').includes('REFERENCES memory.agent(owner_id, name) ON DELETE SET NULL (agent)'), defs('mcp_client'))
+  for (const part of ['PRIMARY KEY (owner_id, entry_id)', 'REFERENCES memory.entry(owner_id, id) ON DELETE CASCADE']) assert.ok(defs('entry_provenance').includes(part), `${part}\n${defs('entry_provenance')}`)
 })
 
 // ----------------------------------------------------------------------------------------------------- R41

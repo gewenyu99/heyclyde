@@ -467,7 +467,7 @@ async function resolveCited(e: Row, principal: string) {
     where principal = ${principal} and sha256 = any(${shas}::text[])`).map((r) => [r.sha256 as string, r]));
   const held = new Map((await sql`select b.sha256, b.size, b.media_type, b.stored, coalesce(bool_or(n.sensitivity <> 'private'), false) as public
     from memory.blob b left join memory.entry_blob x on x.sha256 = b.sha256 left join memory.entry n on n.id = x.entry_id
-    where b.sha256 = any(${shas}::text[]) group by b.sha256`).map((r) => [r.sha256 as string, r]));
+    where b.sha256 = any(${shas}::text[]) group by b.owner_id, b.sha256`).map((r) => [r.sha256 as string, r]));
   // The cap on new bytes counts what upload_blob was told, before any file is read.
   const declared = cited.reduce((n, b) => n + (held.has(b.sha256) ? 0 : waiting.get(b.sha256)?.size ?? 0), 0);
   if (declared > store.MAX_ENTRY_STORED_BYTES) {

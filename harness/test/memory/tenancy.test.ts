@@ -84,7 +84,7 @@ test('R48: the backfill keeps every row and gives it to Wen', { skip: SKIP }, ()
   // Wen as Supabase Auth knows him: the owner-plan address on the allowlist.
   const [owner] = sql(`select email from memory.allowed_email where plan = 'owner'`)
   exec(`delete from auth.users where email = '${owner.email}';
-    insert into auth.users (id, email, email_confirmed_at) values ('${wen}', '${owner.email}', now());`)
+    insert into auth.users (id, email) values ('${wen}', '${owner.email}');`)
   try {
     asOwner(wen, seedEveryTable('wen'))
     // A device from before R38, which no one claimed.

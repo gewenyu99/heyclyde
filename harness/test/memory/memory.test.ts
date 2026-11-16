@@ -830,7 +830,7 @@ test('queue: fan-out and purge', { skip: SKIP }, async () => {
   // R47 (#52): all reaches registered agents and the claude and codex families, so gemini and opencode register.
   sql(`insert into memory.agent (name, context, surface, description, registered_by) values
     ('gemini', 'work', 'gemini-cli', 'Tier 3.', 'clyde-test'), ('opencode', 'work', 'opencode', 'Tier 3.', 'clyde-test')
-    on conflict (name) do update set last_seen = now()`)
+    on conflict (owner_id, name) do update set last_seen = now()`)
   const claude = await mcpSession(memory.token, 'claude-code')
   const readers: Record<string, Awaited<ReturnType<typeof mcpSession>>> = {}
   for (const [name, client] of [['codex', 'codex-cli'], ['gemini', 'gemini'], ['opencode', 'opencode']]) {
