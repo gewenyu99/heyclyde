@@ -72,6 +72,14 @@ declare
     'retrieval', 'shadow_retrieval', 'source', 'upload', 'usage'];
   orphans boolean;
 begin
+  -- Every table this migration changes is locked first, in one statement, so live requests wait for it rather than holding
+  -- one table while it waits on another (on production the first try deadlocked against a request at this loop). The lock
+  -- holds to the end of the migration's transaction.
+  lock table memory.account, memory.admin_audit, memory.agent, memory.agent_binding, memory.blob, memory.board_seen, memory.burst,
+    memory.co_use, memory.confidence_log, memory.device, memory.entitlement, memory.entry, memory.entry_blob, memory.entry_embedding,
+    memory.entry_provenance, memory.event, memory.feedback, memory.judge_cache, memory.link, memory.mcp_client, memory.mcp_session,
+    memory.message, memory.message_delivery, memory.quest, memory.quest_blob, memory.quest_note, memory.retrieval,
+    memory.shadow_retrieval, memory.source, memory.upload, memory.usage, memory.qrel in access exclusive mode;
   foreach t in array owned loop
     execute format('alter table memory.%I add column if not exists owner_id uuid', t);
     if wen is not null then
