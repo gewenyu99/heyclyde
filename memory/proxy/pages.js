@@ -92,16 +92,27 @@ export const HERO_CSS = `
 .how li::before{content:counter(how);display:block;margin-bottom:10px;font:780 44px/1 var(--cl-font-display);letter-spacing:-.04em;color:var(--cl-carbon)}
 `;
 
-export const CONNECT_CSS = `
+/** App steps and card bodies: the connect page, /docs and the home page's app picker all use these. */
+export const APP_STEPS_CSS = `
+.works li img,.app-logo img{display:block;width:20px;height:20px;object-fit:contain}
+.app{display:flex;flex-direction:column;gap:14px;padding:20px}
+.app .fine{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2)}
+.app .fine code{color:var(--cl-ink);overflow-wrap:anywhere}
+@media (max-width:480px){.app .cl-copy code{font-size:12px}}
+ol.steps{margin:0;padding:0;list-style:none;counter-reset:s;display:grid;gap:8px;font:var(--cl-text-body);color:var(--cl-ink-2)}
+ol.steps li{counter-increment:s;display:grid;grid-template-columns:22px minmax(0,1fr);gap:8px;align-items:baseline}
+ol.steps li::before{content:counter(s);font:600 11px/1 var(--cl-font-mono);color:var(--cl-ink-3)}
+.k{font-weight:600;color:var(--cl-ink)}
+`;
+/** The rest of the connect page and /docs: the hero, the card grid and the logo tiles. */
+export const CONNECT_CSS = APP_STEPS_CSS + `
 .hero-note{max-width:44ch;padding:12px 16px;font:var(--cl-text-small)}
 .hero-art{min-width:0}.hero-art img{display:block;width:100%;max-width:484px;height:auto}
-.works li img,.app-logo img{display:block;width:20px;height:20px;object-fit:contain}
 .apps-head{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,420px);gap:24px;align-items:end;margin-bottom:24px}
 .apps-head .section{margin:0}
 .apps-head .cl-copy{box-shadow:var(--cl-copy-2);border-color:var(--cl-ink-3);padding:8px 8px 8px 14px}
 .apps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-bottom:68px}
 @media (max-width:760px){.apps{grid-template-columns:minmax(0,1fr)}}
-.app{display:flex;flex-direction:column;gap:14px;padding:20px}
 .app-head{display:flex;align-items:center;gap:12px;min-width:0}
 .app-logo{width:40px;height:40px;flex:none;display:grid;place-items:center;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-md);background:var(--cl-paper-1)}
 .app-logo img{width:24px;height:24px}
@@ -110,13 +121,6 @@ export const CONNECT_CSS = `
 .app h3{margin:0}
 .app .sub{margin:2px 0 0;font:var(--cl-text-small);color:var(--cl-ink-3)}
 .app-head .cl-chip{margin-left:auto}
-.app .fine{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2)}
-.app .fine code{color:var(--cl-ink);overflow-wrap:anywhere}
-@media (max-width:480px){.app .cl-copy code{font-size:12px}}
-ol.steps{margin:0;padding:0;list-style:none;counter-reset:s;display:grid;gap:8px;font:var(--cl-text-body);color:var(--cl-ink-2)}
-ol.steps li{counter-increment:s;display:grid;grid-template-columns:22px minmax(0,1fr);gap:8px;align-items:baseline}
-ol.steps li::before{content:counter(s);font:600 11px/1 var(--cl-font-mono);color:var(--cl-ink-3)}
-.k{font-weight:600;color:var(--cl-ink)}
 `;
 
 export const HOME_CSS = HERO_CSS + CONNECT_CSS;
@@ -171,10 +175,13 @@ function seoTags(nonce, title, seo) {
     (seo.jsonld ?? []).map((j) => `<script type="application/ld+json" nonce="${nonce}">${JSON.stringify(j).replace(/</g, "\\u003c")}</script>`).join("");
 }
 
+/** The same minifier memory/design/build.mjs runs on the design system: comments out, whitespace collapsed. */
+const minCss = (css) => css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, " ").replace(/\s*([{}:;,>])\s*/g, "$1").trim();
+
 export function shell({ nonce, title, css, body, script = "", noindex = true, seo = null }) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>${esc(title)}</title><meta name="color-scheme" content="light dark">${noindex ? '<meta name="robots" content="noindex">' : ""}${seoTags(nonce, title, seo)}
-<link rel="icon" href="/_clyde/brand/favicon.svg" type="image/svg+xml"><style nonce="${nonce}">${FONTS_CSS}${TOKENS_CSS}${COMPONENTS_CSS}${(PAGE_CSS + css).replace(/\n/g, "")}</style></head><body class="cl-root">${body}${
+<link rel="icon" href="/_clyde/brand/favicon.svg" type="image/svg+xml"><style nonce="${nonce}">${FONTS_CSS}${TOKENS_CSS}${COMPONENTS_CSS}${minCss(PAGE_CSS + css)}</style></head><body class="cl-root">${body}${
     script ? `<script nonce="${nonce}">${script}</script>` : ""}</body></html>`;
 }
 

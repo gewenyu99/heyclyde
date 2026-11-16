@@ -400,3 +400,21 @@ Deno.test('the copy has no slop', async () => {
   const home = pages[0][1]
   for (const w of ['goldfish', 'big AI']) assert.ok(home.includes(w), `the home page says ${w}`)
 })
+
+// R73 (#78): the home page's wall of real complaints about forgetful agents, each with its source and what Clyde does.
+Deno.test('complaints wall', async () => {
+  const { html } = await get('https://heyclyde.me/')
+  const wall = /<section[^>]*id="complaints"[^>]*>([\s\S]*?)<\/section>/.exec(html)?.[1] ?? ''
+  const items = [...wall.matchAll(/<article class="complaint"[^>]*>([\s\S]*?)<\/article>/g)].map((m) => m[1])
+  assert.ok(items.length >= 6, `${items.length} complaints on the wall`)
+  for (const it of items) {
+    const links = [...it.matchAll(/<a\s[^>]*>/g)].map((m) => m[0])
+    assert.equal(links.length, 1, 'exactly one source link')
+    assert.match(links[0], /href="https:\/\//, 'the source is https')
+    assert.match(links[0], /rel="[^"]*\bnofollow\b[^"]*"/, 'nofollow')
+    assert.match(links[0], /rel="[^"]*\bnoopener\b[^"]*"/, 'noopener')
+    assert.equal((it.match(/class="clyde-says\b/g) ?? []).length, 1, "exactly one Clyde note")
+    for (const q of text(it).matchAll(/["“]([^"”]+)["”]/g)) assert.ok(q[1].trim().split(/\s+/).length <= 14, `quote over 14 words: ${q[1]}`)
+  }
+  assert.ok(!/\sstyle="/.test(wall), 'no style attributes')
+})

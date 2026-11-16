@@ -284,6 +284,28 @@ def site_seo(errs):
         errs.append(f"og-banner.png: status {status}, size {png_size(body)}")
 
 
+
+def complaint_sources(errs):
+    """R73 (#78): every source on the home page's complaints wall answers 200, and no complaint quotes more than 14 words."""
+    src = (ROOT / "proxy" / "site.js").read_text(encoding="utf-8")
+    block = src[src.index("const COMPLAINTS"):]
+    block = block[:block.index("];")]
+    urls = re.findall(r'src: "(https://[^"]+)"', block)
+    if len(urls) < 6:
+        errs.append(f"COMPLAINTS has {len(urls)} sources, want >= 6")
+    for url in urls:
+        try:
+            req = urllib.request.Request(url, headers={"user-agent": "clyde-listing-check/1"})
+            with urllib.request.urlopen(req, timeout=25) as r:
+                if r.status != 200:
+                    errs.append(f"{url} answered {r.status}")
+        except urllib.error.HTTPError as e:
+            errs.append(f"{url} answered {e.code}")
+    for q in re.findall(r'(?:\\"|“)([^"”\\]+?)(?:\\"|”)', block):
+        if len(q.split()) > 14:
+            errs.append(f"quote over 14 words: {q}")
+
+
 SECTIONS = {
     "legal pages": legal_pages,
     "docs pages": docs_pages,
@@ -295,6 +317,7 @@ SECTIONS = {
     "google discovery": google_discovery,
     "google verification file": google_verification_file,
     "site seo": site_seo,
+    "complaint sources": complaint_sources,
 }
 
 

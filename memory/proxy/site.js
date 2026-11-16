@@ -2,7 +2,7 @@
 // sign-in, a 404, robots.txt and the sitemap. Served by the same Worker as memory.heyclyde.me, in Sticky-Note Forehead
 // Clyde's doodle and sticky-note design system, in Clyde's deadpan voice (R72, #77; memory/design/BRAND.md).
 // Pricing matches memory.plan (memory/supabase/migrations/20261115120000_billing.sql); site_test.ts checks it.
-import { SOON, SOON_NOTE, appCards, appLogo, appSteps, APP_LOGO, CONNECT_CSS, COPY_JS, copyBox, DESIGN_URL, esc, HERO_CSS, LEGAL, LOGO, MARK, MASCOT, MCP_URL, SCENE, SCENE_CSS, SCENE_IMG, shell, SITE, WORKS } from "./pages.js";
+import { SOON, SOON_NOTE, APP_STEPS_CSS, appCards, appLogo, appSteps, APP_LOGO, CONNECT_CSS, COPY_JS, copyBox, DESIGN_URL, esc, HERO_CSS, LEGAL, LOGO, MARK, MASCOT, MCP_URL, SCENE, SCENE_CSS, SCENE_IMG, shell, SITE, WORKS } from "./pages.js";
 
 const CONNECT = "/docs";
 const MCP = MCP_URL;
@@ -339,6 +339,42 @@ function go(d){return function(){k=Math.max(0,Math.min(n-1,k+d));show(k);t.scrol
 b[0].addEventListener('click',go(-1));b[1].addEventListener('click',go(1));
 t.addEventListener('scroll',function(){clearTimeout(tm);tm=setTimeout(function(){k=at();show(k)},120)},{passive:true});v.hidden=false;show(0)})();`;
 
+// R73 (#78): real complaints about agents that forget, each paraphrased with a link to where it was posted, and what
+// Clyde does about it. Then two made-up ones in the same spirit. listing_check.py "complaint sources" checks every src.
+const COMPLAINTS = [
+  { q: "Explaining the same thing across a thousand conversations.", src: "https://www.reddit.com/r/ClaudeAI/comments/1kpdoia/megathread_for_claude_performance_discussion/", site: "reddit.com/r/ClaudeAI",
+    a: "Say it once. Your agent pulls the note up when a chat starts." },
+  { q: "Claude keeps making the mistake I already corrected.", src: "https://claudelab.net/en/articles/claude-ai/claude-keeps-making-same-mistake-fix", site: "claudelab.net",
+    a: "The correction is a note. It comes up the next time the mistake would." },
+  { q: "ChatGPT says it saved my preference. Next chat, it's gone.", src: "https://community.openai.com/t/fails-to-update-memory-even-though-it-says-it-has/987812", site: "community.openai.com",
+    a: "Clyde gives back the note's ID. You can go look." },
+  { q: "We moved to pnpm. Claude Code still runs npm, because an old note says so.", src: "https://www.besthub.dev/articles/why-claude-code-still-runs-npm-after-you-switched-to-pnpm-the-memory-invalidation-problem-e9a0e83509b7", site: "besthub.dev",
+    a: "The new note replaces the old one, and the old one stops coming up." },
+  { q: "ChatGPT and Claude have no idea what the other one said.", src: "https://dev.to/doremi/the-pain-of-switching-ai-platforms-and-how-i-fixed-it-for-myself-44h2", site: "dev.to",
+    a: "They read the same notes." },
+  { q: "“Cursor with Claude has memory of a goldfish.”", src: "https://forum.cursor.com/t/cursor-with-claude-has-memory-of-a-goldfish/118276", site: "forum.cursor.com",
+    a: "Somebody wrote our headline before we did." },
+  { q: "My rules get lost in a long CLAUDE.md.", src: "https://dev.to/docat0209/5-patterns-that-make-claude-code-actually-follow-your-rules-44dh", site: "dev.to",
+    a: "Clyde hands back the few notes that match what you're doing." },
+];
+const MADE_UP = [
+  ["For the 50th time, reports go in Times New Roman.", "Reports use Times New Roman, 12 pt."],
+  ["It's Kat. With a K.", "Kat spells it with a K."],
+];
+const WALL_CSS = `
+.cm-wall{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:20px;margin-bottom:76px}
+.complaint,.complaint-made{display:grid;gap:8px;align-content:start}
+.cm-q{padding:14px 16px;transform:rotate(-1deg)}.cm-wall>:nth-child(even) .cm-q{transform:rotate(1.2deg)}
+.cm-q p{margin:0 0 6px;font:var(--cl-text-body);color:var(--cl-ink)}
+.cm-q a,.cm-made{font:var(--cl-text-mono);font-size:11px;color:var(--cl-ink-3)}
+.clyde-says{padding:12px 14px;font:var(--cl-text-small);color:var(--cl-ink-2)}
+.clyde-says b{display:block;font:var(--cl-text-label);letter-spacing:.06em;text-transform:uppercase;color:var(--cl-carbon);margin-bottom:4px}
+`;
+const says = (a) => `<div class="clyde-says cl-card"><b>Clyde</b>${esc(a)}</div>`;
+const WALL = `<section class="wrap" id="complaints"><div class="section"><span class="cl-label">Real complaints</span><h2 class="cl-title-1">Things people keep telling their agents.</h2></div>
+<div class="cm-wall">${COMPLAINTS.map((c) => `<article class="complaint"><div class="cl-sticky cm-q"><p>${esc(c.q)}</p><a href="${c.src}" rel="nofollow noopener noreferrer">${c.site}</a></div>${says(c.a)}</article>`).join("")}
+${MADE_UP.map(([q, a]) => `<article class="complaint-made"><div class="cl-sticky cm-q"><p>${esc(q)}</p><span class="cm-made">made up, but you've said it</span></div>${says(a)}</article>`).join("")}</div></section>`;
+
 const HONEST = `<section class="wrap honest-wrap" id="honest">
 <div class="cl-sticky cl-sticky--tilt honest">
 <div class="honest-copy"><div class="honest-top"><span class="cl-label">Fair warning</span></div>
@@ -387,7 +423,7 @@ function home(nonce) {
   return page(nonce, {
     title: "Clyde · Shared memory for your goldfish-brained AI agents", path: "/",
     description: "Your AI agents have the memory of a goldfish. Clyde is a boring shared memory for Claude, ChatGPT, Gemini, Codex and Grok, so they stop forgetting.",
-    css: HERO_CSS + SCENE_CSS + CONNECT_CSS + SITE_HOME_CSS + RECALL_CSS + PICK_CSS, script: RECALL_JS, jsonld: HOME_LD, main: `<main>
+    css: HERO_CSS + SCENE_CSS + APP_STEPS_CSS + SITE_HOME_CSS + RECALL_CSS + PICK_CSS + WALL_CSS, script: RECALL_JS, jsonld: HOME_LD, main: `<main>
 <section class="hero site-hero wrap"><div class="hero-text">
 <h1 class="cl-display hero-h1">Your agents have the memory of a <em class="cl-scribble">goldfish.</em></h1>
 <p class="cl-lead">For some reason, the best memory AI has to offer is <b class="hl">a few Word documents with stuff stuck in them</b>. Your agents can't remember what happened last time. They can't talk to each other across <b class="hl hl--blue">computers, projects or apps</b>.</p>
@@ -396,6 +432,7 @@ function home(nonce) {
 <div class="works"><span class="cl-label">Connects to</span><ul>${works}</ul>${SOON_NOTE}</div></div>
 <div class="mascot-stage"><div class="mascot-row">${SCENE_IMG("goldfish", "Clyde staring at a goldfish in a bowl", 153, 178)}</div>${SCENE}</div></section>
 ${FEATURES}
+${WALL}
 ${BUILT}
 ${HONEST}
 ${SETUP}
