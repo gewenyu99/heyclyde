@@ -216,7 +216,7 @@ sb functions deploy memory fake-openai --project-ref "$REF" --workdir "$W" --no-
 # branch can never email Wen), three device tokens and an admin token as SHA-256, and a cron secret in Vault.
 log "seeding test credentials"
 python3 - "$TMP/secrets.env" "$TMP/seed.sql" <<'PY'
-import hashlib, secrets, sys
+import hashlib, secrets, sys, uuid
 names = ["DEVICE_TOKEN_A", "DEVICE_TOKEN_B", "INSTALL_TOKEN", "ADMIN_TOKEN", "CRON_SECRET"]
 tok = {n: secrets.token_urlsafe(32) for n in names}
 h = lambda s: hashlib.sha256(s.encode()).hexdigest()
@@ -224,10 +224,14 @@ open(sys.argv[1], "w").write("".join(f"{n}={v}\n" for n, v in tok.items()) + "TE
 devices = [("e2e-a", "DEVICE_TOKEN_A"), ("e2e-b", "DEVICE_TOKEN_B"), ("e2e-install", "INSTALL_TOKEN")]
 open(sys.argv[2], "w").write(f"""
 delete from memory.allowed_email;
-insert into memory.allowed_email (email) values ('e2e@example.com');
+insert into memory.allowed_email (email, plan) values ('e2e@example.com', 'owner');
+-- A new branch has no Auth users, so the tenancy migration found no Wen: the e2e owner stands in (R48).
+insert into memory.setting (name, value) values ('owner_id', '{uuid.uuid4()}') on conflict (name) do nothing;
+insert into memory.account (owner_id, email, email_confirmed)
+  select value::uuid, 'e2e@example.com', true from memory.setting where name = 'owner_id' on conflict (owner_id) do nothing;
 insert into memory.device (name, token_sha256, hooks) values
   {", ".join(f"('{d}', '{h(tok[t])}', 'full')" for d, t in devices)}
-  on conflict (name) do update set token_sha256 = excluded.token_sha256, revoked_at = null, last_seen = null, created_at = now();
+  on conflict (owner_id, name) do update set token_sha256 = excluded.token_sha256, revoked_at = null, last_seen = null, created_at = now();
 insert into memory.setting (name, value) values ('admin_token_sha256', '{h(tok["ADMIN_TOKEN"])}')
   on conflict (name) do update set value = excluded.value;
 select vault.update_secret(id, '{tok["CRON_SECRET"]}') from vault.secrets where name = 'cron_secret';
