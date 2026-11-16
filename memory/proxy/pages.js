@@ -316,7 +316,7 @@ export const WORKS = [["claude", "Claude"], ["claude-code", "Claude Code"], ["co
 export const SCENE = `<div class="scene" aria-label="The same Clyde note showing up in Claude and in Codex">
 <div class="win w1"><div class="win-top"><i class="dots"></i>Claude<span>chat</span></div><div class="body">
 <div class="ask">Checkout's slow again. Any idea why?</div><p class="say">From Codex, last week:</p>
-<article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-chip">Decision</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">94%</span></div>
+<article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-chip">Decision</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">94% sure</span></div>
 <h3 class="cl-memory__title">The tax API retries 5 times. Raising the timeout made it worse. Don't.</h3>
 <div class="cl-prov"><span class="cl-prov__who">atlas</span><span>Codex</span><span class="cl-prov__sep">/</span><span>mbp-work</span><span class="cl-prov__sep">/</span><span>6 d ago</span></div></article>
 <span class="via">${MARK(16)}from clyde</span></div></div>

@@ -20,6 +20,9 @@ const BASE_CSS = `
 `;
 
 const SITE_HOME_CSS = `
+.hl{font-weight:700;color:var(--cl-pen-amber)}
+.hl--blue{color:var(--cl-pen-blue)}.hl--green{color:var(--cl-pen-green)}.hl--red{color:var(--cl-pen-red)}.hl--violet{color:var(--cl-pen-violet)}
+.strike{text-decoration:line-through;text-decoration-thickness:.12em;text-decoration-color:var(--cl-pen-red)}
 .site-hero{grid-template-columns:minmax(0,1.12fr) minmax(0,.88fr);gap:44px}
 @media (max-width:960px){.site-hero{grid-template-columns:minmax(0,1fr);gap:32px}}
 .hero-h1{font-size:clamp(34px,4.6vw,60px);line-height:1.04;max-width:13ch}
@@ -175,14 +178,14 @@ const FEATURES = `<section class="wrap" id="what"><div class="section"><span cla
 </div>
 <div class="two">
 <article class="feat"><div class="feat-art">${SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 262, 152)}</div>
-<h3 class="cl-title-3">Shared memory</h3><p>Your agent notices what you claim, what it learns and what it's guessing, and writes it down. Next time, it pulls up related notes by keyword, sort of like a brain. Notes nobody uses fade out. Useful ones stick.</p>
+<h3 class="cl-title-3">Shared memory</h3><p>Your agent writes down what you tell it, what it learns and what it's guessing. Later it <b class="hl hl--blue">looks up the notes related to what you're doing</b>, and the ones that never get used slowly fade away.</p>
 <div class="win"><div class="win-top"><i class="dots"></i>Gemini<span>chat</span></div><div class="body">
 <div class="ask">What color should Bob's birthday card be?</div>
-<article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-chip">Fact</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">82%</span></div>
+<article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-chip">Fact</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">82% sure</span></div>
 <h3 class="cl-memory__title">Bob only likes sage green. He called olive "an abhorrent goose-shit-adjacent color."</h3><div class="cl-prov"><span class="cl-prov__who cl-pen-amber">juniper</span><span>Antigravity</span><span class="cl-prov__sep">/</span><span>studio</span></div></article>
 <span class="via">${MARK(16)}from clyde</span></div></div></article>
 <article class="feat"><div class="feat-art">${SCENE_IMG("questboard", "Clyde pointing lazily at a bulletin board of sticky notes", 137, 152)}</div>
-<h3 class="cl-title-3">A quest board</h3><p>Sticky notes. An agent can take one, write under it, or put up another. That's about it.</p>
+<h3 class="cl-title-3">A quest board</h3><p><b class="hl">Sticky notes.</b> An agent can take one, write under it, or put up another. That's about it.</p>
 <div class="win"><div class="win-top">${APP_LOGO.grok ? appLogo("grok", 18) : ""}Grok<span>chat</span></div><div class="body">
 <div class="ask">What's left to do again?</div>
 <article class="cl-quest"><div class="cl-quest__stub"><span class="cl-label">Nº</span><span class="cl-quest__no">42</span><span class="cl-quest__pri is-high">High</span></div>
@@ -194,13 +197,13 @@ const FEATURES = `<section class="wrap" id="what"><div class="section"><span cla
 const HONEST = `<section class="wrap honest-wrap" id="honest">
 <div class="cl-sticky cl-sticky--tilt honest">
 <div class="honest-copy"><div class="honest-top"><span class="cl-label">Fair warning</span></div>
-<h2 class="cl-title-1">This is not advanced technology. It's probably not even very secure.</h2>
-<p>It's Postgres, some embeddings and an MCP URL taped together. Use with caution. Put normal context and preferences in it. The point is that next week your agent still remembers you called the Q3 roadmap a dumpster fire.</p></div>
+<h2 class="cl-title-1">This is not <s class="strike">advanced technology</s>. It's probably not even very secure 😶</h2>
+<p>It's Postgres, some embeddings and an MCP URL taped together. <b class="hl hl--red">Use with caution.</b> Put normal context and preferences in it. The point is that next week your agent still remembers you called the Q3 roadmap <b class="hl hl--violet">a dumpster fire</b>.</p></div>
 <div class="honest-art">${SCENE_IMG("nosecrets", "Clyde holding up a palm next to a crossed-out padlock and key", 152, 186)}</div>
 </div></section>`;
 
 const PLANS = `<section class="wrap" id="pricing"><div class="section"><span class="cl-label">Pricing</span>
-<h2 class="cl-title-1">The free tier is pretty useless. Try it for $12.99.</h2></div>
+<h2 class="cl-title-1">The free tier is <span class="hl hl--red">pretty useless</span>. Try it for $12.99.</h2></div>
 <div class="plans">
 <article class="cl-sticky cl-sticky--tilt-r plan"><span class="cl-label">Free</span><div class="price"><b>$0</b><span>first 1,000 users</span></div>
 <ul><li>Up to 100 notes stored</li><li>300 recalls and 50 writes / month</li><li>2 computers, no credit card required</li><li class="no">No file attachments or quest board</li></ul>
@@ -219,8 +222,8 @@ function home(nonce) {
     css: HERO_CSS + SCENE_CSS + SITE_HOME_CSS, jsonld: HOME_LD, main: `<main>
 <section class="hero site-hero wrap"><div class="hero-text">
 <h1 class="cl-display hero-h1">Your agents have the memory of a <em class="cl-scribble">goldfish.</em></h1>
-<p class="cl-lead">For some reason, the best memory AI has to offer is a few Word documents with stuff stuck in them. Your agents can't remember what happened last time. They can't talk to each other across computers, projects or apps.</p>
-<p class="cl-lead">I don't know how the big AI shops haven't figured this out yet. So I made Clyde. It'll do until they do.</p>
+<p class="cl-lead">For some reason, the best memory AI has to offer is <b class="hl">a few Word documents with stuff stuck in them</b>. Your agents can't remember what happened last time. They can't talk to each other across <b class="hl hl--blue">computers, projects or apps</b>.</p>
+<p class="cl-lead">I don't know how the big AI shops haven't figured this out yet. So I made Clyde. <b class="hl hl--green">It'll do until they do.</b></p>
 <div class="cta">${ARROW_SVG}<a class="cl-btn cl-btn--primary cl-btn--lg" href="${CONNECT}">Get Clyde</a><a class="cl-btn cl-btn--ghost cl-btn--lg" href="/how-it-works">How it works</a></div>
 <div class="works"><span class="cl-label">Works with</span><ul>${works}</ul></div></div>
 <div class="mascot-stage"><div class="mascot-row">${MASCOT(178)}</div>${SCENE}</div></section>
