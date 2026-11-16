@@ -31,6 +31,12 @@ declare
     'judge_cache', 'link', 'mcp_client', 'mcp_session', 'message', 'message_delivery', 'quest', 'quest_blob', 'quest_note',
     'retrieval', 'shadow_retrieval', 'source', 'upload', 'usage'];
 begin
+  -- Every table first, in one statement, so live requests wait rather than deadlock (as R48's first push did).
+  lock table memory.account, memory.admin_audit, memory.agent, memory.agent_binding, memory.blob, memory.board_seen, memory.burst,
+    memory.co_use, memory.confidence_log, memory.device, memory.entitlement, memory.entry, memory.entry_blob, memory.entry_embedding,
+    memory.entry_provenance, memory.event, memory.feedback, memory.judge_cache, memory.link, memory.mcp_client, memory.mcp_session,
+    memory.message, memory.message_delivery, memory.quest, memory.quest_blob, memory.quest_note, memory.retrieval,
+    memory.shadow_retrieval, memory.source, memory.upload, memory.usage in access exclusive mode;
   foreach t in array owned loop
     execute format('drop policy if exists tenant on memory.%I', t);
     if t = 'entitlement' then
