@@ -31,7 +31,8 @@ const SITE_HOME_CSS = `
 .mascot-stage{display:grid;gap:18px;align-content:start}
 .mascot-row{display:flex;align-items:flex-end;gap:16px}
 .mascot-row picture img{height:178px;width:auto;transform:scaleX(-1)}
-@media (max-width:520px){.mascot-row{flex-direction:column;align-items:flex-start}.mascot-row picture img{height:148px}}
+@media (max-width:960px){.mascot-row{justify-content:center}.mascot-row picture img{height:150px;transform:none}}
+@media (max-width:520px){.mascot-row picture img{height:132px}}
 .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin-bottom:76px}
 @media (max-width:860px){.two{grid-template-columns:minmax(0,1fr)}}
 .feat{display:grid;gap:16px;align-content:start;padding:24px;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-xl);background:var(--cl-paper-1)}
