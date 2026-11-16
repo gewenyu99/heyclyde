@@ -338,7 +338,7 @@ export const SCENE = `<div class="scene" aria-label="The same Clyde note showing
 <div class="win w1"><div class="win-top"><i class="dots"></i>Claude<span>chat</span></div><div class="body">
 <div class="ask">Plan dinners for this week.</div><p class="say">From ChatGPT, 3 weeks ago:</p>
 <article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-chip">Preference</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">97% sure</span></div>
-<h3 class="cl-memory__title">You're vegetarian. You've told every app at least twice.</h3>
+<h3 class="cl-memory__title">You're vegetarian. You called the last chicken recipe "a personal attack."</h3>
 <div class="cl-prov"><span class="cl-prov__who">juniper</span><span>ChatGPT</span><span class="cl-prov__sep">/</span><span>phone</span><span class="cl-prov__sep">/</span><span>3 w ago</span></div></article>
 <span class="via">${MARK(16)}from clyde</span></div></div>
 <div class="win w2"><div class="win-top"><i class="dots"></i>Gemini<span>phone</span></div><pre><b>›</b> make the grocery list

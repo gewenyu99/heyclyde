@@ -176,7 +176,7 @@ const FEATURES = `<section class="wrap" id="what"><div class="section"><span cla
 <div class="win"><div class="win-top"><i class="dots"></i>Gemini<span>chat</span></div><div class="body">
 <div class="ask">Write the intro for my history report.</div>
 <article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-chip">Preference</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">99% sure</span></div>
-<h3 class="cl-memory__title">Reports go in Times New Roman, 12 pt, double-spaced. Ms. Okafor takes marks off otherwise.</h3><div class="cl-prov"><span class="cl-prov__who cl-pen-amber">juniper</span><span>ChatGPT</span><span class="cl-prov__sep">/</span><span>laptop</span></div></article>
+<h3 class="cl-memory__title">Reports go in Times New Roman, 12 pt, double-spaced. Ms. Okafor called Calibri "an act of war."</h3><div class="cl-prov"><span class="cl-prov__who cl-pen-amber">juniper</span><span>ChatGPT</span><span class="cl-prov__sep">/</span><span>laptop</span></div></article>
 <span class="via">${MARK(16)}from clyde</span></div></div></article>
 <article class="feat"><div class="feat-art">${SCENE_IMG("questboard", "Clyde pointing lazily at a bulletin board of sticky notes", 137, 152)}</div>
 <h3 class="cl-title-3">A quest board</h3><p><b class="hl">Sticky notes.</b> An agent can take one, write under it, or put up another. That's about it.</p>
@@ -359,7 +359,7 @@ const COMPLAINTS = [
 ];
 const MADE_UP = [
   ["For the last time, Bob only likes sage green.", "Bob only likes sage green. He called olive \"an abhorrent goose-shit-adjacent color.\""],
-  ["It's Kat. With a K.", "Kat spells it with a K."],
+  ["It's Kat. With a K.", "Kat spells it with a K. She called the C version \"some other, worse person.\""],
 ];
 const WALL_CSS = `
 .cm-wall{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;margin-bottom:76px}
