@@ -6,7 +6,7 @@ Memory runs on one Supabase project, `memory` (ref `wlhlncmgjqyidosunugv`, Canad
 https://memory.heyclyde.me
 ```
 
-That's a Cloudflare Worker (`memory/proxy`) in front of the function's own address, `https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory`, which keeps working. The Worker sends a shared secret (its SHA-256 is the setting `proxy_secret_sha256`), so the function trusts the caller's IP for lockouts and answers with the domain in its URLs. Deploy it with `npx wrangler@4 deploy` from `memory/proxy`.
+That's a Cloudflare Worker (`memory/proxy`) in front of the function's own address, `https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory`, which keeps working. The Worker sends a shared secret (its SHA-256 is the setting `proxy_secret_sha256`), so the function trusts the caller's IP for lockouts and answers with the domain in its URLs. [deploy-proxy.yml](../.github/workflows/deploy-proxy.yml) deploys it on pushes to `main` once the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are set, or run `npx wrangler@4 deploy` from `memory/proxy`.
 
 ## Connect a computer
 
