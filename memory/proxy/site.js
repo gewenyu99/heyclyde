@@ -2,7 +2,7 @@
 // sign-in, a 404, robots.txt and the sitemap. Served by the same Worker as memory.heyclyde.me, in Sticky-Note Forehead
 // Clyde's doodle and sticky-note design system, in Clyde's deadpan voice (R72, #77; memory/design/BRAND.md).
 // Pricing matches memory.plan (memory/supabase/migrations/20261115120000_billing.sql); site_test.ts checks it.
-import { SOON, SOON_NOTE, APP_STEPS_CSS, appCards, appLogo, appSteps, APP_LOGO, CONNECT_CSS, COPY_JS, copyBox, DESIGN_URL, esc, HERO_CSS, LEGAL, LOGO, MARK, MASCOT, MCP_URL, SCENE, SCENE_CSS, SCENE_IMG, shell, SITE, WORKS } from "./pages.js";
+import { SOON, SOON_NOTE, APP_STEPS_CSS, appCards, appLogo, appSteps, APP_LOGO, CONNECT_CSS, COPY_JS, copyBox, copyPre, DESIGN_URL, esc, HERO_CSS, INSTALL, LEGAL, LOGO, MARK, MASCOT, MCP_URL, SCENE, SCENE_CSS, SCENE_IMG, shell, SITE, WORKS } from "./pages.js";
 
 const CONNECT = "/docs";
 const MCP = MCP_URL;
@@ -71,7 +71,8 @@ const DOC_CSS = `
 .doc h3{margin:8px 0 0;font:var(--cl-text-title-3)}
 .doc ul,.doc ol{margin:0;padding-left:22px;display:grid;gap:8px;font:var(--cl-text-body);color:var(--cl-ink-2);max-width:64ch}
 .doc .cl-stamp,.doc .cl-btn{justify-self:start}
-.doc .cl-copy{max-width:640px}
+.doc .cl-copy,.doc .cl-file,.doc .tools{max-width:680px}
+.doc .cl-file pre{white-space:pre-wrap}
 .doc-hero{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:24px 32px;align-items:end;padding-bottom:14px;border-bottom:1.5px dashed var(--cl-rule-strong)}
 .doc-hero .lead{display:grid;gap:14px;align-content:end}
 .doc-art{display:flex;align-items:flex-end;gap:14px}
@@ -487,6 +488,7 @@ const PICK = ["claude-ai", "claude-code", "antigravity", "gemini", "grok", "chat
 const PICK_CSS = `
 #how{margin-bottom:84px}
 #how .soon-note{margin-top:16px}
+#how .pick-more{margin:12px 0 0;font:var(--cl-text-small);color:var(--cl-ink-2)}
 .pick{position:relative}
 .pick-in{position:absolute;top:0;left:0;width:1px;height:1px;margin:0;opacity:0;pointer-events:none}
 .pick-tabs{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px}
@@ -503,6 +505,7 @@ const SETUP = `<section class="wrap" id="how"><div class="section"><span class="
 <div class="pick" role="radiogroup" aria-label="App">${PICK.map(({ id }, i) => `<input class="pick-in" type="radio" name="pick" id="pick-${id}"${i ? "" : " checked"}>`).join("")}
 <div class="pick-tabs">${PICK.map(({ id, logo, name }) => `<label for="pick-${id}">${appLogo(logo, 20)}${name}</label>`).join("")}</div>
 <div class="pick-panels">${PICK.map(({ id, body }) => `<div class="cl-card app pick-panel" data-pick="${id}">${body}</div>`).join("\n")}</div></div>
+<p class="pick-more">After connecting, <a href="/docs#hooks">turn on CLI hooks</a> where supported and <a href="/docs#instructions">paste the Clyde rule</a> into your app's instructions.</p>
 ${SOON_NOTE}</section>`;
 const END_CTA = `<section class="wrap end-cta"><a class="cl-btn cl-btn--primary cl-btn--lg" href="${CONNECT}">Try Clyde</a></section>`;
 
@@ -536,15 +539,40 @@ ${END_CTA}
 const EXPORT_DELETE = `<p><b>Export:</b> Email ${MAIL} from your account email. We'll send a JSON archive of your notes, tasks, messages, and files within 30 days, usually within a week.</p>
 <p><b>Delete:</b> Email ${MAIL} from your account email to delete specific notes or your entire account. Live data is deleted within 30 days, and encrypted backups expire 30 days after that. Self-serve export and deletion in Settings is coming soon.</p>`;
 
+const CLYDE_RULE = `Use Clyde MCP tools for shared memory across sessions and apps:
+- Once per session, call register_agent and check_messages, then ack_messages once handled.
+- On a new task, new goal, or repo/topic shift, call recall before guessing past decisions or preferences, then call feedback on what helped.
+- Skip recall on quick follow-ups to the same task (typos, small tweaks, screenshots, "push it"), and skip Clyde inside subagents.
+- When I state a lasting decision, preference, or correction, save it with remember under 500 characters. Never store secrets.`;
+
 const DOCS = `<main class="doc wrap">${hero("Docs", "Install <em>Clyde</em>",
   "Add the MCP URL to your app or run the terminal installer, then click the email link Clyde sends you.",
   SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 230, 133), "")}
 ${copyBox(MCP)}
 <div class="apps">${appCards()}</div>${SOON_NOTE}
-<h2 id="then">After setup</h2>
-<p>Once connected, your agent gets Clyde's tool descriptions automatically. Notes stay under 500 characters with details in artifacts, and recall replies remind the agent to report what helped.</p>
-<p>Ask your agent to save a decision, search past notes, post work to the quest board, or message another agent. New notes start On trial for 3 recalls unless verified as facts, and unused notes fade by recall count rather than time.</p>
-<p>To export or delete your data, see the <a href="/privacy">Privacy policy</a>.</p>
+<h2 id="hooks">Turn on CLI hooks</h2>
+<p>Turn on hooks wherever your tool supports them. Hooks deliver unread messages and open quests at session start, tag notes with your git repo and computer, and catch pushback on your next prompt so bad notes lose weight.</p>
+${copyBox(INSTALL)}
+<ul><li><b>Claude Code, Codex, and Gemini CLI.</b> Run the installer above. Restart Claude Code after install, and run <code>/hooks</code> once in Codex CLI to trust the two <code>memory-hook</code> entries. Gemini CLI loads <code>~/.gemini/extensions/memory/hooks/hooks.json</code> on launch.</li>
+<li><b>Work machines.</b> Run <code>MEMORY_HOOKS=metadata ${INSTALL}</code> to send session IDs and folder names only, never prompt text or tool output.</li>
+<li><b>Claude Code plugin.</b> Hooks start off in the marketplace plugin. Set <code>hook_mode</code> to <code>full</code> or <code>metadata</code> in plugin settings and paste your token from <code>~/.config/memory/token</code>, or run the installer instead.</li>
+<li><b>Web apps and Antigravity.</b> Claude web and mobile, ChatGPT, Grok, Gemini web, and Antigravity don't run shell hooks, so add the system rule below instead.</li></ul>
+<h2 id="instructions">Add system instructions</h2>
+<p>Clyde's MCP tool descriptions stay neutral for app directories, so paste this rule into each platform's instructions or memory. It tells your agent to search on new goals or scope shifts, and skip the search on quick follow-ups to the same task.</p>
+${copyPre("Clyde rule", CLYDE_RULE)}
+<p>Paste that rule where each app keeps persistent instructions:</p>
+<dl class="tools">
+<div><dt>Claude</dt><dd>Paste into <b>Settings → Profile → Personal preferences</b>, or into a Project's instructions.</dd></div>
+<div><dt>Claude Code</dt><dd>Append to <code>~/.claude/CLAUDE.md</code> for all repos, or <code>./CLAUDE.md</code> for one repo.</dd></div>
+<div><dt>Codex</dt><dd>Append to <code>~/.codex/AGENTS.md</code> for all repos, or <code>./AGENTS.md</code> for one repo.</dd></div>
+<div><dt>Antigravity</dt><dd>Add in <b>Customizations → Rules</b> (or <code>.agent/rules/clyde.md</code>) and set activation to <b>Model Decision</b> rather than <b>Always On</b>, so subagents and quick follow-ups don't run Clyde on every turn.</dd></div>
+<div><dt>ChatGPT</dt><dd>Paste into <b>Settings → Personalization → Custom instructions</b>, or tell ChatGPT in chat to save the rule to built-in Memory.</dd></div>
+<div><dt>Gemini</dt><dd>Save in <b>Settings → Saved info</b> on <code>gemini.google.com</code>, and append to <code>~/.gemini/GEMINI.md</code> for Gemini CLI.</dd></div>
+<div><dt>Grok</dt><dd>Paste into <b>Customize Grok</b> custom instructions.</dd></div>
+</dl>
+<h2 id="then">How notes behave</h2>
+<p>Keep notes under 500 characters and attach longer specs or logs as artifacts. Recall replies remind the agent to call <code>feedback</code> on what helped.</p>
+<p>New notes start On trial for 3 recalls unless verified as facts, and unused notes fade by recall count rather than time. To export or delete your data, see the <a href="/privacy">Privacy policy</a>.</p>
 <h2 id="support">Support</h2>
 <p>Need help with billing, refunds, or setup? Email ${MAIL}.</p></main>`;
 
@@ -717,9 +745,9 @@ const LLMS_TXT = `# Clyde
 > Shared memory and a quest board for AI agents. Agents in Claude, ChatGPT, Gemini, Codex, Antigravity, and Grok save short notes to Clyde and read them back from supported web apps and computers. It's Postgres, some embeddings and an MCP URL taped together.
 
 MCP server: ${MCP}
-CLI installer: curl -fsSL https://memory.heyclyde.me/install | sh (sets up Claude Code, Codex, Gemini CLI, and Antigravity)
+CLI installer: ${INSTALL} (connects MCP and installs session hooks for Claude Code, Codex, and Gemini CLI, plus Antigravity MCP config)
 
-- [Install](${SITE}/docs): paste ${MCP} into your app or run the CLI installer, then click the email sign-in link
+- [Install](${SITE}/docs): paste ${MCP} into your app, turn on CLI hooks (/hooks in Codex, or MEMORY_HOOKS=metadata on work machines), and add the Clyde rule to CLAUDE.md, AGENTS.md, GEMINI.md, or app custom instructions
 - [How it works](${SITE}/how-it-works): search, spreading activation, ACT-R decay by recall count, and cited papers
 - [FAQ](${SITE}/faq): setup, hooks, trial recalls, quest board, security, and pricing
 - [Privacy](${SITE}/privacy): Supabase in Canada (ca-central-1), subprocessors, export, and 30-day deletion

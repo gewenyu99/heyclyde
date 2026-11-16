@@ -223,6 +223,15 @@ Deno.test('the store pages', async () => {
   assert.deepEqual(apps, attr(homePage('n0nce0000000000000000'), /data-app="([^"]+)"/g), '/docs and the connect page list the same apps')
   assert.deepEqual(apps, ['claude-ai', 'claude-code', 'antigravity', 'gemini', 'grok', 'chatgpt', 'antigravity-cloud', 'other'])
   assert.ok(/<article[^>]*id="grok"[\s\S]*?grok\.com\/connectors[\s\S]*?https:\/\/heyclyde\.me\/mcp/.test(docs), '/docs#grok: the Grok steps with the MCP URL')
+  const hooks = /<h2 id="hooks">[\s\S]*?<h2 id="instructions">/.exec(docs)?.[0] ?? ''
+  for (const w of ['curl -fsSL https://memory.heyclyde.me/install | sh', '/hooks', 'MEMORY_HOOKS=metadata', 'hook_mode']) {
+    assert.ok(hooks.includes(w), `/docs#hooks mentions ${w}`)
+  }
+  const instructions = /<h2 id="instructions">[\s\S]*?<h2 id="then">/.exec(docs)?.[0] ?? ''
+  assert.ok(instructions.includes('data-copy="Use Clyde MCP tools'), '/docs#instructions has a copyable Clyde rule')
+  for (const w of ['Personal preferences', 'CLAUDE.md', 'AGENTS.md', 'Model Decision', 'Custom instructions', 'Saved info', 'GEMINI.md', 'Customize Grok']) {
+    assert.ok(instructions.includes(w), `/docs#instructions covers ${w}`)
+  }
   const support = /<h2 id="support">[\s\S]*?<\/main>/.exec(docs)?.[0] ?? ''
   assert.ok(support.includes(`href="mailto:${SUPPORT}"`), '/docs#support: a mailto link to support')
   assert.ok(docs.includes('href="/privacy"'), '/docs points export and delete at the privacy policy')

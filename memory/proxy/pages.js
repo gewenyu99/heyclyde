@@ -192,7 +192,7 @@ export function shell({ nonce, title, css, body, script = "", noindex = true, se
 
 export const copyBox = (value, label = "Copy") =>
   `<div class="cl-copy"><code>${esc(value)}</code><button class="cl-btn cl-btn--sm" type="button" data-copy="${esc(value)}" aria-label="${esc(label)}">Copy</button></div>`;
-const copyPre = (name, value) =>
+export const copyPre = (name, value) =>
   `<div class="cl-file"><div class="cl-file__head"><span>${esc(name)}</span><button class="cl-btn cl-btn--sm" type="button" data-copy="${esc(value)}">Copy</button></div>` +
   `<pre><code>${esc(value)}</code></pre></div>`;
 export const LEGAL = "Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok are trademarks of their respective owners. None of them endorse Clyde. Not available in the EU, EEA, UK, Switzerland, or Quebec.";
@@ -322,45 +322,46 @@ const APPS = [
   {
     id: "claude-ai", logo: "claude", name: "Claude", sub: "claude.ai, Cowork, and mobile", tag: "Connector",
     body: `<ol class="steps"><li><span>Open <span class="k">Settings → Connectors → Add custom connector</span>.</span></li>
-<li><span>Paste the URL, click <span class="k">Add</span>, then <span class="k">Connect</span>.</span></li>
-<li><span>Sign in via email link. Connects web, Cowork, and mobile.</span></li></ol>${copyBox(MCP_URL)}`,
+<li><span>Paste the URL, click <span class="k">Add</span>, then <span class="k">Connect</span>, and sign in via email link.</span></li>
+<li><span>Paste the Clyde rule into <span class="k">Settings → Profile → Personal preferences</span> (or Project instructions) so Claude checks notes on new tasks.</span></li></ol>${copyBox(MCP_URL)}`,
   },
   {
-    id: "claude-code", logo: "claude-code", name: "Claude Code and Codex", sub: "Terminal agents", tag: "One-liner",
-    body: `<p class="fine">Sets up Claude Code and Codex via email sign-in, plus Gemini CLI and Antigravity if installed. Restart Claude Code and run <code>/hooks</code> in Codex CLI after.</p>${copyBox(INSTALL)}`,
+    id: "claude-code", logo: "claude-code", name: "Claude Code and Codex", sub: "Terminal agents + hooks", tag: "One-liner",
+    body: `<ol class="steps"><li><span>Run the installer to connect MCP and set up session hooks for Claude Code, Codex, and Gemini CLI.</span></li>
+<li><span>Restart Claude Code. In Codex CLI, run <code>/hooks</code> once to trust the two <code>memory-hook</code> entries.</span></li>
+<li><span>Add the Clyde rule to <code>~/.claude/CLAUDE.md</code> and <code>~/.codex/AGENTS.md</code>. On work machines, prefix with <code>MEMORY_HOOKS=metadata</code> to skip prompt text.</span></li></ol>${copyBox(INSTALL)}`,
   },
   {
     id: "antigravity", logo: "antigravity", name: "Antigravity", sub: "Desktop IDE and CLI", tag: "Config",
-    body: `<p class="fine">Run the Claude Code / Codex installer, or put this in <code>~/.gemini/config/mcp_config.json</code> and sign in via browser.</p>
+    body: `<p class="fine">Run the terminal installer or put this in <code>~/.gemini/config/mcp_config.json</code>. Antigravity has no shell hooks, so add the Clyde rule in <span class="k">Customizations → Rules</span> set to <span class="k">Model Decision</span> rather than <span class="k">Always On</span>.</p>
 ${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { memory: { serverUrl: MCP_URL } } }, null, 2))}`,
   },
   {
-    id: "gemini", logo: "gemini", name: "Gemini app", sub: "gemini.google.com", tag: "Custom app",
-    body: `<ol class="steps"><li><span>Open <span class="k">Settings → Connected Apps</span>.</span></li>
-<li><span>Add a custom app with Clyde's URL.</span></li>
-<li><span>Sign in via email link.</span></li></ol><p class="fine">Needs Google AI Ultra or a US account. CLI users: run the installer.</p>${copyBox(MCP_URL)}`,
+    id: "gemini", logo: "gemini", name: "Gemini app", sub: "gemini.google.com and CLI", tag: "Custom app",
+    body: `<ol class="steps"><li><span>Open <span class="k">Settings → Connected Apps</span>, add Clyde's URL, and sign in via email link.</span></li>
+<li><span>Save the Clyde rule in <span class="k">Settings → Saved info</span> so Gemini checks notes on new tasks.</span></li></ol><p class="fine">Web needs Google AI Ultra or a US account. Gemini CLI users: run the terminal installer to set up MCP and hooks, and add the rule to <code>~/.gemini/GEMINI.md</code>.</p>${copyBox(MCP_URL)}`,
   },
   {
     id: "grok", logo: "grok", name: "Grok", sub: "grok.com", tag: "Connector",
     body: `<ol class="steps"><li><span>Open <a href="https://grok.com/connectors" rel="noopener noreferrer" target="_blank">grok.com/connectors</a> and select <span class="k">Custom</span>.</span></li>
-<li><span>Paste the URL and connect.</span></li>
-<li><span>Sign in via email link.</span></li></ol>${copyBox(MCP_URL)}`,
+<li><span>Paste the URL, connect, and sign in via email link.</span></li>
+<li><span>Paste the Clyde rule into <span class="k">Customize Grok</span> so Grok checks notes on new tasks.</span></li></ol>${copyBox(MCP_URL)}`,
   },
   {
     id: "chatgpt", logo: "chatgpt", name: "ChatGPT", sub: "chatgpt.com", tag: "Custom connector",
-    body: `<ol class="steps"><li><span>Turn on developer mode in <span class="k">Settings → Connectors</span>.</span></li>
-<li><span>Add a custom connector with this URL and sign in via email link.</span></li></ol>${copyBox(MCP_URL)}`,
+    body: `<ol class="steps"><li><span>Turn on developer mode in <span class="k">Settings → Connectors</span>, add this URL, and sign in via email link.</span></li>
+<li><span>Paste the Clyde rule into <span class="k">Settings → Personalization → Custom instructions</span>, or ask ChatGPT once to save it to Memory.</span></li></ol>${copyBox(MCP_URL)}`,
   },
   {
     id: "antigravity-cloud", logo: "antigravity", name: "Antigravity cloud", sub: "Headless cloud environments", tag: "Token",
-    body: `<p class="fine">Headless boxes can't open links. Run the installer on a local machine first, then copy <code>~/.config/memory/token</code> to your secrets (never commit it to git).</p>
+    body: `<p class="fine">Headless boxes can't open links. Run the installer on a local machine first, copy <code>~/.config/memory/token</code> to your secrets (never commit it to git), and put the Clyde rule in <code>.agent/rules/clyde.md</code>.</p>
 ${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { memory: { serverUrl: MCP_URL, headers: { Authorization: "Bearer <your device token>" } } } }, null, 2))}`,
   },
   {
     id: "other", logo: "other", name: "Other agents", sub: "Anything that speaks MCP", tag: "Remote MCP",
-    body: `<ol class="steps"><li><span>Add a remote MCP server with this URL.</span></li>
-<li><span>Click the sign-in link Clyde emails you.</span></li>
-<li><span>No browser? Send <span class="k">Authorization: Bearer</span> plus your token from ~/.config/memory/token.</span></li></ol>
+    body: `<ol class="steps"><li><span>Add a remote MCP server with this URL and click the sign-in link Clyde emails you.</span></li>
+<li><span>No browser? Send <span class="k">Authorization: Bearer</span> plus your token from <code>~/.config/memory/token</code>.</span></li>
+<li><span>Paste the Clyde rule into your agent's system prompt or rules file.</span></li></ol>
 ${copyPre("mcp.json", JSON.stringify({ mcpServers: { clyde: { url: MCP_URL } } }, null, 2))}`,
   },
 ];
@@ -394,14 +395,14 @@ export const appCards = () => APPS.map((a) => `<article class="cl-card app" data
 export function homePage(nonce) {
   const cards = appCards();
   const works = WORKS.map(([slug, name]) => `<li>${APP_LOGO[slug] ? appLogo(slug, 20) : ""}${name}${soon(slug)}</li>`).join("");
-  const body = `<header class="bar wrap">${WORDMARK}<nav class="topnav"><a href="https://heyclyde.me/">Home</a><a href="#apps">Apps</a><a href="#how">How it works</a></nav>
+  const body = `<header class="bar wrap">${WORDMARK}<nav class="topnav"><a href="https://heyclyde.me/">Home</a><a href="#apps">Apps</a><a href="https://heyclyde.me/docs#hooks">Hooks &amp; rules</a><a href="#how">How it works</a></nav>
 <span class="cl-status" id="status" role="status">Checking</span></header>
 <main>
 <section class="hero wrap"><div class="hero-text"><span class="cl-label">Get Clyde</span>
 <h1 class="cl-display">Connect your <em class="cl-scribble">apps</em></h1>
 <p class="cl-lead">Add one MCP URL to each app, then sign in with the link Clyde emails you.</p>
 <div class="cl-sticky cl-sticky--tilt hero-note"><b>Use with caution.</b> Put normal context and preferences in it.</div>
-<div class="cta"><a class="cl-btn cl-btn--primary cl-btn--lg" href="#apps">Pick your app</a><a class="cl-btn cl-btn--ghost cl-btn--lg" href="https://heyclyde.me/">What is Clyde?</a></div>
+<div class="cta"><a class="cl-btn cl-btn--primary cl-btn--lg" href="#apps">Pick your app</a><a class="cl-btn cl-btn--ghost cl-btn--lg" href="https://heyclyde.me/docs#hooks">Set up hooks &amp; rules</a></div>
 <div class="works"><span class="cl-label">Connects to</span><ul>${works}</ul>${SOON_NOTE}</div></div><div class="hero-art">${SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 484, 280)}</div></section>
 <section class="wrap" id="apps"><div class="apps-head"><div class="section"><span class="cl-label">Connect</span><h2 class="cl-title-1">Pick your app</h2>
 <p class="cl-lead">Every supported app takes the same URL or one terminal installer.</p></div>
