@@ -280,6 +280,7 @@ export const APP_LOGO = {
   claude: ["/_clyde/apps/claude.svg"], "claude-code": ["/_clyde/apps/claude-code.svg"], codex: ["/_clyde/apps/codex.svg"],
   chatgpt: ["/_clyde/apps/chatgpt.svg"], gemini: ["/_clyde/apps/gemini.svg"], antigravity: ["/_clyde/apps/antigravity.svg"],
   grok: ["/_clyde/apps/grok.svg", "/_clyde/apps/grok-dark.svg"],
+  other: ["/_clyde/brand/clyde-mark-light.svg", "/_clyde/brand/clyde-mark-dark.svg"],
 };
 const MONO = { claude: "C", "claude-code": "&gt;_", codex: "&gt;_", gemini: "G", antigravity: "Ag", chatgpt: "G" };
 export const appLogo = (slug, size = 24) => {
@@ -325,6 +326,13 @@ ${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { clyde: { serverUrl: 
     id: "antigravity-cloud", logo: "antigravity", name: "Antigravity cloud", sub: "Headless cloud environments", tag: "Token",
     body: `<p class="fine">Headless boxes can't open email links. Copy ~/.config/memory/token from a signed-in machine into your cloud environment's secrets. Never commit it to git.</p>
 ${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { clyde: { serverUrl: MCP_URL, headers: { Authorization: "Bearer <your device token>" } } } }, null, 2))}`,
+  },
+  {
+    id: "other", logo: "other", name: "Other agents", sub: "Anything that speaks MCP", tag: "Remote MCP",
+    body: `<ol class="steps"><li><span>Add a remote MCP server with this URL.</span></li>
+<li><span>Click the sign-in link Clyde emails you.</span></li>
+<li><span>No browser? Send <span class="k">Authorization: Bearer</span> plus your token from ~/.config/memory/token.</span></li></ol>
+${copyPre("mcp.json", JSON.stringify({ mcpServers: { clyde: { url: MCP_URL } } }, null, 2))}`,
   },
 ];
 
