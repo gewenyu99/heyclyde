@@ -92,7 +92,7 @@ export const HERO_CSS = `
 .how p{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2)}
 `;
 
-const CONNECT_CSS = `
+export const CONNECT_CSS = `
 .hero-note{max-width:44ch;padding:12px 16px;font:var(--cl-text-small)}
 .hero-art{min-width:0}.hero-art img{display:block;width:100%;max-width:484px;height:auto}
 .works li img,.app-logo img{display:block;width:20px;height:20px;object-fit:contain}
@@ -324,9 +324,12 @@ export const SCENE = `<div class="scene" aria-label="Clyde answering in Claude a
 <b>›</b> ok, Monday</pre></div>
 <span class="cl-stamp cl-stamp--carbon pin">Claimed <small>atlas · Nº 38</small></span></div>`;
 
-export function homePage(nonce) {
-  const cards = APPS.map((a) => `<article class="cl-card app" data-app="${a.id}"><div class="app-head"><span class="app-logo">${appLogo(a.logo)}</span>
+/** One card per app with its install steps. The connect page and heyclyde.me/docs both show them. */
+export const appCards = () => APPS.map((a) => `<article class="cl-card app" data-app="${a.id}" id="${a.id}"><div class="app-head"><span class="app-logo">${appLogo(a.logo)}</span>
 <div><h3 class="cl-title-3">${esc(a.name)}</h3><p class="sub">${esc(a.sub)}</p></div><span class="cl-chip">${esc(a.tag)}</span></div>${a.body}</article>`).join("\n");
+
+export function homePage(nonce) {
+  const cards = appCards();
   const works = WORKS.map(([slug, name]) => `<li>${APP_LOGO[slug] ? appLogo(slug, 20) : ""}${name}</li>`).join("");
   const body = `<header class="bar wrap">${WORDMARK}<nav class="topnav"><a href="https://heyclyde.me/">Home</a><a href="#apps">Apps</a><a href="#how">How it works</a></nav>
 <span class="cl-status" id="status" role="status">Checking</span></header>

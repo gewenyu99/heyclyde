@@ -5,7 +5,7 @@
 // It also serves the web pages (R46). Supabase won't serve HTML from its own domain, so on the three sign-in routes the
 // Worker asks the function for JSON and renders the page here. A browser asking for / gets the "connect your apps" page.
 import { homePage, statePage } from "./pages.js";
-import { siteFile, sitePage } from "./site.js";
+import { MOVED, siteFile, sitePage } from "./site.js";
 
 const ORIGIN = "https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory";
 const SIGN_IN = new Set(["/oauth/consent", "/oauth/wait", "/oauth/approve"]);
@@ -113,6 +113,7 @@ export default {
     if (url.hostname === "heyclyde.me" && SITE_API(url.pathname)) return pass(req, url, env, { "x-memory-host": "heyclyde.me" });
     if (url.hostname === "heyclyde.me") {
       if (req.method !== "GET" && req.method !== "HEAD") return new Response("Method not allowed", { status: 405, headers: { allow: "GET, HEAD" } });
+      if (MOVED[url.pathname]) return Response.redirect(`https://heyclyde.me${MOVED[url.pathname]}`, 301);
       const n = nonce();
       const page = sitePage(url.pathname, n);
       return new Response(page.html, { status: page.status, headers: locked(n, { "cache-control": "public, max-age=300" }) });
