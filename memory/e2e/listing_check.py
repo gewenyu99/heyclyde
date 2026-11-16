@@ -275,6 +275,7 @@ SECTIONS = {
     "resource metadata per host": resource_metadata,
     "google discovery": google_discovery,
     "google verification file": google_verification_file,
+    "site seo": site_seo,
 }
 
 
