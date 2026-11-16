@@ -362,8 +362,9 @@ const MADE_UP = [
   ["It's Kat. With a K.", "Kat spells it with a K."],
 ];
 const WALL_CSS = `
-.cm-wall{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:20px;margin-bottom:76px}
+.cm-wall{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;margin-bottom:76px}
 .complaint,.complaint-made{display:grid;gap:8px;align-content:start}
+@media (max-width:900px){.cm-wall{grid-template-columns:repeat(2,minmax(0,1fr))}}@media (max-width:560px){.cm-wall{grid-template-columns:minmax(0,1fr)}}
 .cm-q{padding:14px 16px;transform:rotate(-1deg)}.cm-wall>:nth-child(even) .cm-q{transform:rotate(1.2deg)}
 .cm-q p{margin:0 0 6px;font:var(--cl-text-body);color:var(--cl-ink)}
 .cm-q a,.cm-made{font:var(--cl-text-mono);font-size:11px;color:var(--cl-ink-3)}
