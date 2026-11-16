@@ -20,7 +20,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 LISTING = ROOT / "listing"
-MCP_TS = ROOT / "supabase" / "functions" / "memory" / "mcp.ts"
 BASE = "https://heyclyde.me"
 CONNECTOR = "https://heyclyde.me/mcp"
 
@@ -60,22 +59,30 @@ def legal_pages(errs):
     needs(errs, "/privacy", priv, ["Supabase", "OpenAI", "Polar", "Resend", "Cloudflare", "export", "delete", "30 days"])
     needs(errs, "/terms", html_page("/terms", errs), ["Ontario", "Quebec"])
     html_page("/docs", errs)
-    html_page("/support", errs)
 
 
-def tool_names():
-    src = MCP_TS.read_text()
-    block = src[src.index("export const TOOLS"):]
-    return re.findall(r'^    name: "([a-z_]+)"', block, re.M)
+# Support and the Grok guide live on /docs (at #support and #grok), and the papers on /how-it-works. The old addresses
+# answer 301 to them.
+MOVED = {"/research": "/how-it-works", "/support": "/docs#support", "/docs/grok": "/docs#grok", "/signin": "/docs"}
+PAPERS = ["arxiv.org/abs/2607.13591", "alphaxiv.org/abs/2602.22406", "PMC3069643", "NBK3905", "arxiv.org/pdf/2604.27283",
+          "arxiv.org/html/2604.00131", "taatgenLebiereAnderson.pdf"]
 
 
 def docs_pages(errs):
-    tools = tool_names()
-    if len(tools) < 10:
-        errs.append(f"read only {len(tools)} tool names from mcp.ts")
-    needs(errs, "/docs", html_page("/docs", errs), [CONNECTOR, "Claude", "Gemini", "export", "delete", *tools])
-    needs(errs, "/support", html_page("/support", errs), ["support@heyclyde.me"])
-    needs(errs, "/docs/grok", html_page("/docs/grok", errs), ["Grok", CONNECTOR])
+    status, ctype, body = fetch("/docs")
+    if status != 200 or not ctype.startswith("text/html"):
+        errs.append(f"/docs: status {status}, content-type {ctype!r}")
+    html = body.decode("utf-8", "replace")
+    needs(errs, "/docs", page_text(body), [CONNECTOR, "Claude", "Gemini", "Grok", "export", "delete", "support@heyclyde.me"])
+    needs(errs, "/docs", html, ['id="support"', 'href="mailto:support@heyclyde.me"', 'id="grok"', "grok.com/connectors"])
+    status, ctype, body = fetch("/how-it-works")
+    if status != 200 or not ctype.startswith("text/html"):
+        errs.append(f"/how-it-works: status {status}, content-type {ctype!r}")
+    needs(errs, "/how-it-works", body.decode("utf-8", "replace"), PAPERS)
+    for old, new in MOVED.items():
+        status, location = redirect_of(BASE + old)
+        if status != 301 or location != BASE + new:
+            errs.append(f"{old}: status {status}, location {location!r}, want 301 to {BASE + new}")
 
 
 def png_size(body):
@@ -193,6 +200,16 @@ def get_exact(url):
         return e.code, e.headers.get("content-type", ""), e.read().decode("utf-8", "replace")
 
 
+def redirect_of(url):
+    """The status and Location of one request, without following it."""
+    opener = urllib.request.build_opener(_NoRedirect)
+    try:
+        with opener.open(urllib.request.Request(url, headers={"user-agent": "clyde-listing-check/1"}), timeout=20) as r:
+            return r.status, r.headers.get("location")
+    except urllib.error.HTTPError as e:
+        return e.code, e.headers.get("location")
+
+
 def resource_metadata(errs):
     status, _, body = get_exact(f"{ISSUER}/.well-known/oauth-authorization-server")
     if status != 200:
@@ -236,7 +253,7 @@ def google_verification_file(errs):
             errs.append(f"{host}: status {status}, content-type {ctype!r}")
 
 
-INDEXED = ["/", "/docs", "/how-it-works", "/research", "/support", "/docs/grok", "/privacy", "/terms", "/signin"]
+INDEXED = ["/", "/docs", "/how-it-works", "/faq", "/privacy", "/terms"]
 
 
 def site_seo(errs):

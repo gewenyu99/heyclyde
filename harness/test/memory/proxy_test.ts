@@ -29,9 +29,9 @@ const h1 = (html: string) => /<h1[^>]*>([\s\S]*?)<\/h1>/.exec(html)?.[1].replace
 
 const STATES: [string, Record<string, unknown>, number, string, string][] = [
   ['check_email', { email: 'g•••••••@gmail.com' }, 200, 'Check your email', 'consent'],
-  ['waiting', {}, 200, 'Still waiting', 'wait'],
+  ['waiting', {}, 200, 'Waiting for confirmation', 'wait'],
   ['connected', { client: 'Claude' }, 200, 'Connected', 'approve'],
-  ['refused', { client: 'Evil', callback: 'https://evil.example/cb' }, 403, 'Refused', 'approve'],
+  ['refused', { client: 'Evil', callback: 'https://evil.example/cb' }, 403, 'Connection refused', 'approve'],
   ['expired', {}, 410, 'Link expired', 'wait'],
   ['error', { message: 'memory: that sign-in link didn\'t work.' }, 400, 'Something went wrong', 'approve'],
 ]
@@ -127,10 +127,10 @@ Deno.test('the home page lists every app and / still reaches the function', asyn
   const html = await r.text()
   const apps = [...html.matchAll(/data-app="([^"]+)"/g)].map((m) => m[1])
   assert.deepEqual(apps, ['claude-ai', 'claude-code', 'antigravity', 'gemini', 'grok', 'antigravity-cloud'])
-  assert.equal(h1(html), 'Connect your apps.')
+  assert.equal(h1(html), 'Connect your apps')
   assert.ok(html.includes('https://heyclyde.me/mcp'))
   assert.ok(html.includes('curl -fsSL https://memory.heyclyde.me/install | sh'))
-  assert.ok(html.includes('cl-sticky') && /passwords/i.test(html), 'connect page carries sticky-note secret warning')
+  assert.ok(/<div class="cl-sticky[^"]*">\s*<b>Use with caution\.<\/b>/.test(html), 'connect page carries the sticky-note warning')
   assert.ok(/ChatGPT[\s\S]*Grok|Claude,\s*ChatGPT/.test(html), 'how-it-works names ChatGPT alongside supported apps')
   for (const headers of [{ accept: 'text/html', authorization: 'Bearer x' }, { accept: 'application/json' }] as Record<string, string>[]) {
     stub(json({ ok: true }))
@@ -181,7 +181,7 @@ Deno.test('a blocked country gets its own page with 451', async () => {
   const r = await get('/oauth/consent?authorization_id=abc12345')
   const html = await r.text()
   assert.equal(r.status, 451)
-  assert.equal(h1(html), 'Not available in your country')
+  assert.equal(h1(html), 'Not available in your region')
   assert.ok(html.includes('Clyde isn&#39;t available in your country.'))
   assert.equal(r.headers.get('refresh'), null)
 })
@@ -192,8 +192,9 @@ Deno.test('a browser on /billing/thanks gets a page, and other callers reach the
   assert.equal(sent.length, 0)
   assert.equal(r.status, 200)
   const thanksHtml = await r.text()
-  assert.equal(h1(thanksHtml), "You're subscribed")
-  assert.ok(thanksHtml.includes('paying for a notepad'), 'subscribed ticket uses non-serious voice')
+  assert.equal(h1(thanksHtml), 'Subscription active')
+  assert.ok(/<span class="cl-stamp cl-stamp--ok[^"]*">Paid /.test(thanksHtml), 'the subscribed ticket carries a Paid stamp')
+  assert.ok(/<span class="cl-label">Subscription<\/span>/.test(thanksHtml), 'the ticket is labelled Subscription, not Sign-in')
   stub(() => new Response('memory: thanks.', { headers: { 'content-type': 'text/plain' } }))
   const plain = await get('/billing/thanks', { accept: '*/*' })
   assert.equal(sent.length, 1)

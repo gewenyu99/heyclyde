@@ -4,7 +4,8 @@
  */
 import assert from 'node:assert/strict'
 import worker from '../../../memory/proxy/worker.js'
-import { homePage, statePage } from '../../../memory/proxy/pages.js'
+import { appCards, DESIGN_URL, homePage, statePage } from '../../../memory/proxy/pages.js'
+import { INDEXED as SITE_INDEXED, INDEXNOW_KEY, MOVED } from '../../../memory/proxy/site.js'
 
 const ENV = { PROXY_SECRET: 'test-proxy-secret' }
 let calls = 0
@@ -19,7 +20,10 @@ async function get(url: string) {
   return { r, html: r.headers.get('content-type')?.startsWith('text/html') ? await r.text() : '' }
 }
 // R72 (#77): the pages a search engine should index, in the order the sitemap lists them.
-const INDEXED = ['/', '/docs', '/how-it-works', '/research', '/support', '/docs/grok', '/privacy', '/terms', '/signin']
+const INDEXED = ['/', '/docs', '/how-it-works', '/faq', '/privacy', '/terms']
+// Pages the site dropped when it shrank, and where each one went.
+const REDIRECTS: Record<string, string> = { '/research': '/how-it-works', '/support': '/docs#support', '/docs/grok': '/docs#grok', '/signin': '/docs' }
+const SUPPORT = 'support@heyclyde.me'
 const h1s = (html: string) => [...html.matchAll(/<h1[^>]*>([\s\S]*?)<\/h1>/g)].map((m) => m[1].replace(/<[^>]+>/g, '').trim())
 const text = (html: string) => html.replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
 
@@ -31,13 +35,19 @@ Deno.test('the home page has the logo, pricing and its links', async () => {
   assert.deepEqual(h1s(html), ['Your agents have the memory of a goldfish.'])
   assert.ok(text(html).includes('$12.99'))
   assert.ok(/\bFree\b/.test(text(html)))
-  assert.ok(/<a[^>]*href="https:\/\/memory\.heyclyde\.me\/"[^>]*>[^<]*Get Clyde/.test(html), 'a Get Clyde link to the connect page')
-  for (const href of ['/signin', '/privacy', '/terms']) assert.ok(html.includes(`href="${href}"`), href)
+  assert.ok(/<a[^>]*href="\/docs"[^>]*>[^<]*Get Clyde/.test(html), 'a Get Clyde link to the docs')
+  for (const href of ['/docs', '/how-it-works', '/faq', '/privacy', '/terms']) assert.ok(html.includes(`href="${href}"`), href)
   assert.ok(html.includes('/_clyde/brand/clyde-lockup-light.svg'), 'the logo')
   assert.ok(html.includes('/_clyde/brand/clyde-mascot-light.svg') && html.includes('/_clyde/brand/clyde-mascot-dark.svg'), 'Sticky-Note Forehead Clyde mascot')
-  assert.ok(html.includes('id="honest"') && html.includes('cl-sticky'), 'sticky-note warning section')
-  assert.ok(text(html).includes("This is not advanced technology. It's probably not even very secure."))
-  assert.ok(text(html).includes('Shared memory') && text(html).includes('A quest board made of sticky notes'))
+  const honest = /<section[^>]*id="honest"[\s\S]*?<\/section>/.exec(html)?.[0] ?? ''
+  assert.ok(honest.includes('cl-sticky') && /<h2[^>]*>[\s\S]*secure[\s\S]*?<\/h2>/.test(honest), 'sticky-note warning section that says it is not very secure')
+  assert.ok(text(honest).includes('Use with caution.'), 'the warning says to use it with caution')
+  assert.ok(text(html).includes('Shared memory') && text(html).includes('A quest board'))
+  // The example windows are structure, not pinned copy: the hero scene, a recalled note and a quest card.
+  assert.ok(html.includes('class="scene"'), 'the hero scene')
+  assert.equal((html.match(/<article class="cl-card cl-memory">/g) ?? []).length >= 2, true, 'a recalled note in the scene and in Shared memory')
+  assert.equal((html.match(/<article class="cl-quest">/g) ?? []).length, 1, 'one quest card')
+  assert.ok(!html.includes('FAQPage') && !/<div class="faq">/.test(html), 'the FAQ lives on /faq, not the home page')
   assert.ok(html.includes('@media (max-width:960px){.site-hero{grid-template-columns:minmax(0,1fr)'), 'the hero is one column on a phone')
   assert.ok(new TextEncoder().encode(html).length <= 50_000, `${html.length} bytes`)
 })
@@ -49,15 +59,17 @@ Deno.test('pricing matches memory.plan', async () => {
   const t = text((await get('https://heyclyde.me/')).html)
   assert.ok(t.includes(`$${(Number(clyde[1]) / 1e6).toFixed(2)}`), 'price')
   const n = (v: string) => Number(v).toLocaleString('en-US')
-  for (const [label, v] of [['recalls', clyde[2]], ['remembers', clyde[3]], ['computers', clyde[4]]]) {
+  for (const [label, v] of [['recalls', clyde[2]], ['writes', clyde[3]], ['computers', clyde[4]]]) {
     assert.ok(t.includes(`${n(v)} ${label}`), `clyde: ${n(v)} ${label}`)
   }
-  for (const [label, v] of [['recalls', free[2]], ['writes', free[3]]]) assert.ok(t.includes(`${n(v)} ${label}`), `free: ${n(v)} ${label}`)
-  assert.ok(t.includes(`first ${n(free[5])} people`), `free: first ${n(free[5])} people`)
+  for (const [label, v] of [['recalls', free[2]], ['writes', free[3]], ['computers', free[4]]]) assert.ok(t.includes(`${n(v)} ${label}`), `free: ${n(v)} ${label}`)
+  assert.ok(t.includes(`first ${n(free[5])} users`), `free: first ${n(free[5])} users`)
+  const plans = /<section[^>]*id="pricing"[\s\S]*?<\/section>/.exec((await get('https://heyclyde.me/')).html)?.[0] ?? ''
+  assert.ok(plans && !/\bremembers\b/.test(plans), 'plans count writes, not remembers')
 })
 
 Deno.test('the other pages, the 404 and the www redirect', async () => {
-  for (const [path, title] of [['/signin', 'Sign in to Clyde'], ['/privacy', 'Privacy policy'], ['/terms', 'Terms of service']]) {
+  for (const [path, title] of [['/privacy', 'Privacy policy'], ['/terms', 'Terms of service']]) {
     const { r, html } = await get(`https://heyclyde.me${path}`)
     assert.equal(r.status, 200, path)
     assert.deepEqual(h1s(html), [title])
@@ -66,12 +78,13 @@ Deno.test('the other pages, the 404 and the www redirect', async () => {
   const nope = await get('https://heyclyde.me/nope')
   assert.equal(nope.r.status, 404)
   assert.match(String(nope.r.headers.get('content-type')), /^text\/html/)
-  assert.deepEqual(h1s(nope.html), ['Nothing here'])
+  assert.deepEqual(h1s(nope.html), ['Page not found'])
   assert.ok(nope.html.includes('/_clyde/brand/clyde-mascot-light.svg'), '404 mascot')
-  assert.ok(text(nope.html).includes("Even Clyde doesn't remember a page at /nope"))
+  assert.ok(nope.html.includes('<code>/nope</code>'), 'the 404 names the path')
+  assert.ok(nope.html.includes('href="/"'), 'the 404 links home')
   assert.equal(calls, 0)
   const terms = text((await get('https://heyclyde.me/terms')).html)
-  for (const place of ['European Union', 'Iceland', 'Liechtenstein', 'Norway', 'United Kingdom', 'Switzerland', 'Quebec', '14 days', '$12.99']) {
+  for (const place of ['European Union', 'Iceland', 'Liechtenstein', 'Norway', 'United Kingdom', 'Switzerland', 'Quebec', '14-day refund window', '$12.99']) {
     assert.ok(terms.includes(place), `terms mentions ${place}`)
   }
   const termsHtml = (await get('https://heyclyde.me/terms')).html
@@ -108,15 +121,11 @@ Deno.test('every heyclyde.me page is locked down, and public pages are indexable
   }
 })
 
-// R55 (#60): the pages the Claude directory and Google Connected Apps link to.
+// R55 (#60): the pages the Claude directory and Google Connected Apps link to. Support and the Grok guide now live on
+// /docs, at #support and #grok.
 Deno.test('the store pages', async () => {
-  const src = Deno.readTextFileSync(new URL('../../../memory/supabase/functions/memory/mcp.ts', import.meta.url))
-  const tools = [...src.slice(src.indexOf('export const TOOLS')).matchAll(/^    name: "([a-z_]+)"/gm)].map((m) => m[1])
-  assert.ok(tools.length >= 10, `${tools.length} tools read from mcp.ts`)
   const want: Record<string, [string, string[]]> = {
-    '/docs': ['Clyde docs', ['https://heyclyde.me/mcp', 'Claude', 'Gemini', 'export', 'delete', 'support@heyclyde.me', ...tools]],
-    '/support': ['Support', ['support@heyclyde.me', 'export and delete']],
-    '/docs/grok': ['Connect Grok to Clyde', ['Grok', 'https://heyclyde.me/mcp']],
+    '/docs': ['Install Clyde', ['https://heyclyde.me/mcp', 'Claude', 'Gemini', 'Grok', 'export', 'delete', SUPPORT]],
     '/privacy': ['Privacy policy', ['Supabase', 'OpenAI', 'Polar', 'Resend', 'Cloudflare', 'export', 'delete', '30 days', 'Pennywhistle']],
     '/terms': ['Terms of service', ['Ontario', 'Quebec', 'Pennywhistle']],
   }
@@ -130,9 +139,33 @@ Deno.test('the store pages', async () => {
     const t = text(html)
     for (const w of words) assert.ok(t.includes(w), `${path} mentions ${w}`)
   }
-  assert.ok((await get('https://heyclyde.me/support')).html.includes('href="/docs"'), '/support links the docs')
-  const home = (await get('https://heyclyde.me/')).html
-  for (const href of ['/docs', '/support']) assert.ok(home.includes(`href="${href}"`), `the footer links ${href}`)
+  const docs = (await get('https://heyclyde.me/docs')).html
+  // /docs shows the connect page's own app cards, every one of them, in the same order.
+  assert.ok(docs.includes(appCards()), '/docs carries appCards() as the connect page renders it')
+  const apps = attr(docs, /data-app="([^"]+)"/g)
+  assert.deepEqual(apps, attr(homePage('n0nce0000000000000000'), /data-app="([^"]+)"/g), '/docs and the connect page list the same apps')
+  assert.deepEqual(apps, ['claude-ai', 'claude-code', 'antigravity', 'gemini', 'grok', 'antigravity-cloud'])
+  assert.ok(/<article[^>]*id="grok"[\s\S]*?grok\.com\/connectors[\s\S]*?https:\/\/heyclyde\.me\/mcp/.test(docs), '/docs#grok: the Grok steps with the MCP URL')
+  const support = /<h2 id="support">[\s\S]*?<\/main>/.exec(docs)?.[0] ?? ''
+  assert.ok(support.includes(`href="mailto:${SUPPORT}"`), '/docs#support: a mailto link to support')
+  assert.ok(docs.includes('href="/privacy"'), '/docs points export and delete at the privacy policy')
+})
+
+// The pages that went away answer 301 to their new home, which exists and has the anchor.
+Deno.test('the dropped pages redirect', async () => {
+  assert.deepEqual(MOVED, REDIRECTS, 'site.js MOVED')
+  for (const [from, to] of Object.entries(REDIRECTS)) {
+    calls = 0
+    const r = await worker.fetch(new Request(`https://heyclyde.me${from}`, { headers: { accept: 'text/html' } }), ENV)
+    assert.equal(r.status, 301, from)
+    assert.equal(r.headers.get('location'), `https://heyclyde.me${to}`, from)
+    assert.equal(calls, 0, `${from} needs nothing from the function`)
+    const [path, hash] = to.split('#')
+    const { r: there, html } = await get(`https://heyclyde.me${path}`)
+    assert.equal(there.status, 200, `${from} lands on a page`)
+    if (hash) assert.ok(html.includes(`id="${hash}"`), `${to} has its anchor`)
+    assert.ok(!INDEXED.includes(from), `${from} is not indexed`)
+  }
 })
 
 // ---- R72 (#77): voice, doodles, SEO, and the two new pages ----
@@ -140,23 +173,36 @@ Deno.test('the store pages', async () => {
 const attr = (html: string, re: RegExp) => [...html.matchAll(re)].map((m) => m[1])
 const meta = (html: string, key: string) => attr(html, new RegExp(`<meta (?:name|property)="${key}" content="([^"]*)"`, 'g'))
 
-Deno.test('how it works and research', async () => {
-  for (const path of ['/how-it-works', '/research']) {
-    const { r, html } = await get(`https://heyclyde.me${path}`)
-    assert.equal(r.status, 200, path)
-    assert.equal(h1s(html).length, 1, `${path}: one h1`)
-  }
-  const how = text((await get('https://heyclyde.me/how-it-works')).html)
-  for (const w of ['On trial', 'quest', 'reciprocal rank']) assert.ok(how.includes(w), `/how-it-works mentions ${w}`)
-  const research = (await get('https://heyclyde.me/research')).html
+Deno.test('how it works carries the research', async () => {
+  const { r, html } = await get('https://heyclyde.me/how-it-works')
+  assert.equal(r.status, 200)
+  assert.equal(h1s(html).length, 1, 'one h1')
+  const how = text(html)
+  for (const w of ['keyword and semantic search', 'task board', 'trial period']) assert.ok(how.includes(w), `/how-it-works mentions ${w}`)
   for (const u of ['arxiv.org/abs/2607.13591', 'alphaxiv.org/abs/2602.22406', 'PMC3069643', 'NBK3905', 'arxiv.org/pdf/2604.27283', 'arxiv.org/html/2604.00131', 'taatgenLebiereAnderson.pdf']) {
-    assert.ok(research.includes(u), `/research links ${u}`)
+    assert.ok(html.includes(u), `/how-it-works links ${u}`)
   }
   const docs = [...Deno.readDirSync(new URL('../../../memory/', import.meta.url))].filter((e) => e.name.endsWith('.md'))
     .map((e) => Deno.readTextFileSync(new URL(`../../../memory/${e.name}`, import.meta.url))).join('\n')
-  const papers = attr(research, /href="(https?:\/\/[^"]*(?:arxiv|alphaxiv|ncbi|ai\.rug\.nl)[^"]*)"/g)
+  const papers = attr(html, /href="(https?:\/\/[^"]*(?:arxiv|alphaxiv|ncbi|ai\.rug\.nl)[^"]*)"/g)
   assert.ok(papers.length >= 7, `${papers.length} paper links`)
   for (const u of papers) assert.ok(docs.includes(u), `${u} is cited in memory/*.md`)
+})
+
+// The header and footer every heyclyde.me page shares.
+Deno.test('every page has the same header nav and footer', async () => {
+  for (const path of [...INDEXED, '/nope']) {
+    const { html } = await get(`https://heyclyde.me${path}`)
+    const nav = /<nav class="topnav">([\s\S]*?)<\/nav>/.exec(html)?.[1] ?? ''
+    assert.deepEqual(attr(nav, /href="([^"]+)"/g), ['/docs', '/how-it-works', '/faq'], `${path}: header nav`)
+    assert.deepEqual(h1s(`<h1>${nav}</h1>`), ['DocsHow it worksFAQ'], `${path}: header nav labels`)
+    const bar = /<header class="bar[\s\S]*?<\/header>/.exec(html)?.[0] ?? ''
+    assert.ok(/<a class="cl-btn cl-btn--primary" href="\/docs">Get Clyde<\/a>/.test(bar), `${path}: a Get Clyde button to /docs`)
+    const foot = /<footer[\s\S]*?<\/footer>/.exec(html)?.[0] ?? ''
+    assert.deepEqual(attr(foot, /href="([^"]+)"/g), ['/docs', '/how-it-works', '/faq', `mailto:${SUPPORT}`, '/privacy', '/terms', DESIGN_URL], `${path}: footer links`)
+    const bytes = new TextEncoder().encode(html).length
+    assert.ok(bytes <= 50_000, `${path}: ${bytes} bytes`)
+  }
 })
 
 Deno.test('every page has its own SEO tags', async () => {
@@ -180,22 +226,59 @@ Deno.test('every page has its own SEO tags', async () => {
   assert.ok(Deno.statSync(new URL('../../../memory/proxy/public/brand/og-banner.png', import.meta.url)).isFile, 'the OG image ships')
 })
 
+const jsonld = (html: string) => attr(html, /<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g).map((b) => JSON.parse(b))
+
 Deno.test('structured data', async () => {
-  const { html } = await get('https://heyclyde.me/')
-  const blocks = attr(html, /<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g).map((b) => JSON.parse(b))
+  const blocks = jsonld((await get('https://heyclyde.me/')).html)
+  assert.deepEqual(blocks.map((b) => b['@type']).sort(), ['Organization', 'SoftwareApplication', 'WebSite'], 'home: WebSite, Organization and SoftwareApplication')
   const app = blocks.find((b) => b['@type'] === 'SoftwareApplication')
-  assert.ok(app, 'a SoftwareApplication')
   const offers = (app.offers ?? []).map((o: { price: string; priceCurrency: string }) => `${o.price} ${o.priceCurrency}`).sort()
   assert.deepEqual(offers, ['0 USD', '12.99 USD'])
-  const faq = blocks.find((b) => b['@type'] === 'FAQPage')
-  assert.ok(faq && faq.mainEntity.length >= 3, 'a FAQPage with 3 or more questions')
+  const site = blocks.find((b) => b['@type'] === 'WebSite'), org = blocks.find((b) => b['@type'] === 'Organization')
+  assert.equal(site.url, 'https://heyclyde.me')
+  assert.equal(org.url, 'https://heyclyde.me')
+  assert.equal(org.email, SUPPORT)
+  assert.ok(Deno.statSync(new URL(`../../../memory/proxy/public${new URL(org.logo).pathname}`, import.meta.url)).isFile, `the Organization logo ${org.logo} ships`)
+  for (const b of blocks) assert.equal(b['@context'], 'https://schema.org')
+
+  const faqHtml = (await get('https://heyclyde.me/faq')).html
+  const faqBlocks = jsonld(faqHtml)
+  const faq = faqBlocks.find((b) => b['@type'] === 'FAQPage')
+  assert.ok(faq && faq.mainEntity.length >= 8, `a FAQPage with 8 or more questions, not ${faq?.mainEntity.length}`)
+  const shown = attr(faqHtml, /<h2[^>]*>([^<]*)<\/h2>/g).map((q) => q.replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/&quot;/g, '"'))
+  for (const q of faq.mainEntity) {
+    assert.equal(q['@type'], 'Question')
+    assert.ok(q.acceptedAnswer?.text?.length > 0, `${q.name}: an answer`)
+    assert.ok(shown.includes(q.name), `${q.name}: the question is on the page`)
+  }
+
+  for (const path of INDEXED.filter((p) => p !== '/')) {
+    const b = jsonld((await get(`https://heyclyde.me${path}`)).html)
+    const crumbs = b.find((x) => x['@type'] === 'BreadcrumbList')
+    assert.ok(crumbs, `${path}: a BreadcrumbList`)
+    assert.deepEqual(crumbs.itemListElement.map((e: { position: number; item: string }) => [e.position, e.item]),
+      [[1, 'https://heyclyde.me'], [2, `https://heyclyde.me${path}`]], `${path}: breadcrumbs`)
+    assert.ok(!b.some((x) => x['@type'] === 'FAQPage') || path === '/faq', `${path}: no FAQPage`)
+  }
+  assert.ok(!jsonld((await get('https://heyclyde.me/nope')).html).length, 'the 404 carries no structured data')
 })
 
 Deno.test('sitemap and robots', async () => {
+  assert.deepEqual(SITE_INDEXED, INDEXED, 'site.js INDEXED')
   const sitemap = await worker.fetch(new Request('https://heyclyde.me/sitemap.xml'), ENV)
   assert.equal(sitemap.status, 200)
   assert.match(String(sitemap.headers.get('content-type')), /^application\/xml/)
-  assert.deepEqual(attr(await sitemap.text(), /<loc>([^<]*)<\/loc>/g), INDEXED.map((p) => `https://heyclyde.me${p}`))
+  const xml = await sitemap.text()
+  assert.deepEqual(attr(xml, /<loc>([^<]*)<\/loc>/g), INDEXED.map((p) => `https://heyclyde.me${p}`))
+  assert.ok(xml.includes('<loc>https://heyclyde.me/faq</loc>'), '/faq is in the sitemap')
+  const urls = attr(xml, /<url>([\s\S]*?)<\/url>/g)
+  assert.equal(urls.length, INDEXED.length)
+  for (const u of urls) {
+    const mod = attr(u, /<lastmod>([^<]*)<\/lastmod>/g)
+    assert.equal(mod.length, 1, `${u}: one lastmod`)
+    assert.match(mod[0], /^\d{4}-\d{2}-\d{2}$/, `${u}: lastmod is a W3C date`)
+    assert.ok(!Number.isNaN(Date.parse(mod[0])), `${u}: lastmod ${mod[0]} is a real date`)
+  }
   const site = await worker.fetch(new Request('https://heyclyde.me/robots.txt'), ENV)
   assert.equal(site.status, 200)
   assert.match(String(site.headers.get('content-type')), /^text\/plain/)
@@ -207,6 +290,26 @@ Deno.test('sitemap and robots', async () => {
   assert.equal(api.status, 200)
   assert.ok((await api.text()).includes('Disallow: /'), 'memory.heyclyde.me stays out of search')
   assert.equal(calls, 0, 'robots.txt never reaches the function')
+})
+
+Deno.test('llms.txt and the IndexNow key', async () => {
+  calls = 0
+  const llms = await worker.fetch(new Request('https://heyclyde.me/llms.txt'), ENV)
+  assert.equal(llms.status, 200)
+  assert.match(String(llms.headers.get('content-type')), /^text\/markdown/)
+  const md = await llms.text()
+  assert.ok(md.startsWith('# Clyde\n'), 'llms.txt opens with an h1')
+  assert.ok(md.includes('https://heyclyde.me/mcp'), 'llms.txt names the MCP URL')
+  const links = attr(md, /\]\((https:\/\/heyclyde\.me[^)]*)\)/g).map((u) => new URL(u).pathname)
+  assert.ok(links.length >= 4, `${links.length} links`)
+  for (const p of links) assert.ok(INDEXED.includes(p), `llms.txt links ${p}, an indexed page`)
+  assert.match(INDEXNOW_KEY, /^[a-f0-9]{32}$/, 'IndexNow key is 32 hex characters')
+  const key = await worker.fetch(new Request(`https://heyclyde.me/${INDEXNOW_KEY}.txt`), ENV)
+  assert.equal(key.status, 200)
+  assert.match(String(key.headers.get('content-type')), /^text\/plain/)
+  assert.equal(await key.text(), INDEXNOW_KEY)
+  assert.equal(calls, 0, 'neither file reaches the function')
+  assert.equal((await worker.fetch(new Request('https://heyclyde.me/0000000000000000.txt', { headers: { accept: 'text/html' } }), ENV)).status, 404, 'another .txt is the 404')
 })
 
 Deno.test('every page wears the doodles', async () => {
