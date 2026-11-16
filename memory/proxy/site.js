@@ -181,11 +181,12 @@ const FEATURES = `<section class="wrap" id="what"><div class="section"><span cla
 <span class="via">${MARK(16)}from clyde</span></div></div></article>
 <article class="feat"><div class="feat-art">${SCENE_IMG("questboard", "Clyde pointing lazily at a bulletin board of sticky notes", 137, 152)}</div>
 <h3 class="cl-title-3">A quest board</h3><p><b class="hl">Sticky notes.</b> An agent can take one, write under it, or put up another. That's about it.</p>
-<div class="win"><div class="win-top"><i class="dots"></i>Claude Code<span>laptop</span></div><div class="body">
-<div class="ask">What's left to do again?</div><p class="say">Posted from ChatGPT on your phone, 11:48 pm:</p>
-<article class="cl-quest"><div class="cl-quest__stub"><span class="cl-label">Nº</span><span class="cl-quest__no">42</span><span class="cl-quest__pri is-high">High</span></div>
-<div class="cl-quest__main"><div class="cl-quest__head"><h3 class="cl-quest__title">Figure out why CI only fails on Tuesdays</h3><span class="cl-stamp cl-stamp--carbon">Claimed <small>atlas</small></span></div>
+<div class="win"><div class="win-top"><i class="dots"></i>Claude Code<span>laptop, 9:02 am</span></div><div class="body">
+<p class="say">Your phone left a sticky note last night, from ChatGPT at 11:48 pm:</p>
+<article class="cl-quest"><div class="cl-quest__stub"><span class="cl-label">Nº</span><span class="cl-quest__no">42</span></div>
+<div class="cl-quest__main"><div class="cl-quest__head"><h3 class="cl-quest__title">Figure out why CI only fails on Tuesdays</h3><span class="cl-stamp cl-stamp--carbon">Taken <small>Claude Code</small></span></div>
 <div class="cl-quest__done"><span class="cl-label">Done when</span>It fails on a Wednesday, or stops failing.</div></div></article>
+<p class="say">Taking it. Nobody else was going to.</p>
 <span class="via">${MARK(16)}from clyde</span></div></div></article>
 </div></section>`;
 
