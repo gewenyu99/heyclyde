@@ -82,7 +82,7 @@ Deno.test('the other pages, the 404 and the www redirect', async () => {
 })
 
 Deno.test('every heyclyde.me page is locked down, and public pages are indexable', async () => {
-  for (const path of ['/', '/signin', '/privacy', '/terms', '/nope']) {
+  for (const path of ['/', '/signin', '/privacy', '/terms', '/docs', '/support', '/docs/grok', '/nope']) {
     const { r, html } = await get(`https://heyclyde.me${path}`)
     const csp = String(r.headers.get('content-security-policy'))
     assert.match(csp, /default-src 'none'/, path)
@@ -100,4 +100,31 @@ Deno.test('every heyclyde.me page is locked down, and public pages are indexable
     }
     if (path !== '/nope') assert.equal((html.match(/noindex/gi) ?? []).length, 0, `${path} must not carry noindex`)
   }
+})
+
+// R55 (#60): the pages the Claude directory and Google Connected Apps link to.
+Deno.test('the store pages', async () => {
+  const src = Deno.readTextFileSync(new URL('../../../memory/supabase/functions/memory/mcp.ts', import.meta.url))
+  const tools = [...src.slice(src.indexOf('export const TOOLS')).matchAll(/^    name: "([a-z_]+)"/gm)].map((m) => m[1])
+  assert.ok(tools.length >= 10, `${tools.length} tools read from mcp.ts`)
+  const want: Record<string, [string, string[]]> = {
+    '/docs': ['How Clyde works', ['https://heyclyde.me/mcp', 'Claude', 'Gemini', 'export', 'delete', 'support@heyclyde.me', ...tools]],
+    '/support': ['Support', ['support@heyclyde.me', 'export and delete']],
+    '/docs/grok': ['Connect Grok to Clyde', ['Grok', 'https://heyclyde.me/mcp']],
+    '/privacy': ['Privacy policy', ['Supabase', 'OpenAI', 'Polar', 'Resend', 'Cloudflare', 'export', 'delete', '30 days', 'Pennywhistle']],
+    '/terms': ['Terms of service', ['Ontario', 'Quebec', 'Pennywhistle']],
+  }
+  for (const [path, [title, words]] of Object.entries(want)) {
+    const { r, html } = await get(`https://heyclyde.me${path}`)
+    assert.equal(r.status, 200, path)
+    assert.deepEqual(h1s(html), [title], path)
+    assert.equal(calls, 0, `${path} needs nothing from the function`)
+    const bytes = new TextEncoder().encode(html).length
+    assert.ok(bytes <= 50_000, `${path}: ${bytes} bytes`)
+    const t = text(html)
+    for (const w of words) assert.ok(t.includes(w), `${path} mentions ${w}`)
+  }
+  assert.ok((await get('https://heyclyde.me/support')).html.includes('href="/docs"'), '/support links the docs')
+  const home = (await get('https://heyclyde.me/')).html
+  for (const href of ['/docs', '/support']) assert.ok(home.includes(`href="${href}"`), `the footer links ${href}`)
 })
