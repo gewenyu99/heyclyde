@@ -545,13 +545,19 @@ const CLYDE_RULE = `Use Clyde MCP tools for shared memory across sessions and ap
 - Skip recall on quick follow-ups to the same task (typos, small tweaks, screenshots, "push it"), and skip Clyde inside subagents.
 - When I state a lasting decision, preference, or correction, save it with remember under 500 characters. Never store secrets.`;
 
+const ANTIGRAVITY_RULE = `---
+trigger: model_decision
+description: Apply when starting a new goal, switching repos or topics, or saving a lasting decision or correction in Clyde. Skip on quick follow-ups to the same task and inside subagents.
+---
+${CLYDE_RULE}`;
+
 const DOCS = `<main class="doc wrap">${hero("Docs", "Install <em>Clyde</em>",
   "Add the MCP URL to your app or run the terminal installer, then click the email link Clyde sends you.",
   SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 230, 133), "")}
 ${copyBox(MCP)}
 <div class="apps">${appCards()}</div>${SOON_NOTE}
 <h2 id="hooks">Turn on CLI hooks</h2>
-<p>Turn on hooks wherever your tool supports them. Hooks deliver unread messages and open quests at session start, tag notes with your git repo and computer, and catch pushback on your next prompt so bad notes lose weight.</p>
+<p>Turn on hooks wherever your tool supports them. Hooks deliver unread messages and open quests at session start, tag notes with your git repo and computer, nudge <code>recall</code> on new goals or folder switches while staying silent on quick follow-ups, and catch pushback on your next prompt.</p>
 ${copyBox(INSTALL)}
 <ul><li><b>Claude Code, Codex, and Gemini CLI.</b> Run the installer above. Restart Claude Code after install, and run <code>/hooks</code> once in Codex CLI to trust the two <code>memory-hook</code> entries. Gemini CLI loads <code>~/.gemini/extensions/memory/hooks/hooks.json</code> on launch.</li>
 <li><b>Work machines.</b> Run <code>MEMORY_HOOKS=metadata ${INSTALL}</code> to send session IDs and folder names only, never prompt text or tool output.</li>
@@ -570,6 +576,14 @@ ${copyPre("Clyde rule", CLYDE_RULE)}
 <div><dt>Gemini</dt><dd>Save in <b>Settings → Saved info</b> on <code>gemini.google.com</code>, and append to <code>~/.gemini/GEMINI.md</code> for Gemini CLI.</dd></div>
 <div><dt>Grok</dt><dd>Paste into <b>Customize Grok</b> custom instructions.</dd></div>
 </dl>
+<h2 id="agent-setup">Point your agent here</h2>
+<p>Point your local coding agent at this URL and ask it to install or update Clyde on your computer.</p>
+${copyBox(`${SITE}/docs#agent-setup`)}
+<p>If you're an AI agent setting up or updating this computer, follow these steps:</p>
+<ol><li><b>Install or refresh CLI hooks and MCP.</b> If <code>~/.config/memory/token</code> already exists, run <code>${INSTALL}</code> to update <code>memory-hook</code>, <code>~/.claude/settings.json</code>, <code>~/.codex/hooks.json</code>, <code>~/.gemini/extensions/memory</code>, and <code>~/.gemini/config/mcp_config.json</code> with no new sign-in. If no token exists yet, run it interactively so the user clicks the email link, then remind them to restart Claude Code and run <code>/hooks</code> once in Codex CLI.</li>
+<li><b>Update CLI instruction files to task-shift gating.</b> Put the Clyde rule above into <code>~/.claude/CLAUDE.md</code> (if Claude Code is installed), <code>~/.codex/AGENTS.md</code> (if Codex is installed), and <code>~/.gemini/GEMINI.md</code> (only if Gemini CLI is installed), replacing any older Clyde block that called <code>recall</code> on every single turn.</li>
+<li><b>Set up Antigravity without hard hooks.</b> Write <code>.agent/rules/clyde.md</code> below (using <code>trigger: model_decision</code> rather than <code>Always On</code>), and remove any Always-On <code>GEMINI.md</code> Clyde checklist or legacy <code>curl</code> skill using <code>$MEMORY_TOKEN</code> (such as <code>~/.gemini/skills/memory/SKILL.md</code>) so Antigravity uses Clyde MCP tools only on new goals or scope shifts.</li></ol>
+${copyPre(".agent/rules/clyde.md", ANTIGRAVITY_RULE)}
 <h2 id="then">How notes behave</h2>
 <p>Keep notes under 500 characters and attach longer specs or logs as artifacts. Recall replies remind the agent to call <code>feedback</code> on what helped.</p>
 <p>New notes start On trial for 3 recalls unless verified as facts, and unused notes fade by recall count rather than time. To export or delete your data, see the <a href="/privacy">Privacy policy</a>.</p>
@@ -747,7 +761,7 @@ const LLMS_TXT = `# Clyde
 MCP server: ${MCP}
 CLI installer: ${INSTALL} (connects MCP and installs session hooks for Claude Code, Codex, and Gemini CLI, plus Antigravity MCP config)
 
-- [Install](${SITE}/docs): paste ${MCP} into your app, turn on CLI hooks (/hooks in Codex, or MEMORY_HOOKS=metadata on work machines), and add the Clyde rule to CLAUDE.md, AGENTS.md, GEMINI.md, or app custom instructions
+- [Install and agent setup](${SITE}/docs#agent-setup): paste ${MCP} into your app, turn on CLI hooks (/hooks in Codex, or MEMORY_HOOKS=metadata on work machines), add the task-shift Clyde rule to CLAUDE.md, AGENTS.md, GEMINI.md, or app custom instructions, and use trigger: model_decision in Antigravity (.agent/rules/clyde.md) rather than Always On
 - [How it works](${SITE}/how-it-works): search, spreading activation, ACT-R decay by recall count, and cited papers
 - [FAQ](${SITE}/faq): setup, hooks, trial recalls, quest board, security, and pricing
 - [Privacy](${SITE}/privacy): Supabase in Canada (ca-central-1), subprocessors, export, and 30-day deletion

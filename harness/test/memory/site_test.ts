@@ -227,10 +227,14 @@ Deno.test('the store pages', async () => {
   for (const w of ['curl -fsSL https://memory.heyclyde.me/install | sh', '/hooks', 'MEMORY_HOOKS=metadata', 'hook_mode']) {
     assert.ok(hooks.includes(w), `/docs#hooks mentions ${w}`)
   }
-  const instructions = /<h2 id="instructions">[\s\S]*?<h2 id="then">/.exec(docs)?.[0] ?? ''
+  const instructions = /<h2 id="instructions">[\s\S]*?<h2 id="agent-setup">/.exec(docs)?.[0] ?? ''
   assert.ok(instructions.includes('data-copy="Use Clyde MCP tools'), '/docs#instructions has a copyable Clyde rule')
   for (const w of ['Personal preferences', 'CLAUDE.md', 'AGENTS.md', 'Model Decision', 'Custom instructions', 'Saved info', 'GEMINI.md', 'Customize Grok']) {
     assert.ok(instructions.includes(w), `/docs#instructions covers ${w}`)
+  }
+  const agentSetup = /<h2 id="agent-setup">[\s\S]*?<h2 id="then">/.exec(docs)?.[0] ?? ''
+  for (const w of ['trigger: model_decision', '.agent/rules/clyde.md', '~/.config/memory/token', 'https://heyclyde.me/docs#agent-setup']) {
+    assert.ok(agentSetup.includes(w), `/docs#agent-setup covers ${w}`)
   }
   const support = /<h2 id="support">[\s\S]*?<\/main>/.exec(docs)?.[0] ?? ''
   assert.ok(support.includes(`href="mailto:${SUPPORT}"`), '/docs#support: a mailto link to support')

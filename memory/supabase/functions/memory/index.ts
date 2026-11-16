@@ -77,6 +77,14 @@ async function hooks(req: Request, event: string, url: URL, who: Principal) {
       console.error(e);
     }
   }
+  if (event === "UserPromptSubmit") {
+    try {
+      const nudge = await service.promptNudge(body, AGENT.test(agent) ? agent : null, who.device ?? who.role, who.hooks);
+      if (nudge) return new Response(nudge, { headers: { "content-type": "text/plain; charset=utf-8" } });
+    } catch (e) {
+      console.error(e);
+    }
+  }
   return new Response("");
 }
 

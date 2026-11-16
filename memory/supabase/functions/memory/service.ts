@@ -15,6 +15,7 @@ import { relevanceWithVersion, screen } from "./judge.ts";
 import { BAD_VERDICT, checkFeedback, feedbackFooter, REMIND_MAX, reminderLine, VERDICTS } from "./feedback.ts";
 import { renderTrialItem, TRIAL_CHANCES } from "./trial.ts";
 import { provenanceLines, type Viewer } from "./provenance.ts";
+import { classifyPromptShift } from "./nudge.ts";
 import {
   accessDeniedReason,
   AGENT_CONTEXTS,
@@ -540,6 +541,63 @@ export async function hook(event: string, payload: Row, agent: string | null = n
       }
     }
   }
+}
+
+/** R75 (#80): decides whether a UserPromptSubmit hook prints a 1-line recall hint. Runs after hook() records the event, so
+ * offset 1 in memory.event is the immediately preceding event (and prior cwd) of this session. */
+export async function promptNudge(
+  payload: Row,
+  agent: string | null = null,
+  principal: string | null = null,
+  hooksMode: "full" | "metadata" = "full",
+): Promise<string> {
+  payload = redact(noNul(payload));
+  const sessionId = typeof payload.session_id === "string" && payload.session_id.trim() ? payload.session_id.trim() : null;
+  const hasPrompt = hooksMode !== "metadata" && typeof payload.prompt === "string" && payload.prompt.trim().length > 0;
+  if (!sessionId && !hasPrompt) return "";
+
+  let prevCwd: string | null = null;
+  let idleMs: number | null = null;
+  if (sessionId) {
+    const [prev] = await sql`select
+        (select e.payload->>'cwd' from memory.event e
+          where e.session_id = ${sessionId} and coalesce(e.payload->>'cwd', '') <> ''
+          order by e.id desc offset 1 limit 1) as prev_cwd,
+        (select extract(epoch from (now() - e.received_at)) * 1000 from memory.event e
+          where e.session_id = ${sessionId}
+          order by e.id desc offset 1 limit 1) as idle_ms`;
+    prevCwd = typeof prev?.prev_cwd === "string" ? prev.prev_cwd : null;
+    idleMs = prev?.idle_ms !== null && prev?.idle_ms !== undefined ? Number(prev.idle_ms) : null;
+  }
+
+  let sinceRetrievalMs: number | null = null;
+  let lastRetrievalText: string | null = null;
+  if (sessionId || principal) {
+    const [last] = await sql`select r.query, r.task, extract(epoch from (now() - r.created_at)) * 1000 as age_ms
+      from memory.retrieval r
+      join memory.mcp_session s on s.owner_id = r.owner_id and s.id = r.mcp_session
+      where (${sessionId}::text is not null and s.claude_session_id = ${sessionId})
+         or (${principal}::text is not null and s.machine = ${principal}
+             and (${agent}::text is null or memory.agent_name(s.client) = ${agent})
+             and r.created_at >= coalesce(
+               (select min(received_at) from memory.event where session_id = ${sessionId}),
+               now() - interval '15 minutes'))
+      order by r.created_at desc limit 1`;
+    if (last) {
+      sinceRetrievalMs = Number(last.age_ms);
+      lastRetrievalText = `${last.query ?? ""} ${last.task ?? ""}`.trim();
+    }
+  }
+
+  return classifyPromptShift({
+    prompt: payload.prompt,
+    cwd: payload.cwd,
+    hooksMode,
+    prevCwd,
+    idleMs,
+    sinceRetrievalMs,
+    lastRetrievalText,
+  });
 }
 
 /** claude or codex from an MCP client name like claude-code or codex-mcp-client. Anything else keeps its own name, with
