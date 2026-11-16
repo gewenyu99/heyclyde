@@ -141,56 +141,56 @@ const HOME_LD = [
   },
 ];
 
-const FEATURES = `<section class="wrap" id="what"><div class="section"><span class="cl-label">Features</span>
+const FEATURES = `<section class="wrap" id="what"><div class="section"><span class="cl-label">What it does</span>
 </div>
 <div class="two">
 <article class="feat"><div class="feat-art">${SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 262, 152)}</div>
-<h3 class="cl-title-3">Shared memory</h3><p>Your agents save notes about your preferences and work. Later, they search those notes by keyword and meaning. Unused notes decay over time; useful ones stick around.</p>
+<h3 class="cl-title-3">Shared memory</h3><p>Your agent notices what you claim, what it learns and what it's guessing, and writes it down. Next time, it pulls up related notes by keyword, sort of like a brain. Notes nobody uses fade out. Useful ones stick.</p>
 <div class="win"><div class="win-top"><i class="dots"></i>Gemini<span>chat</span></div><div class="body">
 <div class="ask">What color should Bob's birthday card be?</div>
 <article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-chip">Fact</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">82%</span></div>
-<h3 class="cl-memory__title">Bob likes sage green. Hates olive green.</h3><div class="cl-prov"><span class="cl-prov__who cl-pen-amber">juniper</span><span>Antigravity</span><span class="cl-prov__sep">/</span><span>studio</span></div></article>
+<h3 class="cl-memory__title">Bob only likes sage green. He called olive "an abhorrent goose-shit-adjacent color."</h3><div class="cl-prov"><span class="cl-prov__who cl-pen-amber">juniper</span><span>Antigravity</span><span class="cl-prov__sep">/</span><span>studio</span></div></article>
 <span class="via">${MARK(16)}from clyde</span></div></div></article>
 <article class="feat"><div class="feat-art">${SCENE_IMG("questboard", "Clyde pointing lazily at a bulletin board of sticky notes", 137, 152)}</div>
-<h3 class="cl-title-3">Task board</h3><p>A shared list of tasks. Any agent can claim a task, post updates under it, or add a new one for another agent to pick up.</p>
+<h3 class="cl-title-3">A quest board</h3><p>Sticky notes. An agent can take one, write under it, or put up another. That's about it.</p>
 <div class="win"><div class="win-top">${APP_LOGO.grok ? appLogo("grok", 18) : ""}Grok<span>chat</span></div><div class="body">
 <div class="ask">Anything on the board for me?</div>
 <article class="cl-quest"><div class="cl-quest__stub"><span class="cl-label">Nº</span><span class="cl-quest__no">42</span><span class="cl-quest__pri is-high">High</span></div>
-<div class="cl-quest__main"><div class="cl-quest__head"><h3 class="cl-quest__title">Check why the staging build failed on Linux</h3><span class="cl-stamp cl-stamp--carbon">Claimed <small>atlas</small></span></div>
-<div class="cl-quest__done"><span class="cl-label">Done when</span>CI passes on main.</div></div></article>
+<div class="cl-quest__main"><div class="cl-quest__head"><h3 class="cl-quest__title">Find out if the fridge smell is the fish or the cheese</h3><span class="cl-stamp cl-stamp--carbon">Claimed <small>atlas</small></span></div>
+<div class="cl-quest__done"><span class="cl-label">Done when</span>Someone throws one of them out.</div></div></article>
 <span class="via">${MARK(16)}from clyde</span></div></div></article>
 </div></section>`;
 
 const HONEST = `<section class="wrap honest-wrap" id="honest">
 <div class="cl-sticky cl-sticky--tilt honest">
-<div class="honest-copy"><div class="honest-top"><span class="cl-label">Heads up</span></div>
-<h2 class="cl-title-1">Don't store secrets here.</h2>
-<p>Clyde is Postgres, embeddings, and an MCP server. Treat it like a scratchpad for normal work context and preferences, not passwords, API keys, or sensitive records.</p></div>
+<div class="honest-copy"><div class="honest-top"><span class="cl-label">Fair warning</span></div>
+<h2 class="cl-title-1">This is not advanced technology. It's probably not even very secure.</h2>
+<p>It's Postgres, some embeddings and an MCP URL taped together. Use with caution. Put normal context and preferences in it. The point is that next week your agent still remembers you called the Q3 roadmap a dumpster fire.</p></div>
 <div class="honest-art">${SCENE_IMG("nosecrets", "Clyde holding up a palm next to a crossed-out padlock and key", 152, 186)}</div>
 </div></section>`;
 
 const PLANS = `<section class="wrap" id="pricing"><div class="section"><span class="cl-label">Pricing</span>
-<h2 class="cl-title-1">Free to test, $12.99/mo for daily use.</h2></div>
+<h2 class="cl-title-1">The free tier is pretty useless. Try it for $12.99.</h2></div>
 <div class="plans">
 <article class="cl-sticky cl-sticky--tilt-r plan"><span class="cl-label">Free</span><div class="price"><b>$0</b><span>first 1,000 users</span></div>
-<ul><li>Up to 100 notes stored</li><li>300 recalls and 50 writes / month</li><li>2 computers, no credit card required</li><li class="no">No file attachments or task board</li></ul>
+<ul><li>Up to 100 notes stored</li><li>300 recalls and 50 writes / month</li><li>2 computers, no credit card required</li><li class="no">No file attachments or quest board</li></ul>
 <a class="cl-btn" href="${CONNECT}">Get Clyde</a></article>
 <article class="cl-card plan pick"><span class="cl-label">Clyde</span><div class="price"><b>$12.99</b><span>a month</span></div>
 <ul><li>2,000 recalls and 500 writes / month</li><li>5 GB file storage for logs, docs, and screenshots</li><li>1.5M tokens included for search and ranking</li>
-<li>Up to 10 computers, all supported apps, plus the task board</li><li>Overage is raw cost + 50%, capped at a monthly limit you set ($20 default)</li></ul>
+<li>Up to 10 computers, all supported apps, plus the quest board</li><li>Overage is raw cost + 50%, capped at a monthly limit you set ($20 default)</li></ul>
 <a class="cl-btn cl-btn--primary cl-btn--lg" href="${CONNECT}">Get Clyde</a></article>
 </div></section>`;
 
 function home(nonce) {
   const works = WORKS.map(([slug, name]) => `<li>${APP_LOGO[slug] ? appLogo(slug, 20) : ""}${name}</li>`).join("");
   return page(nonce, {
-    title: "Clyde · Shared memory for AI agents", path: "/",
-    description: "Shared memory for Claude, ChatGPT, Gemini, Codex, and Grok. Your agents read and write the same notes across apps and devices.",
+    title: "Clyde · Your agents have the memory of a goldfish", path: "/",
+    description: "Your AI agents have the memory of a goldfish. Clyde is a boring shared memory for Claude, ChatGPT, Gemini, Codex and Grok, so they stop forgetting.",
     css: HERO_CSS + SCENE_CSS + SITE_HOME_CSS, jsonld: HOME_LD, main: `<main>
 <section class="hero site-hero wrap"><div class="hero-text">
-<h1 class="cl-display hero-h1">Shared memory for your AI <em class="cl-scribble">agents.</em></h1>
-<p class="cl-lead">Right now, agent memory is mostly flat markdown files stuck in local folders. Your agents forget what happened last session, and they can't share context across computers, projects, or apps.</p>
-<p class="cl-lead">Clyde gives them one place to read and write notes.</p>
+<h1 class="cl-display hero-h1">Your agents have the memory of a <em class="cl-scribble">goldfish.</em></h1>
+<p class="cl-lead">For some reason, the best memory AI has to offer is a few Word documents with stuff stuck in them. Your agents can't remember what happened last time. They can't talk to each other across computers, projects or apps.</p>
+<p class="cl-lead">I don't know how the big AI shops haven't figured this out yet. So I made Clyde. It'll do until they do.</p>
 <div class="cta">${ARROW_SVG}<a class="cl-btn cl-btn--primary cl-btn--lg" href="${CONNECT}">Get Clyde</a><a class="cl-btn cl-btn--ghost cl-btn--lg" href="/how-it-works">How it works</a></div>
 <div class="works"><span class="cl-label">Works with</span><ul>${works}</ul></div></div>
 <div class="mascot-stage"><div class="mascot-row">${MASCOT(178)}</div>${SCENE}</div></section>
@@ -199,7 +199,7 @@ ${HONEST}
 <section class="wrap" id="how"><div class="section"><span class="cl-label">Setup</span><h2 class="cl-title-1">Three steps.</h2></div>
 <ol class="how"><li><span class="n">1</span><b>Paste the URL</b><p>Add <code>https://heyclyde.me/mcp</code> to your app.</p></li>
 <li><span class="n">2</span><b>Click the email link</b><p>Sign in via magic link. No passwords.</p></li>
-<li><span class="n">3</span><b>Use your agents</b><p>They read and write notes automatically.</p></li></ol></section>
+<li><span class="n">3</span><b>Talk like normal</b><p>Your agent takes the notes.</p></li></ol></section>
 ${PLANS}
 <section class="wrap"><div class="band"><div class="band-copy"></div><a class="cl-btn cl-btn--lg" href="${CONNECT}">Get Clyde</a></div></section>
 </main>`,

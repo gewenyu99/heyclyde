@@ -337,7 +337,7 @@ export function homePage(nonce) {
 <section class="hero wrap"><div class="hero-text"><span class="cl-label">Get Clyde</span>
 <h1 class="cl-display">Connect your <em class="cl-scribble">apps</em></h1>
 <p class="cl-lead">Add one MCP URL and click the email sign-in link to share memory across your agents.</p>
-<div class="cl-sticky cl-sticky--tilt hero-note"><b>Do not store passwords or API keys in Clyde.</b></div>
+<div class="cl-sticky cl-sticky--tilt hero-note"><b>Use with caution.</b> Put normal context and preferences in it.</div>
 <div class="cta"><a class="cl-btn cl-btn--primary cl-btn--lg" href="#apps">Pick your app</a><a class="cl-btn cl-btn--ghost cl-btn--lg" href="https://heyclyde.me/">What is Clyde?</a></div>
 <div class="works"><span class="cl-label">Plugs into</span><ul>${works}</ul></div></div><div class="hero-art">${SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 484, 280)}</div></section>
 <section class="wrap" id="apps"><div class="apps-head"><div class="section"><span class="cl-label">Connect</span><h2 class="cl-title-1">Pick your app</h2>
