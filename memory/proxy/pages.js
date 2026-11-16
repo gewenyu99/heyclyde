@@ -87,10 +87,9 @@ export const HERO_CSS = `
 @media (max-width:860px){.apps-head{grid-template-columns:minmax(0,1fr)}}
 .how{list-style:none;margin:0 0 24px;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 @media (max-width:860px){.how{grid-template-columns:minmax(0,1fr)}}
-.how li{display:grid;gap:10px;align-content:start;padding:22px;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-lg);background:var(--cl-paper-1)}
-.how .n{font:780 44px/1 var(--cl-font-display);letter-spacing:-.04em;color:var(--cl-carbon)}
-.how b{font:var(--cl-text-title-3)}
-.how p{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2)}
+.how{counter-reset:how}
+.how li{counter-increment:how;font:var(--cl-text-title-3);overflow-wrap:anywhere;padding:22px;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-lg);background:var(--cl-paper-1)}
+.how li::before{content:counter(how);display:block;margin-bottom:10px;font:780 44px/1 var(--cl-font-display);letter-spacing:-.04em;color:var(--cl-carbon)}
 `;
 
 export const CONNECT_CSS = `
@@ -217,22 +216,22 @@ export function statePage(data, nonce, id = "") {
     case "check_email":
       mark = `<div class="badge">${ICON.mail}</div>`; h1 = "Check your email"; title = "Check your email";
       lead = `We sent a sign-in link to ${data.email ? `<strong>${esc(data.email)}</strong>` : "your inbox"}. Open it on any device.`;
-      extra = live("This page will redirect automatically once confirmed.");
+      extra = live("This page redirects once you click the link.");
       break;
     case "waiting":
       mark = `<div class="badge">${ICON.wait}</div>`; h1 = "Waiting for confirmation"; title = "Waiting for confirmation";
-      lead = "Haven't seen the click yet. Check your spam folder if it hasn't arrived.";
-      extra = live("Polling for status...");
+      lead = "The link hasn't been clicked yet. Check your spam folder if the email hasn't arrived.";
+      extra = live("Checking for the click.");
       break;
     case "connected":
       mark = stamp("ok", "Approved", date); h1 = "Connected"; title = "Connected";
-      lead = `${app("Your app")} is now connected to Clyde.`;
+      lead = `${app("Your app")} is connected to Clyde.`;
       extra = note("Return to your app. You can close this tab.");
       break;
     case "refused":
       mark = stamp("bad", "Refused", date); h1 = "Connection refused"; title = "Connection refused";
       lead = `${app("This client")} wasn't connected and no data was shared.`;
-      extra = note(`Callback URL${data?.callback ? ` <code>${esc(data.callback)}</code>` : ""} didn't match a supported app or localhost. Attempt rejected and logged.`);
+      extra = note(`The callback URL${data?.callback ? ` <code>${esc(data.callback)}</code>` : ""} didn't match a supported app or localhost, so the attempt was rejected and logged.`);
       break;
     case "ask_email":
       mark = `<div class="badge">${ICON.mail}</div>`; h1 = "Sign in to Clyde"; title = "Sign in";
@@ -249,7 +248,7 @@ export function statePage(data, nonce, id = "") {
     case "subscribed":
       kind = "Subscription";
       mark = stamp("ok", "Paid", date); h1 = "Subscription active"; title = "Subscribed";
-      lead = "Your Clyde plan is active and limits will update within a minute.";
+      lead = "Your Clyde plan is active. Limits update within a minute.";
       extra = note("Return to your app. You can close this tab.");
       break;
     case "expired":
@@ -282,22 +281,22 @@ const APPS = [
     id: "claude-ai", logo: "claude", name: "Claude", sub: "claude.ai, Cowork, and mobile", tag: "Connector",
     body: `<ol class="steps"><li><span>Open <span class="k">Settings → Connectors → Add custom connector</span>.</span></li>
 <li><span>Paste the URL, click <span class="k">Add</span>, then <span class="k">Connect</span>.</span></li>
-<li><span>Click the email sign-in link. Once connected, it works across web, Cowork, and mobile.</span></li></ol>${copyBox(MCP_URL)}`,
+<li><span>Click the email sign-in link. It then works on web, Cowork and mobile.</span></li></ol>${copyBox(MCP_URL)}`,
   },
   {
     id: "claude-code", logo: "claude-code", name: "Claude Code and Codex", sub: "Terminal agents", tag: "One-liner",
-    body: `<p class="fine">Run this in your terminal to sign in by email and configure the MCP server and hooks for both tools.</p>${copyBox(INSTALL)}`,
+    body: `<p class="fine">Run this in your terminal. It signs you in by email and sets up the MCP server and hooks for both tools.</p>${copyBox(INSTALL)}`,
   },
   {
     id: "antigravity", logo: "antigravity", name: "Antigravity", sub: "Desktop IDE and CLI", tag: "Config",
-    body: `<p class="fine">Covered by the install script above, or add this to ~/.gemini/config/mcp_config.json and sign in when your browser opens.</p>
+    body: `<p class="fine">The install script above covers it. Or add this to ~/.gemini/config/mcp_config.json and sign in when your browser opens.</p>
 ${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { clyde: { serverUrl: MCP_URL } } }, null, 2))}`,
   },
   {
     id: "gemini", logo: "gemini", name: "Gemini app", sub: "gemini.google.com", tag: "Custom app",
     body: `<ol class="steps"><li><span>Open <span class="k">Settings → Connected Apps</span>.</span></li>
 <li><span>Add a custom app using Clyde's URL.</span></li>
-<li><span>Click the email sign-in link. Requires Google AI Ultra or a US account where applicable.</span></li></ol>${copyBox(MCP_URL)}`,
+<li><span>Click the email sign-in link. Needs Google AI Ultra or a US account where applicable.</span></li></ol>${copyBox(MCP_URL)}`,
   },
   {
     id: "grok", logo: "grok", name: "Grok", sub: "grok.com", tag: "Connector",
@@ -307,22 +306,22 @@ ${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { clyde: { serverUrl: 
   },
   {
     id: "antigravity-cloud", logo: "antigravity", name: "Antigravity cloud", sub: "Headless cloud environments", tag: "Token",
-    body: `<p class="fine">Headless boxes can't open email links. Copy ~/.config/memory/token from an authenticated machine into your cloud environment's secrets (never commit it to git).</p>
+    body: `<p class="fine">Headless boxes can't open email links. Copy ~/.config/memory/token from a signed-in machine into your cloud environment's secrets. Never commit it to git.</p>
 ${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { clyde: { serverUrl: MCP_URL, headers: { Authorization: "Bearer <your device token>" } } } }, null, 2))}`,
   },
 ];
 
 /** Apps nobody has connected to Clyde yet (no sessions from them as of 16 Nov 2026). They show a red asterisk. */
 export const SOON = new Set(["gemini", "grok", "chatgpt"]);
-const soon = (slug) => SOON.has(slug) ? '<span class="soon" aria-label="coming soon">*</span>' : "";
-export const SOON_NOTE = '<p class="soon-note"><span class="soon">*</span> Coming soon. Set up, not tested yet.</p>';
+const soon = (slug) => SOON.has(slug) ? '<span class="soon" aria-label="work in progress">*</span>' : "";
+export const SOON_NOTE = `<p class="soon-note"><span class="soon">*</span> WIP, Clyde's still workin' on it</p>`;
 export const WORKS = [["claude", "Claude"], ["claude-code", "Claude Code"], ["codex", "Codex"], ["gemini", "Gemini"], ["antigravity", "Antigravity"], ["grok", "Grok"], ["chatgpt", "ChatGPT"]];
 
 export const SCENE = `<div class="scene" aria-label="The same Clyde note showing up in Claude and in Codex">
 <div class="win w1"><div class="win-top"><i class="dots"></i>Claude<span>chat</span></div><div class="body">
 <div class="ask">Checkout's slow again. Any idea why?</div><p class="say">From Codex, last week:</p>
 <article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-chip">Decision</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">94% sure</span></div>
-<h3 class="cl-memory__title">The tax API retries 5 times. Raising the timeout made it worse. Don't.</h3>
+<h3 class="cl-memory__title">The tax API retries 5 times, so raising the timeout made checkout slower.</h3>
 <div class="cl-prov"><span class="cl-prov__who">atlas</span><span>Codex</span><span class="cl-prov__sep">/</span><span>mbp-work</span><span class="cl-prov__sep">/</span><span>6 d ago</span></div></article>
 <span class="via">${MARK(16)}from clyde</span></div></div>
 <div class="win w2"><div class="win-top"><i class="dots"></i>Codex<span>terminal</span></div><pre><b>›</b> fix checkout latency
@@ -342,19 +341,19 @@ export function homePage(nonce) {
 <main>
 <section class="hero wrap"><div class="hero-text"><span class="cl-label">Get Clyde</span>
 <h1 class="cl-display">Connect your <em class="cl-scribble">apps</em></h1>
-<p class="cl-lead">Add one MCP URL and click the email sign-in link to share memory across your agents.</p>
+<p class="cl-lead">Add one MCP URL to each app and click the email sign-in link.</p>
 <div class="cl-sticky cl-sticky--tilt hero-note"><b>Use with caution.</b> Put normal context and preferences in it.</div>
 <div class="cta"><a class="cl-btn cl-btn--primary cl-btn--lg" href="#apps">Pick your app</a><a class="cl-btn cl-btn--ghost cl-btn--lg" href="https://heyclyde.me/">What is Clyde?</a></div>
 <div class="works"><span class="cl-label">Connects to</span><ul>${works}</ul>${SOON_NOTE}</div></div><div class="hero-art">${SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 484, 280)}</div></section>
 <section class="wrap" id="apps"><div class="apps-head"><div class="section"><span class="cl-label">Connect</span><h2 class="cl-title-1">Pick your app</h2>
-<p class="cl-lead">Add this URL to your apps (including ChatGPT custom MCP connectors) and sign in via email.</p></div>
+<p class="cl-lead">Add this URL to each app, ChatGPT custom MCP connectors included, and sign in by email.</p></div>
 <div class="cl-field"><span class="cl-field__label">Server URL</span>${copyBox(MCP_URL)}</div></div>
 <div class="apps">${cards}</div></section>
 <section class="wrap" id="how"><div class="section"><span class="cl-label">Authentication</span><h2 class="cl-title-1">OAuth + magic link</h2></div>
 <ol class="how">
-<li><span class="n">1</span><b>Automatic client registration</b><p>Paste the URL once. Your client registers via OAuth, with no manual API keys required.</p></li>
-<li><span class="n">2</span><b>Email verification</b><p>Click the sign-in link on your phone or computer to complete the handshake.</p></li>
-<li><span class="n">3</span><b>Strict allowlist</b><p>Only Claude, ChatGPT, Antigravity, Gemini, Grok, and localhost callbacks are permitted. Unrecognized clients are rejected and logged.</p></li>
+<li>Paste the URL, and your app registers itself over OAuth with no API key.</li>
+<li>Click the sign-in link Clyde emails you, on your phone or computer.</li>
+<li>Callbacks from anything but Claude, ChatGPT, Antigravity, Gemini, Grok or localhost are rejected and logged.</li>
 </ol></section></main>${footer}`;
   return shell({ nonce, title: "Connect · Clyde", css: HOME_CSS, body, script: COPY_JS + STATUS_JS });
 }
