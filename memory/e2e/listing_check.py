@@ -126,8 +126,73 @@ def icons(errs):
         errs.append("clyde.svg: no <circle> centred in the viewBox with r = half its side")
 
 
+FUNCTION = "https://memory.heyclyde.me"
+REVIEWER = "review@heyclyde.me"
+
+
+def call(method, url, token=None, body=None, apikey=None, form=False):
+    """(status, parsed JSON or text). Never prints a token or the password."""
+    headers = {"Accept": "application/json", "User-Agent": "clyde-listing-check"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    if apikey:
+        headers["apikey"] = apikey
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode()
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            raw = r.read().decode()
+            status = r.status
+    except urllib.error.HTTPError as e:
+        raw, status = e.read().decode(), e.code
+    try:
+        return status, json.loads(raw)
+    except ValueError:
+        return status, raw
+
+
 def reviewer_account(errs):
-    errs.append("not built: review@heyclyde.me waits on tenancy (R48 to R50) and memory/seed/reviewer.sql")
+    """R55: review@heyclyde.me signs in with its password, has no MFA factor, holds 40 notes, and a deleted one comes back
+    with the reseed. The password is ~/.config/memory/review-password (0600, made by memory/seed/reviewer.sh); the reseed
+    is triggered with the admin token, as the nightly cron would run it."""
+    pw_file = Path.home() / ".config/memory/review-password"
+    admin_file = Path.home() / ".config/memory/admin-token"
+    if not pw_file.exists():
+        errs.append(f"no {pw_file}: the reviewer account isn't made yet (memory/seed/reviewer.sh)")
+        return
+    status, cfg = call("GET", f"{FUNCTION}/install/config")
+    if status != 200:
+        errs.append(f"/install/config answered {status}")
+        return
+    status, session = call("POST", f"{cfg['auth']}/token?grant_type=password", apikey=cfg["key"],
+                           body={"email": REVIEWER, "password": pw_file.read_text().strip()})
+    if status != 200 or not isinstance(session, dict) or not session.get("access_token"):
+        errs.append(f"password sign-in for {REVIEWER} answered {status}")
+        return
+    token = session["access_token"]
+    status, user = call("GET", f"{cfg['auth']}/user", token=token, apikey=cfg["key"])
+    factors = (user or {}).get("factors") or [] if isinstance(user, dict) else None
+    if status != 200 or factors is None or len(factors) != 0:
+        errs.append(f"{REVIEWER} has {len(factors or [])} MFA factors (status {status}), want 0")
+
+    def total():
+        s, body = call("GET", f"{FUNCTION}/me/entries", token=token)
+        return body.get("total") if s == 200 and isinstance(body, dict) else f"status {s}"
+
+    if total() != 40:
+        errs.append(f"/me/entries total is {total()}, want 40")
+        return
+    s, body = call("GET", f"{FUNCTION}/me/entries", token=token)
+    note = next(e["id"] for e in body["entries"] if e["pattern"] != "projects")
+    s, _ = call("DELETE", f"{FUNCTION}/me/entries/{note}", token=token)
+    if s != 200 or total() != 39:
+        errs.append(f"deleting {note} answered {s}, total {total()}, want 39")
+    s, _ = call("POST", f"{FUNCTION}/api/v1/reviewer/reseed", token=admin_file.read_text().strip())
+    if s != 200 or total() != 40:
+        errs.append(f"the reseed answered {s}, total {total()}, want 40")
 
 
 def words(s):
