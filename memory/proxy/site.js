@@ -175,7 +175,7 @@ const FEATURES = `<section class="wrap" id="what"><div class="section"><span cla
 <h3 class="cl-title-3">Shared memory</h3><p>Your agent writes down what you tell it, what it learns and what it's guessing. Later it <b class="hl hl--blue">looks up the notes related to what you're doing</b>, and the ones that never get used slowly fade away.</p>
 <div class="win"><div class="win-top"><i class="dots"></i>Gemini<span>chat</span></div><div class="body">
 <div class="ask">Write the intro for my history report.</div>
-<p class="say">You, to ChatGPT, last month: "For the 50th time, Times New Roman, 12 pt, double-spaced."</p>
+<p class="say">You, to ChatGPT, last month: "For the 50th time, Times New Roman, 12 pt, double-spaced. Calibri is for people who've given up."</p>
 <article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-chip">Preference</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">99% sure</span></div>
 <h3 class="cl-memory__title">Reports go in Times New Roman, 12 pt, double-spaced. Ms. Okafor called Calibri "an act of war."</h3><div class="cl-prov"><span class="cl-prov__who cl-pen-amber">juniper</span><span>ChatGPT</span><span class="cl-prov__sep">/</span><span>laptop</span></div></article>
 <span class="via">${MARK(16)}from clyde</span></div></div></article>
