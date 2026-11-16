@@ -85,11 +85,18 @@ Deno.test('the home page has an app picker, a recall carousel and one bottom but
 
   // The carousel: six slides that scroll and snap without script, and buttons that only show once the script runs.
   const built = section('built')
+  // Above the slides, a panel says how the spread works: 6 to 8 items, each a bold lead and its sentences.
+  const works = /<div class="rc-works">[\s\S]*?<\/ol><\/div>/.exec(built)?.[0] ?? ''
+  assert.ok(works && built.indexOf('<h2') < built.indexOf(works) && built.indexOf(works) < built.indexOf('<div class="rc-track"'), 'the panel sits under the heading, before the slides')
+  assert.equal((works.match(/<h3[^>]*>[^<]+<\/h3>/g) ?? []).length, 1, 'the panel has one heading')
+  const items = works.match(/<li>[\s\S]*?<\/li>/g) ?? []
+  assert.ok(items.length >= 6 && items.length <= 8, `${items.length} items in the panel`)
+  for (const it of items) assert.ok(/^<li><b>[^<]+\.<\/b> \S/.test(it), `a bold lead, then its sentence: ${it.slice(0, 40)}`)
   const slides = built.match(/<article class="cl-card rc-slide">/g) ?? []
   assert.equal(slides.length, 6, 'six slides')
   const stories = built.match(/<ol class="rc-story">[\s\S]*?<\/ol>/g) ?? []
   assert.equal(stories.length, 3, 'three saved-then-recalled stories, first')
-  assert.ok(built.indexOf('<ol class="rc-story">') < built.indexOf('<svg'), 'the stories lead the carousel')
+  assert.ok(built.indexOf('<div class="rc-track"') < built.indexOf('<svg') && built.indexOf('<svg') < built.indexOf('<ol class="rc-story">'), 'the spreading recall leads the carousel')
   for (const st of stories) {
     assert.equal((st.match(/<li>/g) ?? []).length, 3, 'a story is three steps: saved, recalled, what it did')
     assert.equal((st.match(/<article class="cl-card cl-memory">/g) ?? []).length, 1, 'the saved note is a memory card')
@@ -100,6 +107,22 @@ Deno.test('the home page has an app picker, a recall carousel and one bottom but
   }
   assert.equal((built.match(/<svg[^>]*role="img"[^>]*aria-label="[^"]+"/g) ?? []).length, 1, 'a labelled graph on the spreading recall')
   assert.equal((built.match(/class="rc-q"/g) ?? []).length, 4, 'a query on each recall')
+  // The graph: it lights in eight steps, links are as thick as their weights and labelled, and two notes end stamped used.
+  const graph = /<svg[\s\S]*?<\/svg>/.exec(built)?.[0] ?? ''
+  const steps = new Set(attr(graph, /class="[^"]*\brc-[sd](\d)\b[^"]*"/g))
+  assert.deepEqual([...steps].sort(), ['1', '2', '3', '4', '5', '6', '7', '8'], 'eight steps: query, search, seeds, links, hop 1, links, hop 2, verdicts')
+  for (const n of steps) assert.ok(html.includes(`@keyframes rc-s${n}{`) && html.includes(`@keyframes rc-d${n}{`), `step ${n} has its keyframes`)
+  assert.deepEqual(attr(graph, /<text class="rc-l"[^>]*>([^<]+)</g), ['QUERY', 'SEEDS', 'HOP 1', 'HOP 2'], 'the waves, in order')
+  const links = [...graph.matchAll(/<path class="rc-e" stroke-width="([\d.]+)"[^>]*\/><path class="rc-e rc-el rc-d\d" pathLength="1" stroke-width="\1"[^>]*\/><text class="rc-k"[^>]*>(relates|co_used) (\d\.\d)</g)]
+  assert.equal(links.length, 4, 'four links, each drawn dim and lit, with its type and weight')
+  const byWeight = links.map((m) => [Number(m[3]), Number(m[1])]).sort((a, b) => a[0] - b[0])
+  for (let i = 1; i < byWeight.length; i++) assert.ok(byWeight[i][1] > byWeight[i - 1][1], `a link of weight ${byWeight[i][0]} is thicker than one of ${byWeight[i - 1][0]}`)
+  assert.equal((graph.match(/<text class="rc-stt"[^>]*>USED</g) ?? []).length, 2, 'two used stamps in the graph')
+  assert.equal((graph.match(/class="rc-n rc-nu"/g) ?? []).length, 2, 'two notes end highlighted')
+  assert.ok(/@media \(prefers-reduced-motion:reduce\)\{\.rc-on,\.rc-el\{animation:none\}\}/.test(html), 'reduced motion shows the final state')
+  assert.ok(!/\.rc-(on|el|nl|nu)\{[^}]*opacity:0/.test(html), 'nothing in the graph is hidden unless its animation hides it')
+  assert.equal((built.match(/<span class="rc-score">/g) ?? []).length, 4, 'the ranked list scores four seeds')
+  for (const w of attr(built, /<i class="rc-p(\d+)"><\/i>/g)) assert.ok(html.includes(`.rc-p${w}{width:${w}%}`), `the ${w}% score bar is ${w}% wide`)
   assert.ok((built.match(/class="cl-stamp[^"]*"/g) ?? []).length >= 6, 'verdict stamps')
   assert.equal((built.match(/<li class="cl-sticky /g) ?? []).length, 6, 'the quest timeline is six sticky notes')
   assert.equal((built.match(/<i class="rc-w\d+"><\/i>/g) ?? []).length, 3, 'three bars')

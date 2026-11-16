@@ -191,8 +191,14 @@ const FEATURES = `<section class="wrap" id="what"><div class="section"><span cla
 <span class="via">${MARK(16)}from clyde</span></div></div></article>
 </div></section>`;
 
-// How Clyde was used to build Clyde: six slides copied from the store. Three notes saved in one place and recalled days later
-// in another, one recall that followed links, a quest and the feedback counts. Nothing here is made up.
+// How Clyde was used to build Clyde: six slides copied from the store. One recall that followed links, drawn as a graph,
+// three notes saved in one place and recalled days later in another, a quest and the feedback counts. Nothing here is made up.
+// The graph lights in 8 steps over a 16 s loop: query, search, seeds, links, hop 1, links, hop 2, verdicts. Each number is
+// the percent of the loop where a step starts. Notes pop in (rc-s). Links draw from their source and column heads fade in (rc-d).
+const RC_STEPS = [3, 7.5, 12.5, 20, 25, 32.5, 37.5, 45];
+const RC_STEPS_CSS = RC_STEPS.map((a, i) => `.rc-s${i + 1}{animation:rc-s${i + 1} 16s infinite both}.rc-d${i + 1}{animation:rc-d${i + 1} 16s infinite both}
+@keyframes rc-s${i + 1}{0%,${a}%{opacity:0;transform:scale(.5)}${a + 1.5}%{opacity:1;transform:scale(1.2)}${a + 3}%,92%{opacity:1;transform:scale(1)}96%,100%{opacity:0;transform:scale(1)}}
+@keyframes rc-d${i + 1}{0%,${a}%{opacity:0;stroke-dashoffset:1}${a + .2}%{opacity:1;stroke-dashoffset:1}${a + 4.5}%,92%{opacity:1;stroke-dashoffset:0}96%,100%{opacity:0;stroke-dashoffset:0}}`).join("\n");
 const RECALL_CSS = `
 .built{margin-bottom:76px}
 .rc-track{display:flex;align-items:flex-start;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;overscroll-behavior-x:contain;scroll-padding:0 4px;padding:4px 4px 14px;scrollbar-width:thin}
@@ -203,7 +209,7 @@ const RECALL_CSS = `
 .rc-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px}
 .rc-head h3{margin:0}
 .rc-meta{font:var(--cl-text-mono);font-size:12.5px;color:var(--cl-ink-3)}
-.rc-body{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr);gap:18px 28px;align-items:start}
+.rc-body{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:18px 28px;align-items:start}
 @media (max-width:760px){.rc-body{grid-template-columns:minmax(0,1fr)}}
 .rc-list{display:grid;gap:14px;min-width:0}
 .rc-q{margin:0;padding:10px 12px;border-radius:var(--cl-radius-md);background:var(--cl-paper-2);font:var(--cl-text-mono);font-size:12.5px;line-height:1.55;color:var(--cl-ink);overflow-wrap:anywhere}
@@ -215,17 +221,46 @@ const RECALL_CSS = `
 .rc-dot{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--cl-ink-3);background:var(--cl-paper-1);font:700 10px/1 var(--cl-font-mono);font-style:normal;color:var(--cl-ink)}
 .rc-dot.is-used{background:var(--cl-carbon);border-color:var(--cl-carbon);color:var(--cl-on-carbon)}
 .rc-tally{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding-top:12px;border-top:1px dashed var(--cl-rule-strong);font:var(--cl-text-small);color:var(--cl-ink-2)}
+.rc-mech{display:flex;flex-wrap:wrap;gap:6px}
+.rc-seed{grid-column:2/-1}
+.rc-ttl{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.rc-score{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;max-width:260px;margin-top:5px}
+.rc-bar{height:6px;border-radius:var(--cl-radius-xs);background:var(--cl-paper-2);overflow:hidden}
+.rc-bar i{display:block;height:100%;background:var(--cl-carbon)}
+.rc-score b{font:600 12px/1 var(--cl-font-mono);font-variant-numeric:tabular-nums;color:var(--cl-ink)}
+.rc-p100{width:100%}.rc-p71{width:71%}.rc-p50{width:50%}.rc-p48{width:48%}
 .rc-fig{margin:0;display:grid;gap:8px;padding:12px;border:1px dashed var(--cl-rule-strong);border-radius:var(--cl-radius-lg);background:var(--cl-paper-0)}
-.rc-fig svg{display:block;width:100%;height:auto;max-width:380px;margin:0 auto}
-.rc-fig figcaption{display:flex;align-items:center;gap:8px;font:var(--cl-text-mono);font-size:11.5px;color:var(--cl-ink-3)}
-.rc-e{stroke:var(--cl-rule-strong);stroke-width:1.5}
-.rc-n{fill:var(--cl-paper-1);stroke:var(--cl-ink-3);stroke-width:1.5}
-.rc-n.is-q{fill:var(--cl-sticky);stroke:var(--cl-ink)}
-.rc-n.is-used{fill:var(--cl-carbon);stroke:var(--cl-carbon)}
-.rc-t{fill:var(--cl-ink);font:700 10px var(--cl-font-mono)}
-.rc-t.is-used{fill:var(--cl-on-carbon)}
+@media (max-width:520px){.rc-fig{padding:8px}}
+.rc-fig svg{display:block;width:100%;height:auto;max-width:540px;margin:0 auto}
+.rc-fig figcaption{font:var(--cl-text-mono);font-size:11.5px;color:var(--cl-ink-3)}
+.rc-e{fill:none;stroke:var(--cl-rule-strong)}
+.rc-eq{stroke-width:1.5;stroke-dasharray:3 3}
+.rc-el{stroke:var(--cl-carbon);stroke-dasharray:1;stroke-dashoffset:0}
+.rc-el.rc-eq{stroke:var(--cl-ink);stroke-dasharray:3 3}
+.rc-n{fill:var(--cl-paper-1);stroke:var(--cl-rule-strong);stroke-width:1.5}
+.rc-nq{fill:var(--cl-sticky);stroke:var(--cl-ink)}
+.rc-nl{fill:var(--cl-carbon-wash);stroke:var(--cl-carbon)}
+.rc-nu{fill:var(--cl-carbon);stroke:var(--cl-carbon)}
+.rc-ring{fill:none;stroke:var(--cl-carbon);stroke-width:1.5;stroke-dasharray:3 3}
+.rc-t{fill:var(--cl-ink-3);font:700 10px var(--cl-font-mono)}
+.rc-tl{fill:var(--cl-ink)}
+.rc-tu{fill:var(--cl-on-carbon)}
 .rc-l{fill:var(--cl-ink-3);font:500 9px var(--cl-font-mono);letter-spacing:.08em}
+.rc-ll{fill:var(--cl-ink);font-weight:700}
 .rc-k{fill:var(--cl-ink-2);font:500 9.5px var(--cl-font-mono);paint-order:stroke;stroke:var(--cl-paper-0);stroke-width:5px;stroke-linejoin:round}
+.rc-st{fill:var(--cl-paper-1);stroke:var(--cl-ok);stroke-width:2}
+.rc-stt{fill:var(--cl-ok);font:700 10px var(--cl-font-mono);letter-spacing:.12em}
+.rc-on{transform-box:fill-box;transform-origin:center}
+${RC_STEPS_CSS}
+@media (prefers-reduced-motion:reduce){.rc-on,.rc-el{animation:none}}
+.rc-works{display:grid;gap:14px;margin:0 4px 26px;padding:18px 20px;border:1px dashed var(--cl-rule-strong);border-radius:var(--cl-radius-lg)}
+.rc-works h3{margin:0}
+.rc-works ol{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 26px}
+.rc-works li{font:var(--cl-text-small);color:var(--cl-ink-2)}
+.rc-works li b{display:block;margin-bottom:2px;font:var(--cl-text-label);letter-spacing:.06em;text-transform:uppercase;color:var(--cl-carbon)}
+.rc-works code{font:var(--cl-text-mono);font-size:12px;color:var(--cl-ink)}
+@media (max-width:1000px){.rc-works ol{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:560px){.rc-works{padding:14px 16px}.rc-works ol{grid-template-columns:minmax(0,1fr);gap:12px}}
 .rc-line{list-style:none;margin:0;padding:4px 2px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 @media (max-width:760px){.rc-line{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}}
 .rc-line li{display:grid;gap:8px;align-content:start;min-height:112px;padding:20px 14px 14px;font:var(--cl-text-small);color:var(--cl-ink)}
@@ -277,24 +312,42 @@ const RECALL_CSS = `
 const rcNote = (n, title, how = "", verdict = "") => `<li><i class="rc-dot${verdict === "Used" ? " is-used" : ""}">${n}</i><span>${esc(title)}${how ? `<small>${how}</small>` : ""}</span>${
   verdict ? `<span class="cl-stamp${verdict === "Used" ? " cl-stamp--ok" : ""}">${verdict}</span>` : ""}</li>`;
 const rcGroup = (label, notes) => `<div class="rc-group"><span class="cl-label">${label}</span><ul class="rc-notes">${notes.join("")}</ul></div>`;
-/** The graph beside a recall: nodes are [label, x, y, kind], edges are [from, to, link type], heads are [x, text]. */
-function rcGraph(alt, heads, nodes, edges) {
-  const at = Object.fromEntries(nodes.map((n) => [n[0], n]));
-  const lines = edges.map(([a, b, kind]) => {
-    const [, x1, y1] = at[a], [, x2, y2] = at[b];
-    const label = !kind ? "" : x1 === x2 ? `<text class="rc-k" x="${x1 + 17}" y="${(y1 + y2) / 2 + 3}">${kind}</text>`
-      : `<text class="rc-k" x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 + 3}" text-anchor="middle">${kind}</text>`;
-    return `<line class="rc-e" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>${label}`;
+/** A seed in the ranked list: its hybrid score, and a bar as wide as its share of the top score. */
+const rcSeed = (n, title, score, pct, verdict = "") => `<li><i class="rc-dot${verdict === "Used" ? " is-used" : ""}">${n}</i><span class="rc-seed"><span class="rc-ttl"><span>${esc(title)}</span>` +
+  `${verdict ? `<span class="cl-stamp cl-stamp--ok">${verdict}</span>` : ""}</span><span class="rc-score"><span class="rc-bar"><i class="rc-p${pct}"></i></span><b>${score}</b></span></span></li>`;
+// The spreading recall's graph. Where each note sits, the seeds' hybrid scores, and the links the spread followed:
+// [from, to, link type, learned weight, the step that draws it, a sideways shift for a second link between the same notes].
+const RC_AT = { Q: [30, 136], 1: [120, 46], 2: [120, 106], 3: [120, 166], 4: [120, 226], 5: [250, 170], 6: [250, 268], 7: [250, 46], 8: [336, 46] };
+const RC_SCORE = { 1: "0.0645", 2: "0.0460", 3: "0.0321", 4: "0.0307" };
+const RC_LINKS = [[4, 5, "relates", "1.0", 4, 0], [4, 6, "co_used", "0.1", 4, 0], [7, 8, "relates", "1.2", 6, -4.5], [7, 8, "co_used", "0.3", 6, 4]];
+const RC_LIT = { Q: 1, 1: 3, 2: 3, 3: 3, 4: 3, 5: 5, 6: 5, 7: 5, 8: 7 };
+const RC_USED = [[4, 70, 262], [6, 306, 262]];
+function rcGraph(alt) {
+  const r1 = (v) => Math.round(v * 10) / 10;
+  const dot = (id, cls, tcls) => `<circle class="rc-n${cls}" cx="${RC_AT[id][0]}" cy="${RC_AT[id][1]}" r="${id === "Q" ? 12 : 11}"/>` +
+    `<text class="rc-t${tcls}" x="${RC_AT[id][0]}" y="${RC_AT[id][1] + 3.5}" text-anchor="middle">${id}</text>`;
+  const heads = [[30, "QUERY", 1], [120, "SEEDS", 3], [250, "HOP 1", 5], [336, "HOP 2", 7]].map(([x, t, step]) =>
+    `<text class="rc-l" x="${x}" y="12" text-anchor="middle">${t}</text><g class="rc-on rc-d${step}"><text class="rc-l rc-ll" x="${x}" y="12" text-anchor="middle">${t}</text></g>`).join("");
+  // A search hit is a dashed line of one width. It isn't a link, so it has no weight. It stays dashed when lit, so it fades in.
+  const hits = [1, 2, 3, 4].map((n) => `M${RC_AT.Q.join(" ")}L${RC_AT[n].join(" ")}`).map((d) =>
+    `<path class="rc-e rc-eq" d="${d}"/><path class="rc-e rc-eq rc-el rc-d2" d="${d}"/>`).join("");
+  // A link is as thick as its learned weight, with its type and weight written along it.
+  const links = RC_LINKS.map(([a, b, kind, weight, step, shift]) => {
+    const [x1, y1] = RC_AT[a], [x2, y2] = RC_AT[b], len = Math.hypot(x2 - x1, y2 - y1), nx = -(y2 - y1) / len, ny = (x2 - x1) / len;
+    const wide = r1(0.8 + 3.2 * Number(weight)), d = `M${r1(x1 + nx * shift)} ${r1(y1 + ny * shift)}L${r1(x2 + nx * shift)} ${r1(y2 + ny * shift)}`;
+    const off = shift > 0 ? shift + wide / 2 + 10 : shift - wide / 2 - 4, lx = r1((x1 + x2) / 2 + nx * off), ly = r1((y1 + y2) / 2 + ny * off);
+    return `<path class="rc-e" stroke-width="${wide}" d="${d}"/><path class="rc-e rc-el rc-d${step}" pathLength="1" stroke-width="${wide}" d="${d}"/>` +
+      `<text class="rc-k" x="${lx}" y="${ly}" text-anchor="middle" transform="rotate(${r1(Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI)} ${lx} ${ly})">${kind} ${weight}</text>`;
   }).join("");
-  const dots = nodes.map(([label, x, y, kind = ""]) => `<circle class="rc-n${kind ? ` is-${kind}` : ""}" cx="${x}" cy="${y}" r="11"/>` +
-    `<text class="rc-t${kind === "used" ? " is-used" : ""}" x="${x}" y="${y + 3.5}" text-anchor="middle">${label}</text>`).join("");
-  return `<figure class="rc-fig"><svg viewBox="0 0 300 160" role="img" aria-label="${alt}">` +
-    heads.map(([x, t]) => `<text class="rc-l" x="${x}" y="11" text-anchor="middle">${t}</text>`).join("") + lines + dots + `</svg>` +
-    `<figcaption><i class="rc-dot is-used"></i>marked used</figcaption></figure>`;
+  const scores = Object.entries(RC_SCORE).map(([n, v]) => `<text class="rc-k" x="${RC_AT[n][0]}" y="${RC_AT[n][1] + 25}" text-anchor="middle">${v}</text>`).join("");
+  const ids = Object.keys(RC_LIT).sort((a, b) => (a === "Q") - (b === "Q"));
+  const lit = ids.map((id) => `<g class="rc-on rc-s${RC_LIT[id]}">${dot(id, id === "Q" ? " rc-nq" : " rc-nl", " rc-tl")}</g>`).join("");
+  const used = RC_USED.map(([id, sx, sy]) => `<g class="rc-on rc-s8">${dot(id, " rc-nu", " rc-tu")}<circle class="rc-ring" cx="${RC_AT[id][0]}" cy="${RC_AT[id][1]}" r="16"/></g>` +
+    `<g class="rc-on rc-s8"><g transform="rotate(-6 ${sx} ${sy})"><rect class="rc-st" x="${sx - 22}" y="${sy - 9.5}" width="44" height="19" rx="2"/><text class="rc-stt" x="${sx + 1}" y="${sy + 4}" text-anchor="middle">USED</text></g></g>`).join("");
+  return `<figure class="rc-fig"><svg viewBox="0 0 368 296" role="img" aria-label="${alt}">${heads}${hits}${links}${scores}${ids.map((id) => dot(id, "", "")).join("")}${lit}${used}</svg>` +
+    `<figcaption>A line is as thick as its link's learned weight. Dashed lines are search hits.</figcaption></figure>`;
 }
 const rcSlide = (title, meta, body) => `<article class="cl-card rc-slide"><div class="rc-head"><h3 class="cl-title-3">${title}</h3>${meta ? `<span class="rc-meta">${meta}</span>` : ""}</div>${body}</article>`;
-const rcRecall = (title, meta, query, groups, tally, graph) => rcSlide(title, meta,
-  `<div class="rc-body"><div class="rc-list"><p class="rc-q"><b>recall</b> "${esc(query)}"</p>${groups.join("")}${tally ? `<div class="rc-tally">${tally}</div>` : ""}</div>${graph}</div>`);
 const rcStep = (n, slug, who, what, when = "") => `<li class="cl-sticky ${n % 2 ? "cl-sticky--tilt" : "cl-sticky--tilt-r"}"><span class="rc-who">${appLogo(slug, 18)}${who}<b>${n}</b></span><p>${what}</p>${when ? `<small>${when}</small>` : ""}</li>`;
 const rcWho = (slug, who) => `<span class="rc-who">${appLogo(slug, 18)}${who}</span>`;
 /** A note saved in one place and recalled days later in another: the note, the recall that found it, and what the agent did next. */
@@ -305,6 +358,20 @@ const rcStory = (title, meta, [on, slug, by, note], [later, slug2, who, doing, q
 <li><span class="rc-step"><i class="rc-dot is-used">3</i><span class="cl-label">What it did</span></span><div class="cl-sticky cl-sticky--tilt-r">${rcWho(slug2, who)}<p>${did}</p></div></li></ol>`);
 
 const RECALLS = [
+  rcSlide("Spreading activation", "865 ms · 7 Nov 2026 · spreading.v6", `<p class="rc-q"><b>recall</b> "requirements for lists and responses format; store plans in memory with artifacts"</p>
+<div class="rc-mech">${["Keyword plus vector", "Reciprocal rank, k=10", "Personalized PageRank", "Restart 0.5", "20 iterations", "Paths up to 3 hops"].map((c) => `<span class="cl-chip">${c}</span>`).join("")}</div>
+<div class="rc-body">${rcGraph("The query's search finds four seed notes. From note 4, a relates link of weight 1.0 reaches note 5 and a co_used link of weight 0.1 reaches note 6. " +
+    "Note 7 links to note 8 by a relates link of weight 1.2 and a co_used link of weight 0.3. Notes 4 and 6 were marked used.")}
+<div class="rc-list">${rcGroup("Seeds, by hybrid score", [
+    rcSeed(1, "memory on Supabase, connectors and heyclyde.me", RC_SCORE[1], 100),
+    rcSeed(2, "Clyde's project package", RC_SCORE[2], 71),
+    rcSeed(3, "Your personal knowledge graph", RC_SCORE[3], 50),
+    rcSeed(4, "Plans live in memory, with the plan files as artifacts", RC_SCORE[4], 48, "Used")])}${rcGroup("Along the links", [
+    rcNote(5, "Write a memory handoff per task, with dependencies and a plan", "relates 1.0 from note 4"),
+    rcNote(6, "Before starting, give me a short requirements checklist", "co_used 0.1 from note 4", "Used"),
+    rcNote(7, "Agents check memory before touching the filesystem"),
+    rcNote(8, "Every turn starts by checking memory and ends by saving to it", "relates 1.2 and co_used 0.3 from note 7")])}
+<div class="rc-tally"><span>2 notes</span><span class="cl-stamp cl-stamp--ok">Used</span><span>4 others</span><span class="cl-stamp">Irrelevant</span></div></div></div>`),
   rcStory("You said it once", "Claude Code to Antigravity",
     ["7 Nov 2026", "claude-code", "Your words, in a Claude Code chat", "After fixing, an independent audit agent reviews the changes before I see them."],
     ["9 days later · 16 Nov", "antigravity", "Antigravity", "It was working on a different project. It got that note and marked it used.", "gemini decisions, secrets, relevance", "2.6 s"],
@@ -317,17 +384,6 @@ const RECALLS = [
     ["9 Nov 2026", "claude-code", "One Claude Code session", "like-vincent changes go straight to main, then install right after."],
     ["4 days later · 13 Nov", "claude-code", "Another Claude Code session", "It asked how to publish a change and marked that note used.", "how to publish a like-vincent plugin change: release, version bump, branch, PR", "2.4 s"],
     "It pushed to main and reinstalled, with no PR and no version-bump detour."),
-  rcRecall("Spreading activation", "865 ms · 7 Nov 2026", "requirements for lists and responses format; store plans in memory with artifacts", [
-    rcGroup("Search hits", [
-      rcNote(1, "memory on Supabase, connectors and heyclyde.me"),
-      rcNote(2, "Plans live in memory, with the plan files as artifacts", "", "Used")]),
-    rcGroup("Reached by link", [
-      rcNote(3, "Before starting, give me a short requirements checklist", "co-used link from note 2", "Used"),
-      rcNote(4, "Write a memory handoff per task, with dependencies and a plan", "relates link from note 2")]),
-  ], `<span>4 other notes</span><span class="cl-stamp">Irrelevant</span>`,
-  rcGraph("The query finds notes 1 and 2. Note 2 links to note 3 by a co-used link and to note 4 by a relates link. Notes 2 and 3 were marked used.",
-    [[28, "QUERY"], [136, "SEARCH"], [262, "LINKS"]], [["Q", 28, 84, "q"], [1, 136, 44], [2, 136, 112, "used"], [3, 262, 76, "used"], [4, 262, 140]],
-    [["Q", 1], ["Q", 2], [2, 3, "co-used"], [2, 4, "relates"]])),
   rcSlide("The quest board", "Quest #8 · 15 to 16 Nov 2026", `<ol class="rc-line">${[
     rcStep(1, "claude-code", "Claude Code", "Posted a handoff quest."),
     rcStep(2, "antigravity", "Antigravity", "Claimed it."),
@@ -340,7 +396,19 @@ const RECALLS = [
     [["Hybrid", 60], ["Spreading", 59], ["Keyword-only", 52]].map(([k, v]) => `<div><dt>${k}</dt><dd><i class="rc-w${v}"></i></dd><b>${v}%</b></div>`).join("")}</dl>
 <p class="rc-say">Share marked used, by recall method. Under 0.5% marked wrong.</p>`),
 ];
+// What the spread does, in the numbers the code runs with (memory/supabase and eval/ants.py).
+const WORKS_PANEL = [
+  ["Seeds", "Hybrid search picks starting notes by keyword and by meaning, merged by reciprocal rank."],
+  ["Spread", "Activation flows from the seeds over typed links by personalized PageRank (restart 0.5, 20 rounds), up to 3 hops."],
+  ["Weights", "Each link counts as its type's weight times its own learned weight."],
+  ["Ants", "An ant colony (<code>eval/ants.py</code>) trains the link-type weights on test questions: 3 hops, α 1, β 2, 10% exploration. It hasn't beaten plain weights yet, so they're all 1.0."],
+  ["Learning", "When an agent uses two notes together, their <code>co_used</code> link gains 0.1, up to 1. It only counts after 2 different sessions, and it loses 0.05 for every 200 times one shows up without the other."],
+  ["Feedback", "A new note gets 3 showings On trial, and its confidence moves 0.12 per verdict. A settled note moves 0.02. Under 0.15 it goes dormant: never deleted, just skipped."],
+  ["Temperature", "Recency and use are scored ACT-R style, on the recall clock (decay 0.5, floored at −3, the last 1,000 recalls). A use or the owner's confirmation counts 3, an open counts 1. Notes don't cool while you're away."],
+  ["Three rankers", "Keyword, hybrid and spreading split traffic 1:2:2, and a fourth (log-odds with temperature) runs in shadow. Agents' verdicts decide which one wins."],
+];
 const BUILT = `<section class="wrap built" id="built"><div class="section"><h2 class="cl-title-1">How it was used to build Clyde</h2></div>
+<div class="rc-works"><h3 class="cl-title-3">How the spreading works</h3><ol>${WORKS_PANEL.map(([lead, say]) => `<li><b>${lead}.</b> ${say}</li>`).join("")}</ol></div>
 <div class="rc" id="rc"><div class="rc-nav" hidden><button class="cl-btn cl-btn--sm" type="button" aria-label="Previous slide">←</button><span class="rc-count">1 / ${RECALLS.length}</span><button class="cl-btn cl-btn--sm" type="button" aria-label="Next slide">→</button></div>
 <div class="rc-track" tabindex="0" role="group" aria-label="${RECALLS.length} slides">${RECALLS.join("\n")}</div>
 <p class="rc-foot"><a href="/how-it-works#built">See the counts</a></p></div></section>`;
