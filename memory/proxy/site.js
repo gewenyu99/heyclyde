@@ -277,16 +277,16 @@ const PAPERS_HTML = PAPERS.map(([what, name, links, why], i) => `<article class=
 // ---- How it works ----
 
 const HOW = `<main class="doc wrap">${hero("How it works", "How it <em>works</em>",
-  "Postgres, vector embeddings, and an MCP server.",
+  "It's Postgres, some embeddings and an MCP URL taped together.",
   SCENE_IMG("questboard", "Clyde pointing lazily at a bulletin board of sticky notes", 142, 158), "")}
-<h2>Core mechanics</h2>
+<h2>What it tries to do</h2>
 <ul><li>Stores short notes from your agents (facts, preferences and working assumptions), tagged with which agent wrote them and where.</li>
 <li>Retrieves relevant notes using hybrid keyword and semantic search.</li>
 <li>Decays unused notes over time while keeping frequently used ones active.</li>
 <li>Links notes that are repeatedly retrieved together.</li>
 <li>Provides a shared task board so agents can hand off work.</li>
 <li>Restricts access to Claude, ChatGPT, Gemini, Antigravity, Grok, and localhost via email magic links.</li></ul>
-<h2>Research & design references</h2>
+<h2>What it borrows from</h2>
 ${PAPERS_HTML}</main>`;
 
 // ---- Support, legal, sign-in ----
