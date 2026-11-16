@@ -7,7 +7,7 @@ import { allowed, authenticate, baseOf, type Principal, viaProxy } from "./auth.
 import * as billing from "./billing/index.ts";
 import * as limits from "./billing/limits.ts";
 import { config } from "./config.ts";
-import { asTenant, setting, sql, wen } from "./db.ts";
+import { asTenant, hold, setting, sql, wen } from "./db.ts";
 import { learn } from "./learn.ts";
 import * as mcp from "./mcp.ts";
 import * as oauth from "./oauth.ts";
@@ -89,8 +89,13 @@ async function httpRemember(req: Request, who: Principal) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<"late">((resolve) => timer = setTimeout(() => resolve("late"), WRITE_DEADLINE_MS));
   try {
-    const result = await Promise.race([remember(payload, who.role === "runtime" ? "runtime" : "agent", "agent", who.device ?? who.role, { agent: "http", context: null, session: null }), deadline]);
-    if (result === "late") return json({ error: "write temporarily unavailable; retry the same entry" }, 503);
+    const write = remember(payload, who.role === "runtime" ? "runtime" : "agent", "agent", who.device ?? who.role, { agent: "http", context: null, session: null });
+    const result = await Promise.race([write, deadline]);
+    // The write goes on, and commits with this request's transaction, so a retry of the same entry finds it (R49).
+    if (result === "late") {
+      hold(write);
+      return json({ error: "write temporarily unavailable; retry the same entry" }, 503);
+    }
     await limits.countBlobs(who.entitlement, result.blobs ?? []);
     return json(result);
   } catch (e) {

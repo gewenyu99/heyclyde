@@ -169,22 +169,27 @@ test("R49: no route returns another owner's rows", { skip: SKIP }, async () => {
   }
   const list = JSON.parse((await bed.call('POST', '/mcp', bearer(A.token), { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })).text)
   const tools: string[] = list.result.tools.map((t: { name: string }) => t.name)
-  const texts: string[] = []
-  for (const name of tools) texts.push(`${name}: ${(await a.tool(name, ARGS[name] ?? {})).text}`)
-  texts.push((await a.tool('get_entry', { id: 'shared-note' })).text)
+  // Each answer, with what A itself sent: an answer may name an id A asked about ("No entry <id>"), never one it didn't.
+  const texts: { text: string; sent: string }[] = []
+  for (const name of tools) texts.push({ text: `${name}: ${(await a.tool(name, ARGS[name] ?? {})).text}`, sent: JSON.stringify(ARGS[name] ?? {}) })
+  texts.push({ text: (await a.tool('get_entry', { id: 'shared-note' })).text, sent: '' })
   for (const event of ['SessionStart', 'UserPromptSubmit', 'PostToolUse']) {
-    texts.push((await http('POST', `/hooks/${event}?agent=claude`, A.token, { session_id: `ra-${nonce()}`, prompt: MB, tool_name: 'Read' })).text)
+    texts.push({ text: (await http('POST', `/hooks/${event}?agent=claude`, A.token, { session_id: `ra-${nonce()}`, prompt: 'hello', tool_name: 'Read' })).text, sent: '' })
   }
-  texts.push((await http('GET', '/messages/claude', A.token)).text)
-  texts.push((await http('POST', '/recall', A.token, { query: `${MB} B first` })).text)
+  texts.push({ text: (await http('GET', '/messages/claude', A.token)).text, sent: '' })
+  texts.push({ text: (await http('POST', '/recall', A.token, { query: `${MB} B first` })).text, sent: MB })
   const entryAnswer = await http('GET', `/entries/${b1}`, A.token)
   const blobAnswer = await http('GET', `/blobs/${bSha}`, A.token)
-  texts.push(entryAnswer.text, blobAnswer.text)
+  texts.push({ text: entryAnswer.text, sent: b1 }, { text: blobAnswer.text, sent: bSha })
 
   assert.deepEqual(tools.filter((t) => !(t in ARGS)), [], 'every tool in tools/list was called with arguments')
-  const all = texts.join('\n')
-  for (const leak of [...bIds, MB, bSha, bRid]) assert.ok(!all.includes(leak), `A saw ${leak}:\n${texts.find((t) => t.includes(leak))}`)
-  assert.ok(all.includes(`A holds ${MA}`), 'A reads its own shared-note')
+  for (const leak of [...bIds, MB, bSha, bRid]) {
+    const seen = texts.find((t) => t.text.includes(leak) && !t.sent.includes(leak))
+    assert.ok(!seen, `A saw ${leak}:\n${seen?.text}`)
+  }
+  // B's text never comes back, even to a call that searched for its marker.
+  assert.ok(!texts.some((t) => t.text.includes(`B body ${MB}`) || t.text.includes(`B quest ${MB}`) || t.text.includes(`B message ${MB}`)))
+  assert.ok(texts.some((t) => t.text.includes(`A holds ${MA}`)), 'A reads its own shared-note')
   assert.equal(entryAnswer.status, 404)
   assert.equal(blobAnswer.status, 404)
   assert.deepEqual(sql(countsBy(A.id, B.id)).map((r) => [r.t, r.b]), before, "B's rows are as they were")
@@ -227,7 +232,10 @@ test('R49: the runtime token is Wen', { skip: SKIP }, async () => {
   assert.equal(recall.status, 200, recall.text)
   assert.ok(!recall.text.includes(aId) && !recall.text.includes(word), recall.text)
   assert.equal((await http('GET', `/entries/${aId}`, memory.runtimeToken)).status, 404)
-  const wrote = await http('POST', '/entries', memory.runtimeToken, { pattern: 'observations', title: `Runtime note ${word}`, body: 'From clyde-flow.', evidence: 'Tier 3.' })
+  const wrote = await http('POST', '/entries', memory.runtimeToken, {
+    id: `runtime-${word}`, pattern: 'projects', title: `Runtime note ${word}`, body: 'From clyde-flow.', authority: 'observed', scope: 'global',
+    evidence_kind: 'summary', evidence: 'Tier 3 made it.', source: { kind: 'run', title: 'clyde run r49', uri: `clyde://runs/${word}` },
+  })
   assert.equal(wrote.status, 200, wrote.text)
   const [row] = sql(`select owner_id from memory.entry where title = 'Runtime note ${word}'`)
   assert.equal(row?.owner_id, WEN_ID)

@@ -1,7 +1,7 @@
 // What the MCP tools and hook endpoints do, independent of transport, so tests can call it directly.
 import { sessionSet, unitOf } from "./allocation.ts";
 import { tallied } from "./budget.ts";
-import { later, type Row, type Sql, sql } from "./db.ts";
+import { attempt, later, type Row, type Sql, sql } from "./db.ts";
 import { sha256 } from "./embed.ts";
 import { type Clocked, clocked, features, finalScore, relevanceOf } from "./features.ts";
 import { runShadows } from "./shadow.ts";
@@ -47,7 +47,8 @@ async function tilt(db: Sql, ranked: Ranked[], p: Params, asOf: number | null) {
   const rel = relevanceOf(ranked);
   let clock: Clocked, failed: string | null = null;
   try {
-    clock = await clocked(db, ranked.map(([id]) => id), asOf, p);
+    // In a savepoint, so a failing feature query leaves the request's transaction usable (R49).
+    clock = await attempt((sp) => clocked(sp, ranked.map(([id]) => id), asOf, p));
   } catch (e) {
     failed = `features-failed: ${(e as Error).name}`;
     clock = { cNow: 0, temperature: new Map(), age: new Map() };

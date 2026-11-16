@@ -37,6 +37,8 @@ type Scope = {
   later: (() => Promise<unknown>)[];
   /** Server-Timing entries the request's work recorded. */
   timings: string[];
+  /** Work the request answered without waiting for (a write past its deadline), which still commits with it. */
+  held: Promise<unknown>[];
 };
 const scope = new AsyncLocalStorage<Scope>();
 
@@ -61,18 +63,38 @@ export const currentOwner = () => scope.getStore()?.owner ?? null;
 
 /** Runs fn as owner, in one transaction: as memory_tenant, or as memory_console for Wen's console. Work fn hands to later()
  * starts after the transaction commits, in a tenant transaction of its own, so a failure there never undoes the answer. */
-export async function asTenant<T>(owner: string, fn: () => Promise<T>, opts: { console?: boolean; timings?: string[] } = {}): Promise<T> {
-  const s = { owner, later: [], timings: opts.timings ?? [] } as unknown as Scope;
-  const result = await tenants.begin(async (tx) => {
-    await tx.unsafe(opts.console ? "set local role memory_console" : "set local role memory_tenant");
-    await tx`select set_config('memory.owner', ${owner}, true)`;
-    s.tx = tx;
-    return await scope.run(s, fn);
-  }) as T;
-  for (const work of s.later) {
-    runLater(asTenant(owner, work, { console: opts.console }).catch((e) => console.error("background:", e)));
-  }
-  return result;
+export function asTenant<T>(owner: string, fn: () => Promise<T>, opts: { console?: boolean; timings?: string[] } = {}): Promise<T> {
+  const s = { owner, later: [], held: [], timings: opts.timings ?? [] } as unknown as Scope;
+  return new Promise<T>((resolve, reject) => {
+    let answered = false;
+    const done = tenants.begin(async (tx) => {
+      await tx.unsafe(opts.console ? "set local role memory_console" : "set local role memory_tenant");
+      await tx`select set_config('memory.owner', ${owner}, true)`;
+      s.tx = tx;
+      const result = await scope.run(s, fn);
+      // A request that answered before its work was done (hold) answers now, and the transaction commits when the work ends.
+      if (s.held.length) {
+        answered = true;
+        resolve(result);
+        for (let i = 0; i < s.held.length; i++) await s.held[i].catch(() => {});
+      }
+      return result;
+    }).then((result) => {
+      if (!answered) resolve(result as T);
+      for (const work of s.later) {
+        runLater(asTenant(owner, work, { console: opts.console }).catch((e) => console.error("background:", e)));
+      }
+    }, (e) => answered ? console.error("held work:", e) : reject(e));
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime) EdgeRuntime.waitUntil(done);
+  });
+}
+
+/** Work the request answers without waiting for, which still commits with the request's transaction (a write past its
+ * deadline). Outside a tenant it simply runs on. */
+export function hold(work: Promise<unknown>) {
+  const s = scope.getStore();
+  if (s) s.held.push(work);
+  else runLater(work.catch((e) => console.error("held work:", e)));
 }
 
 // The Supabase runtime's global for work that outlives the response.
