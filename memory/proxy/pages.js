@@ -267,7 +267,13 @@ export function statePage(data, nonce, id = "") {
 
 // ---- Connect your apps ----
 
-export const APP_LOGO = { grok: ["/_clyde/apps/grok.svg", "/_clyde/apps/grok-dark.svg"] };
+// Official marks from each company's own press kit or site (memory/design/APP-LOGOS.md). Wen chose to show them all on
+// 2026-11-16. The OpenAI marks switch light and dark inside the SVG. Grok's comes as two files.
+export const APP_LOGO = {
+  claude: ["/_clyde/apps/claude.svg"], "claude-code": ["/_clyde/apps/claude-code.svg"], codex: ["/_clyde/apps/codex.svg"],
+  chatgpt: ["/_clyde/apps/chatgpt.svg"], gemini: ["/_clyde/apps/gemini.svg"], antigravity: ["/_clyde/apps/antigravity.svg"],
+  grok: ["/_clyde/apps/grok.svg", "/_clyde/apps/grok-dark.svg"],
+};
 const MONO = { claude: "C", "claude-code": "&gt;_", codex: "&gt;_", gemini: "G", antigravity: "Ag", chatgpt: "G" };
 export const appLogo = (slug, size = 24) => {
   const files = APP_LOGO[slug];

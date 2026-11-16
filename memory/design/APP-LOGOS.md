@@ -217,3 +217,10 @@ Verdict key: **OK** = OK to show the official mark on a compatibility page. **Te
 - **Symbol without wordmark:** Allowed. The logomark is supplied as its own file.
 
 **Verdict: OK to show the official mark** on a compatibility page, unaltered, under the usage terms. The page must not imply that xAI endorses Clyde.
+
+## Decision, 2026-11-16
+
+Wen chose to show every app's official mark on Clyde's pages: Claude Spark (Claude and Claude Code), the OpenAI Blossom
+favicon (ChatGPT and Codex, it switches light and dark itself), the Gemini sparkle, the Antigravity icon and Grok's
+logomark, unaltered, from the files listed above. If an owner asks for removal, take its file out of
+`memory/proxy/public/_clyde/apps/` and its entry out of `APP_LOGO`, and the row falls back to the name alone.
