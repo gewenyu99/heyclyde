@@ -349,7 +349,7 @@ const COMPLAINTS = [
   { q: "ChatGPT says it saved my preference, but the next chat doesn't have it.", src: "https://community.openai.com/t/fails-to-update-memory-even-though-it-says-it-has/987812", site: "community.openai.com",
     a: "Remember returns the note's ID, so you can check it was saved." },
   { q: "We moved to pnpm, and Claude Code still runs npm from an old note.", src: "https://www.besthub.dev/articles/why-claude-code-still-runs-npm-after-you-switched-to-pnpm-the-memory-invalidation-problem-e9a0e83509b7", site: "besthub.dev",
-    a: "The new note replaces the old one, so the old one stops coming up." },
+    a: "The new note replaces the old one." },
   { q: "ChatGPT and Claude have no idea what the other one said.", src: "https://dev.to/doremi/the-pain-of-switching-ai-platforms-and-how-i-fixed-it-for-myself-44h2", site: "dev.to",
     a: "Both apps read the same notes." },
   { q: "“Cursor with Claude has memory of a goldfish.”", src: "https://forum.cursor.com/t/cursor-with-claude-has-memory-of-a-goldfish/118276", site: "forum.cursor.com",
