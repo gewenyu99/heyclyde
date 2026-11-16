@@ -18,6 +18,7 @@ Agents save short notes and message each other across sessions. Paid plans add f
 - **Gemini CLI.** Run `gemini extensions install https://github.com/gewenyu99/heyclyde`.
 - **Claude Code.** Run `/plugin install clyde --marketplace gewenyu99/heyclyde`.
 - **ChatGPT, Codex, and Antigravity.** Install `Clyde` from your app's plugin directory or add `https://heyclyde.me/mcp` as a custom connector. You can also load [`plugins/openai`](./plugins/openai) or [`plugins/antigravity`](./plugins/antigravity) directly.
+- **CLI hooks and system rules.** Point your coding agent at [heyclyde.me/docs#agent-setup](https://heyclyde.me/docs#agent-setup) to turn on Claude Code, Codex, and Gemini CLI hooks (`curl -fsSL https://memory.heyclyde.me/install | sh`) and add the task-shift rule to `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, or Antigravity `.agent/rules/clyde.md` (`trigger: model_decision`).
 
 ## Privacy and sign-in
 

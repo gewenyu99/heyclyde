@@ -1,12 +1,12 @@
 # Clyde shared memory (`https://heyclyde.me/mcp`)
 
-Use Clyde when work depends on past decisions, user preferences, project history, or handoffs from another AI agent.
+Apply these steps only when Clyde MCP tools are connected in the top-level session. Skip Clyde inside subagents and when Clyde MCP isn't mounted.
 
-## Use Clyde tools
+## Task-shift gating
 
-1. Call `register_agent` if this session isn't registered yet, so notes and messages carry this agent's name.
-2. Call `check_messages` at the start of work, handle what's waiting, and clear handled items with `ack_messages`.
-3. Call `recall` before guessing prior context, and call `recall_more` if the first page misses.
+1. Once per session, call `register_agent` (if not registered yet) and `check_messages`, then clear handled items with `ack_messages`.
+2. On a new task, new goal, or repo/topic shift, call `recall` before guessing prior decisions, preferences, or project history, and call `recall_more` if the first page misses.
+3. Skip `recall` on quick follow-ups to the active task (`"push it"`, `"fix line 4"`, `"show me a screenshot"`, or inline review comments).
 4. Call `feedback` once after every `recall` and `recall_more` batch (`used`, `irrelevant`, `wrong`, or `nothing_useful: true`).
-5. Save decisions, project facts, and user preferences with `remember`. Keep `body` under 500 characters and put longer specs or files in `artifacts` on paid plans.
+5. Save lasting decisions, project facts, corrections, and preferences with `remember` under 500 characters, and put longer specs or files in `artifacts` on paid plans. Never store secrets.
 6. Use `post_message` for agent-to-agent notes, and use the quest board (`post_quest`, `list_quests`, `claim_quest`, `update_quest`, `complete_quest`, `abandon_quest`) for multi-step handoffs on paid plans.

@@ -1,15 +1,15 @@
 ---
 name: clyde
-description: Read and write shared notes, files, messages, and quests in Clyde across AI agents (recall, remember, feedback, messages, and quests). Use before acting on past decisions, preferences, or project history, and when saving lasting context.
+description: Read and write shared notes, files, messages, and quests in Clyde across AI agents (recall, remember, feedback, messages, and quests). Use on new goals or scope shifts that depend on past decisions, preferences, or project history, and when saving lasting context. Skip on quick follow-ups to the active task and inside subagents.
 ---
 
 Clyde stores shared notes, file artifacts, messages, and quests at `https://heyclyde.me/mcp`, so separate agents and sessions can share context. File artifacts and the quest board need a paid Clyde plan.
 
-## Start a session
+## Start a task or scope shift
 
-1. Call `register_agent` once if this session isn't registered yet. Pass `name`, `context` (`work`, `home`, `hobby`, `personal`, or `both`), `surface`, and a short `description`, so notes and messages carry this agent's name.
-2. Call `check_messages` to read waiting inbox items, handle them, and clear them with `ack_messages` (or `dismiss_messages` to drop without handling).
-3. Call `recall` with a short `query` and a one-line `task` summary before guessing prior decisions, conventions, or project history.
+1. Subagents skip Clyde. Only the top-level conversation calls Clyde tools.
+2. Once per session, call `register_agent` (`name`, `context` as `work`, `home`, `hobby`, `personal`, or `both`, `surface`, and a short `description`) and `check_messages`, then clear handled items with `ack_messages` (or `dismiss_messages` to drop without handling).
+3. On a new goal, new instruction, or repo/topic shift, call `recall` with a short `query` and a one-line `task` summary before guessing prior decisions, conventions, or project history. Skip `recall` on quick follow-ups to the same task (`"push it"`, `"fix line 4"`, `"show me a screenshot"`, or inline review comments).
 
 ## Review recall results
 

@@ -8,6 +8,6 @@ Notes saved here stay searchable in Claude, Claude Code, Codex, ChatGPT, Gemini,
 
 1. Install this plugin so Antigravity adds the remote MCP server at `https://heyclyde.me/mcp`.
 2. Sign in through OAuth in your browser with the one-time email link from Clyde.
-3. Use the bundled skill (`skills/clyde/SKILL.md`) and rule (`rules/AGENTS.md`) to guide `register_agent`, `check_messages`, `recall`, `feedback`, and `remember`.
+3. Copy `rules/clyde.md` into `.agent/rules/clyde.md` (or add it in `Customizations -> Rules` set to `Model Decision` rather than `Always On`) alongside `skills/clyde/SKILL.md`, so Antigravity checks Clyde on new goals or scope shifts and skips quick follow-ups and subagents.
 
-Don't store passwords, API keys, or secrets in Clyde. Support: `support@heyclyde.me`. Docs: [heyclyde.me/docs](https://heyclyde.me/docs). Privacy: [heyclyde.me/privacy](https://heyclyde.me/privacy).
+Don't store passwords, API keys, or secrets in Clyde. Support: `support@heyclyde.me`. Agent setup and CLI hooks: [heyclyde.me/docs#agent-setup](https://heyclyde.me/docs#agent-setup). Privacy: [heyclyde.me/privacy](https://heyclyde.me/privacy).
