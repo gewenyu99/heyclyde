@@ -60,13 +60,18 @@ const wenNotes = () => Number(sql(`select count(*)::int as n from memory.message
 
 test('R74: free seats never pass the cap', { skip: SKIP }, async () => {
   exec(`update memory.account set free_slot = false;`)
+  sql(`update memory.plan set free_per_paid_n = null where id = 'free'`)
   setFree(1000)
-  heldSeats(995 - seats())
-  assert.equal(seats(), 995)
-  const users = await Promise.all(Array.from({ length: 50 }, () => signIn()))
-  const got = Number(sql(`select count(*)::int as n from memory.account where free_slot and owner_id = any(array[${users.map((u) => `'${u.id}'`).join(',')}]::uuid[])`)[0].n)
-  assert.equal(got, 5)
-  assert.equal(seats(), 1000)
+  try {
+    heldSeats(995 - seats())
+    assert.equal(seats(), 995)
+    const users = await Promise.all(Array.from({ length: 50 }, () => signIn()))
+    const got = Number(sql(`select count(*)::int as n from memory.account where free_slot and owner_id = any(array[${users.map((u) => `'${u.id}'`).join(',')}]::uuid[])`)[0].n)
+    assert.equal(got, 5)
+    assert.equal(seats(), 1000)
+  } finally {
+    sql(`update memory.plan set free_per_paid_n = 10, free_per_paid_m = 1 where id = 'free'`)
+  }
 })
 
 test('R74: a full free tier says so, with the plan', { skip: SKIP }, async () => {
@@ -86,6 +91,7 @@ test('R74: a full free tier says so, with the plan', { skip: SKIP }, async () =>
 
 test('R74: free_open off gives no seat', { skip: SKIP }, async () => {
   setFree(100000)
+  sql(`update memory.plan set free_per_paid_n = null where id = 'free'`)
   setting('free_open', 'off')
   try {
     const u = await signIn()
@@ -98,6 +104,7 @@ test('R74: free_open off gives no seat', { skip: SKIP }, async () => {
     assert.equal(r.status, 402, r.text)
   } finally {
     setting('free_open', null)
+    sql(`update memory.plan set free_per_paid_n = 10, free_per_paid_m = 1 where id = 'free'`)
     setFree(1000)
   }
 })
@@ -161,5 +168,74 @@ test('R74: the guard runs hourly', { skip: SKIP }, () => {
     assert.match(job?.schedule ?? '', /^\d{1,2} \* \* \* \*$/)
   } finally {
     sql(`select cron.unschedule('memory-cost-guard')`)
+    apply('20261116050000_free_ratio_and_spend_cap.sql')
+  }
+})
+
+test('R75: free seats scale as N per M paid users (Clyde is 1st paid user) and stop when full', { skip: SKIP }, async () => {
+  exec(`update memory.account set free_slot = false; delete from memory.entitlement where state = 'paid';`)
+  sql(`update memory.plan set seats = 1000, free_per_paid_n = 3, free_per_paid_m = 1 where id = 'free'`)
+  try {
+    // 0 external paid rows + Clyde (1st paid) = 1 paid -> 3 free seats open under concurrency.
+    const batch1 = await Promise.all(Array.from({ length: 10 }, () => signIn()))
+    const got1 = Number(sql(`select count(*)::int as n from memory.account where free_slot and owner_id = any(array[${batch1.map((u) => `'${u.id}'`).join(',')}]::uuid[])`)[0].n)
+    assert.equal(got1, 3)
+    assert.equal(seats(), 3)
+    const rejected = batch1.find((u) => !sql(`select free_slot from memory.account where owner_id = '${u.id}'`)[0].free_slot)!
+    await lapse()
+    const denied = await request('POST', `${memory.url}/mcp`, {
+      headers: bearer(rejected.token), timeoutMs: 60_000,
+      body: { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'recall', arguments: { query: 'oolong' } } },
+    })
+    assert.equal(denied.status, 402, denied.text)
+    // Adding 1 active paid user brings total paid to 2 -> 6 total free seats (3 more open).
+    exec(`insert into memory.entitlement (owner_id, provider, plan, state, event_at, current_period_end)
+      values (gen_random_uuid(), 'polar', 'clyde', 'paid', now(), now() + interval '20 days');`)
+    const batch2 = await Promise.all(Array.from({ length: 6 }, () => signIn()))
+    const got2 = Number(sql(`select count(*)::int as n from memory.account where free_slot and owner_id = any(array[${batch2.map((u) => `'${u.id}'`).join(',')}]::uuid[])`)[0].n)
+    assert.equal(got2, 3)
+    assert.equal(seats(), 6)
+  } finally {
+    exec(`delete from memory.entitlement where provider = 'polar' and state = 'paid';`)
+    sql(`update memory.plan set free_per_paid_n = 10, free_per_paid_m = 1 where id = 'free'`)
+  }
+})
+
+test('R75: free monthly spend pool, 250K per-user token cap, and quest-board gate stop free usage', { skip: SKIP }, async () => {
+  exec(`update memory.account set free_slot = false;`)
+  sql(`update memory.plan set seats = 1000, free_per_paid_n = 10, free_per_paid_m = 1 where id = 'free'`)
+  const month = `date_trunc('month', now() at time zone 'utc')::date`
+  try {
+    const u = await signIn()
+    assert.equal(sql(`select free_slot from memory.account where owner_id = '${u.id}'`)[0].free_slot, true)
+    // Quest board is paid-only on free.
+    const quest = await request('POST', `${memory.url}/mcp`, {
+      headers: bearer(u.token), timeoutMs: 60_000,
+      body: { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'list_quests', arguments: {} } },
+    })
+    assert.equal(quest.status, 402, quest.text)
+    assert.match(quest.text, /quest board/)
+    const okRecall = await request('POST', `${memory.url}/mcp`, {
+      headers: bearer(u.token), timeoutMs: 60_000,
+      body: { jsonrpc: '2.0', id: 21, method: 'tools/call', params: { name: 'recall', arguments: { query: 'oolong' } } },
+    })
+    assert.equal(okRecall.status, 200, okRecall.text)
+    const [poolRow] = sql(`select amount::bigint as a from memory.usage where owner_id = '00000000-0000-0000-0000-00000000f4ee' and kind = 'free_pool_micro_usd_month'`)
+    assert.ok(Number(poolRow?.a ?? 0) >= 2, `expected free pool >= 2 micro-USD, got ${poolRow?.a}`)
+    // Hitting the global free pool monthly spend ceiling blocks new calls and closes guard.
+    exec(`insert into memory.usage (owner_id, period, kind, amount)
+      values ('00000000-0000-0000-0000-00000000f4ee', ${month}, 'free_pool_micro_usd_month', 5000000)
+      on conflict (owner_id, period, kind) do update set amount = excluded.amount;`)
+    const pooled = await request('POST', `${memory.url}/mcp`, {
+      headers: bearer(u.token), timeoutMs: 60_000,
+      body: { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'recall', arguments: { query: 'oolong' } } },
+    })
+    assert.equal(pooled.status, 402, pooled.text)
+    assert.match(pooled.text, /budget/)
+    const g = await guard()
+    assert.equal(g.decision, 'closed', JSON.stringify(g))
+  } finally {
+    exec(`delete from memory.usage where owner_id = '00000000-0000-0000-0000-00000000f4ee';`)
+    setting('free_open', null)
   }
 })

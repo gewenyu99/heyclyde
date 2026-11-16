@@ -16,6 +16,8 @@ export type Reading = {
   why: string;
   revenue_usd: number;
   overage_usd: number;
+  free_pool_usd: number;
+  free_pool_cap_usd: number | null;
   metrics: Record<ProMetric, { used: number; projected: number; included: number; share: number; overage_usd: number }>;
 };
 
@@ -54,13 +56,25 @@ export async function run(): Promise<Reading> {
   const [{ revenue }] = await root`select coalesce(sum(p.price_micro_usd_month), 0)::bigint as revenue
     from memory.entitlement e join memory.plan p on p.id = e.plan
     where e.state = 'paid' and (e.current_period_end is null or e.current_period_end > now())`;
+  const [freePlan] = await root`select pool_spend_cap_micro_usd_month as cap from memory.plan where id = 'free'`;
   const revenue_usd = Number(revenue) / MICRO_USD;
-  const close = hot.length > 0 && overage > revenue_usd;
+  const free_pool_micro_usd = Number(r.free_pool_micro_usd ?? 0);
+  const pool_cap = freePlan?.cap === null || freePlan?.cap === undefined ? null : Number(freePlan.cap);
+  const free_pool_usd = free_pool_micro_usd / MICRO_USD;
+  const free_pool_cap_usd = pool_cap === null ? null : pool_cap / MICRO_USD;
+  const poolHit = pool_cap !== null && free_pool_micro_usd >= pool_cap;
+  const infraHit = hot.length > 0 && overage > revenue_usd;
+  const close = infraHit || poolHit;
+  const why = poolHit
+    ? `free pool spent $${free_pool_usd.toFixed(2)} of $${free_pool_cap_usd!.toFixed(2)} cap`
+    : infraHit
+    ? `${hot.join(", ")} of Supabase Pro, projected overage $${overage.toFixed(2)} against $${revenue_usd.toFixed(2)} of paid revenue`
+    : hot.length
+    ? `${hot.join(", ")} of Supabase Pro, covered by $${revenue_usd.toFixed(2)} of paid revenue`
+    : "every metric under 80% of Supabase Pro";
   const reading: Reading = {
-    at: new Date().toISOString(), decision: close ? "closed" : "open", revenue_usd, overage_usd: overage, metrics,
-    why: close
-      ? `${hot.join(", ")} of Supabase Pro, projected overage $${overage.toFixed(2)} against $${revenue_usd.toFixed(2)} of paid revenue`
-      : hot.length ? `${hot.join(", ")} of Supabase Pro, covered by $${revenue_usd.toFixed(2)} of paid revenue` : "every metric under 80% of Supabase Pro",
+    at: new Date().toISOString(), decision: close ? "closed" : "open", revenue_usd, overage_usd: overage,
+    free_pool_usd, free_pool_cap_usd, metrics, why,
   };
   await root`insert into memory.setting (name, value) values ('cost_guard', ${JSON.stringify(reading)})
     on conflict (name) do update set value = excluded.value`;

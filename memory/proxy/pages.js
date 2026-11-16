@@ -223,17 +223,19 @@ export function statePage(data, nonce, id = "") {
     case "check_email":
       mark = `<div class="badge">${ICON.mail}</div>`; h1 = "Check your email"; title = "Check your email";
       lead = `We sent a sign-in link to ${data.email ? `<strong>${esc(data.email)}</strong>` : "your inbox"}. Open it on any device.`;
-      extra = live("This page moves on when you click it.");
+      extra = live("This page updates after you click the link.");
       break;
     case "waiting":
       mark = `<div class="badge">${ICON.wait}</div>`; h1 = "Waiting for confirmation"; title = "Waiting for confirmation";
-      lead = "Nobody has clicked the link yet. If the email isn't there, check spam.";
-      extra = live("Watching for the click.");
+      lead = "Click the email link to finish connecting. If it isn't in your inbox, check spam.";
+      extra = live("Checking automatically.");
       break;
     case "connected":
       mark = stamp("ok", "Approved", date); h1 = "Connected"; title = "Connected";
       lead = `${app("Your app")} is connected to Clyde.`;
-      extra = note("Close this tab and return to your app.");
+      extra = data?.free_full && data?.checkout_url
+        ? note(`No free seats are available right now. <a href="${esc(data.checkout_url)}">Subscribe to Clyde for $12.99 USD/month</a> to start using tools, then return to your app.`)
+        : note("Close this tab and return to your app.");
       break;
     case "refused":
       mark = stamp("bad", "Refused", date); h1 = "Connection refused"; title = "Connection refused";
@@ -250,12 +252,12 @@ export function statePage(data, nonce, id = "") {
     case "blocked":
       mark = stamp("bad", "Not available", date); h1 = "Not available in your region"; title = "Not available";
       lead = esc(sentence(data?.message, "Connection canceled."));
-      extra = note("Clyde isn't available in GDPR jurisdictions or Quebec yet. No account was made and no email went out.");
+      extra = note("Clyde isn't available in the EU, EEA, UK, Switzerland, or Quebec yet. No account was created and no email went out.");
       break;
     case "subscribed":
       kind = "Subscription";
       mark = stamp("ok", "Paid", date); h1 = "Subscription active"; title = "Subscribed";
-      lead = "Your Clyde plan is on. New limits apply within a minute.";
+      lead = "Your Clyde plan is active. Paid limits apply within a minute.";
       extra = note("Close this tab and return to your app.");
       break;
     case "expired":
@@ -294,37 +296,38 @@ const APPS = [
     id: "claude-ai", logo: "claude", name: "Claude", sub: "claude.ai, Cowork, and mobile", tag: "Connector",
     body: `<ol class="steps"><li><span>Open <span class="k">Settings → Connectors → Add custom connector</span>.</span></li>
 <li><span>Paste the URL, click <span class="k">Add</span>, then <span class="k">Connect</span>.</span></li>
-<li><span>Click the email sign-in link. Clyde then works on web, Cowork and mobile.</span></li></ol>${copyBox(MCP_URL)}`,
+<li><span>Sign in via email link. Connects web, Cowork, and mobile.</span></li></ol>${copyBox(MCP_URL)}`,
   },
   {
     id: "claude-code", logo: "claude-code", name: "Claude Code and Codex", sub: "Terminal agents", tag: "One-liner",
-    body: `<p class="fine">Run this in your terminal. It signs you in by email and adds the MCP server and hooks to both.</p>${copyBox(INSTALL)}`,
+    body: `<p class="fine">Sets up Claude Code and Codex via email sign-in, plus Gemini CLI and Antigravity if installed. Restart Claude Code and run <code>/hooks</code> in Codex CLI after.</p>${copyBox(INSTALL)}`,
   },
   {
     id: "antigravity", logo: "antigravity", name: "Antigravity", sub: "Desktop IDE and CLI", tag: "Config",
-    body: `<p class="fine">The Claude Code and Codex one-liner sets it up too. Or add this to ~/.gemini/config/mcp_config.json and sign in when your browser opens.</p>
-${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { clyde: { serverUrl: MCP_URL } } }, null, 2))}`,
+    body: `<p class="fine">Run the Claude Code / Codex installer, or put this in <code>~/.gemini/config/mcp_config.json</code> and sign in via browser.</p>
+${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { memory: { serverUrl: MCP_URL } } }, null, 2))}`,
   },
   {
     id: "gemini", logo: "gemini", name: "Gemini app", sub: "gemini.google.com", tag: "Custom app",
     body: `<ol class="steps"><li><span>Open <span class="k">Settings → Connected Apps</span>.</span></li>
 <li><span>Add a custom app with Clyde's URL.</span></li>
-<li><span>Click the email sign-in link. Needs Google AI Ultra or a US account where applicable.</span></li></ol>${copyBox(MCP_URL)}`,
+<li><span>Sign in via email link.</span></li></ol><p class="fine">Needs Google AI Ultra or a US account. CLI users: run the installer.</p>${copyBox(MCP_URL)}`,
   },
   {
     id: "grok", logo: "grok", name: "Grok", sub: "grok.com", tag: "Connector",
     body: `<ol class="steps"><li><span>Open <a href="https://grok.com/connectors" rel="noopener noreferrer" target="_blank">grok.com/connectors</a> and select <span class="k">Custom</span>.</span></li>
 <li><span>Paste the URL and connect.</span></li>
-<li><span>Click the email sign-in link.</span></li></ol>${copyBox(MCP_URL)}`,
+<li><span>Sign in via email link.</span></li></ol>${copyBox(MCP_URL)}`,
   },
   {
     id: "chatgpt", logo: "chatgpt", name: "ChatGPT", sub: "chatgpt.com", tag: "Custom connector",
-    body: `${copyBox(MCP_URL)}<p class="fine">Add it as a custom connector in ChatGPT's developer mode.</p>`,
+    body: `<ol class="steps"><li><span>Turn on developer mode in <span class="k">Settings → Connectors</span>.</span></li>
+<li><span>Add a custom connector with this URL and sign in via email link.</span></li></ol>${copyBox(MCP_URL)}`,
   },
   {
     id: "antigravity-cloud", logo: "antigravity", name: "Antigravity cloud", sub: "Headless cloud environments", tag: "Token",
-    body: `<p class="fine">Headless boxes can't open email links. Copy ~/.config/memory/token from a signed-in machine into your cloud environment's secrets. Never commit it to git.</p>
-${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { clyde: { serverUrl: MCP_URL, headers: { Authorization: "Bearer <your device token>" } } } }, null, 2))}`,
+    body: `<p class="fine">Headless boxes can't open links. Run the installer on a local machine first, then copy <code>~/.config/memory/token</code> to your secrets (never commit it to git).</p>
+${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { memory: { serverUrl: MCP_URL, headers: { Authorization: "Bearer <your device token>" } } } }, null, 2))}`,
   },
 ];
 
@@ -362,19 +365,19 @@ export function homePage(nonce) {
 <main>
 <section class="hero wrap"><div class="hero-text"><span class="cl-label">Get Clyde</span>
 <h1 class="cl-display">Connect your <em class="cl-scribble">apps</em></h1>
-<p class="cl-lead">Add one MCP URL to each app and click the email sign-in link.</p>
+<p class="cl-lead">Add one MCP URL to each app, then sign in with the link Clyde emails you.</p>
 <div class="cl-sticky cl-sticky--tilt hero-note"><b>Use with caution.</b> Put normal context and preferences in it.</div>
 <div class="cta"><a class="cl-btn cl-btn--primary cl-btn--lg" href="#apps">Pick your app</a><a class="cl-btn cl-btn--ghost cl-btn--lg" href="https://heyclyde.me/">What is Clyde?</a></div>
 <div class="works"><span class="cl-label">Connects to</span><ul>${works}</ul>${SOON_NOTE}</div></div><div class="hero-art">${SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 484, 280)}</div></section>
 <section class="wrap" id="apps"><div class="apps-head"><div class="section"><span class="cl-label">Connect</span><h2 class="cl-title-1">Pick your app</h2>
-<p class="cl-lead">ChatGPT's custom MCP connectors take the same URL.</p></div>
+<p class="cl-lead">Every supported app takes the same URL or one terminal installer.</p></div>
 <div class="cl-field"><span class="cl-field__label">Server URL</span>${copyBox(MCP_URL)}</div></div>
 <div class="apps">${cards}</div></section>
 <section class="wrap" id="how"><div class="section"><span class="cl-label">Authentication</span><h2 class="cl-title-1">OAuth + magic link</h2></div>
 <ol class="how">
-<li>Paste the URL. Your app registers itself over OAuth, with no API key.</li>
-<li>Click the sign-in link Clyde emails you, on your phone or computer.</li>
-<li>Clyde refuses and logs callbacks from anything but Claude, ChatGPT, Antigravity, Gemini, Grok or localhost.</li>
+<li>Paste the URL or run the installer. Apps register via OAuth, or the installer saves a device token. No manual API key needed.</li>
+<li>Enter your email and click the sign-in link Clyde sends you, on your phone or computer.</li>
+<li>Clyde refuses callbacks from anything except Claude, ChatGPT, Antigravity, Gemini, Grok, or localhost.</li>
 </ol></section></main>${footer}`;
   return shell({ nonce, title: "Connect · Clyde", css: HOME_CSS, body, script: COPY_JS + STATUS_JS });
 }
