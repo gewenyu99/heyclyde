@@ -33,7 +33,7 @@ const STATES: [string, Record<string, unknown>, number, string, string][] = [
   ['connected', { client: 'Claude' }, 200, 'Connected', 'approve'],
   ['refused', { client: 'Evil', callback: 'https://evil.example/cb' }, 403, 'Connection refused', 'approve'],
   ['expired', {}, 410, 'Link expired', 'wait'],
-  ['error', { message: 'memory: that sign-in link didn\'t work.' }, 400, 'Something went wrong', 'approve'],
+  ['error', { message: 'memory: that sign-in link didn\'t work.' }, 400, 'Sign-in failed', 'approve'],
 ]
 
 Deno.test('renders each sign-in state', async () => {
@@ -107,7 +107,7 @@ Deno.test('non-JSON replies pass through', async () => {
   const failed = await get('/oauth/consent?authorization_id=abc12345')
   assert.equal(failed.status, 502)
   const page = await failed.text()
-  assert.equal(h1(page), 'Something went wrong')
+  assert.equal(h1(page), 'Sign-in failed')
   assert.ok(page.includes('status 500'), page)
   // Every other route goes to the function as it came, with the proxy's headers and no JSON ask.
   stub(json({ ok: true }))

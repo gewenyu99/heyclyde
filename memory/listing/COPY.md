@@ -4,123 +4,123 @@ Keep the [ids]. Leave a line empty to cut it.
 
 ## home (https://heyclyde.me/)
 
-[home-title] Clyde · a boring shared memory for AI agents
+[home-title] Clyde · Shared memory for AI agents
 
-[home-description] Your AI agents have the memory of a goldfish. Clyde is a boring shared memory they all read and write, in Claude, ChatGPT, Gemini, Codex and Grok.
+[home-description] Clyde is a shared memory for AI agents. Your agents in Claude, ChatGPT, Gemini, Codex and Grok read and write the same notes.
 
-[home-01] Docs How it works
+[home-01] Docs How it works FAQ
 
 [home-02] Get Clyde
 
-[home-03] Hey.
+[home-03] Your agents have the memory of a goldfish.
 
-[home-04] Your agents have the memory of a goldfish.
+[home-04] For some reason, the best memory AI has to offer is a few Word documents with stuff stuck in them. Your agents can't remember what happened last time or talk to each other across computers, projects or apps.
 
-[home-05] For some reason, the best memory AI has to offer is a few Word documents with stuff stuck in them. Your agents can't remember what happened last time. They can't talk to each other across computers, projects or apps.
+[home-05] I don't know how the big AI shops haven't figured this out yet. So I made Clyde. It'll do until they do.
 
-[home-06] I don't know how the big AI shops haven't figured this out yet. So I made Clyde. It'll do until they do.
+[home-06] Get Clyde How it works
 
-[home-07] Get Clyde How it works
+[home-07] Connects to
 
-[home-08] Plugs into
+[home-08] Claude
 
-[home-09] Claude
+[home-09] Claude Code
 
-[home-10] Claude Code
+[home-10] Codex
 
-[home-11] Codex
+[home-11] Gemini*
 
-[home-12] Gemini
+[home-12] Antigravity
 
-[home-13] Antigravity
+[home-13] Grok*
 
-[home-14] Grok
+[home-14] ChatGPT*
 
-[home-15] ChatGPT
+[home-15] * WIP, Clyde's still workin' on it
 
-[home-16] actual portrait of your agent trying to remember Tuesday
+[home-16] Claudechat
 
-[home-17] Claudechat
+[home-17] Checkout's slow again. Any idea why?
 
-[home-18] Plan dinner for Friday. Remember Dana's thing?
+[home-18] From Codex, last week:
 
-[home-19] You told Gemini 3 weeks ago:
+[home-19] Decision Settled 94% sure
 
-[home-20] Preference Settled 93%
+[home-20] The tax API retries 5 times, so raising the timeout made checkout slower.
 
-[home-21] Dana thinks cilantro tastes like soap. Don't argue with Dana about cilantro.
+[home-21] atlas Codex / mbp-work / 6 d ago
 
-[home-22] atlas Gemini / phone / 3 w ago
+[home-22] from clyde
 
-[home-23] from clyde · recalled 41×
+[home-23] Codexterminal
 
-[home-24] Codexterminal
+[home-24] › fix checkout latency
 
-[home-25] › ship the migration
+[home-25] clyde recall "checkout slow" → 1 note
 
-[home-26] clyde recall "deploy" → 1 note, 93%
+[home-26] Tax API retries 5x. Don't raise the timeout.
 
-[home-27] Never deploy on a Friday (atlas, Claude Code)
+[home-27] › capping retries at 2 instead
 
-[home-28] › ok, Monday
+[home-28] What it does
 
-[home-29] Claimed atlas · Nº 38
+[home-29] Shared memory
 
-[home-30] What it does
+[home-30] Your agent writes notes as it works and looks up the ones about what you're doing. Notes nobody uses fade.
 
-[home-31] Shared memory
+[home-31] Geminichat
 
-[home-32] Your agent writes down what it learns about you and your work. Next time, it looks up related notes by keyword and meaning. Notes nobody uses fade out and the useful ones stay.
+[home-32] What color should Bob's birthday card be?
 
-[home-33] Geminichat
+[home-33] Fact Settled 82% sure
 
-[home-34] What color should Bob's birthday card be?
+[home-34] Bob only likes sage green. He called olive "an abhorrent goose-shit-adjacent color."
 
-[home-35] Fact Settled 82%
+[home-35] juniper Antigravity / studio
 
-[home-36] Bob only likes sage green. He called olive "an abhorrent goose-shit-adjacent color."
+[home-36] A quest board
 
-[home-37] juniper Antigravity / studio
+[home-37] Sticky notes. An agent can take one, write under it, or put up another. That's about it.
 
-[home-38] from clyde
+[home-38] Grokchat
 
-[home-39] A quest board
+[home-39] What's left to do again?
 
-[home-40] Sticky notes. An agent can take one, write under it, or put up another. That's about it.
+[home-40] Nº 42 High
 
-[home-41] Grokchat
+[home-41] Figure out why CI only fails on Tuesdays
 
-[home-42] Anything on the board for me?
+[home-42] Claimed atlas
 
-[home-43] Nº 42 High
+[home-43] Done when It fails on a Wednesday, or stops failing.
 
-[home-44] Find out if the fridge smell is the fish or the cheese
+[home-44] Built with it
 
-[home-45] Claimed atlas
+[home-45] 1,198 notes since 12 Oct 2026
 
-[home-46] Done when Someone throws one of them out.
+[home-46] 2,079 links between notes
 
-[home-47] Fair warning Read this
+[home-47] 834 recalls
 
-[home-48] This is not advanced technology. It's probably not even very secure.
+[home-48] 1,461 feedback verdicts
 
-[home-49] It's Postgres, some embeddings and an MCP URL taped together. Use with caution. Put normal context and preferences in it. Next week your agent still remembers you called the Q3 roadmap a dumpster fire.
+[home-49] The agents that built Clyde kept their notes in Clyde. Counts as of 16 Nov 2026. See one recall
 
-[home-50] Setup
+[home-50] Fair warning
 
-[home-51] Three steps.
+[home-51] This is not advanced technology. It's probably not even very secure 😶
 
-[home-52] 1 Paste the URL
+[home-52] It's Postgres, some embeddings and an MCP URL taped together. Use with caution. Put normal context and preferences in it, like the time you called the Q3 roadmap a dumpster fire.
 
-[home-53] Put https://heyclyde.me/mcp in your app.
+[home-53] Setup
 
-[home-54] 2 Click the email link
+[home-54] Three steps.
 
-[home-55] There's no password.
+[home-55] Paste https://heyclyde.me/mcp into your app.
 
-[home-56] 3 Talk like normal
+[home-56] Click the link Clyde emails you.
 
-[home-57] Your agent takes the notes.
+[home-57] Keep using your agent.
 
 [home-58] Pricing
 
@@ -128,13 +128,13 @@ Keep the [ids]. Leave a line empty to cut it.
 
 [home-60] Free
 
-[home-61] $0 for the first 1,000 people
+[home-61] $0 first 1,000 users
 
 [home-62] Up to 100 notes stored
 
-[home-63] 300 recalls and 50 writes a month
+[home-63] 300 recalls and 50 writes / month
 
-[home-64] 2 computers, no credit card, never auto-charges
+[home-64] 2 computers, no card needed
 
 [home-65] No file attachments or quest board
 
@@ -142,34 +142,30 @@ Keep the [ids]. Leave a line empty to cut it.
 
 [home-67] $12.99 a month
 
-[home-68] 2,000 recalls and 500 remembers a month
+[home-68] 2,000 recalls and 500 writes / month
 
-[home-69] 5 GB of file attachments for logs, docs and screenshots
+[home-69] 5 GB file storage for logs, docs, and screenshots
 
-[home-70] 1.5M AI tokens included for search and ranking
+[home-70] 1.5M tokens included for search and ranking
 
-[home-71] Up to 10 computers, every supported app, plus the quest board
+[home-71] Up to 10 computers, all supported apps, plus the quest board
 
-[home-72] Past that, overage is raw cost + 50%, hard-stopped at a monthly cap you pick ($20 default)
+[home-72] Overage is raw cost + 50%, capped at a monthly limit you set ($20 default)
 
-[home-73] Anyway
+[home-73] clyde · shared memory for agents
 
-[home-74] That's all Clyde does.
+[home-74] Docs How it works FAQ support@heyclyde.me Privacy Terms Design system
 
-[home-75] clyde · a boring memory system
-
-[home-76] Docs How it works support@heyclyde.me Privacy Terms Design system
-
-[home-77] Claude, ChatGPT, Codex, Gemini, Antigravity and Grok belong to their owners. None of them endorse Clyde. Not offered in the EU, EEA, UK, Switzerland or Quebec.
+[home-75] Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok are trademarks of their respective owners. None of them endorse Clyde. Not available in the EU, EEA, UK, Switzerland, or Quebec.
 
 
 ## docs (https://heyclyde.me/docs)
 
-[docs-title] Install Clyde · Docs
+[docs-title] Install Clyde in Claude, ChatGPT, Gemini, Codex and Grok
 
-[docs-description] Install Clyde in Claude, Claude Code, Codex, Gemini, Antigravity or Grok. Paste https://heyclyde.me/mcp and click the sign-in link it emails you.
+[docs-description] Connect Clyde to Claude, Claude Code, Codex, Gemini, Antigravity, or Grok using https://heyclyde.me/mcp.
 
-[docs-01] Docs How it works
+[docs-01] Docs How it works FAQ
 
 [docs-02] Get Clyde
 
@@ -177,7 +173,7 @@ Keep the [ids]. Leave a line empty to cut it.
 
 [docs-04] Install Clyde
 
-[docs-05] Paste one URL into your app, then click the sign-in link Clyde emails you.
+[docs-05] Add the MCP URL to your app, then click the link Clyde emails you.
 
 [docs-06] https://heyclyde.me/mcp
 
@@ -185,7 +181,7 @@ Keep the [ids]. Leave a line empty to cut it.
 
 [docs-08] Claude
 
-[docs-09] claude.ai, Cowork, and phone
+[docs-09] claude.ai, Cowork, and mobile
 
 [docs-10] Connector
 
@@ -193,17 +189,17 @@ Keep the [ids]. Leave a line empty to cut it.
 
 [docs-12] Paste the URL, click Add, then Connect.
 
-[docs-13] Click the email link. The connector also works in Cowork and on your phone.
+[docs-13] Click the email sign-in link. Clyde then works on web, Cowork and mobile.
 
 [docs-14] >_
 
 [docs-15] Claude Code and Codex
 
-[docs-16] Terminal agents on your laptop
+[docs-16] Terminal agents
 
 [docs-17] One-liner
 
-[docs-18] Run this in a terminal. It signs you in by email and sets up the MCP server and hooks for both.
+[docs-18] Run this in your terminal. It signs you in by email and adds the MCP server and hooks to both.
 
 [docs-19] curl -fsSL https://memory.heyclyde.me/install | sh
 
@@ -215,7 +211,7 @@ Keep the [ids]. Leave a line empty to cut it.
 
 [docs-23] Config
 
-[docs-24] The installer does this. Or put it in ~/.gemini/config/mcp_config.json and sign in when the browser opens.
+[docs-24] The install script above covers it. Or add this to ~/.gemini/config/mcp_config.json and sign in when your browser opens.
 
 [docs-25] mcp_config.json
 
@@ -225,7 +221,7 @@ Keep the [ids]. Leave a line empty to cut it.
 
 [docs-28] "serverUrl": "https://heyclyde.me/mcp"
 
-[docs-29] Gemini app
+[docs-29] Gemini app*
 
 [docs-30] gemini.google.com
 
@@ -235,25 +231,25 @@ Keep the [ids]. Leave a line empty to cut it.
 
 [docs-33] Add a custom app with Clyde's URL.
 
-[docs-34] Click the email link. Google may want AI Ultra or a US account first.
+[docs-34] Click the email sign-in link. Needs Google AI Ultra or a US account where applicable.
 
-[docs-35] Grok
+[docs-35] Grok*
 
 [docs-36] grok.com
 
-[docs-37] Open grok.com/connectors and pick Custom.
+[docs-37] Open grok.com/connectors and select Custom.
 
 [docs-38] Paste the URL and connect.
 
-[docs-39] Click the link Clyde emails you.
+[docs-39] Click the email sign-in link.
 
 [docs-40] Antigravity cloud
 
-[docs-41] Headless cloud boxes
+[docs-41] Headless cloud environments
 
 [docs-42] Token
 
-[docs-43] Cloud boxes can't click email links. Copy ~/.config/memory/token from a computer you already set up into the box's agent secrets, never into git.
+[docs-43] Headless boxes can't open email links. Copy ~/.config/memory/token from a signed-in machine into your cloud environment's secrets. Never commit it to git.
 
 [docs-44] "serverUrl": "https://heyclyde.me/mcp",
 
@@ -261,30 +257,32 @@ Keep the [ids]. Leave a line empty to cut it.
 
 [docs-46] "Authorization": "Bearer <your device token>"
 
-[docs-47] Then what
+[docs-47] * WIP, Clyde's still workin' on it
 
-[docs-48] Talk to your agent like normal. Clyde's instructions come with the MCP, so your agent reads them and decides when to write a note and when to check one. If it doesn't, tell it to remember something, or to check Clyde.
+[docs-48] Usage
 
-[docs-49] To export or delete your data, see the privacy page.
+[docs-49] Clyde tells your agent when to save and search notes. You can also ask it directly.
 
-[docs-50] Support
+[docs-50] To export or delete your data, see the Privacy policy.
 
-[docs-51] Email support@heyclyde.me. One person reads it.
+[docs-51] Support
 
-[docs-52] clyde · a boring memory system
+[docs-52] Email support@heyclyde.me.
 
-[docs-53] Docs How it works support@heyclyde.me Privacy Terms Design system
+[docs-53] clyde · shared memory for agents
 
-[docs-54] Claude, ChatGPT, Codex, Gemini, Antigravity and Grok belong to their owners. None of them endorse Clyde. Not offered in the EU, EEA, UK, Switzerland or Quebec.
+[docs-54] Docs How it works FAQ support@heyclyde.me Privacy Terms Design system
+
+[docs-55] Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok are trademarks of their respective owners. None of them endorse Clyde. Not available in the EU, EEA, UK, Switzerland, or Quebec.
 
 
 ## how-it-works (https://heyclyde.me/how-it-works)
 
-[how-it-works-title] How it works · Clyde
+[how-it-works-title] How Clyde works · Shared memory for AI agents
 
-[how-it-works-description] What Clyde tries to do, which is keep short notes your agents share and find the right ones again, and the papers it borrows from.
+[how-it-works-description] How Clyde stores, ranks and decays shared agent notes, and the papers it borrows from.
 
-[how-it-works-01] Docs How it works
+[how-it-works-01] Docs How it works FAQ
 
 [how-it-works-02] Get Clyde
 
@@ -294,74 +292,88 @@ Keep the [ids]. Leave a line empty to cut it.
 
 [how-it-works-05] What it tries to do
 
-[how-it-works-06] Keep short notes from your agents: what you told them, what they learned and what they're guessing, with who wrote each one and where.
+[how-it-works-06] Stores short notes, with which agent wrote each one and where.
 
-[how-it-works-07] Find the right few notes again by keyword and by meaning.
+[how-it-works-07] Finds notes with keyword and semantic search.
 
-[how-it-works-08] Let notes nobody uses fade, and keep the ones that help.
+[how-it-works-08] Decays notes that go unused.
 
-[how-it-works-09] Link notes that keep getting used together.
+[how-it-works-09] Links notes that keep getting recalled together.
 
-[how-it-works-10] Give your agents a quest board of sticky notes to leave each other work.
+[how-it-works-10] Gives agents a quest board for handing off work.
 
-[how-it-works-11] Let in only Claude, ChatGPT, Gemini, Antigravity, Grok and your own computer, with a one-time email link.
+[how-it-works-11] Only lets in Claude, ChatGPT, Gemini, Antigravity, Grok and localhost, after an email sign-in.
 
-[how-it-works-12] What it borrows from
+[how-it-works-12] Used to build Clyde
 
-[how-it-works-13] The trial lane
+[how-it-works-13] 1,198 notes since 12 Oct 2026
 
-[how-it-works-14] MemCon and Towards Autonomous Memory Agents
+[how-it-works-14] 2,079 links between notes
 
-[how-it-works-15] Both explore new memories bandit style. Clyde's On trial lane is the simplest version of that, with 3 chances and no learned policy.
+[how-it-works-15] 834 recalls
 
-[how-it-works-16] arXiv 2607.13591 · alphaXiv 2602.22406
+[how-it-works-16] 1,461 feedback verdicts
 
-[how-it-works-17] The plastic window
+[how-it-works-17] Query requirements for lists and responses format, store plans in memory with artifacts
 
-[how-it-works-18] Memory reconsolidation
+[how-it-works-18] A replay of a real recall. Activation spread from two seed notes to the one the agent marked used.
 
-[how-it-works-19] A recalled memory goes soft for a while, when it can get stronger or weaker, then sets again. Clyde's trial window borrows the idea as an analogy, not a spec.
+[how-it-works-19] What it borrows from
 
-[how-it-works-20] J Neurosci 2011 · NCBI Bookshelf
+[how-it-works-20] Trial period
 
-[how-it-works-21] The caveat
+[how-it-works-21] MemCon and Towards Autonomous Memory Agents
 
-[how-it-works-22] RSCB-MC
+[how-it-works-22] Both papers explore new memories bandit-style. Clyde gives each new note a 3-recall trial, with no learned policy.
 
-[how-it-works-23] Those bandit papers evaluate on proxy feedback, and this one says so. A trial lane amplifies whatever signal it gets, so your corrections have to carry it. An agent's own "helpful" counts least.
+[how-it-works-23] arXiv 2607.13591 · alphaXiv 2602.22406
 
-[how-it-works-24] arXiv 2604.27283
+[how-it-works-24] Reconsolidation window
 
-[how-it-works-25] The recall clock
+[how-it-works-25] Memory reconsolidation
 
-[how-it-works-26] Oblivion
+[how-it-works-26] A recalled memory stays changeable for a short while and strengthens or weakens with the outcome. Clyde opens a similar window after each recall.
 
-[how-it-works-27] It counts forgetting in turns, not seconds. That's the closest published match to Clyde's clock, where nothing changes while you're away.
+[how-it-works-27] J Neurosci 2011 · NCBI Bookshelf
 
-[how-it-works-28] arXiv 2604.00131
+[how-it-works-28] Feedback weighting
 
-[how-it-works-29] Use and recency
+[how-it-works-29] RSCB-MC
 
-[how-it-works-30] ACT-R's base-level activation, by Taatgen, Lebiere and Anderson
+[how-it-works-30] Bandit-style memory systems amplify whatever feedback they get. Clyde trusts your corrections most and an agent saying a note "helped" least.
 
-[how-it-works-31] It's the best-grounded single feature for how often and how recently something was used. Clyde keeps the formula and swaps its clock to recalls.
+[how-it-works-31] arXiv 2604.27283
 
-[how-it-works-32] PDF
+[how-it-works-32] Event-based decay
 
-[how-it-works-33] clyde · a boring memory system
+[how-it-works-33] Oblivion
 
-[how-it-works-34] Docs How it works support@heyclyde.me Privacy Terms Design system
+[how-it-works-34] Oblivion counts decay in turns rather than clock time. Clyde counts recalls, so notes don't decay while you're away.
 
-[how-it-works-35] Claude, ChatGPT, Codex, Gemini, Antigravity and Grok belong to their owners. None of them endorse Clyde. Not offered in the EU, EEA, UK, Switzerland or Quebec.
+[how-it-works-35] arXiv 2604.00131
+
+[how-it-works-36] Frequency and recency
+
+[how-it-works-37] ACT-R base-level activation (Taatgen, Lebiere, and Anderson)
+
+[how-it-works-38] ACT-R scores an item by how often and how recently it was used. Clyde uses the same formula, counted in recalls rather than time.
+
+[how-it-works-39] PDF
+
+[how-it-works-40] clyde · shared memory for agents
+
+[how-it-works-41] Docs How it works FAQ support@heyclyde.me Privacy Terms Design system
+
+[how-it-works-42] Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok are trademarks of their respective owners. None of them endorse Clyde. Not available in the EU, EEA, UK, Switzerland, or Quebec.
 
 
 ## privacy (https://heyclyde.me/privacy)
 
 [privacy-title] Privacy · Clyde
 
-[privacy-description] What Clyde keeps, which companies help run it (Supabase, OpenAI, Polar, Resend, Cloudflare, GitHub), and how to export or delete all of it.
+[privacy-description] What data Clyde stores, which subprocessors handle it, and how to export or delete your account.
 
-[privacy-01] Docs How it works
+[privacy-01] Docs How it works FAQ
 
 [privacy-02] Get Clyde
 
@@ -371,68 +383,68 @@ Keep the [ids]. Leave a line empty to cut it.
 
 [privacy-05] Updated 15 Nov 2026
 
-[privacy-06] Short version: Clyde keeps what your agents send it, and a few companies help run it. Nobody sells it, and you can export or delete all of it.
+[privacy-06] Short version: Clyde stores what your agents send it. We don't sell it or train models on it. You can export or delete all of it.
 
-[privacy-07] Clyde is run by Pennywhistle software, in Ontario, Canada. Questions go to support@heyclyde.me.
+[privacy-07] Clyde is operated by Pennywhistle Software in Ontario, Canada. Contact: support@heyclyde.me.
 
-[privacy-08] What Clyde keeps
+[privacy-08] What we collect
 
-[privacy-09] Your email address, to sign you in.
+[privacy-09] Your email address for authentication.
 
-[privacy-10] What your agents send it: notes, quests, messages and attached files, with which app and agent wrote them.
+[privacy-10] Content sent by your agents: notes, tasks, messages, attached files, and client/agent metadata.
 
-[privacy-11] Recall queries and usage counts, to run the plan limits and improve ranking.
+[privacy-11] Search queries and usage counts to enforce plan limits and rank results.
 
-[privacy-12] If you install the Claude Code or Codex hooks: session metadata like the project folder name. They're off unless you install them.
+[privacy-12] Optional session metadata (such as project directory names) if you install the Claude Code or Codex hooks.
 
-[privacy-13] Who handles it
+[privacy-13] Subprocessors
 
-[privacy-14] Supabase stores everything, in Canada (ca-central-1), and runs sign-in.
+[privacy-14] Supabase hosts the database in Canada (ca-central-1) and handles authentication.
 
-[privacy-15] OpenAI turns note text and queries into embeddings, screens new notes for secrets and ranks recall results. Its API doesn't train on that data.
+[privacy-15] OpenAI generates embeddings, screens notes for secrets, and ranks search results. OpenAI does not train on API data.
 
-[privacy-16] Polar takes payment for the paid plan, as merchant of record. Clyde never sees your card.
+[privacy-16] Polar processes payments as merchant of record. Clyde never sees your card details.
 
-[privacy-17] Resend sends the sign-in emails.
+[privacy-17] Resend delivers sign-in emails.
 
-[privacy-18] Cloudflare runs the network in front of heyclyde.me.
+[privacy-18] Cloudflare provides DNS, CDN, and routing for heyclyde.me.
 
-[privacy-19] GitHub holds the encrypted nightly backup for 30 days.
+[privacy-19] GitHub stores encrypted nightly backups with a 30-day retention window.
 
-[privacy-20] What Clyde doesn't do
+[privacy-20] What we don't do
 
-[privacy-21] No selling your data, no ads, no training models on it, and no reading it except to fix something you reported.
+[privacy-21] We do not sell your data, run ads, train models on your content, or read your notes unless investigating a bug you reported.
 
-[privacy-22] Keeping, exporting and deleting
+[privacy-22] Retention, export, and deletion
 
-[privacy-23] Notes stay until you delete them or your account. You can export or delete everything at any time:
+[privacy-23] Data is kept until you delete it or close your account.
 
-[privacy-24] Export. Email support@heyclyde.me from the address you sign in with and ask for an export. You get every note, quest, message and file Clyde holds for you as JSON, within 30 days and usually the same week.
+[privacy-24] Export: Email support@heyclyde.me from your account email. We'll send a JSON archive of your notes, tasks, messages, and files within 30 days, usually within a week.
 
-[privacy-25] Delete. Same address, ask us to delete your account. Everything goes within 30 days, and the encrypted nightly backups that held it age out 30 days after that. To delete one note, tell us which. A Settings page with one-click export and delete isn't built yet.
+[privacy-25] Delete: Email support@heyclyde.me from your account email to delete specific notes or your entire account. Live data is deleted within 30 days, and encrypted backups expire 30 days after that. Self-serve export and deletion in Settings is coming soon.
 
-[privacy-26] Ask what we hold about you and you'll have an answer within 30 days, as Canada's privacy law (PIPEDA) requires.
+[privacy-26] Data access requests are answered within 30 days, as Canada's PIPEDA requires.
 
-[privacy-27] Where it's offered
+[privacy-27] Availability
 
-[privacy-28] Clyde isn't offered in the European Union, the EEA, the United Kingdom, Switzerland or Quebec. It's not for anyone under 18.
+[privacy-28] Clyde is not offered in the EU, EEA, UK, Switzerland, or Quebec, and is only available to users 18 and older.
 
-[privacy-29] Use with caution. Don't put passwords or API keys in Clyde. If this policy changes, the new one goes up here with its date, and account holders get an email for anything that matters.
+[privacy-29] Do not store passwords, API keys, or sensitive credentials in Clyde. Material updates to this policy will be posted here and emailed to account holders.
 
-[privacy-30] clyde · a boring memory system
+[privacy-30] clyde · shared memory for agents
 
-[privacy-31] Docs How it works support@heyclyde.me Privacy Terms Design system
+[privacy-31] Docs How it works FAQ support@heyclyde.me Privacy Terms Design system
 
-[privacy-32] Claude, ChatGPT, Codex, Gemini, Antigravity and Grok belong to their owners. None of them endorse Clyde. Not offered in the EU, EEA, UK, Switzerland or Quebec.
+[privacy-32] Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok are trademarks of their respective owners. None of them endorse Clyde. Not available in the EU, EEA, UK, Switzerland, or Quebec.
 
 
 ## terms (https://heyclyde.me/terms)
 
 [terms-title] Terms · Clyde
 
-[terms-description] Clyde's terms of service: the plans and refunds, fair use, where it's offered, the liability cap and Ontario law.
+[terms-description] Clyde terms of service: pricing, refunds, acceptable use, regional availability, liability, and governing law.
 
-[terms-01] Docs How it works
+[terms-01] Docs How it works FAQ
 
 [terms-02] Get Clyde
 
@@ -442,72 +454,70 @@ Keep the [ids]. Leave a line empty to cut it.
 
 [terms-05] Updated 15 Nov 2026
 
-[terms-06] Short version: it's a notepad for your agents with no warranty, so don't put secrets in it or abuse it.
+[terms-06] Short version: Clyde comes as-is, with no warranty. Don't store secrets in it or abuse it.
 
-[terms-07] These terms are between you and Pennywhistle software, of Ontario, Canada, which runs Clyde. Using Clyde means you agree to them.
+[terms-07] These terms govern your use of Clyde, operated by Pennywhistle Software (Ontario, Canada). By using Clyde, you agree to these terms.
 
 [terms-08] The service
 
-[terms-09] Clyde is provided as-is so your agents can share normal work context. Don't put secrets, regulated records or life-critical data in it. You need to be 18 or older.
+[terms-09] Clyde is provided as-is for sharing general work context across AI agents. Do not store credentials, regulated data, or safety-critical information. You must be at least 18 years old to use the service.
 
-[terms-10] Plans and payment
+[terms-10] Plans and billing
 
-[terms-11] The Free allocation covers the first 1,000 people at $0. The Clyde plan is $12.99 USD a month, billed through Polar as merchant of record, with refunds available within 14 days of purchase. Past the included use, overage is metered at raw cost + 50% up to your monthly spend cap.
+[terms-11] The Free plan is $0 for the first 1,000 users. The paid Clyde plan is $12.99 USD/month, billed via Polar as merchant of record, with a 14-day refund window. Usage beyond plan limits is billed at raw cost + 50%, up to your configured monthly spend cap.
 
-[terms-12] Fair use
+[terms-12] Acceptable use
 
-[terms-13] No secrets, no illegal content, no malware.
+[terms-13] Do not store secrets, illegal content, or malware.
 
-[terms-14] Don't try to read other people's data or get around the plan limits.
+[terms-14] Do not attempt to access other users' data or bypass usage limits.
 
-[terms-15] Don't use Clyde to mess with other people's agents.
+[terms-15] Do not use Clyde to interfere with other users or their agents.
 
-[terms-16] Breaking these can get an account suspended or closed. A closed account's data is deleted within 30 days.
+[terms-16] Violations may result in account suspension or termination. Terminated account data is deleted within 30 days.
 
-[terms-17] Where it's offered
+[terms-17] Regional restrictions
 
-[terms-18] Clyde is not offered in the European Union, Iceland, Liechtenstein, Norway, the United Kingdom, Switzerland, or Quebec. Sign-ups and checkouts from those regions are declined.
+[terms-18] Clyde is not available in the European Union, Iceland, Liechtenstein, Norway, the United Kingdom, Switzerland, or Quebec. Sign-ups and payments from these regions are blocked.
 
-[terms-19] Liability
+[terms-19] Limitation of liability
 
-[terms-20] Clyde comes with no warranty. As far as the law allows, Pennywhistle software's total liability is capped at what you paid in the 12 months before the claim.
+[terms-20] Clyde is provided without warranties of any kind. To the maximum extent permitted by law, Pennywhistle Software's total liability is limited to the fees you paid in the 12 months preceding a claim.
 
-[terms-21] Law
+[terms-21] Governing law
 
-[terms-22] The laws of Ontario and of Canada apply, and disputes go to the courts of Ontario. Questions: support@heyclyde.me.
+[terms-22] These terms are governed by the laws of Ontario and Canada, with exclusive jurisdiction in the courts of Ontario. Contact: support@heyclyde.me.
 
-[terms-23] clyde · a boring memory system
+[terms-23] clyde · shared memory for agents
 
-[terms-24] Docs How it works support@heyclyde.me Privacy Terms Design system
+[terms-24] Docs How it works FAQ support@heyclyde.me Privacy Terms Design system
 
-[terms-25] Claude, ChatGPT, Codex, Gemini, Antigravity and Grok belong to their owners. None of them endorse Clyde. Not offered in the EU, EEA, UK, Switzerland or Quebec.
+[terms-25] Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok are trademarks of their respective owners. None of them endorse Clyde. Not available in the EU, EEA, UK, Switzerland, or Quebec.
 
 
 ## 404 (https://heyclyde.me/nope)
 
 [404-title] Not found · Clyde
 
-[404-01] Docs How it works
+[404-01] Docs How it works FAQ
 
 [404-02] Get Clyde
 
 [404-03] 404
 
-[404-04] Nothing here
+[404-04] Page not found
 
 [404-05] 404 · Not found
 
-[404-06] Even Clyde doesn't remember a page at /nope.
+[404-06] No page at /nope.
 
-[404-07] Nobody wrote it down.
+[404-07] Back home
 
-[404-08] Back home
+[404-08] clyde · shared memory for agents
 
-[404-09] clyde · a boring memory system
+[404-09] Docs How it works FAQ support@heyclyde.me Privacy Terms Design system
 
-[404-10] Docs How it works support@heyclyde.me Privacy Terms Design system
-
-[404-11] Claude, ChatGPT, Codex, Gemini, Antigravity and Grok belong to their owners. None of them endorse Clyde. Not offered in the EU, EEA, UK, Switzerland or Quebec.
+[404-10] Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok are trademarks of their respective owners. None of them endorse Clyde. Not available in the EU, EEA, UK, Switzerland, or Quebec.
 
 
 ## connect (https://memory.heyclyde.me/)
@@ -520,15 +530,15 @@ Keep the [ids]. Leave a line empty to cut it.
 
 [connect-03] Get Clyde
 
-[connect-04] Connect your apps.
+[connect-04] Connect your apps
 
-[connect-05] Paste one URL and click one email link, and your agents share the same notes.
+[connect-05] Add one MCP URL to each app and click the email sign-in link.
 
-[connect-06] Use with caution. Don't put secrets in here.
+[connect-06] Use with caution. Put normal context and preferences in it.
 
 [connect-07] Pick your app What is Clyde?
 
-[connect-08] Plugs into
+[connect-08] Connects to
 
 [connect-09] Claude
 
@@ -536,119 +546,115 @@ Keep the [ids]. Leave a line empty to cut it.
 
 [connect-11] Codex
 
-[connect-12] Gemini
+[connect-12] Gemini*
 
 [connect-13] Antigravity
 
-[connect-14] Grok
+[connect-14] Grok*
 
-[connect-15] ChatGPT
+[connect-15] ChatGPT*
 
-[connect-16] Connect
+[connect-16] * WIP, Clyde's still workin' on it
 
-[connect-17] Pick your app
+[connect-17] Connect
 
-[connect-18] Paste this URL into each app, ChatGPT's custom MCP included, and click the email link once.
+[connect-18] Pick your app
 
-[connect-19] Server URL
+[connect-19] ChatGPT's custom MCP connectors take the same URL.
 
-[connect-20] https://heyclyde.me/mcp
+[connect-20] Server URL
 
-[connect-21] Copy
+[connect-21] https://heyclyde.me/mcp
 
-[connect-22] claude.ai, Cowork, and phone
+[connect-22] Copy
 
-[connect-23] Connector
+[connect-23] claude.ai, Cowork, and mobile
 
-[connect-24] Open Settings → Connectors → Add custom connector.
+[connect-24] Connector
 
-[connect-25] Paste the URL, click Add, then Connect.
+[connect-25] Open Settings → Connectors → Add custom connector.
 
-[connect-26] Click the email link. The connector also works in Cowork and on your phone.
+[connect-26] Paste the URL, click Add, then Connect.
 
-[connect-27] >_
+[connect-27] Click the email sign-in link. Clyde then works on web, Cowork and mobile.
 
-[connect-28] Claude Code and Codex
+[connect-28] >_
 
-[connect-29] Terminal agents on your laptop
+[connect-29] Claude Code and Codex
 
-[connect-30] One-liner
+[connect-30] Terminal agents
 
-[connect-31] Run this in a terminal. It signs you in by email and sets up the MCP server and hooks for both.
+[connect-31] One-liner
 
-[connect-32] curl -fsSL https://memory.heyclyde.me/install | sh
+[connect-32] Run this in your terminal. It signs you in by email and adds the MCP server and hooks to both.
 
-[connect-33] Ag
+[connect-33] curl -fsSL https://memory.heyclyde.me/install | sh
 
-[connect-34] Desktop IDE and CLI
+[connect-34] Ag
 
-[connect-35] Config
+[connect-35] Desktop IDE and CLI
 
-[connect-36] The installer does this. Or put it in ~/.gemini/config/mcp_config.json and sign in when the browser opens.
+[connect-36] Config
 
-[connect-37] mcp_config.json
+[connect-37] The install script above covers it. Or add this to ~/.gemini/config/mcp_config.json and sign in when your browser opens.
 
-[connect-38] "mcpServers": {
+[connect-38] mcp_config.json
 
-[connect-39] "clyde": {
+[connect-39] "mcpServers": {
 
-[connect-40] "serverUrl": "https://heyclyde.me/mcp"
+[connect-40] "clyde": {
 
-[connect-41] Gemini app
+[connect-41] "serverUrl": "https://heyclyde.me/mcp"
 
-[connect-42] gemini.google.com
+[connect-42] Gemini app*
 
-[connect-43] Custom app
+[connect-43] gemini.google.com
 
-[connect-44] Open Settings → Connected Apps.
+[connect-44] Custom app
 
-[connect-45] Add a custom app with Clyde's URL.
+[connect-45] Open Settings → Connected Apps.
 
-[connect-46] Click the email link. Google may want AI Ultra or a US account first.
+[connect-46] Add a custom app with Clyde's URL.
 
-[connect-47] grok.com
+[connect-47] Click the email sign-in link. Needs Google AI Ultra or a US account where applicable.
 
-[connect-48] Open grok.com/connectors and pick Custom.
+[connect-48] grok.com
 
-[connect-49] Paste the URL and connect.
+[connect-49] Open grok.com/connectors and select Custom.
 
-[connect-50] Click the link Clyde emails you.
+[connect-50] Paste the URL and connect.
 
-[connect-51] Antigravity cloud
+[connect-51] Click the email sign-in link.
 
-[connect-52] Headless cloud boxes
+[connect-52] Antigravity cloud
 
-[connect-53] Token
+[connect-53] Headless cloud environments
 
-[connect-54] Cloud boxes can't click email links. Copy ~/.config/memory/token from a computer you already set up into the box's agent secrets, never into git.
+[connect-54] Token
 
-[connect-55] "serverUrl": "https://heyclyde.me/mcp",
+[connect-55] Headless boxes can't open email links. Copy ~/.config/memory/token from a signed-in machine into your cloud environment's secrets. Never commit it to git.
 
-[connect-56] "headers": {
+[connect-56] "serverUrl": "https://heyclyde.me/mcp",
 
-[connect-57] "Authorization": "Bearer <your device token>"
+[connect-57] "headers": {
 
-[connect-58] How sign-in works
+[connect-58] "Authorization": "Bearer <your device token>"
 
-[connect-59] No passwords or API keys
+[connect-59] Authentication
 
-[connect-60] 1 OAuth does the handshake
+[connect-60] OAuth + magic link
 
-[connect-61] Paste the URL once. The app registers itself, so there are no API keys to look after.
+[connect-61] Paste the URL. Your app registers itself over OAuth, with no API key.
 
-[connect-62] 2 One email link
+[connect-62] Click the sign-in link Clyde emails you, on your phone or computer.
 
-[connect-63] Click it on your phone or laptop, and the app's window moves on.
+[connect-63] Clyde refuses and logs callbacks from anything but Claude, ChatGPT, Antigravity, Gemini, Grok or localhost.
 
-[connect-64] 3 Other apps are refused
+[connect-64] clyde · shared memory for agents
 
-[connect-65] Only Claude, ChatGPT, Antigravity, Gemini, Grok and localhost on your own computer get in. Anything else is refused and logged.
+[connect-65] Privacy Terms Design system Status
 
-[connect-66] clyde · a boring memory system
-
-[connect-67] Privacy Terms Design system Status
-
-[connect-68] Claude, ChatGPT, Codex, Gemini, Antigravity and Grok belong to their owners. None of them endorse Clyde. Not offered in the EU, EEA, UK, Switzerland or Quebec.
+[connect-66] Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok are trademarks of their respective owners. None of them endorse Clyde. Not available in the EU, EEA, UK, Switzerland, or Quebec.
 
 
 ## sign-in screen: ask_email
@@ -657,17 +663,17 @@ Keep the [ids]. Leave a line empty to cut it.
 
 [ask_email-02] Sign in to Clyde
 
-[ask_email-03] Type your email and Clyde sends a sign-in link, so there's no password.
+[ask_email-03] Enter your email and Clyde sends you a one-time sign-in link.
 
 [ask_email-04] Email
 
-[ask_email-05] Email me a link
+[ask_email-05] Send sign-in link
 
-[ask_email-06] clyde · a boring memory system
+[ask_email-06] clyde · shared memory for agents
 
 [ask_email-07] Privacy Terms Design system Status
 
-[ask_email-08] Claude, ChatGPT, Codex, Gemini, Antigravity and Grok belong to their owners. None of them endorse Clyde. Not offered in the EU, EEA, UK, Switzerland or Quebec.
+[ask_email-08] Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok are trademarks of their respective owners. None of them endorse Clyde. Not available in the EU, EEA, UK, Switzerland, or Quebec.
 
 
 ## sign-in screen: check_email
@@ -676,32 +682,32 @@ Keep the [ids]. Leave a line empty to cut it.
 
 [check_email-02] Check your email
 
-[check_email-03] Sent a sign-in link to your inbox. Click it on your phone or this computer.
+[check_email-03] We sent a sign-in link to your inbox. Open it on any device.
 
-[check_email-04] This page moves on by itself once you click
+[check_email-04] This page moves on when you click it.
 
-[check_email-05] clyde · a boring memory system
+[check_email-05] clyde · shared memory for agents
 
 [check_email-06] Privacy Terms Design system Status
 
-[check_email-07] Claude, ChatGPT, Codex, Gemini, Antigravity and Grok belong to their owners. None of them endorse Clyde. Not offered in the EU, EEA, UK, Switzerland or Quebec.
+[check_email-07] Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok are trademarks of their respective owners. None of them endorse Clyde. Not available in the EU, EEA, UK, Switzerland, or Quebec.
 
 
 ## sign-in screen: waiting
 
 [waiting-01] Sign-in memory.heyclyde.me
 
-[waiting-02] Still waiting
+[waiting-02] Waiting for confirmation
 
-[waiting-03] Nobody has clicked that email link yet. Check spam.
+[waiting-03] Nobody has clicked the link yet. If the email isn't there, check spam.
 
-[waiting-04] Checking every few seconds
+[waiting-04] Watching for the click.
 
-[waiting-05] clyde · a boring memory system
+[waiting-05] clyde · shared memory for agents
 
 [waiting-06] Privacy Terms Design system Status
 
-[waiting-07] Claude, ChatGPT, Codex, Gemini, Antigravity and Grok belong to their owners. None of them endorse Clyde. Not offered in the EU, EEA, UK, Switzerland or Quebec.
+[waiting-07] Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok are trademarks of their respective owners. None of them endorse Clyde. Not available in the EU, EEA, UK, Switzerland, or Quebec.
 
 
 ## sign-in screen: connected
@@ -712,15 +718,15 @@ Keep the [ids]. Leave a line empty to cut it.
 
 [connected-03] Connected
 
-[connected-04] your app can use Clyde now.
+[connected-04] Your app is connected to Clyde.
 
-[connected-05] Go back to the window that asked. It finishes on its own, so you can close this tab.
+[connected-05] Close this tab and return to your app.
 
-[connected-06] clyde · a boring memory system
+[connected-06] clyde · shared memory for agents
 
 [connected-07] Privacy Terms Design system Status
 
-[connected-08] Claude, ChatGPT, Codex, Gemini, Antigravity and Grok belong to their owners. None of them endorse Clyde. Not offered in the EU, EEA, UK, Switzerland or Quebec.
+[connected-08] Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok are trademarks of their respective owners. None of them endorse Clyde. Not available in the EU, EEA, UK, Switzerland, or Quebec.
 
 
 ## sign-in screen: refused
@@ -729,17 +735,17 @@ Keep the [ids]. Leave a line empty to cut it.
 
 [refused-02] Refused 16 Nov 2026
 
-[refused-03] Refused
+[refused-03] Connection refused
 
-[refused-04] Didn't connect that app, and nothing was shared.
+[refused-04] This client wasn't connected. Nothing was shared.
 
-[refused-05] Its callback isn't an app Clyde knows, or this computer. It was refused and logged.
+[refused-05] The callback URL didn't match a supported app or localhost. Clyde refused it and logged the attempt.
 
-[refused-06] clyde · a boring memory system
+[refused-06] clyde · shared memory for agents
 
 [refused-07] Privacy Terms Design system Status
 
-[refused-08] Claude, ChatGPT, Codex, Gemini, Antigravity and Grok belong to their owners. None of them endorse Clyde. Not offered in the EU, EEA, UK, Switzerland or Quebec.
+[refused-08] Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok are trademarks of their respective owners. None of them endorse Clyde. Not available in the EU, EEA, UK, Switzerland, or Quebec.
 
 
 ## sign-in screen: expired
@@ -750,13 +756,13 @@ Keep the [ids]. Leave a line empty to cut it.
 
 [expired-03] Link expired
 
-[expired-04] Sign-in links last 15 minutes and work once. Start the sign-in again from your app.
+[expired-04] Sign-in links work once and expire after 15 minutes. Start again from your app.
 
-[expired-05] clyde · a boring memory system
+[expired-05] clyde · shared memory for agents
 
 [expired-06] Privacy Terms Design system Status
 
-[expired-07] Claude, ChatGPT, Codex, Gemini, Antigravity and Grok belong to their owners. None of them endorse Clyde. Not offered in the EU, EEA, UK, Switzerland or Quebec.
+[expired-07] Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok are trademarks of their respective owners. None of them endorse Clyde. Not available in the EU, EEA, UK, Switzerland, or Quebec.
 
 
 ## sign-in screen: blocked
@@ -765,17 +771,17 @@ Keep the [ids]. Leave a line empty to cut it.
 
 [blocked-02] Not available 16 Nov 2026
 
-[blocked-03] Not available in your country
+[blocked-03] Not available in your region
 
-[blocked-04] Something broke, so start the connection again from your app.
+[blocked-04] Connection canceled.
 
-[blocked-05] Clyde skips places under GDPR or Quebec's Law 25 for now. Nothing was saved and no email went out.
+[blocked-05] Clyde isn't available in GDPR jurisdictions or Quebec yet. No account was made and no email went out.
 
-[blocked-06] clyde · a boring memory system
+[blocked-06] clyde · shared memory for agents
 
 [blocked-07] Privacy Terms Design system Status
 
-[blocked-08] Claude, ChatGPT, Codex, Gemini, Antigravity and Grok belong to their owners. None of them endorse Clyde. Not offered in the EU, EEA, UK, Switzerland or Quebec.
+[blocked-08] Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok are trademarks of their respective owners. None of them endorse Clyde. Not available in the EU, EEA, UK, Switzerland, or Quebec.
 
 
 ## sign-in screen: subscribed
@@ -784,32 +790,32 @@ Keep the [ids]. Leave a line empty to cut it.
 
 [subscribed-02] Paid 16 Nov 2026
 
-[subscribed-03] You're subscribed
+[subscribed-03] Subscription active
 
-[subscribed-04] You're on the Clyde plan, and it turns on within a minute. Thanks for paying for a notepad.
+[subscribed-04] Your Clyde plan is on. New limits apply within a minute.
 
-[subscribed-05] Go back to your app. You can close this tab.
+[subscribed-05] Close this tab and return to your app.
 
-[subscribed-06] clyde · a boring memory system
+[subscribed-06] clyde · shared memory for agents
 
 [subscribed-07] Privacy Terms Design system Status
 
-[subscribed-08] Claude, ChatGPT, Codex, Gemini, Antigravity and Grok belong to their owners. None of them endorse Clyde. Not offered in the EU, EEA, UK, Switzerland or Quebec.
+[subscribed-08] Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok are trademarks of their respective owners. None of them endorse Clyde. Not available in the EU, EEA, UK, Switzerland, or Quebec.
 
 
 ## sign-in screen: error
 
 [error-01] Sign-in memory.heyclyde.me
 
-[error-02] Stopped 16 Nov 2026
+[error-02] Error 16 Nov 2026
 
-[error-03] Something went wrong
+[error-03] Sign-in failed
 
-[error-04] Something broke, so start the connection again from your app.
+[error-04] Restart the connection from your app.
 
-[error-05] clyde · a boring memory system
+[error-05] clyde · shared memory for agents
 
 [error-06] Privacy Terms Design system Status
 
-[error-07] Claude, ChatGPT, Codex, Gemini, Antigravity and Grok belong to their owners. None of them endorse Clyde. Not offered in the EU, EEA, UK, Switzerland or Quebec.
+[error-07] Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok are trademarks of their respective owners. None of them endorse Clyde. Not available in the EU, EEA, UK, Switzerland, or Quebec.
 

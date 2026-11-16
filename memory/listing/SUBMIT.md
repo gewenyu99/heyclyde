@@ -16,7 +16,7 @@ Never paste a password or token into a portal field or this file. Test credentia
 | 3 | Every tool has a `title` and `readOnlyHint` or `destructiveHint`, and no tool text names Wen or tells the model when to call it. | R53 | In progress. Claude's form refuses tools without annotations. |
 | 4 | Public sign-up is open, so a reviewer can connect. | R54 ([#59](https://github.com/gewenyu99/like-vincent/issues/59)) | Waits on tenancy, R48 to R50. |
 | 5 | The reviewer account `review@heyclyde.me`: password sign-in, no MFA, 40 sample notes, reseeded nightly. | R55, after tenancy | Waits on R48 to R50. |
-| 6 | Pages and brand files are live: [docs](https://heyclyde.me/docs), [support](https://heyclyde.me/support), [privacy](https://heyclyde.me/privacy), [terms](https://heyclyde.me/terms), [Grok guide](https://heyclyde.me/docs/grok), [512 PNG](https://heyclyde.me/brand/clyde-512.png), [48 PNG](https://heyclyde.me/brand/clyde-48.png), [SVG](https://heyclyde.me/brand/clyde.svg). | this change | Done. `python3 memory/e2e/listing_check.py` checks them. |
+| 6 | Pages and brand files are live: [docs](https://heyclyde.me/docs), [support](https://heyclyde.me/docs#support), [privacy](https://heyclyde.me/privacy), [terms](https://heyclyde.me/terms), [Grok guide](https://heyclyde.me/docs#grok), [512 PNG](https://heyclyde.me/brand/clyde-512.png), [48 PNG](https://heyclyde.me/brand/clyde-48.png), [SVG](https://heyclyde.me/brand/clyde.svg). | this change | Done. `python3 memory/e2e/listing_check.py` checks them. |
 
 Step 1 commands. Put your own inbox where it says so:
 
@@ -52,7 +52,7 @@ Synced from the server. Check each of the 18 tools shows a title and an annotati
 | Categories (1 to 5) | Productivity, Developer tools. The docs don't list the options: pick the closest two. |
 | Documentation URL | https://heyclyde.me/docs |
 | Privacy policy URL | https://heyclyde.me/privacy |
-| Support contact | support@heyclyde.me (page: https://heyclyde.me/support) |
+| Support contact | support@heyclyde.me (page: https://heyclyde.me/docs#support) |
 | Icon | Upload `memory/proxy/public/brand/clyde-512.png` (512 x 512 PNG, 37 KB), also at https://heyclyde.me/brand/clyde-512.png |
 | URL slug (permanent) | `clyde` |
 | Allowed link URIs | Leave empty. Clyde doesn't use ui/open-link. |
