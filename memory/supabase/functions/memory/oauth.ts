@@ -8,7 +8,7 @@
 import { allowed, clientKey, DOMAIN, ensureAccount, entitlementOf, openSignup, viaProxy } from "./auth.ts";
 import { checkoutLink, geoBlocked, geoOf } from "./billing/entitlement.ts";
 import { REFUSAL } from "./billing/regions.ts";
-import { root, sql } from "./db.ts";
+import { root, secret, setting, sql } from "./db.ts";
 
 const AUTH = () => `${Deno.env.get("SUPABASE_URL")}/auth/v1`;
 const ID = /^[A-Za-z0-9_-]{8,100}$/;
@@ -93,7 +93,9 @@ async function consent(p: Page, base: string, id: string) {
     where authorization_id = ${id}`;
   if (row?.fresh) return waiting(p, base, id, "check_email", "the sign-in link is in your email.");
   const emails = await sql`select email from memory.allowed_email order by email limit 2`;
-  if (emails.length !== 1) return page(p, "error", "connecting a client needs exactly one allowed email.", 500);
+  if (!emails.length) return page(p, "error", "connecting a client needs an allowed email.", 500);
+  // Several allowlisted addresses (Wen and the reviewer account, R55): the page asks which, and only those get a link.
+  if (emails.length > 1) return await emailForm(p, id);
   const [{ n }] = await sql`select count(*)::int as n from memory.oauth_consent where created_at > now() - ${FRESH}::interval`;
   if (n >= MAX_EMAILS) return page(p, "error", "too many sign-ins in the last 15 minutes. Try again later.", 429);
 
@@ -121,12 +123,17 @@ async function sendLink(p: Page, base: string, id: string, email: string, create
 
 /** With sign-in open (R38), the consent page asks for an email first: state ask_email for the Worker's page, a plain
  * form for a caller straight to the function. The form posts back to the same URL. */
-function emailForm(p: Page, id: string) {
-  if (p.json) return page(p, "ask_email", "enter your email and we'll send a sign-in link.", 200, { post: `/oauth/consent?authorization_id=${encodeURIComponent(id)}` });
+async function emailForm(p: Page, id: string) {
+  if (p.json) {
+    const key = await setting("turnstile_site_key");
+    return page(p, "ask_email", "enter your email and we'll send a sign-in link.", 200,
+      { post: `/oauth/consent?authorization_id=${encodeURIComponent(id)}`, ...(key ? { turnstile_site_key: key } : {}) });
+  }
   return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sign in to Clyde</title></head><body style="font-family:system-ui,sans-serif;max-width:28rem;margin:4rem auto;padding:0 1rem">
 <h1>Sign in to Clyde</h1><p>We'll email you a sign-in link.</p>
 <form method="post" action="?authorization_id=${encodeURIComponent(id)}"><label>Your email <input type="email" name="email" required autofocus></label>
+<label>Password, only if your account has one <input type="password" name="password" autocomplete="current-password"></label>
 <button type="submit">Send the link</button></form></body></html>`,
     { status: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 }
@@ -134,23 +141,37 @@ function emailForm(p: Page, id: string) {
 /** POST /oauth/consent with sign-in open: email a sign-in link to whoever asked, creating their account. Refused from a
  * blocked country (451), straight to the function rather than through memory.heyclyde.me unless the email is allowlisted
  * (403), and past the hourly caps (429). Nothing is written or sent for a refusal. */
-async function signUp(p: Page, req: Request, base: string, id: string) {
+type Form = { email: string; human: string; password: string };
+
+/** A consent POST's fields, from a form or JSON, read once: the email, the Turnstile token and a password if one came. */
+async function readForm(req: Request): Promise<Form> {
   const type = req.headers.get("content-type") ?? "";
   const raw = (await req.text()).slice(0, 4096);
-  let email = "";
   if (type.includes("application/json")) {
     try {
-      email = String(JSON.parse(raw)?.email ?? "");
+      const body = JSON.parse(raw);
+      return { email: String(body?.email ?? ""), human: String(body?.turnstile ?? body?.["cf-turnstile-response"] ?? ""), password: String(body?.password ?? "") };
     } catch {
-      // Not JSON: no email.
+      return { email: "", human: "", password: "" };
     }
-  } else email = new URLSearchParams(raw).get("email") ?? "";
+  }
+  const form = new URLSearchParams(raw);
+  return { email: form.get("email") ?? "", human: form.get("cf-turnstile-response") ?? "", password: form.get("password") ?? "" };
+}
+
+async function signUp(p: Page, req: Request, base: string, id: string, form: Form) {
+  let { email } = form;
+  const human = form.human;
   email = email.trim().toLowerCase();
   if (!EMAIL.test(email)) return page(p, "error", "that isn't an email address.", 400);
   const proxied = await viaProxy(req);
   if (!proxied && !(await allowed(email))) return page(p, "error", `sign in at ${DOMAIN}, not this address.`, 403);
   if (geoBlocked(geoOf(req, proxied))) return page(p, "blocked", REFUSAL, 451);
   const client = await clientKey(req);
+  // R54: Turnstile says a person sent it. With no secret set, the door stays shut rather than open to bots.
+  const check = await turnstile(human, client);
+  if (check === null) return page(p, "error", "sign-up isn't ready yet. Try again later.", 503);
+  if (!check) return page(p, "error", "Clyde couldn't tell a person sent that. Reload the page and try again.", 400);
   const [{ to, from }] = await sql`select
       count(*) filter (where email = ${email})::int as to,
       count(*) filter (where client = ${client})::int as from
@@ -160,6 +181,26 @@ async function signUp(p: Page, req: Request, base: string, id: string) {
   await sql`delete from memory.signup_attempt where at < now() - interval '1 day'`;
   await sql`insert into memory.signup_attempt (client, email) values (${client}, ${email})`;
   return sendLink(p, base, id, email, true);
+}
+
+const TURNSTILE_URL = () => Deno.env.get("MEMORY_TURNSTILE_URL") || "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+
+/** Whether Cloudflare Turnstile vouches for this token (R54): true or false, or null when no secret is set (Vault
+ * turnstile_secret), so sign-up can't open without a CAPTCHA. A siteverify that doesn't answer counts as no. */
+async function turnstile(token: string, client: string): Promise<boolean | null> {
+  const key = await secret("turnstile_secret");
+  if (!key) return null;
+  if (!token || token.length > 2048) return false;
+  try {
+    const r = await fetch(TURNSTILE_URL(), {
+      method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ secret: key, response: token, ...(client ? { remoteip: client.replace(/::\/64$/, "::") } : {}) }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    return r.ok && (await r.json())?.success === true;
+  } catch {
+    return false;
+  }
 }
 
 function clientAllowed(uri: string) {
@@ -187,6 +228,12 @@ async function approve(p: Page, id: string, code: string | null, error: string |
   // This session only approves. It lapses within the hour, and its refresh token is never kept.
   const jwt = session.body.access_token, user = session.body.user;
   if (!session.ok || !jwt) return page(p, "error", "that sign-in link didn't work. Start connecting again from the app.", 400);
+  return await finish(p, id, jwt, user, false);
+}
+
+/** With a signed-in session: approve the app's request if its callback is one Clyde approves, else deny and log it. The email
+ * link leaves the client's redirect for the waiting window; a password sign-in (direct) goes there itself. */
+async function finish(p: Page, id: string, jwt: string, user: Record<string, any>, direct: boolean): Promise<Response> {
   if (!(user?.email && user.email_confirmed_at && (await openSignup() || await allowed(user.email)))) {
     return page(p, "error", "that account isn't on Clyde's allowlist.", 403);
   }
@@ -207,11 +254,12 @@ async function approve(p: Page, id: string, code: string | null, error: string |
         ${sql.json({ name, redirect_uri: target })})`;
     if (action === "deny") {
       console.warn(`memory: oauth_deny for ${name}: redirect_uri ${target}`);
-      await sql`update memory.oauth_consent set redirect_url = ${redirect!} where authorization_id = ${id}`;
+      if (!direct) await sql`update memory.oauth_consent set redirect_url = ${redirect!} where authorization_id = ${id}`;
       return page(p, "refused", `refused ${name}. Its callback, ${target}, isn't one Clyde approves (Claude, ChatGPT, Antigravity, Grok, the Gemini app, or localhost).`, 403,
         { client: name, callback: target });
     }
   }
+  if (direct) return new Response(null, { status: 302, headers: { location: redirect!, "cache-control": "no-store" } });
   await sql`update memory.oauth_consent set redirect_url = ${redirect!}, client_name = ${name} where authorization_id = ${id}`;
   const full = await freeTierFull(user);
   return page(p, "connected", `connected ${name}. Go back to the window that asked. It finishes by itself.${full ? ` ${full.line}` : ""}`, 200,
@@ -232,6 +280,23 @@ async function freeTierFull(user: { id?: string; email?: string } | undefined) {
   return { url, line: `Clyde's free tier is full, so its tools need the Clyde plan at ${price}: ${url}` };
 }
 
+/** POST /oauth/consent with a password (R55): sign in with it and approve at once, for an account that has one, such as the
+ * store reviewers' review@heyclyde.me. Counted with the sign-up attempts, so the hourly caps hold guessing down. Works with
+ * sign-up closed, since the account is on the allowlist. */
+async function passwordSignIn(p: Page, req: Request, id: string, form: Form) {
+  const email = form.email.trim().toLowerCase();
+  if (!EMAIL.test(email) || form.password.length > 200) return page(p, "error", "that isn't an email and password.", 400);
+  const client = await clientKey(req);
+  const [{ from }] = await sql`select count(*) filter (where client = ${client})::int as from
+    from memory.signup_attempt where at > now() - interval '1 hour'`;
+  if (from >= MAX_PER_CLIENT) return page(p, "error", "too many sign-ins from your address in the last hour. Try again later.", 429);
+  await sql`insert into memory.signup_attempt (client, email) values (${client}, ${email})`;
+  const session = await auth("/token?grant_type=password", { method: "POST", body: JSON.stringify({ email, password: form.password }) });
+  const jwt = session.body.access_token;
+  if (!session.ok || !jwt) return page(p, "error", "that email and password don't match.", 401);
+  return await finish(p, id, jwt, session.body.user, true);
+}
+
 /** The waiting window reloads here until the link is clicked, then goes on to the client. */
 async function wait(p: Page, base: string, id: string) {
   const [row] = await sql`select redirect_url, created_at > now() - ${FRESH}::interval as fresh from memory.oauth_consent
@@ -248,11 +313,24 @@ export async function handle(req: Request, base: string, path: string, url: URL,
   const id = url.searchParams.get("authorization_id") ?? "";
   if (!ID.test(id)) return page(p, "error", "that link is missing its authorization_id. Start connecting again from the app.", 400);
   await sql`delete from memory.oauth_consent where created_at < now() - interval '1 day'`;
+  const form = path === "/oauth/consent" && req.method === "POST" ? await readForm(req) : null;
+  if (form?.password) return passwordSignIn(p, req, id, form);
   // With sign-in open (R38), anyone can ask for a link: an email form, then a capped, region-checked send.
   if (path === "/oauth/consent" && await openSignup()) {
-    if (req.method === "POST") return signUp(p, req, base, id);
+    if (form) return signUp(p, req, base, id, form);
     const [row] = await sql`select created_at > now() - ${FRESH}::interval as fresh from memory.oauth_consent where authorization_id = ${id}`;
     return row?.fresh ? waiting(p, base, id, "check_email", "the sign-in link is in your email.") : emailForm(p, id);
+  }
+  // R54: while the door is shut, an allowlisted address still gets its sign-in link; anyone else is told sign-ups are
+  // closed, and nobody is emailed.
+  if (path === "/oauth/consent" && form) {
+    const email = form.email.trim().toLowerCase();
+    if (EMAIL.test(email) && await allowed(email)) {
+      const [{ n }] = await sql`select count(*)::int as n from memory.oauth_consent where created_at > now() - ${FRESH}::interval`;
+      if (n >= MAX_EMAILS) return page(p, "error", "too many sign-ins in the last 15 minutes. Try again later.", 429);
+      return sendLink(p, base, id, email, false);
+    }
+    return page(p, "closed", "Sign-ups are closed. Clyde isn't taking new accounts right now.", 403);
   }
   if (path === "/oauth/consent") return consent(p, base, id);
   if (path === "/oauth/approve") return approve(p, id, url.searchParams.get("code"), url.searchParams.get("error_description"));

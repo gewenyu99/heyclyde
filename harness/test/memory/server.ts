@@ -1,6 +1,7 @@
 /** Tier 3 support: the memory Edge Function under deno, on schema memory rebuilt from the migrations and the made-up tea vault. */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { appendFileSync } from 'node:fs'
+import http from 'node:http'
 import { randomBytes } from 'node:crypto'
 import net from 'node:net'
 import { join } from 'node:path'
@@ -22,6 +23,8 @@ const NO_NODE_MODULES = '--node-modules-dir=none'
 export type RealMemory = {
   storage?: FakeStorage; serviceKey?: string; log?: () => string
   url: string; token: string; runtimeToken: string; adminToken: string; researchToken: string; cronSecret: string; openai: FakeOpenAI; auth: FakeAuth
+  /** The fake Turnstile siteverify, with every token it was asked about. */
+  turnstile: FakeTurnstile
   close: () => Promise<void>
   /** The function's environment, so a second instance on the same database can start (startSibling). */
   env?: Record<string, string | undefined>
@@ -92,6 +95,26 @@ async function waitHealthy(url: string, child: ChildProcess, log: () => string):
   throw new Error(`memory never answered /healthz:\n${log()}`)
 }
 
+export type FakeTurnstile = { url: string; calls: { response: string | null; secret: string | null }[]; close: () => Promise<void> }
+export const TURNSTILE_SECRET = 'turnstile-test-secret'
+
+/** A stand-in for Cloudflare's siteverify: success only for the token "pass" with TURNSTILE_SECRET. */
+async function startFakeTurnstile(): Promise<FakeTurnstile> {
+  const calls: FakeTurnstile['calls'] = []
+  const server = http.createServer((req, res) => {
+    const chunks: Buffer[] = []
+    req.on('data', (c) => chunks.push(c))
+    req.on('end', () => {
+      const form = new URLSearchParams(Buffer.concat(chunks).toString('utf8'))
+      calls.push({ response: form.get('response'), secret: form.get('secret') })
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ success: form.get('response') === 'pass' && form.get('secret') === TURNSTILE_SECRET }))
+    })
+  })
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()))
+  return { url: `http://127.0.0.1:${(server.address() as net.AddressInfo).port}/siteverify`, calls, close: () => new Promise((r) => server.close(() => r())) }
+}
+
 /** A fresh schema memory and the function on it, with a device token, the runtime, admin and research tokens, and the cron secret.
  * close() stops the function and drops the schema. extraEnv is added to the function's environment. */
 export async function startRealMemory(extraEnv: Record<string, string> = {}, options: { storage?: boolean; openai?: FakeOptions } = {}): Promise<RealMemory> {
@@ -111,12 +134,14 @@ export async function startRealMemory(extraEnv: Record<string, string> = {}, opt
   const serviceKey = options.storage ? randomBytes(20).toString('hex') : undefined
   const storage = serviceKey ? new FakeStorage(serviceKey) : undefined
   const auth = await startFakeAuth(storage?.handle)
+  // Cloudflare Turnstile's siteverify (R54): the token "pass" with the test secret (database.ts puts it in Vault) is a person.
+  const turnstile = await startFakeTurnstile()
   // The function's port is picked once the fakes hold theirs. Picked before, a fake listening on port 0 could be handed
   // the same one, and the function would die with AddrInUse.
   const port = await freePort()
   const env = {
     ...process.env, SUPABASE_DB_URL: DATABASE_URL, DENO_SERVE_ADDRESS: `tcp:127.0.0.1:${port}`, MEMORY_OPENAI_URL: openai.url, MEMORY_GEMINI_URL: openai.geminiUrl,
-    SUPABASE_URL: auth.url, SUPABASE_ANON_KEY: 'fake-anon-key', NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost',
+    SUPABASE_URL: auth.url, SUPABASE_ANON_KEY: 'fake-anon-key', MEMORY_TURNSTILE_URL: turnstile.url, NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost',
     ...(serviceKey ? { SUPABASE_SERVICE_ROLE_KEY: serviceKey, MEMORY_STORAGE_TIMEOUT_MS: '2000' } : {}), ...extraEnv,
   }
   const child = spawn(DENO, ['run', '-A', NO_NODE_MODULES, FUNCTION], { env, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -134,6 +159,7 @@ export async function startRealMemory(extraEnv: Record<string, string> = {}, opt
     }
     await openai.close()
     await auth.close()
+    await turnstile.close()
     database(['drop'])
   }
   try {
@@ -142,7 +168,7 @@ export async function startRealMemory(extraEnv: Record<string, string> = {}, opt
     await close()
     throw err
   }
-  return { url, token, runtimeToken, adminToken, researchToken, cronSecret, openai, auth, close, storage, serviceKey, log: () => output, env }
+  return { url, token, runtimeToken, adminToken, researchToken, cronSecret, openai, auth, turnstile, close, storage, serviceKey, log: () => output, env }
 }
 
 /** A second function process on the same database and fakes as `memory`, as another Edge Function instance would be. It

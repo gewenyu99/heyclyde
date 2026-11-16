@@ -42,7 +42,7 @@ export function credentialFor(path: string): Kind | null {
   if (path === "/billing/checkout" || path === "/billing/thanks") return "open";
   if (path === "/healthz" || path === "/install" || path.startsWith("/install/")) return "open";
   if (path.startsWith("/oauth/") || path.startsWith("/.well-known/")) return "open";
-  if (path === "/devices/claim") return "owner";
+  if (path === "/devices/claim" || path.startsWith("/me/")) return "owner";
   if (path === "/" || path === "/api/v1" || path.startsWith("/api/v1/")) return "admin";
   if (["/mcp", "/mcp/", "/entries", "/recall"].includes(path)) return "agent";
   if (path === "/blobs/sweep") return "cron";

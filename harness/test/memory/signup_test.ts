@@ -30,5 +30,6 @@ Deno.test('R54: the sign-in page asks Turnstile', async () => {
 
   const plain = await askEmail({})
   assert.ok(!plain.html.includes('cf-turnstile') && !plain.csp.includes(ORIGIN))
-  assert.equal([...plain.html.matchAll(/(src|href)="https?:\/\//g)].length, 0, 'nothing from another origin')
+  // A load is a src or a stylesheet; a link a reader clicks is not.
+  assert.equal([...plain.html.matchAll(/src="https?:\/\/|<link[^>]+href="https?:\/\//g)].length, 0, 'nothing loaded from another origin')
 })

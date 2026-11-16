@@ -170,7 +170,7 @@ test('entitlement: a stranger signs in and connects, and only tools/call is refu
   assert.equal(form.status, 200, form.text)
   assert.match(form.text, /email/)
   const otps = memory.auth.calls.filter((c) => c.path === '/auth/v1/otp').length
-  const sent = await request('POST', consent, { headers: { ...proxied('US'), 'content-type': 'application/x-www-form-urlencoded' }, body: `email=${encodeURIComponent(email)}` })
+  const sent = await request('POST', consent, { headers: { ...proxied('US'), 'content-type': 'application/x-www-form-urlencoded' }, body: `email=${encodeURIComponent(email)}&cf-turnstile-response=pass` })
   assert.equal(sent.status, 200, sent.text)
   const otp = memory.auth.calls.filter((c) => c.path === '/auth/v1/otp')
   assert.equal(otp.length - otps, 1)
@@ -194,7 +194,7 @@ test('entitlement: a stranger signs in and connects, and only tools/call is refu
 test('sign-ins: the 4th email to one address in an hour gets 429 from any address', { skip: SKIP }, async () => {
   const victim = `victim-${nonce()}@example.com`
   const start = (email: string, ip: string) => request('POST', `${memory.url}/oauth/consent?authorization_id=auth-${nonce()}`,
-    { headers: { ...proxied('US'), 'x-memory-client': ip, 'content-type': 'application/x-www-form-urlencoded' }, body: `email=${encodeURIComponent(email)}` })
+    { headers: { ...proxied('US'), 'x-memory-client': ip, 'content-type': 'application/x-www-form-urlencoded' }, body: `email=${encodeURIComponent(email)}&cf-turnstile-response=pass` })
   const otps = () => memory.auth.calls.filter((c) => c.path === '/auth/v1/otp').length
   for (const ip of ['203.0.113.31', '203.0.113.32', '203.0.113.33']) assert.equal((await start(victim, ip)).status, 200)
   const n = otps()
@@ -206,7 +206,7 @@ test('sign-ins: the 4th email to one address in an hour gets 429 from any addres
 
 test('sign-ins: the 6th from one address in an hour gets 429 and sends no email', { skip: SKIP }, async () => {
   const start = (ip: string) => request('POST', `${memory.url}/oauth/consent?authorization_id=auth-${nonce()}`,
-    { headers: { ...proxied('US'), 'x-memory-client': ip, 'content-type': 'application/x-www-form-urlencoded' }, body: `email=s-${nonce()}@example.com` })
+    { headers: { ...proxied('US'), 'x-memory-client': ip, 'content-type': 'application/x-www-form-urlencoded' }, body: `email=s-${nonce()}@example.com&cf-turnstile-response=pass` })
   for (let i = 0; i < 5; i++) assert.equal((await start('203.0.113.21')).status, 200)
   const n = memory.auth.calls.filter((c) => c.path === '/auth/v1/otp').length
   assert.equal((await start('203.0.113.21')).status, 429)
@@ -219,7 +219,7 @@ test('sign-ins: a direct, unproxied sign-up is refused unless the email is allow
   const n = otps()
   for (let i = 0; i < 6; i++) {
     const r = await request('POST', `${memory.url}/oauth/consent?authorization_id=auth-${nonce()}`,
-      { headers: { 'x-forwarded-for': `192.0.2.${i + 1}`, 'content-type': 'application/x-www-form-urlencoded' }, body: `email=d-${nonce()}@example.com` })
+      { headers: { 'x-forwarded-for': `192.0.2.${i + 1}`, 'content-type': 'application/x-www-form-urlencoded' }, body: `email=d-${nonce()}@example.com&cf-turnstile-response=pass` })
     assert.equal(r.status, 403, r.text)
     assert.match(r.text, /https:\/\/memory\.heyclyde\.me/)
   }
@@ -227,7 +227,7 @@ test('sign-ins: a direct, unproxied sign-up is refused unless the email is allow
   const allowed = `allowed-${nonce()}@example.com`
   sql(`insert into memory.allowed_email (email) values ('${allowed}')`)
   const ok = await request('POST', `${memory.url}/oauth/consent?authorization_id=auth-${nonce()}`,
-    { headers: { 'x-forwarded-for': '192.0.2.99', 'content-type': 'application/x-www-form-urlencoded' }, body: `email=${allowed}` })
+    { headers: { 'x-forwarded-for': '192.0.2.99', 'content-type': 'application/x-www-form-urlencoded' }, body: `email=${allowed}&cf-turnstile-response=pass` })
   assert.equal(ok.status, 200, ok.text)
   assert.equal(otps() - n, 1)
 })
@@ -581,7 +581,7 @@ test('entitlement: unpaid initialize writes no mcp_client rows', { skip: SKIP },
 
 const signUp = (headers: Record<string, string>, email = `geo-${nonce()}@example.com`) =>
   request('POST', `${memory.url}/oauth/consent?authorization_id=auth-${nonce()}`,
-    { headers: { ...headers, 'content-type': 'application/x-www-form-urlencoded' }, body: `email=${encodeURIComponent(email)}` })
+    { headers: { ...headers, 'content-type': 'application/x-www-form-urlencoded' }, body: `email=${encodeURIComponent(email)}&cf-turnstile-response=pass` })
 const geoCounts = () => { const c = tableCounts(); return [c.oauth_consent, c.account, c.entitlement] }
 const otpCount = () => memory.auth.calls.filter((c) => c.path === '/auth/v1/otp').length
 

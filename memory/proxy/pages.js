@@ -233,7 +233,8 @@ export function statePage(data, nonce, id = "") {
     case "connected":
       mark = stamp("ok", "Approved", date); h1 = "Connected"; title = "Connected";
       lead = `${app("Your app")} is connected to Clyde.`;
-      extra = data?.free_full && data?.checkout_url
+      // R74: past the free tier's last seat, the app connects but its tools need the plan. Only an https link is a link.
+      extra = data?.free_full && /^https:\/\//.test(String(data.checkout_url ?? ""))
         ? note(`No free seats are available right now. <a href="${esc(data.checkout_url)}">Subscribe to Clyde for $12.99 USD/month</a> to start using tools, then return to your app.`)
         : note("Close this tab and return to your app.");
       break;
@@ -247,7 +248,14 @@ export function statePage(data, nonce, id = "") {
       lead = "Enter your email and Clyde sends you a one-time sign-in link.";
       extra = `<form class="ask" method="post" action="/oauth/consent?authorization_id=${esc(encodeURIComponent(id))}">
 <div class="cl-field"><label for="email">Email</label><input class="cl-input" id="email" type="email" name="email" autocomplete="email" required autofocus placeholder="you@example.com"></div>
-<button class="cl-btn cl-btn--primary cl-btn--lg cl-btn--block" type="submit">Send sign-in link</button></form>`;
+<details class="cl-field"><summary>Have a password?</summary><label for="password">Password</label><input class="cl-input" id="password" type="password" name="password" autocomplete="current-password"></details>
+${data?.turnstile_site_key ? `<div class="cf-turnstile" data-sitekey="${esc(data.turnstile_site_key)}"></div>` : ""}
+<button class="cl-btn cl-btn--primary cl-btn--lg cl-btn--block" type="submit">Send sign-in link</button></form>${data?.turnstile_site_key
+        ? `<script nonce="${nonce}" src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>` : ""}`;
+      break;
+    case "closed":
+      mark = stamp("warn", "Closed", date); h1 = "Sign-ups are closed"; title = "Sign-ups closed";
+      lead = "Clyde isn't taking new accounts right now. No account was made and no email went out.";
       break;
     case "blocked":
       mark = stamp("bad", "Not available", date); h1 = "Not available in your region"; title = "Not available";

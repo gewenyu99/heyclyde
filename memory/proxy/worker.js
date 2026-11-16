@@ -62,11 +62,16 @@ function nonce() {
   return btoa(String.fromCharCode(...b)).replace(/[+/=]/g, "");
 }
 
-/** Headers for an HTML reply, locked down: scripts and styles only from this response, nothing framed, no referrer. */
-function locked(n, headers = {}) {
+// Cloudflare Turnstile's origin (R54): its script and its challenge frame, on a sign-in page that asks it and no other.
+const TURNSTILE = "https://challenges.cloudflare.com";
+
+/** Headers for an HTML reply, locked down: scripts and styles only from this response, nothing framed, no referrer. A
+ * page that asks Turnstile also loads its script and frame from TURNSTILE. */
+function locked(n, headers = {}, turnstile = false) {
   return {
     "content-type": "text/html; charset=utf-8",
-    "content-security-policy": `default-src 'none'; script-src 'nonce-${n}'; style-src 'nonce-${n}'; img-src 'self' data:; font-src 'self'; ` +
+    "content-security-policy": `default-src 'none'; script-src 'nonce-${n}'${turnstile ? ` ${TURNSTILE}` : ""}; style-src 'nonce-${n}'; ` +
+      `img-src 'self' data:; font-src 'self'; ${turnstile ? `frame-src ${TURNSTILE}; ` : ""}` +
       "connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
     "x-frame-options": "DENY",
     "x-content-type-options": "nosniff",
@@ -77,9 +82,9 @@ function locked(n, headers = {}) {
   };
 }
 
-function html(render, status = 200, headers = {}) {
+function html(render, status = 200, headers = {}, turnstile = false) {
   const n = nonce();
-  return new Response(render(n), { status, headers: locked(n, headers) });
+  return new Response(render(n), { status, headers: locked(n, headers, turnstile) });
 }
 
 async function signIn(req, url, env) {
@@ -96,7 +101,8 @@ async function signIn(req, url, env) {
   const advances = (data.state === "check_email" || data.state === "waiting") && ID.test(id);
   const headers = { "cache-control": "no-store" };
   if (advances) headers.refresh = `3; url=/oauth/wait?authorization_id=${encodeURIComponent(id)}`;
-  return html((n) => statePage(data, n, ID.test(id) ? id : ""), res.status, headers);
+  const asks = data.state === "ask_email" && typeof data.turnstile_site_key === "string" && /^[\w-]{1,100}$/.test(data.turnstile_site_key);
+  return html((n) => statePage(asks ? data : { ...data, turnstile_site_key: undefined }, n, ID.test(id) ? id : ""), res.status, headers, asks);
 }
 
 /** A browser asking for a page: it accepts HTML and sends no token. */

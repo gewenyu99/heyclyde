@@ -1696,6 +1696,7 @@ const ROUTES: Route[] = [
     return deleteSecret(m[1]);
   }],
   ["GET", /^\/billing\/plans$/, 200, () => plans()],
+  ["POST", /^\/reviewer\/reseed$/, 200, async () => ({ entries: Number((await root`select memory.reseed_reviewer() as n`)[0].n) })],
   ["GET", /^\/billing\/guard$/, 200, async () => (await guard.last()) ?? { decision: null, at: null, metrics: {} }],
   ["PUT", /^\/billing\/plans\/([^/]+)$/, 200, async (r, m) => putPlan(m[1], await body(r))],
   ["GET", /^\/billing\/entitlements$/, 200, (_r, _m, q) => entitlements(q.text("state") ?? null, q.page())],

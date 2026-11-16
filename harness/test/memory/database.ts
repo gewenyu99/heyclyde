@@ -39,7 +39,7 @@ const env = (name: string) => Deno.env.get(name) ?? ''
 const sql = postgres(env('SUPABASE_DB_URL'), { max: 1, onnotice: () => {} })
 
 // The migrations schedule these against the real project, with the cron secret. The tests never want them.
-const CRONS = ['memory-embed-sync', 'memory-learn', 'memory-message-purge', 'memory-variant-retention', 'memory-variant-guard', 'memory-usage-report', 'memory-cost-guard']
+const CRONS = ['memory-embed-sync', 'memory-learn', 'memory-message-purge', 'memory-variant-retention', 'memory-variant-guard', 'memory-usage-report', 'memory-cost-guard', 'memory-reviewer-reseed']
 
 // memory-blob-sweep stays scheduled after a reset, since a test checks the migration made it. drop removes it.
 async function unschedule(names = CRONS) {
@@ -92,6 +92,8 @@ async function reset() {
   await sql`insert into memory.setting (name, value) values ('research_token_sha256', ${await sha256(env('MEMORY_TEST_RESEARCH_TOKEN'))})`
   await sql`insert into memory.device (name, token_sha256) values ('clyde-test', ${await sha256(env('MEMORY_TEST_TOKEN'))})`
   await putSecret('cron_secret', env('MEMORY_TEST_CRON_SECRET'))
+  // R54: sign-ups need Turnstile; server.ts's fake siteverify takes this secret.
+  await putSecret('turnstile_secret', 'turnstile-test-secret')
   await sql`delete from vault.secrets where name in ('gemini_key', 'openai_key')`
 }
 

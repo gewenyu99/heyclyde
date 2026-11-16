@@ -1,46 +1,29 @@
 /**
  * Tier 3: R54 (#59), anyone outside the blocked regions signs up for Clyde, and the first 1,000 get the free allocation.
  * Against the real memory function with sign-in open (setting open_signup), behind the Worker's proxy secret, with a fake
- * Supabase Auth and a fake Turnstile siteverify (MEMORY_TURNSTILE_URL): a token of "pass" is human, anything else isn't.
+ * Supabase Auth and server.ts's fake Turnstile siteverify: the token "pass" with the test secret is a person, nothing else is.
  */
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import http from 'node:http'
 import { after, before, test } from 'node:test'
 import { request } from '../../src/request.ts'
 import { jwt } from './auth.ts'
 import { bearer, nonce } from './bed.ts'
 import { putSecret, setSetting, sha } from './billing.ts'
-import { exec, SKIP, sql, startRealMemory, type RealMemory } from './server.ts'
+import { exec, SKIP, sql, startRealMemory, TURNSTILE_SECRET, type RealMemory } from './server.ts'
 
 const PROXY = `proxy-${nonce()}`
 let memory: RealMemory
-let fake: http.Server
-const verified: { response: string | null; secret: string | null }[] = []
 
 before(async () => {
   if (SKIP) return
-  fake = http.createServer((req, res) => {
-    const chunks: Buffer[] = []
-    req.on('data', (c) => chunks.push(c))
-    req.on('end', () => {
-      const form = new URLSearchParams(Buffer.concat(chunks).toString('utf8'))
-      verified.push({ response: form.get('response'), secret: form.get('secret') })
-      res.writeHead(200, { 'content-type': 'application/json' })
-      res.end(JSON.stringify({ success: form.get('response') === 'pass' && form.get('secret') === 'turnstile-test-secret' }))
-    })
-  })
-  await new Promise<void>((r) => fake.listen(0, '127.0.0.1', () => r()))
-  const port = (fake.address() as { port: number }).port
-  memory = await startRealMemory({ MEMORY_TURNSTILE_URL: `http://127.0.0.1:${port}/siteverify` })
+  memory = await startRealMemory()
   setSetting('open_signup', 'on')
   setSetting('proxy_secret_sha256', sha(PROXY))
-  putSecret('turnstile_secret', 'turnstile-test-secret')
 })
 
 after(async () => {
   await memory?.close()
-  await new Promise((r) => fake?.close(r))
 })
 
 const proxied = (country: string, region?: string) =>
@@ -97,7 +80,7 @@ test('R54: turnstile required', { skip: SKIP }, async () => {
   const failing = await signUp(proxied('US'), { email: email(), 'cf-turnstile-response': 'bot' })
   assert.equal(failing.status, 400, failing.text)
   assert.equal(otps(), n)
-  assert.ok(verified.some((v) => v.response === 'bot' && v.secret === 'turnstile-test-secret'), 'siteverify heard the token with the secret')
+  assert.ok(memory.turnstile.calls.some((v) => v.response === 'bot' && v.secret === TURNSTILE_SECRET), 'siteverify heard the token with the secret')
   sql(`delete from vault.secrets where name = 'turnstile_secret'`)
   // The function caches Vault for a minute, so a second instance on the same database reads it fresh.
   try {
@@ -114,7 +97,7 @@ test('R54: turnstile required', { skip: SKIP }, async () => {
       await sibling.close()
     }
   } finally {
-    putSecret('turnstile_secret', 'turnstile-test-secret')
+    putSecret('turnstile_secret', TURNSTILE_SECRET)
   }
 })
 

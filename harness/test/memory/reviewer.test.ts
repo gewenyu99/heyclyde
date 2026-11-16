@@ -78,7 +78,7 @@ test("R55: another owner's /me never shows the reviewer's notes", { skip: SKIP }
 })
 
 test('R55: the reseed runs nightly', { skip: SKIP }, () => {
-  apply('20261116050000_reviewer.sql')
+  apply('20261116060000_reviewer.sql')
   try {
     const [job] = sql(`select schedule, command from cron.job where jobname = 'memory-reviewer-reseed'`)
     assert.match(job?.schedule ?? '', /^\d{1,2} \d{1,2} \* \* \*$/)
