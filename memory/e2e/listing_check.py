@@ -236,6 +236,35 @@ def google_verification_file(errs):
             errs.append(f"{host}: status {status}, content-type {ctype!r}")
 
 
+INDEXED = ["/", "/docs", "/how-it-works", "/research", "/support", "/docs/grok", "/privacy", "/terms", "/signin"]
+
+
+def site_seo(errs):
+    """R72 (#77): the sitemap, both hosts' robots.txt, and each indexed page's canonical and OG image."""
+    status, ctype, body = fetch("/sitemap.xml", "application/xml")
+    locs = re.findall(r"<loc>([^<]*)</loc>", body.decode("utf-8", "replace"))
+    if status != 200 or not ctype.startswith("application/xml") or locs != [BASE + p for p in INDEXED]:
+        errs.append(f"/sitemap.xml: status {status}, content-type {ctype!r}, {len(locs)} urls")
+    status, ctype, body = fetch("/robots.txt", "text/plain")
+    txt = body.decode("utf-8", "replace")
+    if status != 200 or f"Sitemap: {BASE}/sitemap.xml" not in txt or re.search(r"^Disallow: /\s*$", txt, re.M):
+        errs.append(f"/robots.txt: status {status}, or no sitemap line, or it disallows everything")
+    api = BASE.replace("://", "://memory.", 1)
+    with urllib.request.urlopen(urllib.request.Request(api + "/robots.txt", headers={"user-agent": "clyde-listing-check/1"}), timeout=20) as r:
+        if "Disallow: /" not in r.read().decode():
+            errs.append(f"{api}/robots.txt doesn't disallow")
+    for path in INDEXED:
+        status, _, body = fetch(path)
+        html = body.decode("utf-8", "replace")
+        if f'<link rel="canonical" href="{BASE}{path}">' not in html:
+            errs.append(f"{path}: no canonical {BASE}{path}")
+        if f'<meta property="og:image" content="{BASE}/brand/og-banner.png">' not in html:
+            errs.append(f"{path}: no og:image")
+    status, ctype, body = fetch("/brand/og-banner.png", "image/png")
+    if status != 200 or png_size(body) != (1200, 630):
+        errs.append(f"og-banner.png: status {status}, size {png_size(body)}")
+
+
 SECTIONS = {
     "legal pages": legal_pages,
     "docs pages": docs_pages,
