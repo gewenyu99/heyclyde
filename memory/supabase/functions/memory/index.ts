@@ -84,6 +84,8 @@ async function httpRemember(req: Request, who: Principal) {
   const payload = await jsonObject(req, MAX_ENTRY_BODY);
   if (!payload) return json({ error: "body must be a JSON object" }, 400);
   await limits.burst(who.entitlement);
+  const full = await limits.entriesFull(who.entitlement);
+  if (full) return json({ error: full }, 402);
   await limits.assertRemember(who.entitlement, payload);
   await limits.charge(who.entitlement, "remembers_month");
   let timer: ReturnType<typeof setTimeout> | undefined;

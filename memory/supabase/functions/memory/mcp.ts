@@ -692,6 +692,8 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
       await limits.burst(who.entitlement);
       if (name === "recall") await limits.charge(who.entitlement, "recalls_month");
       if (name === "remember") {
+        const full = await limits.entriesFull(who.entitlement);
+        if (full) return result(id, { content: [{ type: "text", text: full }], isError: true });
         await limits.assertRemember(who.entitlement, msg.params?.arguments ?? {});
         await limits.charge(who.entitlement, "remembers_month");
       }

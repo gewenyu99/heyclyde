@@ -1,5 +1,6 @@
-// Who may use Clyde, and on which plan (R38). The rule, checked on every agent and owner request whose principal has an
-// owner: an allowlisted, confirmed email gets its allowlist plan (Wen's is owner); else an active subscription gets its
+// Who may use Clyde, and on which plan (R38, R50). The rule, checked on every agent and owner request whose principal has an
+// owner: a comp entitlement gets its plan (an allowlisted, confirmed email holds one on its allowlist plan, Wen's owner, kept
+// in step with the allowlist by triggers); else an active subscription gets its
 // plan (clyde); else the free plan, for an account holding one of its seats (the first 1,000); else none. A plan that isn't open gets 402 with a checkout link, or 451 from a blocked country. The answer is cached
 // per owner for config.entitlementTtlMs (60 s), so a revoke, a refund or an allowlist removal reaches every instance
 // within a minute, and a burst of calls costs one lookup.
@@ -10,7 +11,7 @@ import { isBlocked, REFUSAL } from "./regions.ts";
 export type Plan = {
   id: string; name: string; open: boolean; artifacts: boolean; price_micro_usd_month: number;
   recalls_month: number | null; remembers_month: number | null; blob_bytes_total: number | null;
-  openai_tokens_month: number | null; connected_agents: number | null; burst_calls: number | null; burst_seconds: number | null;
+  openai_tokens_month: number | null; connected_agents: number | null; entries_total: number | null; burst_calls: number | null; burst_seconds: number | null;
   overage: boolean; overage_ceiling_micro_usd_month: number | null;
   features: Record<string, unknown>;
 };
@@ -31,7 +32,7 @@ export type Verdict = {
 /** A plan nobody may use: what an owner gets with no subscription and no free seat. */
 const CLOSED: Plan = {
   id: "none", name: "No", open: false, overage: false, overage_ceiling_micro_usd_month: null, artifacts: false, price_micro_usd_month: 0, recalls_month: 0, remembers_month: 0,
-  blob_bytes_total: 0, openai_tokens_month: 0, connected_agents: 0, burst_calls: 20, burst_seconds: 10, features: {},
+  blob_bytes_total: 0, openai_tokens_month: 0, connected_agents: 0, entries_total: 0, burst_calls: 20, burst_seconds: 10, features: {},
 };
 
 const cache = new Map<string, { at: number; v: Omit<Verdict, "source" | "ms"> }>();
@@ -51,11 +52,10 @@ export async function entitled(owner: string): Promise<Verdict> {
   const [row] = await sql`
     with o as (select ${owner}::uuid as id),
     who as (
-      select a.country, a.region, a.free_slot, al.plan as allow_plan, e.state, e.plan as paid_plan,
+      select a.country, a.region, a.free_slot, case when e.state = 'comp' then e.plan end as allow_plan, e.state, e.plan as paid_plan,
         e.state = 'paid' and (not e.cancel_at_period_end or e.current_period_end is null or e.current_period_end > now()) as paid
       from o
       left join memory.account a on a.owner_id = o.id
-      left join memory.allowed_email al on a.email_confirmed and al.email = a.email
       left join memory.entitlement e on e.owner_id = o.id)
     select who.*, to_jsonb(p) as plan
     from who left join memory.plan p

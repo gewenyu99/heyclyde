@@ -10,7 +10,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { sql } from "../db.ts";
 import { INVOCATION_MICRO_USD, STORAGE_MICRO_USD_PER_GB_MONTH, TOKEN_MICRO_USD } from "./cost.ts";
-import { payment, type Plan, type Verdict } from "./entitlement.ts";
+import { checkoutLink, payment, type Plan, type Verdict } from "./entitlement.ts";
 
 export type Metered = "recalls_month" | "remembers_month" | "openai_tokens_month" | "blob_bytes_total";
 const MONTHLY = new Set<string>(["recalls_month", "remembers_month", "openai_tokens_month", "overage_micro_usd_month"]);
@@ -154,6 +154,17 @@ export async function assertRemember(v: Verdict | undefined, payload: Record<str
     }
   }
   await assertTokens(v);
+}
+
+/** Before a remember (R50): why the owner's plan holds no more memories, or null. The plan's entries_total caps every
+ * entry the owner holds, counted inside its tenant. A refusal is the tool's answer, with the way to upgrade. */
+export async function entriesFull(v: Verdict | undefined): Promise<string | null> {
+  const cap = v?.plan.entries_total ?? null;
+  if (!v || cap === null) return null;
+  const [r] = await sql`select count(*)::int as n from memory.entry where owner_id = ${v.owner}`;
+  if (r.n < cap) return null;
+  return `Not remembered: Clyde's ${v.plan.name} plan holds ${cap} memories, and you have ${r.n}. ` +
+    `Upgrade at ${await checkoutLink(v.owner)} for more, or delete some you no longer need.`;
 }
 
 /** After a remember: count the bytes of the blobs it stored, and a month of storage for any past the included limit. */

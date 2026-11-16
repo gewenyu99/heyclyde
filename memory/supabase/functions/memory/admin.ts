@@ -18,6 +18,8 @@ import { MIN_QUOTE, squash, verifyEvidence } from "./evidence.ts";
 import { canonical, MEDIA_TYPE_RE, remember, Refused } from "./write.ts";
 import { CATEGORY_RE, ENTRY_CONTEXTS, normalizeComputer, normalizeProjectSlug, TRANSFERABILITIES } from "./permissions.ts";
 import { forget as forgetEntitlements } from "./billing/entitlement.ts";
+import { entitlementOf } from "./auth.ts";
+import * as limits from "./billing/limits.ts";
 import { SECRETS as BILLING_SECRETS } from "./billing/index.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
@@ -800,11 +802,24 @@ export async function runEmbeddingSync(trigger: string): Promise<Row | null> {
   await status(base);
   let result: Row;
   try {
-    // Inside a request (the console) it embeds that owner's entries. From cron, each owner's inside its own tenant (R49).
-    let embedded = 0;
+    // Inside a request (the console) it embeds that owner's entries. From cron, each owner's inside its own tenant (R49), with
+    // the tokens it spends on that owner's counter, and none for an owner whose plan's tokens are spent (R50).
+    let embedded = 0, skipped = 0;
     if (currentOwner()) embedded = await syncEmbeddings();
-    else for (const { owner_id } of await root`select distinct owner_id from memory.entry`) embedded += await asTenant(owner_id, () => syncEmbeddings());
-    result = { embedded };
+    else {
+      for (const { owner_id } of await root`select distinct owner_id from memory.entry`) {
+        const v = await entitlementOf(owner_id);
+        try {
+          await limits.assertTokens(v);
+        } catch (e) {
+          if (!(e instanceof limits.Limited)) throw e;
+          skipped++;
+          continue;
+        }
+        embedded += await limits.within(v, () => asTenant(owner_id, () => syncEmbeddings()));
+      }
+    }
+    result = { embedded, skipped_owners: skipped };
   } catch (e) {
     console.warn("embedding sync failed, hybrid serves keyword ranks until one succeeds:", e);
     result = { error: `${(e as Error).name}: ${(e as Error).message}`.slice(0, 300) };

@@ -167,6 +167,12 @@ async function resolve(kind: Kind, token: string, seen: Seen): Promise<Principal
   return null;
 }
 
+/** The entitlement check (R38), the one place it runs: for each request's owner in authenticate, and for cron working an
+ * owner's rows (R50: the embedding sync stays within the owner's token cap). */
+export async function entitlementOf(owner: string): Promise<Verdict> {
+  return await entitled(owner);
+}
+
 /** Whether an email is on memory's allowlist. Only those emails sign in to connect a computer. */
 export async function allowed(email: string) {
   return (await sql`select 1 from memory.allowed_email where email = ${email.trim().toLowerCase()}`).length > 0;
@@ -263,7 +269,7 @@ export async function authenticate(req: Request, path: string): Promise<Principa
   if (who.owner) {
     let v: Verdict;
     try {
-      v = await entitled(who.owner);
+      v = await entitlementOf(who.owner);
     } catch (e) {
       console.error(e);
       return json({ error: "memory couldn't check your plan just now. Try again in a minute." }, 503);
