@@ -21,6 +21,14 @@ const FRESH = "15 minutes";
 // code, and an app whose real callback differs shows it on its first try.
 // chatgpt.com: ChatGPT's connector callbacks (R67), https://chatgpt.com/connector_platform_oauth_redirect and /connector/oauth/<id>.
 const CLIENT_HOSTS = new Set(["claude.ai", "claude.com", "chatgpt.com", "antigravity.google", "grok.com", "x.ai", "gemini.google.com"]);
+// Google's OAuth redirect service, which the Gemini app's Connected Apps sign in through (R58): /r/<project> and
+// /a/<project> on these three hosts only, since other googleusercontent.com hosts serve anyone's content.
+const GOOGLE_HOSTS = new Set([
+  "oauth-redirect.googleusercontent.com",
+  "oauth-redirect-sandbox.googleusercontent.com",
+  "oauth-redirect-test.googleusercontent.com",
+]);
+const GOOGLE_PATH = /^\/[ra]\/[^/]+/;
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
 // At most this many sign-in emails in 15 minutes, so the open consent page can't flood the owner's inbox.
 const MAX_EMAILS = 3;
@@ -156,7 +164,8 @@ function clientAllowed(uri: string) {
   try {
     const u = new URL(uri);
     if (LOOPBACK.has(u.hostname)) return u.protocol === "http:" || u.protocol === "https:";
-    return u.protocol === "https:" && CLIENT_HOSTS.has(u.hostname);
+    if (u.protocol !== "https:") return false;
+    return CLIENT_HOSTS.has(u.hostname) || (GOOGLE_HOSTS.has(u.hostname) && GOOGLE_PATH.test(u.pathname));
   } catch {
     return false;
   }
