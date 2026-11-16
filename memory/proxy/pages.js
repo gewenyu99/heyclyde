@@ -3,7 +3,8 @@
 // and fonts.css, inlined from memory/design/css.js because the CSP allows only this response's nonce'd styles.
 import { COMPONENTS_CSS, FONTS_CSS, TOKENS_CSS } from "../design/css.js";
 
-export const MCP_URL = "https://memory.heyclyde.me/mcp";
+// The one connector URL every app and store listing uses (R53). memory.heyclyde.me/mcp stays as an alias.
+export const MCP_URL = "https://heyclyde.me/mcp";
 export const INSTALL = "curl -fsSL https://memory.heyclyde.me/install | sh";
 export const DESIGN_URL = "https://claude.ai/artifact/2EHGVrGQfefmStu1TqikCb";
 
@@ -66,7 +67,8 @@ main.sign{flex:1;display:flex;align-items:center;justify-content:center;padding:
 form.ask{display:grid;gap:14px;margin-top:4px}
 `;
 
-export const HOME_CSS = `
+// The hero, section, works and how styles heyclyde.me shares with the connect page (R72 keeps the site home under 50 KB).
+export const HERO_CSS = `
 .hero{position:relative;display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:48px;align-items:center;padding-block:36px 68px}
 @media (max-width:960px){.hero{grid-template-columns:minmax(0,1fr);gap:40px;padding-block:20px 52px}}
 .hero::before{content:"";position:absolute;inset:0 0 0 46%;z-index:-1;background:repeating-linear-gradient(to bottom,transparent 0 31px,var(--cl-rule) 31px 32px);-webkit-mask-image:radial-gradient(70% 70% at 60% 50%,#000,transparent);mask-image:radial-gradient(70% 70% at 60% 50%,#000,transparent)}
@@ -75,17 +77,26 @@ export const HOME_CSS = `
 .hero h1{margin:0;max-width:12ch}
 .hero h1 em{font-style:normal;color:var(--cl-carbon)}
 .hero .cl-lead{max-width:48ch}
-.hero-note{max-width:44ch;padding:12px 16px;font:var(--cl-text-small)}
 .cta{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
 .works{display:grid;gap:10px;margin-top:4px}
 .works ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px}
 .works li{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 13px;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-pill);background:var(--cl-paper-1);font:500 13px/1 var(--cl-font-sans);color:var(--cl-ink-2)}
-.hero-art{min-width:0}.hero-art img{display:block;width:100%;max-width:484px;height:auto}
-.works li img,.app-logo img{display:block;width:20px;height:20px;object-fit:contain}
 .section{display:grid;gap:12px;margin:0 0 26px;max-width:720px}
 .section h2{margin:0}
-.apps-head{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,420px);gap:24px;align-items:end;margin-bottom:24px}
 @media (max-width:860px){.apps-head{grid-template-columns:minmax(0,1fr)}}
+.how{list-style:none;margin:0 0 24px;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+@media (max-width:860px){.how{grid-template-columns:minmax(0,1fr)}}
+.how li{display:grid;gap:10px;align-content:start;padding:22px;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-lg);background:var(--cl-paper-1)}
+.how .n{font:780 44px/1 var(--cl-font-display);letter-spacing:-.04em;color:var(--cl-carbon)}
+.how b{font:var(--cl-text-title-3)}
+.how p{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2)}
+`;
+
+const CONNECT_CSS = `
+.hero-note{max-width:44ch;padding:12px 16px;font:var(--cl-text-small)}
+.hero-art{min-width:0}.hero-art img{display:block;width:100%;max-width:484px;height:auto}
+.works li img,.app-logo img{display:block;width:20px;height:20px;object-fit:contain}
+.apps-head{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,420px);gap:24px;align-items:end;margin-bottom:24px}
 .apps-head .section{margin:0}
 .apps-head .cl-copy{box-shadow:var(--cl-copy-2);border-color:var(--cl-ink-3);padding:8px 8px 8px 14px}
 .apps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-bottom:68px}
@@ -106,13 +117,9 @@ ol.steps{margin:0;padding:0;list-style:none;counter-reset:s;display:grid;gap:8px
 ol.steps li{counter-increment:s;display:grid;grid-template-columns:22px minmax(0,1fr);gap:8px;align-items:baseline}
 ol.steps li::before{content:counter(s);font:600 11px/1 var(--cl-font-mono);color:var(--cl-ink-3)}
 .k{font-weight:600;color:var(--cl-ink)}
-.how{list-style:none;margin:0 0 24px;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
-@media (max-width:860px){.how{grid-template-columns:minmax(0,1fr)}}
-.how li{display:grid;gap:10px;align-content:start;padding:22px;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-lg);background:var(--cl-paper-1)}
-.how .n{font:780 44px/1 var(--cl-font-display);letter-spacing:-.04em;color:var(--cl-carbon)}
-.how b{font:var(--cl-text-title-3)}
-.how p{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2)}
 `;
+
+export const HOME_CSS = HERO_CSS + CONNECT_CSS;
 
 // The mock Claude and Codex windows on heyclyde.me. The connect page shows the relay drawing instead, to stay under 40 KB.
 export const SCENE_CSS = `
@@ -145,9 +152,26 @@ fetch('/healthz',{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;return r.
 p.className='cl-status is-ok';p.textContent='Online';if(d&&d.version){var v=document.createElement('span');v.className='v';
 v.textContent='v'+d.version;p.appendChild(document.createTextNode(' \\u00b7 '));p.appendChild(v)}}).catch(function(){p.className='cl-status is-bad';p.textContent='Offline'})})();`;
 
-export function shell({ nonce, title, css, body, script = "", noindex = true }) {
+export const SITE = "https://heyclyde.me";
+export const OG_IMAGE = `${SITE}/brand/og-banner.png`;
+
+/** R72: a public page's search tags. seo is {description, path, jsonld}: a canonical URL on heyclyde.me, the OG and
+ * Twitter cards with the OG banner, and each JSON-LD object in its own data block. */
+function seoTags(nonce, title, seo) {
+  if (!seo) return "";
+  const url = SITE + seo.path, d = esc(seo.description), t = esc(title);
+  return `<meta name="description" content="${d}"><link rel="canonical" href="${url}">` +
+    `<meta property="og:type" content="website"><meta property="og:site_name" content="Clyde"><meta property="og:title" content="${t}">` +
+    `<meta property="og:description" content="${d}"><meta property="og:url" content="${url}"><meta property="og:image" content="${OG_IMAGE}">` +
+    `<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">` +
+    `<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${t}"><meta name="twitter:description" content="${d}">` +
+    `<meta name="twitter:image" content="${OG_IMAGE}">` +
+    (seo.jsonld ?? []).map((j) => `<script type="application/ld+json" nonce="${nonce}">${JSON.stringify(j).replace(/</g, "\\u003c")}</script>`).join("");
+}
+
+export function shell({ nonce, title, css, body, script = "", noindex = true, seo = null }) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>${esc(title)}</title><meta name="color-scheme" content="light dark">${noindex ? '<meta name="robots" content="noindex">' : ""}
+<title>${esc(title)}</title><meta name="color-scheme" content="light dark">${noindex ? '<meta name="robots" content="noindex">' : ""}${seoTags(nonce, title, seo)}
 <link rel="icon" href="/_clyde/brand/favicon.svg" type="image/svg+xml"><style nonce="${nonce}">${FONTS_CSS}${TOKENS_CSS}${COMPONENTS_CSS}${(PAGE_CSS + css).replace(/\n/g, "")}</style></head><body class="cl-root">${body}${
     script ? `<script nonce="${nonce}">${script}</script>` : ""}</body></html>`;
 }
@@ -157,9 +181,10 @@ export const copyBox = (value, label = "Copy") =>
 const copyPre = (name, value) =>
   `<div class="cl-file"><div class="cl-file__head"><span>${esc(name)}</span><button class="cl-btn cl-btn--sm" type="button" data-copy="${esc(value)}">Copy</button></div>` +
   `<pre><code>${esc(value)}</code></pre></div>`;
+export const LEGAL = "Claude, ChatGPT, Codex, Gemini, Antigravity and Grok belong to their owners. None of them endorse Clyde. If they cared about this, they'd have built it. Not offered in the EU, EEA, UK, Switzerland or Quebec.";
 const footer = `<footer class="foot"><div class="wrap"><span class="brand">${MARK(22)}clyde · bare-minimum memory for forgetful agents</span>
 <nav><a href="https://heyclyde.me/privacy">Privacy</a><a href="https://heyclyde.me/terms">Terms</a><a href="${DESIGN_URL}">Design system</a><a href="/healthz">Status</a></nav>
-<span class="legal">Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok belong to their respective owners — none of them endorse Clyde (obviously, or they would've built this themselves). Not offered in the EU, EEA, UK, Switzerland, or Quebec.</span></div></footer>`;
+<span class="legal">${LEGAL}</span></div></footer>`;
 
 // ---- Sign-in states ----
 
@@ -175,7 +200,7 @@ const note = (html) => `<p class="cl-well">${html}</p>`;
 
 function sentence(message) {
   const s = String(message ?? "").replace(/^memory:\s*/, "").trim();
-  return s ? s[0].toUpperCase() + s.slice(1) : "Well, that broke. Try starting the connection again from your app.";
+  return s ? s[0].toUpperCase() + s.slice(1) : "Something broke. Start the connection again from your app.";
 }
 
 const today = () => new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
@@ -188,27 +213,27 @@ export function statePage(data, nonce, id = "") {
   switch (state) {
     case "check_email":
       mark = `<div class="badge">${ICON.mail}</div>`; h1 = "Check your email"; title = "Check your email";
-      lead = `Sent a sign-in link to ${data.email ? `<strong>${esc(data.email)}</strong>` : "your inbox"}. Click it on your phone, this computer, whatever's closest.`;
-      extra = live("This window moves on once you click it");
+      lead = `Sent a sign-in link to ${data.email ? `<strong>${esc(data.email)}</strong>` : "your inbox"}. Click it on your phone or this computer, whichever is closer.`;
+      extra = live("This page moves on by itself once you click");
       break;
     case "waiting":
-      mark = `<div class="badge">${ICON.wait}</div>`; h1 = "Waiting for you"; title = "Waiting for you";
-      lead = "Still waiting on that email link. Check spam if it's playing hide and seek.";
+      mark = `<div class="badge">${ICON.wait}</div>`; h1 = "Still waiting"; title = "Still waiting";
+      lead = "Nobody has clicked that email link yet. Check spam. It happens.";
       extra = live("Checking every few seconds");
       break;
     case "connected":
       mark = stamp("ok", "Approved", date); h1 = "Connected"; title = "Connected";
-      lead = `${app()} is hooked up to Clyde now. Please don't feed it nuclear launch codes.`;
-      extra = note("Head back to the window that asked — it finishes on its own, and you can close this tab.");
+      lead = `${app()} can use Clyde now. It'll remember things. That's the whole trick.`;
+      extra = note("Go back to the window that asked. It finishes on its own, so you can close this tab.");
       break;
     case "refused":
       mark = stamp("bad", "Refused", date); h1 = "Refused"; title = "Refused";
-      lead = `Nope — didn't connect ${app("that app")}. Nothing was shared.`;
-      extra = note(`Its callback${data?.callback ? `, <code>${esc(data.callback)}</code>,` : ""} isn't an app Clyde recognizes (or this computer), so we slammed the door and logged it.`);
+      lead = `Didn't connect ${app("that app")}. Nothing was shared.`;
+      extra = note(`Its callback${data?.callback ? `, <code>${esc(data.callback)}</code>,` : ""} isn't an app Clyde knows, or this computer. So the door stayed shut, and it's in the log.`);
       break;
     case "ask_email":
       mark = `<div class="badge">${ICON.mail}</div>`; h1 = "Sign in to Clyde"; title = "Sign in";
-      lead = "Drop your email and Clyde will send you a sign-in link. No password to make up.";
+      lead = "Type your email and Clyde sends a sign-in link. No password to invent and then forget.";
       extra = `<form class="ask" method="post" action="/oauth/consent?authorization_id=${esc(encodeURIComponent(id))}">
 <div class="cl-field"><label for="email">Email</label><input class="cl-input" id="email" type="email" name="email" autocomplete="email" required autofocus placeholder="you@example.com"></div>
 <button class="cl-btn cl-btn--primary cl-btn--lg cl-btn--block" type="submit">Email me a link</button></form>`;
@@ -216,17 +241,17 @@ export function statePage(data, nonce, id = "") {
     case "blocked":
       mark = stamp("bad", "Not available", date); h1 = "Not available in your country"; title = "Not available";
       lead = esc(sentence(data?.message));
-      extra = note("We skip GDPR/Law-25 paperwork land for now — nothing was saved and no email was sent.");
+      extra = note("Clyde skips places under GDPR or Quebec's Law 25 for now. Nothing was saved and no email went out.");
       break;
     case "subscribed":
       kind = "Subscription";
       mark = stamp("ok", "Paid", date); h1 = "You're subscribed"; title = "Subscribed";
-      lead = "You're on the Clyde plan — thanks for funding our anti-goldfish crusade. Access flips on within a minute.";
-      extra = note("Head back to your app and carry on. You can close this tab.");
+      lead = "You're on the Clyde plan. Thanks for paying for a notepad. It turns on within a minute.";
+      extra = note("Go back to your app. You can close this tab.");
       break;
     case "expired":
       mark = stamp("warn", "Expired", date); h1 = "Link expired"; title = "Link expired";
-      lead = "That link's dead — they only last 15 minutes and work once. Kick off sign-in again from your app.";
+      lead = "That link is dead. They last 15 minutes and work once. Start the sign-in again from your app.";
       break;
     default:
       mark = stamp("bad", "Stopped", date); h1 = "Something went wrong"; title = "Something went wrong";
@@ -254,33 +279,33 @@ const APPS = [
     id: "claude-ai", logo: "claude", name: "Claude", sub: "claude.ai, Cowork, and phone", tag: "Connector",
     body: `<ol class="steps"><li><span>Open <span class="k">Settings → Connectors → Add custom connector</span>.</span></li>
 <li><span>Paste the URL, click <span class="k">Add</span>, then <span class="k">Connect</span>.</span></li>
-<li><span>Click the email link Clyde sends. Syncs to Cowork and mobile too.</span></li></ol>${copyBox(MCP_URL)}`,
+<li><span>Click the email link. It follows you to Cowork and your phone.</span></li></ol>${copyBox(MCP_URL)}`,
   },
   {
     id: "claude-code", logo: "claude-code", name: "Claude Code and Codex", sub: "Terminal agents on your laptop", tag: "One-liner",
-    body: `<p class="fine">Run this in a terminal. Signs in by email and wires up the MCP server + hooks for both.</p>${copyBox(INSTALL)}`,
+    body: `<p class="fine">Run this in a terminal. It signs you in by email and sets up the MCP server and hooks for both.</p>${copyBox(INSTALL)}`,
   },
   {
     id: "antigravity", logo: "antigravity", name: "Antigravity", sub: "Desktop IDE and CLI", tag: "Config",
-    body: `<p class="fine">The installer handles this, or drop it into <code>~/.gemini/config/mcp_config.json</code> and sign in when your browser opens.</p>
-${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { memory: { serverUrl: MCP_URL } } }, null, 2))}`,
+    body: `<p class="fine">The installer does this. Or put it in <code>~/.gemini/config/mcp_config.json</code> and sign in when the browser opens.</p>
+${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { clyde: { serverUrl: MCP_URL } } }, null, 2))}`,
   },
   {
     id: "gemini", logo: "gemini", name: "Gemini app", sub: "gemini.google.com", tag: "Custom app",
     body: `<ol class="steps"><li><span>Open <span class="k">Settings → Connected Apps</span>.</span></li>
 <li><span>Add a <span class="k">custom app</span> with Clyde's URL.</span></li>
-<li><span>Click the sign-in email link (may require AI Ultra / US account).</span></li></ol>${copyBox(MCP_URL)}`,
+<li><span>Click the email link. Google may want AI Ultra or a US account first.</span></li></ol>${copyBox(MCP_URL)}`,
   },
   {
     id: "grok", logo: "grok", name: "Grok", sub: "grok.com", tag: "Connector",
     body: `<ol class="steps"><li><span>Open <a href="https://grok.com/connectors" rel="noopener noreferrer" target="_blank">grok.com/connectors</a> and pick <span class="k">Custom</span>.</span></li>
-<li><span>Paste the URL and hit connect.</span></li>
-<li><span>Click the sign-in link Clyde emails you.</span></li></ol>${copyBox(MCP_URL)}`,
+<li><span>Paste the URL and connect.</span></li>
+<li><span>Click the link Clyde emails you.</span></li></ol>${copyBox(MCP_URL)}`,
   },
   {
     id: "antigravity-cloud", logo: "antigravity", name: "Antigravity cloud", sub: "Headless cloud boxes", tag: "Token",
-    body: `<p class="fine">Cloud boxes can't click an email link — grab <code>~/.config/memory/token</code> from a machine you already set up and keep it in agent secrets, never git.</p>
-${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { memory: { serverUrl: MCP_URL, headers: { Authorization: "Bearer <your device token>" } } } }, null, 2))}`,
+    body: `<p class="fine">Cloud boxes can't click email links. Copy <code>~/.config/memory/token</code> from a computer you already set up into the box's agent secrets. Never into git.</p>
+${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { clyde: { serverUrl: MCP_URL, headers: { Authorization: "Bearer <your device token>" } } } }, null, 2))}`,
   },
 ];
 
@@ -308,19 +333,19 @@ export function homePage(nonce) {
 <main>
 <section class="hero wrap"><div class="hero-text"><span class="cl-label">Get Clyde</span>
 <h1 class="cl-display">Connect your <em class="cl-scribble">apps.</em></h1>
-<p class="cl-lead">Give your apps one URL, click one email link, and your agents stop waking up with amnesia.</p>
-<div class="cl-sticky cl-sticky--tilt hero-note"><b>Fair warning:</b> don't put passwords, API keys, or serious secrets in here — just normal work context.</div>
+<p class="cl-lead">One URL and one email link. After that your agents stop waking up like goldfish. Mostly.</p>
+<div class="cl-sticky cl-sticky--tilt hero-note"><b>Fair warning:</b> don't put passwords, API keys or anything serious in here. It's a notepad, not a vault.</div>
 <div class="cta"><a class="cl-btn cl-btn--primary cl-btn--lg" href="#apps">Pick your app</a><a class="cl-btn cl-btn--ghost cl-btn--lg" href="https://heyclyde.me/">What is Clyde?</a></div>
 <div class="works"><span class="cl-label">Plugs into</span><ul>${works}</ul></div></div><div class="hero-art">${SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 484, 280)}</div></section>
 <section class="wrap" id="apps"><div class="apps-head"><div class="section"><span class="cl-label">Connect</span><h2 class="cl-title-1">Pick your app</h2>
-<p class="cl-lead">Drop this URL into each app (or ChatGPT custom MCP) and click the sign-in email once.</p></div>
+<p class="cl-lead">Paste this URL into each app, ChatGPT's custom MCP included, and click the email link once.</p></div>
 <div class="cl-field"><span class="cl-field__label">Server URL</span>${copyBox(MCP_URL)}</div></div>
 <div class="apps">${cards}</div></section>
 <section class="wrap" id="how"><div class="section"><span class="cl-label">How sign-in works</span><h2 class="cl-title-1">No passwords. Picky about who gets in.</h2></div>
 <ol class="how">
-<li><span class="n">1</span><b>OAuth handles the handshake</b><p>Paste the URL once; your app registers itself over OAuth with zero API keys to babysit.</p></li>
-<li><span class="n">2</span><b>One email link</b><p>Clyde emails you a sign-in link. Click it on your phone or laptop and the app window moves on.</p></li>
-<li><span class="n">3</span><b>Unknown apps get bounced</b><p>Only Claude, ChatGPT, Antigravity, Gemini, Grok, and localhost on your own computer get in. Anything else gets refused and logged.</p></li>
+<li><span class="n">1</span><b>OAuth does the handshake</b><p>Paste the URL once. The app registers itself, so there are no API keys to look after.</p></li>
+<li><span class="n">2</span><b>One email link</b><p>Click it on your phone or laptop, and the app's window moves on.</p></li>
+<li><span class="n">3</span><b>Strangers get bounced</b><p>Only Claude, ChatGPT, Antigravity, Gemini, Grok and localhost on your own computer get in. Anything else is refused and logged.</p></li>
 </ol></section></main>${footer}`;
   return shell({ nonce, title: "Connect · Clyde", css: HOME_CSS, body, script: COPY_JS + STATUS_JS });
 }

@@ -36,8 +36,8 @@ Deno.test('the home page has the logo, pricing and its links', async () => {
   assert.ok(html.includes('/_clyde/brand/clyde-lockup-light.svg'), 'the logo')
   assert.ok(html.includes('/_clyde/brand/clyde-mascot-light.svg') && html.includes('/_clyde/brand/clyde-mascot-dark.svg'), 'Sticky-Note Forehead Clyde mascot')
   assert.ok(html.includes('id="honest"') && html.includes('cl-sticky'), 'sticky-note warning section')
-  assert.ok(text(html).includes("This is not advanced space-age technology, and it's probably not even very secure."))
-  assert.ok(text(html).includes('Shared memory') && text(html).includes('A sticky-note quest board'))
+  assert.ok(text(html).includes("This is not advanced technology. It's probably not even very secure."))
+  assert.ok(text(html).includes('Shared memory') && text(html).includes('A quest board made of sticky notes'))
   assert.ok(html.includes('@media (max-width:960px){.site-hero{grid-template-columns:minmax(0,1fr)'), 'the hero is one column on a phone')
   assert.ok(new TextEncoder().encode(html).length <= 50_000, `${html.length} bytes`)
 })
@@ -114,7 +114,7 @@ Deno.test('the store pages', async () => {
   const tools = [...src.slice(src.indexOf('export const TOOLS')).matchAll(/^    name: "([a-z_]+)"/gm)].map((m) => m[1])
   assert.ok(tools.length >= 10, `${tools.length} tools read from mcp.ts`)
   const want: Record<string, [string, string[]]> = {
-    '/docs': ['How Clyde works', ['https://heyclyde.me/mcp', 'Claude', 'Gemini', 'export', 'delete', 'support@heyclyde.me', ...tools]],
+    '/docs': ['Clyde docs', ['https://heyclyde.me/mcp', 'Claude', 'Gemini', 'export', 'delete', 'support@heyclyde.me', ...tools]],
     '/support': ['Support', ['support@heyclyde.me', 'export and delete']],
     '/docs/grok': ['Connect Grok to Clyde', ['Grok', 'https://heyclyde.me/mcp']],
     '/privacy': ['Privacy policy', ['Supabase', 'OpenAI', 'Polar', 'Resend', 'Cloudflare', 'export', 'delete', '30 days', 'Pennywhistle']],

@@ -29,7 +29,7 @@ const h1 = (html: string) => /<h1[^>]*>([\s\S]*?)<\/h1>/.exec(html)?.[1].replace
 
 const STATES: [string, Record<string, unknown>, number, string, string][] = [
   ['check_email', { email: 'g•••••••@gmail.com' }, 200, 'Check your email', 'consent'],
-  ['waiting', {}, 200, 'Waiting for you', 'wait'],
+  ['waiting', {}, 200, 'Still waiting', 'wait'],
   ['connected', { client: 'Claude' }, 200, 'Connected', 'approve'],
   ['refused', { client: 'Evil', callback: 'https://evil.example/cb' }, 403, 'Refused', 'approve'],
   ['expired', {}, 410, 'Link expired', 'wait'],
@@ -128,7 +128,7 @@ Deno.test('the home page lists every app and / still reaches the function', asyn
   const apps = [...html.matchAll(/data-app="([^"]+)"/g)].map((m) => m[1])
   assert.deepEqual(apps, ['claude-ai', 'claude-code', 'antigravity', 'gemini', 'grok', 'antigravity-cloud'])
   assert.equal(h1(html), 'Connect your apps.')
-  assert.ok(html.includes('https://memory.heyclyde.me/mcp'))
+  assert.ok(html.includes('https://heyclyde.me/mcp'))
   assert.ok(html.includes('curl -fsSL https://memory.heyclyde.me/install | sh'))
   assert.ok(html.includes('cl-sticky') && /passwords/i.test(html), 'connect page carries sticky-note secret warning')
   assert.ok(/ChatGPT[\s\S]*Grok|Claude,\s*ChatGPT/.test(html), 'how-it-works names ChatGPT alongside supported apps')
@@ -193,7 +193,7 @@ Deno.test('a browser on /billing/thanks gets a page, and other callers reach the
   assert.equal(r.status, 200)
   const thanksHtml = await r.text()
   assert.equal(h1(thanksHtml), "You're subscribed")
-  assert.ok(thanksHtml.includes('anti-goldfish'), 'subscribed ticket uses non-serious voice')
+  assert.ok(thanksHtml.includes('paying for a notepad'), 'subscribed ticket uses non-serious voice')
   stub(() => new Response('memory: thanks.', { headers: { 'content-type': 'text/plain' } }))
   const plain = await get('/billing/thanks', { accept: '*/*' })
   assert.equal(sent.length, 1)

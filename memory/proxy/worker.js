@@ -5,7 +5,7 @@
 // It also serves the web pages (R46). Supabase won't serve HTML from its own domain, so on the three sign-in routes the
 // Worker asks the function for JSON and renders the page here. A browser asking for / gets the "connect your apps" page.
 import { homePage, statePage } from "./pages.js";
-import { sitePage } from "./site.js";
+import { siteFile, sitePage } from "./site.js";
 
 const ORIGIN = "https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory";
 const SIGN_IN = new Set(["/oauth/consent", "/oauth/wait", "/oauth/approve"]);
@@ -107,6 +107,9 @@ export default {
     const url = new URL(req.url);
     // heyclyde.me is Clyde's public home (R69); www goes there. Only SITE_API's paths reach the function from either.
     if (url.hostname === "www.heyclyde.me") return Response.redirect(`https://heyclyde.me${url.pathname}${url.search}`, 301);
+    // robots.txt on both hosts and heyclyde.me's sitemap (R72). They never reach the function.
+    const file = (req.method === "GET" || req.method === "HEAD") && siteFile(url.hostname, url.pathname);
+    if (file) return new Response(file.body, { headers: { "content-type": file.type, "cache-control": "public, max-age=3600" } });
     if (url.hostname === "heyclyde.me" && SITE_API(url.pathname)) return pass(req, url, env, { "x-memory-host": "heyclyde.me" });
     if (url.hostname === "heyclyde.me") {
       if (req.method !== "GET" && req.method !== "HEAD") return new Response("Method not allowed", { status: 405, headers: { allow: "GET, HEAD" } });
