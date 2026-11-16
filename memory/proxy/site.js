@@ -498,7 +498,7 @@ const SETUP = `<section class="wrap" id="how"><div class="section"><span class="
 <div class="pick-tabs">${PICK.map(({ id, logo, name }) => `<label for="pick-${id}">${appLogo(logo, 20)}${name}</label>`).join("")}</div>
 <div class="pick-panels">${PICK.map(({ id, body }) => `<div class="cl-card app pick-panel" data-pick="${id}">${body}</div>`).join("\n")}</div></div>
 ${SOON_NOTE}</section>`;
-const END_CTA = `<section class="wrap end-cta"><a class="cl-btn cl-btn--primary cl-btn--lg" href="${CONNECT}">Connect your apps</a></section>`;
+const END_CTA = `<section class="wrap end-cta"><a class="cl-btn cl-btn--primary cl-btn--lg" href="${CONNECT}">Try Clyde</a></section>`;
 
 // The hero and the warning are Wen's own words, as he wrote them. Copy passes leave them alone.
 function home(nonce) {
