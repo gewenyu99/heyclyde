@@ -237,7 +237,7 @@ function recallCard(d) {
   if (d.degraded) dk.appendChild(h("p", { class: "c-text" }, h("span", { class: "cl-chip cl-chip--warn", text: "degraded" }), " ", d.degraded));
   if (!items.length) {
     dk.appendChild(h("div", { class: "cl-empty" }, h("p", { class: "cl-empty__title", text: "Nothing in Clyde matches that yet." }),
-      h("p", { class: "cl-empty__text", text: "Ask for more results, or tell your agent what to remember." })));
+      h("p", { class: "cl-empty__text", text: "Either nobody wrote it down, or it was phrased differently. Ask for more results, or tell your agent to remember it." })));
     s.appendChild(dk); return s;
   }
   var count = h("span", { class: "c-note" });
@@ -257,7 +257,7 @@ function recallCard(d) {
     callTool("feedback", args).then(function (r) {
       st.busy = false; var t = textOf(r), ok = /^Logged\./.test(t);
       st.sent = ok || /^Already logged/.test(t);
-      say(msg, ok ? "Logged. Clyde ranks what you used higher next time." : t, ok); refresh();
+      say(msg, ok ? "Logged. What you used ranks a little higher next time." : t, ok); refresh();
       var bs = s.querySelectorAll("button.c-used,button.c-wrong"); for (var i = 0; i < bs.length; i++) bs[i].disabled = st.sent;
     }, function (e) { st.busy = false; say(msg, e.message, false); refresh(); });
   }
@@ -287,7 +287,7 @@ function recallCard(d) {
 function entryCard(d, saved) {
   var e = d.entry, s = sheet(saved ? "remember" : "memory", d.badge), dk = desk();
   if (saved) s.appendChild(h("div", { class: "c-hero" }, h("span", { class: "cl-stamp cl-stamp--ok is-new", text: "Saved" }),
-    h("div", null, h("div", { text: "Every agent can recall it now." }), h("div", { class: "c-sub cl-mono", text: e.id }))));
+    h("div", null, h("div", { text: "Your other agents won't forget this now." }), h("div", { class: "c-sub cl-mono", text: e.id }))));
   dk.appendChild(h("article", { class: "cl-card cl-memory" }, memoryParts(e, true), h("div", { class: "c-detail" }, entryDetail(e))));
   s.appendChild(dk);
   return s;
@@ -343,7 +343,7 @@ function questsCard(d) {
   var s = sheet("quest board", d.badge), dk = desk(), qs = d.quests || [];
   if (d.head) dk.appendChild(h("p", { class: "c-text", text: d.head }));
   if (!qs.length) dk.appendChild(h("div", { class: "cl-empty" }, h("p", { class: "cl-empty__title", text: "Quest board's empty." }),
-    h("p", { class: "cl-empty__text", text: "Ask your agent to post one, with a done-when line anyone can check." })));
+    h("p", { class: "cl-empty__text", text: "Nobody has pinned anything. Ask your agent to post one, with a done-when line anyone can check." })));
   qs.forEach(function (q) { dk.appendChild(questCard(q, d)); });
   s.appendChild(dk);
   return s;
