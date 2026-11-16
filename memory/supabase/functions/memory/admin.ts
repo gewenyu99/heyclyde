@@ -3,7 +3,7 @@
 // strings that don't parse get a 400. Bodies that parse but don't validate get a 422. A body over 1 MiB gets a 413.
 import { allocation, serving, servingArms } from "./allocation.ts";
 import * as store from "./blobs.ts";
-import { budget } from "./budget.ts";
+import { budget, OverBudget } from "./budget.ts";
 import { config } from "./config.ts";
 import { asTenant, currentOwner, forgetSecret, later, root, type Row, type Sql, sql } from "./db.ts";
 import { contentSha, entryText, sha256, syncEmbeddings } from "./embed.ts";
@@ -816,7 +816,13 @@ export async function runEmbeddingSync(trigger: string): Promise<Row | null> {
           skipped++;
           continue;
         }
-        embedded += await limits.within(v, () => asTenant(owner_id, () => syncEmbeddings()));
+        // An owner whose tokens run out mid-sync keeps what it embedded, and the next owner goes on.
+        try {
+          embedded += await limits.within(v, () => asTenant(owner_id, () => syncEmbeddings()));
+        } catch (e) {
+          if (!(e instanceof OverBudget)) throw e;
+          skipped++;
+        }
       }
     }
     result = { embedded, skipped_owners: skipped };
