@@ -103,4 +103,13 @@ test('R71: without gemini_key, calls fall back to OpenAI gpt-6-luna; PUT /secret
   const reaction = sql(`select reaction from memory.retrieval where id = '${rid}'`)[0]?.reaction
   assert.equal(reaction?.pushback, true)
   assert.ok(reaction?.cause, JSON.stringify(reaction))
+
+  // 5. DELETE /api/v1/secrets/gemini_key clears cache immediately and restores OpenAI fallback
+  assert.equal((await admin('DELETE', '/secrets/gemini_key')).status, 200)
+  from = memory.openai.calls.length
+  const rBack = await request('POST', `${memory.url}/recall`, { headers: bearer(memory.token), body: { query: 'oolong temperature' } })
+  assert.equal(rBack.status, 200, rBack.text)
+  const backCalls = memory.openai.calls.slice(from).filter((c) => c.path === '/decisions')
+  assert.ok(backCalls.length >= 1)
+  assert.ok(backCalls.every((c) => c.api === 'openai' && c.body.model === 'gpt-6-luna'))
 })

@@ -217,5 +217,5 @@ All of these take the admin token.
 - `PUT /api/v1/billing/plans/<id>`: creates or updates a plan, with an audit row.
 - `GET /api/v1/billing/entitlements[?state=paid]`: each account with its allowlist plan and subscription.
 - `GET /api/v1/billing/usage/<owner>`: that owner's counters.
-- `PUT /api/v1/secrets/<openai_key|gemini_key|polar_api_token|polar_webhook_secret|paddle_api_key|paddle_webhook_secret>`
+- `PUT` / `DELETE /api/v1/secrets/<openai_key|gemini_key|polar_api_token|polar_webhook_secret|paddle_api_key|paddle_webhook_secret>`
 - `POST /billing/usage/report`: cron secret only. Pg_cron calls it hourly.

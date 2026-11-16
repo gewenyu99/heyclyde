@@ -168,13 +168,18 @@ export async function screen(text: string, deps?: JudgeDeps): Promise<string | n
   return flagged.length ? `memory won't store this because ${flagged.map((n) => REASONS[n] ?? n).join(", and ")}.` : null;
 }
 
-/** The probability each item is relevant to the request, in the items' order. One Decisions call asks about all of them.
- * Throws when the judge can't answer, and recall then serves its ranking unfiltered. A shadow's call (kind "shadow") is
- * metered and budgeted as one and says so in an x-memory-purpose header. */
-export async function relevance(request: string, items: string[], kind: Kind = "judge_recall", deps?: JudgeDeps): Promise<number[]> {
-  if (!items.length) return [];
-  await (deps?.assertBudget ?? assertBudget)(kind);
+/** The probability each item is relevant to the request, in the items' order, alongside the exact judge version that
+ * produced those scores. */
+export async function relevanceWithVersion(
+  request: string,
+  items: string[],
+  kind: Kind = "judge_recall",
+  deps?: JudgeDeps,
+): Promise<{ scores: number[]; judgeVersion: string }> {
   const backend = await resolveBackend(deps);
+  const judgeVersion = backend.provider === "gemini" ? GEMINI_JUDGE_VERSION : JUDGE_VERSION;
+  if (!items.length) return { scores: [], judgeVersion };
+  await (deps?.assertBudget ?? assertBudget)(kind);
   const purpose: Record<string, string> = kind === "judge_recall" ? {} : { "x-memory-purpose": kind };
   const input = `Request:\n${request.slice(0, 2000)}\n\nMemory items:\n` +
     items.map((t, i) => `[${i + 1}] ${t.slice(0, 700)}`).join("\n");
@@ -192,18 +197,31 @@ export async function relevance(request: string, items: string[], kind: Kind = "
   await (deps?.meter ?? meter)(kind, usageTokens(backend, body), backend.model);
   if (backend.provider === "gemini") {
     const answers = asMap(body.answers);
-    return items.map((_, i) => {
-      const p = answers[`i${i + 1}`]?.noul;
-      if (typeof p !== "number") throw new Error(`the judge didn't answer for item ${i + 1}`);
-      return p;
-    });
+    return {
+      judgeVersion,
+      scores: items.map((_, i) => {
+        const p = answers[`i${i + 1}`]?.noul;
+        if (typeof p !== "number") throw new Error(`the judge didn't answer for item ${i + 1}`);
+        return p;
+      }),
+    };
   }
   const byName = new Map((body.answers ?? []).map((a: Record<string, any>) => [a.name, a]));
-  return items.map((_, i) => {
-    const a = byName.get(`i${i + 1}`) as Record<string, any> | undefined;
-    if (!a || typeof a.probability !== "number") throw new Error(`the judge didn't answer for item ${i + 1}`);
-    return a.probability;
-  });
+  return {
+    judgeVersion,
+    scores: items.map((_, i) => {
+      const a = byName.get(`i${i + 1}`) as Record<string, any> | undefined;
+      if (!a || typeof a.probability !== "number") throw new Error(`the judge didn't answer for item ${i + 1}`);
+      return a.probability;
+    }),
+  };
+}
+
+/** The probability each item is relevant to the request, in the items' order. One Decisions call asks about all of them.
+ * Throws when the judge can't answer, and recall then serves its ranking unfiltered. A shadow's call (kind "shadow") is
+ * metered and budgeted as one and says so in an x-memory-purpose header. */
+export async function relevance(request: string, items: string[], kind: Kind = "judge_recall", deps?: JudgeDeps): Promise<number[]> {
+  return (await relevanceWithVersion(request, items, kind, deps)).scores;
 }
 
 const PUSHBACK = "The text is the latest message Wen sent to an AI assistant. Answer true if he is pushing back: " +

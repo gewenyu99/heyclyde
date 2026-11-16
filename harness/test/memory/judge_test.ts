@@ -11,6 +11,7 @@ import {
   JUDGE_VERSION,
   reaction,
   relevance,
+  relevanceWithVersion,
   screen,
 } from '../../../memory/supabase/functions/memory/judge.ts'
 
@@ -176,7 +177,9 @@ Deno.test('gemini relevance: sends RELEVANT_CRITERIA on each noul question, pres
     async (calls) => {
       const scores = await relevance('oolong temp', ['Brew at 90C', 'Likes jazz'], 'shadow', deps)
       assert.deepEqual(scores, [0.88, 0.14])
-      assert.equal(calls.length, 1)
+      const versioned = await relevanceWithVersion('oolong temp', ['Brew at 90C', 'Likes jazz'], 'judge_recall', deps)
+      assert.deepEqual(versioned, { scores: [0.88, 0.14], judgeVersion: GEMINI_JUDGE_VERSION })
+      assert.equal(calls.length, 2)
       assert.equal(calls[0].url, 'https://gemini.test/v1beta/decisions')
       assert.equal(calls[0].headers['x-goog-api-key'], 'gem-key-2')
       assert.equal(calls[0].headers['x-memory-purpose'], 'shadow')
@@ -189,7 +192,10 @@ Deno.test('gemini relevance: sends RELEVANT_CRITERIA on each noul question, pres
           false_description: RELEVANT_FALSE,
         })
       }
-      assert.deepEqual(metered, [{ kind: 'shadow', tokens: 210, model: 'gemini-decision-1' }])
+      assert.deepEqual(metered, [
+        { kind: 'shadow', tokens: 210, model: 'gemini-decision-1' },
+        { kind: 'judge_recall', tokens: 210, model: 'gemini-decision-1' },
+      ])
     })
   })
 })
@@ -267,7 +273,10 @@ Deno.test('openai fallback: when gemini_key is absent, falls back to openai() wi
       })
     }, async (calls) => {
       assert.equal(await screen('Clean text', deps), null)
-      assert.deepEqual(await relevance('oolong', ['Brew at 90C'], 'judge_recall', deps), [0.77])
+      assert.deepEqual(await relevanceWithVersion('oolong', ['Brew at 90C'], 'judge_recall', deps), {
+        scores: [0.77],
+        judgeVersion: JUDGE_VERSION,
+      })
       assert.deepEqual(await reaction('Nope', [{ id: 'entry-a', text: 'item' }], deps), { pushback: true, p: 0.82, cause: 'entry-a' })
       assert.equal(calls.length, 3)
       for (const c of calls) {
@@ -294,12 +303,19 @@ Deno.test('billing/cost.ts and R8 #11 + shadow cache source invariants', async (
   const judgeSrc = await Deno.readTextFile(new URL('judge.ts', fnDir))
   const embedSrc = await Deno.readTextFile(new URL('embed.ts', fnDir))
   const shadowSrc = await Deno.readTextFile(new URL('shadow.ts', fnDir))
+  const serviceSrc = await Deno.readTextFile(new URL('service.ts', fnDir))
   const adminSrc = await Deno.readTextFile(new URL('admin.ts', fnDir))
+  const hookSrc = await Deno.readTextFile(new URL('../../../hooks/set-gemini-key.sh', fnDir))
 
   assert.match(judgeSrc, /await openai\(\)/)
   assert.match(embedSrc, /await openai\(\)/)
   assert.match(judgeSrc, /fetch\(`\$\{url\}\//)
   assert.match(shadowSrc, /await activeJudgeVersion\(\)/)
+  assert.match(serviceSrc, /judgeVersion/)
   assert.ok(!shadowSrc.includes('JUDGE_VERSION'), 'shadow.ts must key judge_cache on activeJudgeVersion(), not static JUDGE_VERSION')
   assert.match(adminSrc, /"gemini_key"/)
+  assert.match(adminSrc, /"DELETE"/)
+  assert.match(adminSrc, /"secret\.delete"/)
+  assert.match(hookSrc, /KEY_ID="066d1492-d58e-4c01-8cb1-70c8088a0a74"/)
+  assert.ok(!hookSrc.includes('CLOUDSDK_METRICS_REQUEST_ATTRIBUTION'))
 })

@@ -11,7 +11,7 @@ import { closingLine, deepPool, DEPTHS, nextPage, PAGE_HEAD } from "./deep.ts";
 import * as store from "./blobs.ts";
 import { MEDIA_TYPE_RE, Refused, SCOPE_RE } from "./write.ts";
 import { redact, redactText } from "./redact.ts";
-import { relevance, screen } from "./judge.ts";
+import { relevanceWithVersion, screen } from "./judge.ts";
 import { BAD_VERDICT, checkFeedback, feedbackFooter, REMIND_MAX, reminderLine, VERDICTS } from "./feedback.ts";
 import { renderTrialItem, TRIAL_CHANCES } from "./trial.ts";
 import { provenanceLines, type Viewer } from "./provenance.ts";
@@ -64,7 +64,6 @@ async function tilt(db: Sql, ranked: Ranked[], p: Params, asOf: number | null) {
 
 /** The judge rankAndPack asks: the probability each item is relevant, in order. A shadow passes one that reads a cache. */
 export type Judge = (request: string, items: { id: string; text: string }[]) => Promise<number[]>;
-const liveJudge: Judge = (request, items) => relevance(request, items.map((i) => i.text));
 
 /** What the filter shows the judge for one candidate. Private and confidential entries go by title alone, since their
  * bodies never reach a third-party model. */
@@ -112,13 +111,21 @@ export async function rankAndPack(
     if (canReadEntry(agentScope, row, entryFilter)) rows[id] = row;
   }
   let candidates = settled, rejected: string[] = [], filterDegraded: string | null = null, trial: string[] = [];
+  let judgeVersion: string | undefined;
   const judged = new Map<string, number>(), judgments: { id: string; text: string; p: number }[] = [];
   if (filter && ranked.length) {
     const loaded = ([id, , line]: Ranked) => line !== null || id in rows;
     const top = settled.filter(loaded).slice(0, p.filterK), trialTop = waiting.filter(loaded).slice(0, p.filterK);
     try {
       const items = [...top, ...trialTop].map(([id, , line]) => ({ id, text: itemText(line, rows[id]) }));
-      const odds = await (opts.judge ?? liveJudge)(request, items);
+      let odds: number[];
+      if (opts.judge) {
+        odds = await opts.judge(request, items);
+      } else {
+        const res = await relevanceWithVersion(request, items.map((i) => i.text));
+        odds = res.scores;
+        judgeVersion = res.judgeVersion;
+      }
       items.forEach((it, i) => {
         judged.set(it.id, odds[i]);
         judgments.push({ ...it, p: odds[i] });
@@ -137,7 +144,7 @@ export async function rankAndPack(
   const [delivered, chunks] = pack(candidates, rows, p);
   const degraded = [armDegraded, filterDegraded, failed].filter(Boolean).join("; ") || null;
   return {
-    ranked, degraded, delivered, chunks, lines, rejected, trial, rows, frontier, cNow, judgments,
+    ranked, degraded, delivered, chunks, lines, rejected, trial, rows, frontier, cNow, judgments, judgeVersion,
     features: features(ranked, trace, confidence, judged, rel, clock),
   };
 }
@@ -219,7 +226,7 @@ async function recallOnce(spent: { tokens: number }, session: string, query: str
   const { set, propensity } = await sessionSet(sql, session, unit, client);
   const mcp = client !== "http";
   const viewer = { device: principal, agent };
-  const { ranked, degraded, delivered: packed, chunks, lines, rejected, trial, rows, frontier, features: logged, cNow, judgments } =
+  const { ranked, degraded, delivered: packed, chunks, lines, rejected, trial, rows, frontier, features: logged, cNow, judgments, judgeVersion } =
     await rankAndPack(sql, set, query, task, scope, true, mcp && !scope, viewer, { agentScope, entryFilter });
   let delivered = packed, deeper = "";
   const rid = crypto.randomUUID();
@@ -258,7 +265,7 @@ async function recallOnce(spent: { tokens: number }, session: string, query: str
   });
   // Shadow sets (R34) rank the same request after the response is out, as of the same clock reading. They never tick the
   // clock and never change this packet.
-  background(runShadows({ retrieval: rid, query, task, scope, cNow, set: set.id, judgments, viewer, agentScope, entryFilter }));
+  background(runShadows({ retrieval: rid, query, task, scope, cNow, set: set.id, judgments, judgeVersion, viewer, agentScope, entryFilter }));
   return `retrieval ${rid}\n\n${text}`;
 }
 

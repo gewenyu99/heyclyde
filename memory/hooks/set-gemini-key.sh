@@ -6,7 +6,7 @@ set -eu
 URL=${MEMORY_URL:-https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory}
 GEMINI_URL=${MEMORY_GEMINI_URL:-https://generativelanguage.googleapis.com/v1beta}
 ADMIN_TOKEN_FILE=${MEMORY_ADMIN_TOKEN_FILE:-$HOME/.config/memory/admin-token}
-KEY_ID="066d1492-d58e-4c01-8cb1-70c88a0a74"
+KEY_ID="066d1492-d58e-4c01-8cb1-70c8088a0a74"
 PROJECT="pennywhistle-site"
 PREPAY_MSG="Add the \$5 minimum Prepay balance on billing account WS at https://aistudio.google.com/billing, then re-run."
 
@@ -27,14 +27,16 @@ done
 
 umask 077
 TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT
+cleanup() { rm -rf "$TMP"; }
+trap cleanup EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
 
 if [ -n "$KEY_FILE" ]; then
   [ -r "$KEY_FILE" ] || { echo "Cannot read key file: $KEY_FILE" >&2; exit 1; }
   KEY=$(tr -d '\r\n' < "$KEY_FILE")
 else
-  KEY=$(CLOUDSDK_METRICS_REQUEST_ATTRIBUTION="agent-skills/1.0 (skill:gcloud; plugin:google-cloud-developer)" \
-    gcloud services api-keys get-key-string "$KEY_ID" --project="$PROJECT" --format='value(keyString)' --verbosity=none --quiet | tr -d '\r\n')
+  KEY=$(gcloud services api-keys get-key-string "$KEY_ID" --project="$PROJECT" --format='value(keyString)' --verbosity=none --quiet | tr -d '\r\n')
 fi
 
 [ -n "$KEY" ] || { echo "Empty Gemini API key." >&2; exit 1; }
@@ -49,7 +51,8 @@ STATUS=$(curl -sS -o /dev/null -w '%{http_code}' -m 20 \
   -K "$TMP/gemini.cfg" \
   -H 'Content-Type: application/json' \
   -d '{"model":"gemini-decision-1","input":"ping","questions":{"ok":{"type":"noul","instructions":"Answer true."}}}' \
-  "${GEMINI_URL%/}/decisions" || echo 000)
+  "${GEMINI_URL%/}/decisions" || true)
+[ -n "$STATUS" ] || STATUS=000
 
 if [ "$STATUS" != "200" ]; then
   if [ "$STATUS" = "402" ]; then

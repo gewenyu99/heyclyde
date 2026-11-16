@@ -891,6 +891,10 @@ export function newToken() {
   return btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
 }
 
+function assertKnownSecret(name: string) {
+  if (name !== "openai_key" && name !== "gemini_key" && !BILLING_SECRETS.includes(name)) throw new ApiError(404, `No secret ${name}.`);
+}
+
 /** Store a secret the function reads from Vault. The value never lands in the audit, only that it changed. */
 async function putSecret(name: string, data: Row) {
   if (typeof data.value !== "string" || !data.value.trim()) throw new ApiError(422, "value must be a non-empty string.");
@@ -900,6 +904,18 @@ async function putSecret(name: string, data: Row) {
     else await tx`select vault.create_secret(${data.value.trim()}, ${name})`;
     await audit(tx, "secret.set", `secret:${name}`, null, { name });
     return { set: name };
+  }).then((res) => {
+    forgetSecret(name);
+    return res;
+  });
+}
+
+/** Delete a secret from Vault and clear its isolate cache immediately. */
+async function deleteSecret(name: string) {
+  return await sql.begin(async (tx) => {
+    await tx`delete from vault.secrets where name = ${name}`;
+    await audit(tx, "secret.delete", `secret:${name}`, null, { name });
+    return { deleted: name };
   }).then((res) => {
     forgetSecret(name);
     return res;
@@ -1640,8 +1656,12 @@ const ROUTES: Route[] = [
   ["DELETE", /^\/devices\/([^/]+)$/, 200, (_r, m) => revokeDevice(id(m[1], "name"))],
   ["PATCH", /^\/devices\/([^/]+)$/, 200, async (r, m) => setDeviceHooks(id(m[1], "name"), await body(r))],
   ["PUT", /^\/secrets\/([a-z_]+)$/, 200, async (r, m) => {
-    if (m[1] !== "openai_key" && m[1] !== "gemini_key" && !BILLING_SECRETS.includes(m[1])) throw new ApiError(404, `No secret ${m[1]}.`);
+    assertKnownSecret(m[1]);
     return putSecret(m[1], await body(r));
+  }],
+  ["DELETE", /^\/secrets\/([a-z_]+)$/, 200, (_r, m) => {
+    assertKnownSecret(m[1]);
+    return deleteSecret(m[1]);
   }],
   ["GET", /^\/billing\/plans$/, 200, () => plans()],
   ["PUT", /^\/billing\/plans\/([^/]+)$/, 200, async (r, m) => putPlan(m[1], await body(r))],

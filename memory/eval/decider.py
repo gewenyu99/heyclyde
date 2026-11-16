@@ -144,7 +144,7 @@ class GeminiDecisions:
         prob = p.get("noul")
         choice = (answers.get("cause") or {}).get("choice")
         cause = None
-        if isinstance(choice, str) and choice.isdigit():
+        if isinstance(choice, str) and choice.isascii() and choice.isdigit():
             idx = int(choice)
             if 0 <= idx < len(delivered):
                 cause = delivered[idx]["id"]
