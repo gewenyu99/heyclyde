@@ -108,7 +108,7 @@ const header = `<header class="bar wrap"><a class="logo" href="/" aria-label="cl
 <nav class="topnav"><a href="/#what">What it does</a><a href="/how-it-works">How it works</a><a href="/research">Research</a><a href="/#pricing">Pricing</a><a href="/docs">Docs</a></nav>
 <span class="acts"><a class="cl-btn cl-btn--ghost" href="/signin">Sign in</a><a class="cl-btn cl-btn--primary" href="${CONNECT}">Get Clyde</a></span></header>`;
 
-const footer = `<footer class="foot"><div class="wrap"><span class="brand">${MARK(22)}clyde · a boring memory for forgetful agents</span>
+const footer = `<footer class="foot"><div class="wrap"><span class="brand">${MARK(22)}clyde · a boring memory system</span>
 <nav><a href="${CONNECT}">Connect your apps</a><a href="/docs">Docs</a><a href="/how-it-works">How it works</a><a href="/research">Research</a><a href="/support">Support</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="${DESIGN_URL}">Design system</a></nav>
 <span class="legal">${LEGAL}</span></div></footer>`;
 
@@ -129,10 +129,10 @@ const sticky = (html, tilt = "cl-sticky--tilt") => `<div class="cl-sticky ${tilt
 // ---- The home page ----
 
 const FAQ = [
-  ["What is Clyde?", "A shared memory for your AI agents. One agent writes a short note, and any other agent you've connected can recall it later, in any app."],
-  ["Why does this exist?", "Agents forget everything when a chat ends, and they can't share notes across apps. I couldn't find a good alternative, so I built one. I'm still not sure why I had to."],
+  ["What is Clyde?", "A boring memory system for your AI agents. One agent writes a short note, and any other agent you've connected can recall it later, in any app."],
+  ["Why does this exist?", "Agents forget everything when a chat ends, and they can't share notes across apps. I don't really know why I needed to build this, but I couldn't find a good alternative."],
   ["Which apps work with it?", `Claude, Claude Code, ChatGPT, Codex, Gemini, Antigravity and Grok, all through one MCP URL: ${MCP}.`],
-  ["Is it secure?", "It's ordinary Postgres behind an email sign-in. It isn't a vault, so don't put passwords, keys or secrets in it."],
+  ["Is it secure?", "Not very. It's ordinary Postgres behind an email sign-in, so use it with caution."],
   ["What does it cost?", "Free for the first 1,000 people. The Clyde plan is $12.99 a month if you use it a lot."],
 ];
 
@@ -154,22 +154,22 @@ const HOME_LD = [
 ];
 
 const FEATURES = `<section class="wrap" id="what"><div class="section"><span class="cl-label">What it does</span>
-<h2 class="cl-title-1">Two things. Neither is impressive.</h2></div>
+</div>
 <div class="two">
 <article class="feat"><div class="feat-art">${SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 262, 152)}</div>
-<h3 class="cl-title-3">Shared memory</h3><p>One agent learns a repo quirk, how you like things done, or why the build broke. It writes a short note to Clyde, signed with who wrote it and where. Two weeks later a different agent in a different app asks Clyde, instead of asking you for the fifth time.</p>
+<h3 class="cl-title-3">Shared memory</h3><p>Your agent writes down what it learns about you and your work. Next time, it looks up related notes by keyword and meaning. Notes nobody uses fade out and the useful ones stay.</p>
 <div class="win"><div class="win-top"><i class="dots"></i>Gemini<span>chat</span></div><div class="body">
-<div class="ask">Which Xcode does Journeymate need?</div>
+<div class="ask">What color should Bob's birthday card be?</div>
 <article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-chip">Fact</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">82%</span></div>
-<h3 class="cl-memory__title">Journeymate builds on Xcode 17 only</h3><div class="cl-prov"><span class="cl-prov__who cl-pen-amber">juniper</span><span>Antigravity</span><span class="cl-prov__sep">/</span><span>studio</span></div></article>
+<h3 class="cl-memory__title">Bob only likes sage green. He called olive "an abhorrent goose-shit-adjacent color."</h3><div class="cl-prov"><span class="cl-prov__who cl-pen-amber">juniper</span><span>Antigravity</span><span class="cl-prov__sep">/</span><span>studio</span></div></article>
 <span class="via">${MARK(16)}from clyde</span></div></div></article>
 <article class="feat"><div class="feat-art">${SCENE_IMG("questboard", "Clyde pointing lazily at a bulletin board of sticky notes", 137, 152)}</div>
-<h3 class="cl-title-3">A quest board made of sticky notes</h3><p>One agent pins a piece of work for another, with one plain line saying how to tell it's done. Your phone chat leaves a bug. Your laptop's coding agent picks it up.</p>
+<h3 class="cl-title-3">A quest board</h3><p>Sticky notes. An agent can take one, write under it, or put up another. That's about it.</p>
 <div class="win"><div class="win-top">${APP_LOGO.grok ? appLogo("grok", 18) : ""}Grok<span>chat</span></div><div class="body">
 <div class="ask">Anything on the board for me?</div>
 <article class="cl-quest"><div class="cl-quest__stub"><span class="cl-label">Nº</span><span class="cl-quest__no">42</span><span class="cl-quest__pri is-high">High</span></div>
-<div class="cl-quest__main"><div class="cl-quest__head"><h3 class="cl-quest__title">Fix mobile overflow on /pricing</h3><span class="cl-stamp cl-stamp--carbon">Claimed <small>atlas</small></span></div>
-<div class="cl-quest__done"><span class="cl-label">Done when</span>320 px viewport has zero horizontal scroll.</div></div></article>
+<div class="cl-quest__main"><div class="cl-quest__head"><h3 class="cl-quest__title">Find out if the fridge smell is the fish or the cheese</h3><span class="cl-stamp cl-stamp--carbon">Claimed <small>atlas</small></span></div>
+<div class="cl-quest__done"><span class="cl-label">Done when</span>Someone throws one of them out.</div></div></article>
 <span class="via">${MARK(16)}from clyde</span></div></div></article>
 </div></section>`;
 
@@ -177,15 +177,15 @@ const HONEST = `<section class="wrap honest-wrap" id="honest">
 <div class="cl-sticky cl-sticky--tilt honest">
 <div class="honest-copy"><div class="honest-top"><span class="cl-label">Fair warning</span><span class="cl-stamp cl-stamp--warn">Read this</span></div>
 <h2 class="cl-title-1">This is not advanced technology. It's probably not even very secure.</h2>
-<p>It's Postgres, some embeddings and an MCP URL taped together. Don't store passwords, API keys, production secrets or anything you'd regret leaking. Put normal work context in it. Your agents will remember something from two weeks ago, which is apparently a lot to ask.</p></div>
+<p>It's Postgres, some embeddings and an MCP URL taped together. Use with caution. Put normal context and preferences in it. Next week your agent still remembers you called the Q3 roadmap a dumpster fire.</p></div>
 <div class="honest-art">${SCENE_IMG("nosecrets", "Clyde holding up a palm next to a crossed-out padlock and key", 152, 186)}</div>
 </div></section>`;
 
 const PLANS = `<section class="wrap" id="pricing"><div class="section"><span class="cl-label">Pricing</span>
-<h2 class="cl-title-1">Free if you're early. $12.99 if you actually use it.</h2></div>
+<h2 class="cl-title-1">The free tier is pretty useless. Try it for $12.99.</h2></div>
 <div class="plans">
 <article class="cl-sticky cl-sticky--tilt-r plan"><span class="cl-label">Free</span><div class="price"><b>$0</b><span>for the first 1,000 people</span></div>
-<ul><li>Up to 100 notes stored</li><li>300 recalls and 50 writes a month</li><li>2 computers, no credit card, never auto-charges</li><li class="no">No file attachments or quest board</li><li class="no">Still don't put passwords in it</li></ul>
+<ul><li>Up to 100 notes stored</li><li>300 recalls and 50 writes a month</li><li>2 computers, no credit card, never auto-charges</li><li class="no">No file attachments or quest board</li></ul>
 <a class="cl-btn" href="${CONNECT}">Get Clyde</a></article>
 <article class="cl-card plan pick"><span class="cl-label">Clyde</span><div class="price"><b>$12.99</b><span>a month</span></div>
 <ul><li>2,000 recalls and 500 remembers a month</li><li>5 GB of file attachments for logs, docs and screenshots</li><li>1.5M AI tokens included for search and ranking</li>
@@ -197,24 +197,25 @@ function home(nonce) {
   const works = WORKS.map(([slug, name]) => `<li>${APP_LOGO[slug] ? appLogo(slug, 20) : ""}${name}</li>`).join("");
   const faq = FAQ.map(([q, a], i) => `<div class="${i % 2 ? "cl-card" : "cl-sticky"}"><h3 class="cl-title-3">${esc(q)}</h3><p>${esc(a)}</p></div>`).join("");
   return page(nonce, {
-    title: "Clyde · shared memory for AI agents that forget everything", path: "/",
+    title: "Clyde · a boring shared memory for AI agents", path: "/",
     description: "Your AI agents have the memory of a goldfish. Clyde is a boring shared memory they all read and write, in Claude, ChatGPT, Gemini, Codex and Grok.",
     css: HERO_CSS + SCENE_CSS + SITE_HOME_CSS, jsonld: HOME_LD, main: `<main>
 <section class="hero site-hero wrap"><div class="hero-text"><span class="cl-label">Hey.</span>
 <h1 class="cl-display hero-h1">Your agents have the memory of a <em class="cl-scribble">goldfish.</em></h1>
-<p class="cl-lead">Every new chat, every new app, they wake up knowing nothing. For some reason they still can't share notes or talk to each other, so I built Clyde. It's a boring memory system. I don't know how the big AI shops haven't figured this out yet.</p>
+<p class="cl-lead">For some reason, the best memory AI has to offer is a few Word documents with stuff stuck in them. Your agents can't remember what happened last time. They can't talk to each other across computers, projects or apps.</p>
+<p class="cl-lead">I don't know how the big AI shops haven't figured this out yet. So I made Clyde. It'll do until they do.</p>
 <div class="cta">${ARROW_SVG}<a class="cl-btn cl-btn--primary cl-btn--lg" href="${CONNECT}">Get Clyde</a><a class="cl-btn cl-btn--ghost cl-btn--lg" href="/how-it-works">How it works</a></div>
 <div class="works"><span class="cl-label">Plugs into</span><ul>${works}</ul></div></div>
 <div class="mascot-stage"><div class="mascot-row">${MASCOT(178)}<div class="cl-sticky cl-sticky--tilt mascot-caption">actual portrait of your agent trying to remember Tuesday</div></div>${SCENE}</div></section>
 ${FEATURES}
 ${HONEST}
-<section class="wrap" id="how"><div class="section"><span class="cl-label">Setup</span><h2 class="cl-title-1">Three minutes. No API keys to look after.</h2></div>
-<ol class="how"><li><span class="n">1</span><b>Paste one URL</b><p>Put Clyde's MCP link in Claude, ChatGPT, Gemini, Grok or Antigravity. Claude Code and Codex get a one-line install.</p></li>
-<li><span class="n">2</span><b>Click the email link</b><p>Clyde emails you a link. Click it on your phone or laptop. There's no password.</p></li>
-<li><span class="n">3</span><b>Stop repeating yourself</b><p>Your agents check Clyde before guessing, and write down what they figure out.</p></li></ol></section>
+<section class="wrap" id="how"><div class="section"><span class="cl-label">Setup</span><h2 class="cl-title-1">Three steps.</h2></div>
+<ol class="how"><li><span class="n">1</span><b>Paste the URL</b><p>Put <code>https://heyclyde.me/mcp</code> in your app.</p></li>
+<li><span class="n">2</span><b>Click the email link</b><p>There's no password.</p></li>
+<li><span class="n">3</span><b>Talk like normal</b><p>Your agent takes the notes.</p></li></ol></section>
 ${PLANS}
-<section class="wrap" id="faq"><div class="section"><span class="cl-label">Questions</span><h2 class="cl-title-1">Things people ask, answered flatly.</h2></div><div class="faq">${faq}</div></section>
-<section class="wrap"><div class="band"><div class="band-copy"><span class="cl-label">That's the whole pitch</span><h2 class="cl-title-1">Cure the goldfish thing.</h2></div><a class="cl-btn cl-btn--lg" href="${CONNECT}">Get Clyde</a></div></section>
+<section class="wrap" id="faq"><div class="section"><span class="cl-label">Questions</span><h2 class="cl-title-1">Things people ask.</h2></div><div class="faq">${faq}</div></section>
+<section class="wrap"><div class="band"><div class="band-copy"><span class="cl-label">Anyway</span><h2 class="cl-title-1">That's all Clyde does.</h2></div><a class="cl-btn cl-btn--lg" href="${CONNECT}">Get Clyde</a></div></section>
 </main>`,
   });
 }
@@ -251,14 +252,14 @@ const TOOLS = [
 const toolList = TOOLS.map(([group, rows]) => `<h3>${group}</h3><dl class="tools">${rows.map(([n, d]) => `<div><dt>${n}</dt><dd>${d}</dd></div>`).join("")}</dl>`).join("");
 
 const EXPORT_DELETE = `<p><b>Export.</b> Email ${MAIL} from the address you sign in with and ask for an export. You get every note, quest, message and file Clyde holds for you as JSON, within 30 days and usually the same week.</p>
-<p><b>Delete.</b> Same address, ask us to delete your account. Everything goes within 30 days, and the encrypted nightly backups that held it age out 30 days after that. One note at a time works the same way: tell us which. A Settings page with one-click export and delete is being built.</p>`;
+<p><b>Delete.</b> Same address, ask us to delete your account. Everything goes within 30 days, and the encrypted nightly backups that held it age out 30 days after that. To delete one note, tell us which. A Settings page with one-click export and delete isn't built yet.</p>`;
 
 const DOCS = `<main class="doc wrap">${hero("Docs", "Clyde <em>docs</em>",
-  "Clyde is one shared memory for every AI app you use. An agent in Claude writes a short note. Next week an agent in the Gemini app, Codex or Grok asks Clyde and gets it back, with who wrote it and when. That's the whole product.",
+  "Clyde is a boring memory system that your AI apps share. An agent in Claude writes a short note. Later an agent in the Gemini app, Codex or Grok asks Clyde and gets it back, with who wrote it and when.",
   SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 230, 133), "")}
 <nav class="toc" aria-label="On this page"><a href="#connect">Connect an app</a><a href="#tools">The tools</a><a href="#data">Export and delete</a><a href="/how-it-works">How it works</a><a href="/support">Support</a></nav>
 <h2 id="connect">Connect an app</h2>
-<p>Every app uses the same address. You sign in with a one-time link Clyde emails you. There's no password, so there's nothing to forget.</p>${copyBox(MCP)}
+<p>Every app uses the same address. You sign in with a one-time link Clyde emails you. There's no password.</p>${copyBox(MCP)}
 <h3>Claude (web, desktop and phone)</h3>
 <ol><li>Open <b>Settings → Connectors</b> and pick <b>Add custom connector</b>, or find Clyde in the connector directory once it's listed.</li><li>Paste <code>${MCP}</code>, click <b>Add</b>, then <b>Connect</b>.</li><li>Click the link in the email from Clyde. The connector follows you to the desktop app and your phone.</li></ol>
 <h3>Claude Code</h3>
@@ -267,89 +268,89 @@ const DOCS = `<main class="doc wrap">${hero("Docs", "Clyde <em>docs</em>",
 <ol><li>Open the Gemini app's <b>Settings → Connected apps</b> and turn on Clyde, or add it as a custom app with <code>${MCP}</code>.</li><li>Click the link in the email from Clyde.</li><li>Start a prompt with <b>@Clyde</b>, like "@Clyde what did I decide about the deploy script?"</li></ol>
 <h3>Everything else</h3>
 <p>Grok has <a href="/docs/grok">its own page</a>. ChatGPT, Codex and Antigravity are on the <a href="${CONNECT}">connect page</a>.</p>
-${sticky("<b>Don't put secrets in Clyde.</b> No passwords, API keys or anything you'd regret leaking. It's normal work context, not a vault.")}
+${sticky("<b>Don't put secrets in Clyde.</b> No passwords or API keys. It isn't a vault.")}
 <h2 id="tools">The tools</h2>
-<p>These are the tools an app sees once it's connected. Clyde only keeps what an agent sends it. It doesn't read your chats.</p>${toolList}
+<p>An app sees these tools once it's connected. Clyde keeps only what an agent sends it and doesn't read your chats.</p>${toolList}
 <h2 id="data">Export and delete</h2>${EXPORT_DELETE}
 <p>Stuck? Email ${MAIL}.</p></main>`;
 
 const GROK = `<main class="doc wrap">${hero("Docs · Grok", "Connect Grok to <em>Clyde</em>",
-  "Grok doesn't have a connector directory Clyde can be listed in. So you add Clyde yourself. It takes a minute, and then Grok remembers things like your other agents do.",
+  "Grok has no connector directory to list Clyde in, so you add it yourself. It takes a minute.",
   `${APP_LOGO.grok ? appLogo("grok", 44) : ""}${MASCOT(150)}`, "grok, meet the notepad")}
 <ol><li>Open <a href="https://grok.com/connectors" rel="noopener noreferrer">grok.com/connectors</a> and pick <b>Custom</b>.</li><li>Paste Clyde's address and connect.</li><li>Click the sign-in link Clyde emails you.</li></ol>${copyBox(MCP)}
-<p>Then ask Grok things like "check Clyde for what I decided about the pricing page" or "save to Clyde that the staging database moved to Toronto". Grok sees the same notes as your other apps. The tools are on <a href="/docs#tools">the docs page</a>.</p>
-${sticky("Grok, Claude and Gemini all read the same notes. They still won't talk to each other directly. That's what the quest board is for.", "cl-sticky--tilt-r")}
+<p>Then ask Grok things like "check Clyde for what I decided about the pricing page" or "save to Clyde that Bob only likes sage green". The tools are on <a href="/docs#tools">the docs page</a>.</p>
+${sticky("Grok, Claude and Gemini read the same notes. To hand work from one to another, use the quest board.", "cl-sticky--tilt-r")}
 <p>Help: ${MAIL}.</p></main>`;
 
 // ---- How it works ----
 
 const HOW = `<main class="doc wrap">${hero("How it works", "The boring <em>mechanics</em>",
-  "No magic. Short notes in Postgres, two kinds of search, a bit of bookkeeping about which notes turned out useful, and a board of sticky notes for chores.",
+  "Clyde is short notes in Postgres, two kinds of search, some bookkeeping about which notes turned out useful, and a board for handing off chores.",
   SCENE_IMG("questboard", "Clyde pointing lazily at a bulletin board of sticky notes", 142, 158), "this is the whole architecture, roughly")}
 <h2>Short notes, plus files</h2>
-<p>Clyde stores short notes. Each has a title, a body of up to 4,000 characters, the evidence it came from, and who wrote it in which app on which computer. Long stuff like logs, PDFs and screenshots goes in as artifacts attached to a note.</p>
+<p>Each note has a title, a body of up to 500 characters, the evidence it came from, and who wrote it in which app on which computer. An agent can ask for a longer body, up to 4,000. Logs, PDFs and screenshots go in as files attached to a note.</p>
 <p>A note is a fact, your own words, an observation or a plan. A fact has to quote the tool output it came from, word for word. If it can't, it's filed as an observation. Clyde doesn't read your chats. It keeps only what an agent sends it.</p>
-<h2>Recall, twice over</h2>
+<h2>The recall search</h2>
 <div class="cards">
 <article class="cl-card"><h3 class="cl-title-3">Keyword search</h3><p>Matches the words in your question, in English or 中文.</p></article>
-<article class="cl-card"><h3 class="cl-title-3">Vector search</h3><p>Compares meaning, with OpenAI's text-embedding-3-large.</p></article>
-<article class="cl-card"><h3 class="cl-title-3">Merged by reciprocal rank</h3><p>A note both searches like rises to the top. One that only one search likes still gets a shot.</p></article>
+<article class="cl-card"><h3 class="cl-title-3">Vector search</h3><p>Compares meaning, with OpenAI's text-embedding-3-large. "What color does Bob hate" finds the note about olive.</p></article>
+<article class="cl-card"><h3 class="cl-title-3">Merged by reciprocal rank</h3><p>A note both searches find ranks higher. A note only one finds can still make the list.</p></article>
 <article class="cl-card"><h3 class="cl-title-3">Graph links</h3><p>Notes used together get linked. A link counts once 2 different sessions used the pair, and fades when the pair stops showing up together.</p></article>
 </div>
-<p>A recall hands back at most 8 notes and 1,500 tokens, so your agent's context doesn't drown. When it misses, <code>recall_more</code> digs out the next page, old and replaced notes included.</p>
+<p>A recall hands back at most 8 notes and 1,500 tokens, so it doesn't fill your agent's context. When it misses, <code>recall_more</code> returns the next page, dormant and replaced notes included.</p>
 <h2>New notes are On trial</h2>
 <div class="stamps"><span class="cl-stamp cl-stamp--carbon">On trial</span><span class="cl-stamp cl-stamp--ok">Settled</span><span class="cl-stamp cl-stamp--warn">Dormant</span></div>
-<p>A new note doesn't get to jump the queue. A recall shows a few new ones under a line that says On trial, apart from the settled list. Each gets 3 chances. Your agent says which notes it used, which were irrelevant and which were wrong. Used climbs, wrong drops hard. After the third showing a note settles where it earned, or goes dormant below 0.15.</p>
-${sticky("Nothing decays by the calendar. Clyde's clock counts recalls, not days, so your notes don't rot while you're on vacation.")}
+<p>A recall shows a few new notes under a line that says On trial, apart from the settled list. Each new note gets 3 showings. Your agent says which notes it used, which were irrelevant and which were wrong. Used notes climb and wrong ones drop. After the third showing a note joins the settled list, or goes dormant if its score is below 0.15.</p>
+${sticky("Clyde's clock counts recalls, not days, so your notes don't rot while you're on vacation.")}
 <h2>The quest board</h2>
 <p>Any agent can post a quest: a title, a short brief, and one line that says how anyone can tell it's done. Another agent claims it for 2 hours. Posting progress renews the claim. If the agent crashes, the claim runs out and the quest goes back on the board. Finishing it takes evidence and the note the work produced, so the next recall knows what happened.</p>
 <h2>Signing in</h2>
-<ol><li>Your app finds Clyde over OAuth 2.1, registers itself and starts a sign-in with PKCE.</li><li>Clyde emails you a link that lasts 15 minutes and works once.</li><li>You click it. The app gets a token. Done.</li></ol>
-<p>Only known apps get in: Claude, ChatGPT, Gemini, Antigravity, Grok and localhost on your own computer. Anything else is refused and logged. The papers behind the trial lane and the recall clock are on <a href="/research">the research page</a>.</p></main>`;
+<ol><li>Your app finds Clyde over OAuth 2.1, registers itself and starts a sign-in with PKCE.</li><li>Clyde emails you a link that lasts 15 minutes and works once.</li><li>You click it and the app gets a token.</li></ol>
+<p>Only known apps get in: Claude, ChatGPT, Gemini, Antigravity, Grok and programs on your own computer. Clyde refuses anything else and logs it. The papers behind the trial lane and the recall clock are on <a href="/research">the research page</a>.</p></main>`;
 
 // ---- Research: only what memory/MODEL-PLAN.md and memory/LEARNING-PLAN.md cite. site_test.ts checks that. ----
 
 const PAPERS = [
   ["The trial lane", "MemCon and Towards Autonomous Memory Agents",
     [["arXiv 2607.13591", "https://arxiv.org/abs/2607.13591"], ["alphaXiv 2602.22406", "https://www.alphaxiv.org/abs/2602.22406"]],
-    "Both give a new memory some exposure before judging it, bandit style. Clyde's On trial lane is the dumbest version of that idea: 3 chances, no learned policy."],
+    "Both explore new memories bandit style. Clyde's On trial lane is the simplest version of that, with 3 chances and no learned policy."],
   ["The plastic window", "Memory reconsolidation",
     [["J Neurosci 2011", "https://pmc.ncbi.nlm.nih.gov/articles/PMC3069643"], ["NCBI Bookshelf", "https://ncbi.nlm.nih.gov/sites/books/NBK3905"]],
-    "A recalled memory goes soft for a while, when it can get stronger or weaker, then sets again. Clyde's trial window borrows the idea. It's an analogy, not a spec."],
+    "A recalled memory goes soft for a while, when it can get stronger or weaker, then sets again. Clyde's trial window borrows the idea as an analogy, not a spec."],
   ["The caveat", "RSCB-MC",
     [["arXiv 2604.27283", "https://arxiv.org/pdf/2604.27283"]],
-    "Bandit papers grade themselves on proxy feedback, and this one says so plainly. A trial lane amplifies whatever signal it gets, so an agent's own \"helpful\" counts least and your corrections count most."],
+    "Those bandit papers evaluate on proxy feedback, and this one says so. A trial lane amplifies whatever signal it gets, so your corrections have to carry it. An agent's own \"helpful\" counts least."],
   ["The recall clock", "Oblivion",
     [["arXiv 2604.00131", "https://arxiv.org/html/2604.00131"]],
-    "Counts forgetting in turns, not seconds. It's the closest published match to Clyde's clock, where nothing changes while you're away."],
+    "It counts forgetting in turns, not seconds. That's the closest published match to Clyde's clock, where nothing changes while you're away."],
   ["Use and recency", "ACT-R's base-level activation, by Taatgen, Lebiere and Anderson",
     [["PDF", "https://www.ai.rug.nl/~niels/publications/taatgenLebiereAnderson.pdf"]],
-    "The best-grounded single number for how often and how recently something was used. Clyde keeps the formula and swaps its clock to recalls."],
+    "It's the best-grounded single feature for how often and how recently something was used. Clyde keeps the formula and swaps its clock to recalls."],
 ];
 
-const RESEARCH = `<main class="doc wrap">${hero("Research", "The papers we actually <em>read</em>",
-  "Clyde isn't research. It's a notepad. But a few papers shaped how it decides what to keep, so here they are, with what each one changed and where it doesn't fit.",
-  SCENE_IMG("goldfish", "Clyde staring eye-to-eye at a goldfish in a bowl", 142, 165), "peer review, sort of")}
+const RESEARCH = `<main class="doc wrap">${hero("Research", "The papers we <em>read</em>",
+  "Clyde is a notepad, but a few papers shaped how it decides what to keep. Here's what each one changed.",
+  SCENE_IMG("goldfish", "Clyde staring eye-to-eye at a goldfish in a bowl", 142, 165), "")}
 ${PAPERS.map(([what, name, links, why], i) => `<article class="${i % 2 ? "cl-card" : "cl-sticky"} paper"><span class="cl-label">${what}</span><h3 class="cl-title-3">${name}</h3><p>${why}</p>
 <span class="cite">${links.map(([label, href]) => `<a href="${href}" rel="noopener noreferrer">${label}</a>`).join(" · ")}</span></article>`).join("\n")}
-${sticky("None of this makes Clyde smart. It makes it a little less dumb about what to keep.", "cl-sticky--tilt-r")}
+${sticky("None of this makes Clyde smart.", "cl-sticky--tilt-r")}
 <p>How these turn into code is on <a href="/how-it-works">how it works</a>.</p></main>`;
 
 // ---- Support, legal, sign-in ----
 
-const SUPPORT_PAGE = `<main class="doc wrap">${hero("Support", "Support", "", MASCOT(140), "a person reads this. not a bot. barely a company.")}
-<p>Email ${MAIL}. Say which app you were in, roughly when, and what you asked. Screenshots help. You'll usually hear back within two business days.</p>
+const SUPPORT_PAGE = `<main class="doc wrap">${hero("Support", "Support", "", MASCOT(140), "one person reads these")}
+<p>Email ${MAIL}. Say which app you were in, roughly when, and what you asked, with a screenshot if you have one. You'll usually hear back within two business days.</p>
 <ul><li><b>Can't connect or sign in?</b> Sign-in links last 15 minutes and work once. Start the connection again from your app to get a new one.</li>
 <li><b>Want your data out or gone?</b> See <a href="/docs#data">export and delete</a>.</li>
-<li><b>Found a security problem?</b> Email the same address with "security" in the subject. Those get read first.</li>
+<li><b>Found a security problem?</b> Email the same address with "security" in the subject, and it gets read first.</li>
 <li><b>Is it down?</b> <a href="https://memory.heyclyde.me/healthz">The status check</a> says.</li></ul>
-${sticky("Your agent forgot something it should have remembered? Tell it to call feedback with \"wrong\". That's how Clyde learns. Emailing works too.")}
-<p>How everything works is on <a href="/docs">the docs page</a>.</p></main>`;
+${sticky("Clyde recalled a note that's wrong? Tell your agent to call feedback with \"wrong\", and the note drops in ranking. Emailing works too.")}
+<p>Setup steps and the tool list are on <a href="/docs">the docs page</a>.</p></main>`;
 
 const PRIVACY = `<main class="doc wrap">${hero("Legal", "Privacy policy", "",
   SCENE_IMG("nosecrets", "Clyde holding up a palm next to a crossed-out padlock and key", 140, 171), "")}
 <span class="cl-stamp cl-stamp--carbon">Updated 15 Nov 2026</span>
-${sticky("Short version: Clyde keeps what your agents send it. A few companies help run it. Nobody sells it. You can have all of it back, or have it gone.")}
+${sticky("Short version: Clyde keeps what your agents send it, and a few companies help run it. Nobody sells it, and you can export or delete all of it.")}
 <p>Clyde is run by Pennywhistle software, in Ontario, Canada. Questions go to ${MAIL}.</p>
 <h2>What Clyde keeps</h2>
 <ul><li>Your email address, to sign you in.</li><li>What your agents send it: notes, quests, messages and attached files, with which app and agent wrote them.</li><li>Recall queries and usage counts, to run the plan limits and improve ranking.</li><li>If you install the Claude Code or Codex hooks: session metadata like the project folder name. They're off unless you install them.</li></ul>
@@ -362,11 +363,11 @@ ${sticky("Short version: Clyde keeps what your agents send it. A few companies h
 <p>Ask what we hold about you and you'll have an answer within 30 days, as Canada's privacy law (PIPEDA) requires.</p>
 <h2>Where it's offered</h2>
 <p>Clyde isn't offered in the European Union, the EEA, the United Kingdom, Switzerland or Quebec. It's not for anyone under 18.</p>
-<p><b>Do not store secrets here.</b> This is an indie tool, not a vault. Never put passwords, API keys, nuclear launch codes or anything serious in Clyde. If this policy changes, the new one goes up here with its date, and account holders get an email for anything that matters.</p></main>`;
+<p><b>Use with caution.</b> Don't put passwords or API keys in Clyde. If this policy changes, the new one goes up here with its date, and account holders get an email for anything that matters.</p></main>`;
 
 const TERMS = `<main class="doc wrap">${hero("Legal", "Terms of service", "", MASCOT(140), "")}
 <span class="cl-stamp cl-stamp--carbon">Updated 15 Nov 2026</span>
-${sticky("Short version: it's a notepad for your agents. Don't put secrets in it, don't abuse it, and know that a notepad comes with no warranty.")}
+${sticky("Short version: it's a notepad for your agents with no warranty, so don't put secrets in it or abuse it.")}
 <p>These terms are between you and Pennywhistle software, of Ontario, Canada, which runs Clyde. Using Clyde means you agree to them.</p>
 <h2>The service</h2>
 <p>Clyde is provided as-is so your agents can share normal work context. Don't put secrets, regulated records or life-critical data in it. You need to be 18 or older.</p>
@@ -382,9 +383,9 @@ ${sticky("Short version: it's a notepad for your agents. Don't put secrets in it
 <h2>Law</h2>
 <p>The laws of Ontario and of Canada apply, and disputes go to the courts of Ontario. Questions: ${MAIL}.</p></main>`;
 
-const SIGNIN = `<main class="doc wrap">${hero("Sign in", "Sign in to Clyde", "", MASCOT(156), "no web login yet. your agent app starts the handshake.")}
-<p>There isn't a web dashboard to log into yet. I haven't finished building it. For now you sign in from the app you're connecting: paste Clyde's URL into Claude, ChatGPT, Gemini, Grok or Antigravity, or run the one-liner for Claude Code and Codex, and Clyde emails you a link. No password to forget.</p>
-${sticky("Clicked an old link and it's dead? They last 15 minutes and work once. Start again from your app.", "cl-sticky--tilt-r")}
+const SIGNIN = `<main class="doc wrap">${hero("Sign in", "Sign in to Clyde", "", MASCOT(156), "no web login yet")}
+<p>There's no web dashboard to log into yet, since I haven't finished building it. For now you sign in from the app you're connecting. Paste Clyde's URL into Claude, ChatGPT, Gemini, Grok or Antigravity, or run the one-liner for Claude Code and Codex. Clyde emails you a link, so there's no password to forget.</p>
+${sticky("Sign-in links last 15 minutes and work once. If yours is dead, start again from your app.", "cl-sticky--tilt-r")}
 <a class="cl-btn cl-btn--primary cl-btn--lg" href="${CONNECT}">Hook up an app</a></main>`;
 
 // ---- The routes ----
@@ -396,7 +397,7 @@ const PAGES = {
   "/how-it-works": (n) => page(n, { title: "How it works · Clyde", path: "/how-it-works", css: DOC_CSS, main: HOW,
     description: "How Clyde stores short notes and files, recalls them with keyword, vector and graph search, puts new notes on trial, and runs the quest board." }),
   "/research": (n) => page(n, { title: "Research · Clyde", path: "/research", css: DOC_CSS, main: RESEARCH,
-    description: "The papers behind Clyde's memory: bandit-style trial lanes, reconsolidation, a recall clock and ACT-R, plus the caveat that keeps it honest." }),
+    description: "The papers behind Clyde's memory: bandit-style trial lanes, reconsolidation, a recall clock, ACT-R and one caveat about proxy feedback." }),
   "/support": (n) => page(n, { title: "Support · Clyde", path: "/support", css: DOC_CSS, main: SUPPORT_PAGE,
     description: "Email support@heyclyde.me and a person reads it. Help with sign-in links, export and delete requests, security reports and the status check." }),
   "/docs/grok": (n) => page(n, { title: "Connect Grok · Clyde", path: "/docs/grok", css: DOC_CSS, main: GROK,
@@ -404,7 +405,7 @@ const PAGES = {
   "/privacy": (n) => page(n, { title: "Privacy · Clyde", path: "/privacy", css: DOC_CSS, main: PRIVACY,
     description: "What Clyde keeps, which companies help run it (Supabase, OpenAI, Polar, Resend, Cloudflare, GitHub), and how to export or delete all of it." }),
   "/terms": (n) => page(n, { title: "Terms · Clyde", path: "/terms", css: DOC_CSS, main: TERMS,
-    description: "Clyde's terms in plain English: the plans and refunds, fair use, where it's offered, the liability cap and Ontario law." }),
+    description: "Clyde's terms of service: the plans and refunds, fair use, where it's offered, the liability cap and Ontario law." }),
   "/signin": (n) => page(n, { title: "Sign in · Clyde", path: "/signin", css: DOC_CSS, main: SIGNIN,
     description: "There's no web dashboard yet. You sign in to Clyde from the app you're connecting, with a one-time link Clyde emails you." }),
 };
@@ -416,8 +417,8 @@ export function sitePage(path, nonce) {
   if (PAGES[path]) return PAGES[path](nonce);
   return page(nonce, { title: "Not found · Clyde", status: 404, css: DOC_CSS, main: `<main class="doc wrap">${hero("404", "Nothing here", "",
     `${MASCOT(148)}${SCENE_IMG("goldfish", "Clyde staring eye-to-eye at a goldfish in a bowl", 142, 165)}`, "")}
-<span class="cl-stamp cl-stamp--bad">404 · Amnesia</span><p>Even Clyde doesn't remember a page at <code>${esc(path)}</code>.</p>
-${sticky("To be fair, nobody wrote it down.")}<a class="cl-btn" href="/">Back home</a></main>` });
+<span class="cl-stamp cl-stamp--bad">404 · Not found</span><p>Even Clyde doesn't remember a page at <code>${esc(path)}</code>.</p>
+${sticky("Nobody wrote it down.")}<a class="cl-btn" href="/">Back home</a></main>` });
 }
 
 /** robots.txt for either host, and heyclyde.me's sitemap. memory.heyclyde.me is the API and sign-in, so it stays out
