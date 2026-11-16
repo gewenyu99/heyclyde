@@ -226,7 +226,7 @@ export function statePage(data, nonce, id = "") {
     case "connected":
       mark = stamp("ok", "Approved", date); h1 = "Connected"; title = "Connected";
       lead = `${app("Your app")} is connected to Clyde.`;
-      extra = note("Return to your app. You can close this tab.");
+      extra = note("Close this tab and return to your app.");
       break;
     case "refused":
       mark = stamp("bad", "Refused", date); h1 = "Connection refused"; title = "Connection refused";
@@ -249,7 +249,7 @@ export function statePage(data, nonce, id = "") {
       kind = "Subscription";
       mark = stamp("ok", "Paid", date); h1 = "Subscription active"; title = "Subscribed";
       lead = "Your Clyde plan is on. New limits apply within a minute.";
-      extra = note("Return to your app. You can close this tab.");
+      extra = note("Close this tab and return to your app.");
       break;
     case "expired":
       mark = stamp("warn", "Expired", date); h1 = "Link expired"; title = "Link expired";

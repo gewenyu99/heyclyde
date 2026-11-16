@@ -141,11 +141,11 @@ const sticky = (html, tilt = "cl-sticky--tilt") => `<div class="cl-sticky ${tilt
 // ---- The home page ----
 
 const FAQ = [
-  ["What is Clyde?", "Clyde is a shared memory for AI agents. Your agents in Claude, ChatGPT, Gemini, Codex, Antigravity and Grok write short notes to it and read them back from any app or computer."],
+  ["What is Clyde?", "Clyde is a shared memory for AI agents. Agents in Claude, ChatGPT, Gemini, Codex, Antigravity and Grok write short notes to it and read them back from any app or computer."],
   ["How is this different from ChatGPT or Claude memory?", "ChatGPT's memory stays in ChatGPT, and Claude's stays in Claude. Every app reads the same Clyde, so what you told Gemini on your phone shows up in Claude on your laptop."],
   ["What's an MCP memory server?", `MCP is how AI apps plug into outside tools. Clyde is an MCP server at ${MCP}, so any app that supports MCP can use it.`],
   ["Do I have to tell my agent to remember things?", "No. Clyde tells your agent when to save and check notes."],
-  ["How do I give Claude memory across apps?", `Add Clyde as a custom connector. Paste ${MCP} into Claude's Settings, Connectors, then click the link Clyde emails you. Your other apps take the same URL.`],
+  ["How do I give Claude memory across apps?", `Add Clyde as a custom connector. Paste ${MCP} into Claude's Settings, Connectors, then click the link Clyde emails you. Other apps take the same URL.`],
   ["Does Clyde work with Claude Code and Codex?", "Yes. One terminal command installs it for both."],
   ["Does Clyde read my chats?", "No. It keeps only what your agent decides to save."],
   ["Where is my data, and can I delete it?", "In Postgres on Supabase, in Canada. Email support@heyclyde.me to export or delete all of it."],
@@ -249,13 +249,13 @@ ${PLANS}
 // Every tool in memory/supabase/functions/memory/mcp.ts, in plain words. site_test.ts fails when one is missing here.
 const TOOLS = [
   ["Notes", [
-    ["remember", "Saves one note, such as a decision, fact or preference. Your other agents can recall it right away."],
+    ["remember", "Saves one note, such as a decision, fact or preference. Your other agents can recall it at once."],
     ["recall", "Searches your notes and returns up to 8, with who wrote each one and how sure Clyde is."],
     ["recall_more", "Returns the next page of results, including dormant and replaced notes."],
     ["get_entry", "Opens one note in full, with its source, links and attached files."],
     ["get_blob", "Reads a file attached to a note, a page at a time. Images and other binaries come back as a 10-minute download link."],
     ["upload_blob", "Attaches a file of up to 500 MB to a note, such as a log, PDF or screenshot."],
-    ["feedback", "Tells Clyde which recalled notes helped and which were wrong, so ranking gets less bad."],
+    ["feedback", "Marks which recalled notes helped and which were wrong, so ranking improves."],
   ]],
   ["Agents and messages", [
     ["register_agent", "Names the agent once, so its notes and messages carry that name."],
@@ -284,7 +284,7 @@ const DOCS = `<main class="doc wrap">${hero("Docs", "Install <em>Clyde</em>",
 ${copyBox(MCP)}
 <div class="apps">${appCards()}</div>${SOON_NOTE}
 <h2 id="then">Usage</h2>
-<p>Clyde tells your agent when to save and search notes. You can also ask it to remember something or check Clyde.</p>
+<p>Clyde tells your agent when to save and search notes. You can also ask it directly.</p>
 <p>To export or delete your data, see the <a href="/privacy">Privacy policy</a>.</p>
 <h2 id="support">Support</h2>
 <p>Email ${MAIL}.</p></main>`;
@@ -297,7 +297,7 @@ const PAPERS = [
     "Both papers explore new memories bandit-style. Clyde gives each new note a 3-recall trial, with no learned policy."],
   ["Reconsolidation window", "Memory reconsolidation",
     [["J Neurosci 2011", "https://pmc.ncbi.nlm.nih.gov/articles/PMC3069643"], ["NCBI Bookshelf", "https://ncbi.nlm.nih.gov/sites/books/NBK3905"]],
-    "A recalled memory can change for a short while, and gets stronger or weaker with the outcome. Clyde opens a similar window after each recall."],
+    "A recalled memory stays changeable for a short while and strengthens or weakens with the outcome. Clyde opens a similar window after each recall."],
   ["Feedback weighting", "RSCB-MC",
     [["arXiv 2604.27283", "https://arxiv.org/pdf/2604.27283"]],
     "Bandit-style memory systems amplify whatever feedback they get. Clyde trusts your corrections most and an agent saying a note \"helped\" least."],
@@ -345,7 +345,7 @@ const HOW = `<main class="doc wrap">${hero("How it works", "How it <em>works</em
   "It's Postgres, some embeddings and an MCP URL taped together.",
   SCENE_IMG("questboard", "Clyde pointing lazily at a bulletin board of sticky notes", 142, 158), "")}
 <h2>What it tries to do</h2>
-<ul><li>Stores short notes from your agents, with which agent wrote each one and where.</li>
+<ul><li>Stores short notes, with which agent wrote each one and where.</li>
 <li>Finds notes with keyword and semantic search.</li>
 <li>Decays notes that go unused.</li>
 <li>Links notes that keep getting recalled together.</li>
