@@ -157,7 +157,7 @@ const FEATURES = `<section class="wrap" id="what"><div class="section"><span cla
 <div class="ask">Anything on the board for me?</div>
 <article class="cl-quest"><div class="cl-quest__stub"><span class="cl-label">Nº</span><span class="cl-quest__no">42</span><span class="cl-quest__pri is-high">High</span></div>
 <div class="cl-quest__main"><div class="cl-quest__head"><h3 class="cl-quest__title">Check why the staging build failed on Linux</h3><span class="cl-stamp cl-stamp--carbon">Claimed <small>atlas</small></span></div>
-<div class="cl-quest__done"><span class="cl-label">Done when CI passes on main.</div></div></article>
+<div class="cl-quest__done"><span class="cl-label">Done when</span>CI passes on main.</div></div></article>
 <span class="via">${MARK(16)}from clyde</span></div></div></article>
 </div></section>`;
 
@@ -172,10 +172,10 @@ const HONEST = `<section class="wrap honest-wrap" id="honest">
 const PLANS = `<section class="wrap" id="pricing"><div class="section"><span class="cl-label">Pricing</span>
 <h2 class="cl-title-1">Free to test, $12.99/mo for daily use.</h2></div>
 <div class="plans">
-<article class="cl-sticky cl-sticky--tilt-r plan"><span class="cl-label">Free</span><div class="price"><b>$0 (first 1,000 users)</span></div>
+<article class="cl-sticky cl-sticky--tilt-r plan"><span class="cl-label">Free</span><div class="price"><b>$0</b><span>first 1,000 users</span></div>
 <ul><li>Up to 100 notes stored</li><li>300 recalls and 50 writes / month</li><li>2 computers, no credit card required</li><li class="no">No file attachments or task board</li></ul>
 <a class="cl-btn" href="${CONNECT}">Get Clyde</a></article>
-<article class="cl-card plan pick"><span class="cl-label">Clyde</span><div class="price"><b>$12.99 / month</span></div>
+<article class="cl-card plan pick"><span class="cl-label">Clyde</span><div class="price"><b>$12.99</b><span>a month</span></div>
 <ul><li>2,000 recalls and 500 writes / month</li><li>5 GB file storage for logs, docs, and screenshots</li><li>1.5M tokens included for search and ranking</li>
 <li>Up to 10 computers, all supported apps, plus the task board</li><li>Overage is raw cost + 50%, capped at a monthly limit you set ($20 default)</li></ul>
 <a class="cl-btn cl-btn--primary cl-btn--lg" href="${CONNECT}">Get Clyde</a></article>
@@ -188,7 +188,7 @@ function home(nonce) {
     description: "Shared memory for Claude, ChatGPT, Gemini, Codex, and Grok. Your agents read and write the same notes across apps and devices.",
     css: HERO_CSS + SCENE_CSS + SITE_HOME_CSS, jsonld: HOME_LD, main: `<main>
 <section class="hero site-hero wrap"><div class="hero-text">
-<h1 class="cl-display hero-h1">Shared memory for your AI agents.</em></h1>
+<h1 class="cl-display hero-h1">Shared memory for your AI <em class="cl-scribble">agents.</em></h1>
 <p class="cl-lead">Right now, agent memory is mostly flat markdown files stuck in local folders. Your agents forget what happened last session, and they can't share context across computers, projects, or apps.</p>
 <p class="cl-lead">Clyde gives them one place to read and write notes.</p>
 <div class="cta">${ARROW_SVG}<a class="cl-btn cl-btn--primary cl-btn--lg" href="${CONNECT}">Get Clyde</a><a class="cl-btn cl-btn--ghost cl-btn--lg" href="/how-it-works">How it works</a></div>
@@ -197,9 +197,9 @@ function home(nonce) {
 ${FEATURES}
 ${HONEST}
 <section class="wrap" id="how"><div class="section"><span class="cl-label">Setup</span><h2 class="cl-title-1">Three steps.</h2></div>
-<ol class="how"><li><span class="n">1</span><b>Paste the URL</b><p>Add https://heyclyde.me/mcp to your app.</p></li>
+<ol class="how"><li><span class="n">1</span><b>Paste the URL</b><p>Add <code>https://heyclyde.me/mcp</code> to your app.</p></li>
 <li><span class="n">2</span><b>Click the email link</b><p>Sign in via magic link. No passwords.</p></li>
-<li><span class="n">3 Use your agents</b><p>They read and write notes automatically.</p></li></ol></section>
+<li><span class="n">3</span><b>Use your agents</b><p>They read and write notes automatically.</p></li></ol></section>
 ${PLANS}
 <section class="wrap"><div class="band"><div class="band-copy"></div><a class="cl-btn cl-btn--lg" href="${CONNECT}">Get Clyde</a></div></section>
 </main>`,
@@ -299,7 +299,7 @@ ${sticky("Summary: Clyde stores the data your agents send it. We don't sell your
 <h2>What we collect</h2>
 <ul><li>Your email address for authentication.</li><li>Content sent by your agents: notes, tasks, messages, attached files, and client/agent metadata.</li><li>Search queries and usage counts to enforce plan limits and rank results.</li><li>Optional session metadata (such as project directory names) if you install the Claude Code or Codex hooks.</li></ul>
 <h2>Subprocessors</h2>
-<ul><li><b>Supabase hosts the database in Canada (ca-central-1) and handles authentication.</li><li><b>OpenAI generates embeddings, screens notes for secrets, and ranks search results. OpenAI does not train on API data.</li><li><b>Polar processes payments as merchant of record. Clyde never sees your card details.</li><li><b>Resend delivers sign-in emails.</li><li><b>Cloudflare provides DNS, CDN, and routing for heyclyde.me.</li><li><b>GitHub stores encrypted nightly backups with a 30-day retention window.</li></ul>
+<ul><li><b>Supabase</b> hosts the database in Canada (ca-central-1) and handles authentication.</li><li><b>OpenAI</b> generates embeddings, screens notes for secrets, and ranks search results. OpenAI does not train on API data.</li><li><b>Polar</b> processes payments as merchant of record. Clyde never sees your card details.</li><li><b>Resend</b> delivers sign-in emails.</li><li><b>Cloudflare</b> provides DNS, CDN, and routing for heyclyde.me.</li><li><b>GitHub</b> stores encrypted nightly backups with a 30-day retention window.</li></ul>
 <h2>What we don't do</h2>
 <p>We do not sell your data, run ads, train models on your content, or read your notes unless investigating a bug you reported.</p>
 <h2>Retention, export, and deletion</h2>
@@ -307,7 +307,7 @@ ${sticky("Summary: Clyde stores the data your agents send it. We don't sell your
 <p>Data access requests are answered within 30 days in accordance with Canada's PIPEDA.</p>
 <h2>Availability</h2>
 <p>Clyde is not offered in the EU, EEA, UK, Switzerland, or Quebec, and is only available to users 18 and older.</p>
-<p><b>Do not store passwords, API keys, or sensitive credentials in Clyde. Material updates to this policy will be posted here and emailed to account holders.</p></main>`;
+<p><b>Do not store passwords, API keys, or sensitive credentials in Clyde.</b> Material updates to this policy will be posted here and emailed to account holders.</p></main>`;
 
 const TERMS = `<main class="doc wrap">${hero("Legal", "Terms of service", "", MASCOT(140), "")}
 <span class="cl-stamp cl-stamp--carbon">Updated 15 Nov 2026</span>

@@ -335,9 +335,9 @@ export function homePage(nonce) {
 <span class="cl-status" id="status" role="status">Checking</span></header>
 <main>
 <section class="hero wrap"><div class="hero-text"><span class="cl-label">Get Clyde</span>
-<h1 class="cl-display">Connect your apps</em></h1>
+<h1 class="cl-display">Connect your <em class="cl-scribble">apps</em></h1>
 <p class="cl-lead">Add one MCP URL and click the email sign-in link to share memory across your agents.</p>
-<div class="cl-sticky cl-sticky--tilt hero-note"><b>Do not store passwords or API keys in Clyde.</div>
+<div class="cl-sticky cl-sticky--tilt hero-note"><b>Do not store passwords or API keys in Clyde.</b></div>
 <div class="cta"><a class="cl-btn cl-btn--primary cl-btn--lg" href="#apps">Pick your app</a><a class="cl-btn cl-btn--ghost cl-btn--lg" href="https://heyclyde.me/">What is Clyde?</a></div>
 <div class="works"><span class="cl-label">Plugs into</span><ul>${works}</ul></div></div><div class="hero-art">${SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 484, 280)}</div></section>
 <section class="wrap" id="apps"><div class="apps-head"><div class="section"><span class="cl-label">Connect</span><h2 class="cl-title-1">Pick your app</h2>
@@ -346,9 +346,9 @@ export function homePage(nonce) {
 <div class="apps">${cards}</div></section>
 <section class="wrap" id="how"><div class="section"><span class="cl-label">Authentication</span><h2 class="cl-title-1">OAuth + magic link</h2></div>
 <ol class="how">
-<li><span class="n">1 Automatic client registration</b><p>Paste the URL once. Your client registers via OAuth, with no manual API keys required.</p></li>
-<li><span class="n">2 Email verification</b><p>Click the sign-in link on your phone or computer to complete the handshake.</p></li>
-<li><span class="n">3 Strict allowlist</b><p>Only Claude, ChatGPT, Antigravity, Gemini, Grok, and localhost callbacks are permitted. Unrecognized clients are rejected and logged.</p></li>
+<li><span class="n">1</span><b>Automatic client registration</b><p>Paste the URL once. Your client registers via OAuth, with no manual API keys required.</p></li>
+<li><span class="n">2</span><b>Email verification</b><p>Click the sign-in link on your phone or computer to complete the handshake.</p></li>
+<li><span class="n">3</span><b>Strict allowlist</b><p>Only Claude, ChatGPT, Antigravity, Gemini, Grok, and localhost callbacks are permitted. Unrecognized clients are rejected and logged.</p></li>
 </ol></section></main>${footer}`;
   return shell({ nonce, title: "Connect · Clyde", css: HOME_CSS, body, script: COPY_JS + STATUS_JS });
 }
