@@ -105,7 +105,7 @@ const wantsPage = (req) => !req.headers.has("authorization") && (req.headers.get
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
-    // heyclyde.me is Clyde's public home (R69); www goes there. Neither host reaches the function.
+    // heyclyde.me is Clyde's public home (R69); www goes there. Only SITE_API's paths reach the function from either.
     if (url.hostname === "www.heyclyde.me") return Response.redirect(`https://heyclyde.me${url.pathname}${url.search}`, 301);
     if (url.hostname === "heyclyde.me" && SITE_API(url.pathname)) return pass(req, url, env, { "x-memory-host": "heyclyde.me" });
     if (url.hostname === "heyclyde.me") {
