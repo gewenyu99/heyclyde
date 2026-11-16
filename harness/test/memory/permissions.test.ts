@@ -384,6 +384,8 @@ test('R70 project, computer and spreading-graph boundaries stay isolated', { ski
 
   await syncEmbeddings()
   sql(`delete from memory.entry_embedding where entry_id in ('${idBeyond}', '${idAllowed}')`)
+  // Settle these entries so spreading.v5's 3-slot On trial lane does not drop tokenless idAllowed behind the 3 query-token seeds.
+  sql(`update memory.entry set chances_left = 0 where id in ('${idClyde}', '${idLaptop}', '${idBridged}', '${idAllowed}')`)
 
   for (const arm of ['spreading.v5', 'spreading.v1', 'hybrid.v1', 'index.v1']) {
     await serve(arm)
