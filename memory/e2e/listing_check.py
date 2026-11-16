@@ -247,7 +247,9 @@ def site_seo(errs):
         errs.append(f"/sitemap.xml: status {status}, content-type {ctype!r}, {len(locs)} urls")
     status, ctype, body = fetch("/robots.txt", "text/plain")
     txt = body.decode("utf-8", "replace")
-    if status != 200 or f"Sitemap: {BASE}/sitemap.xml" not in txt or re.search(r"^Disallow: /\s*$", txt, re.M):
+    # Cloudflare's managed robots.txt may put its own groups first. Only the "User-agent: *" group decides search.
+    star = re.search(r"^User-agent: \*\s*$(.*?)(?=^User-agent:|\Z)", txt, re.M | re.S)
+    if status != 200 or f"Sitemap: {BASE}/sitemap.xml" not in txt or not star or re.search(r"^Disallow: /\s*$", star.group(1), re.M):
         errs.append(f"/robots.txt: status {status}, or no sitemap line, or it disallows everything")
     api = BASE.replace("://", "://memory.", 1)
     with urllib.request.urlopen(urllib.request.Request(api + "/robots.txt", headers={"user-agent": "clyde-listing-check/1"}), timeout=20) as r:
