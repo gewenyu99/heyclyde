@@ -4,7 +4,7 @@
  */
 import assert from 'node:assert/strict'
 import worker from '../../../memory/proxy/worker.js'
-import { appCards, DESIGN_URL, homePage, statePage } from '../../../memory/proxy/pages.js'
+import { appCards, appSteps, DESIGN_URL, homePage, SOON, statePage } from '../../../memory/proxy/pages.js'
 import { INDEXED as SITE_INDEXED, INDEXNOW_KEY, MOVED } from '../../../memory/proxy/site.js'
 
 const ENV = { PROXY_SECRET: 'test-proxy-secret' }
@@ -24,6 +24,8 @@ const INDEXED = ['/', '/docs', '/how-it-works', '/faq', '/privacy', '/terms']
 // Pages the site dropped when it shrank, and where each one went.
 const REDIRECTS: Record<string, string> = { '/research': '/how-it-works', '/support': '/docs#support', '/docs/grok': '/docs#grok', '/signin': '/docs' }
 const SUPPORT = 'support@heyclyde.me'
+// The home page carries the app picker and the recall carousel, so it gets more room than the other pages.
+const HOME_MAX = 75_000
 const h1s = (html: string) => [...html.matchAll(/<h1[^>]*>([\s\S]*?)<\/h1>/g)].map((m) => m[1].replace(/<[^>]+>/g, '').trim())
 const text = (html: string) => html.replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
 
@@ -49,7 +51,69 @@ Deno.test('the home page has the logo, pricing and its links', async () => {
   assert.equal((html.match(/<article class="cl-quest">/g) ?? []).length, 1, 'one quest card')
   assert.ok(!html.includes('FAQPage') && !/<div class="faq">/.test(html), 'the FAQ lives on /faq, not the home page')
   assert.ok(html.includes('@media (max-width:960px){.site-hero{grid-template-columns:minmax(0,1fr)'), 'the hero is one column on a phone')
-  assert.ok(new TextEncoder().encode(html).length <= 50_000, `${html.length} bytes`)
+  assert.ok(new TextEncoder().encode(html).length <= HOME_MAX, `${html.length} bytes`)
+})
+
+// Structure only: which parts are there and how they're wired. The wording is Wen's and isn't pinned here.
+Deno.test('the home page has an app picker, a recall carousel and one bottom button', async () => {
+  const { html } = await get('https://heyclyde.me/')
+  const section = (id: string) => new RegExp(`<section[^>]*id="${id}"[\\s\\S]*?</section>`).exec(html)?.[0] ?? ''
+
+  // The picker: one radio and one label per app, Claude checked, each panel the same steps /docs shows.
+  const how = section('how')
+  const ids = ['claude-ai', 'claude-code', 'antigravity', 'gemini', 'grok', 'chatgpt']
+  const radios = [...how.matchAll(/<input[^>]*type="radio"[^>]*>/g)].map((m) => m[0])
+  assert.deepEqual(radios.map((r) => /id="pick-([^"]+)"/.exec(r)?.[1]), ids, 'one radio per app, in order')
+  assert.equal(new Set(radios.map((r) => /name="([^"]+)"/.exec(r)?.[1])).size, 1, 'the radios share one name, so arrow keys move between them')
+  assert.deepEqual(radios.map((r) => / checked/.test(r)), [true, false, false, false, false, false], 'Claude is checked by default')
+  for (const id of ids) {
+    const app = appSteps(id)
+    const label = new RegExp(`<label for="pick-${id}">([\\s\\S]*?)</label>`).exec(how)?.[1] ?? ''
+    assert.ok(label.includes(`/_clyde/apps/${app.logo}.svg`), `${id}: the tab shows the app's logo`)
+    assert.equal(label.includes('class="soon"'), SOON.has(app.logo), `${id}: a red asterisk only when the app is in SOON`)
+    assert.ok(how.includes(`data-pick="${id}">${app.body}</div>`), `${id}: the panel is the app's steps from pages.js`)
+    assert.ok(html.includes(`#pick-${id}:checked~.pick-panels [data-pick="${id}"]`), `${id}: its radio shows its panel`)
+    assert.ok(html.includes(`#pick-${id}:checked~.pick-tabs [for="pick-${id}"]`), `${id}: its radio marks its tab`)
+    assert.ok(html.includes(`#pick-${id}:focus-visible~.pick-tabs [for="pick-${id}"]`), `${id}: keyboard focus shows on its tab`)
+  }
+  assert.ok(html.includes('.pick-panel{display:none'), 'a panel is hidden until its radio is checked')
+  assert.ok(!/\.pick-in\{[^}]*display:none/.test(html), 'the radios stay focusable')
+  assert.equal((how.match(/class="soon-note"/g) ?? []).length, 1, 'the asterisk legend, once')
+  assert.ok(!how.includes('<script'), 'the picker needs no script')
+
+  // The carousel: six slides that scroll and snap without script, and buttons that only show once the script runs.
+  const built = section('built')
+  const slides = built.match(/<article class="cl-card rc-slide">/g) ?? []
+  assert.equal(slides.length, 6, 'six slides')
+  assert.equal((built.match(/<svg[^>]*role="img"[^>]*aria-label="[^"]+"/g) ?? []).length, 3, 'a labelled graph on each of the three recalls')
+  assert.equal((built.match(/class="rc-q"/g) ?? []).length, 3, 'a query on each of the three recalls')
+  assert.ok((built.match(/class="cl-stamp[^"]*"/g) ?? []).length >= 8, 'verdict stamps')
+  assert.equal((built.match(/<li class="cl-sticky /g) ?? []).length, 6, 'the quest timeline is six sticky notes')
+  assert.equal((built.match(/<i class="is-spent"><\/i>|<i><\/i>/g) ?? []).length, 3, 'three pips on the trial note')
+  assert.equal((built.match(/<i class="rc-w\d+"><\/i>/g) ?? []).length, 3, 'three bars')
+  for (const w of attr(built, /<i class="rc-w(\d+)"><\/i>/g)) assert.ok(html.includes(`.rc-w${w}{width:${w}%}`), `the ${w}% bar is ${w}% wide`)
+  assert.ok(/\.rc-track\{[^}]*overflow-x:auto[^}]*scroll-snap-type:x mandatory/.test(html), 'the track scrolls sideways and snaps')
+  assert.ok(/\.rc-slide\{[^}]*scroll-snap-align:start/.test(html), 'each slide is a snap point')
+  assert.ok(/<div class="rc-track" tabindex="0"/.test(built), 'the track takes keyboard focus')
+  assert.ok(/<div class="rc-nav" hidden>/.test(built), 'prev and next stay hidden without script')
+  assert.equal((built.match(/<button[^>]*aria-label="[^"]+"/g) ?? []).length, 2, 'a labelled prev and next button')
+  assert.ok(/<span class="rc-count">1 \/ 6<\/span>/.test(built), 'a slide count')
+  assert.ok(built.includes('href="/how-it-works#built"'), 'a link to /how-it-works#built')
+  assert.ok(/<script nonce="[A-Za-z0-9]{16,}">[^<]*getElementById\('rc'\)/.test(html), 'the carousel script carries the nonce')
+  assert.ok(!html.includes('built-nums'), 'the old Built with it block is gone')
+
+  // One button at the bottom, after pricing. The plan cards have none.
+  const pricing = section('pricing')
+  assert.ok(pricing && !/<button|cl-btn/.test(pricing), 'plan cards carry no buttons')
+  const after = html.slice(html.indexOf(pricing) + pricing.length, html.indexOf('<footer'))
+  assert.deepEqual(attr(after, /<a class="cl-btn[^"]*" href="([^"]+)"/g), ['/docs'], 'one button after pricing, to /docs')
+  assert.ok(!/<button/.test(after), 'nothing else to press after pricing')
+  assert.ok(/\.end-cta\{[^}]*justify-content:center/.test(html), 'the button is centered')
+  assert.ok(html.indexOf('id="how"') < html.indexOf('id="pricing"') && html.indexOf('id="built"') < html.indexOf('id="honest"'), 'the sections keep their order')
+
+  // The hero's second paragraph keeps Wen's struck-out words.
+  const hero = /<section class="hero[\s\S]*?<\/section>/.exec(html)?.[0] ?? ''
+  assert.equal((hero.match(/<s class="strike">/g) ?? []).length, 1, 'the hero strikes out one phrase')
 })
 
 Deno.test('pricing matches memory.plan', async () => {
@@ -144,7 +208,7 @@ Deno.test('the store pages', async () => {
   assert.ok(docs.includes(appCards()), '/docs carries appCards() as the connect page renders it')
   const apps = attr(docs, /data-app="([^"]+)"/g)
   assert.deepEqual(apps, attr(homePage('n0nce0000000000000000'), /data-app="([^"]+)"/g), '/docs and the connect page list the same apps')
-  assert.deepEqual(apps, ['claude-ai', 'claude-code', 'antigravity', 'gemini', 'grok', 'antigravity-cloud'])
+  assert.deepEqual(apps, ['claude-ai', 'claude-code', 'antigravity', 'gemini', 'grok', 'chatgpt', 'antigravity-cloud'])
   assert.ok(/<article[^>]*id="grok"[\s\S]*?grok\.com\/connectors[\s\S]*?https:\/\/heyclyde\.me\/mcp/.test(docs), '/docs#grok: the Grok steps with the MCP URL')
   const support = /<h2 id="support">[\s\S]*?<\/main>/.exec(docs)?.[0] ?? ''
   assert.ok(support.includes(`href="mailto:${SUPPORT}"`), '/docs#support: a mailto link to support')
@@ -201,7 +265,7 @@ Deno.test('every page has the same header nav and footer', async () => {
     const foot = /<footer[\s\S]*?<\/footer>/.exec(html)?.[0] ?? ''
     assert.deepEqual(attr(foot, /href="([^"]+)"/g), ['/docs', '/how-it-works', '/faq', `mailto:${SUPPORT}`, '/privacy', '/terms', DESIGN_URL], `${path}: footer links`)
     const bytes = new TextEncoder().encode(html).length
-    assert.ok(bytes <= 50_000, `${path}: ${bytes} bytes`)
+    assert.ok(bytes <= (path === '/' ? HOME_MAX : 50_000), `${path}: ${bytes} bytes`)
   }
 })
 
@@ -219,7 +283,7 @@ Deno.test('every page has its own SEO tags', async () => {
     assert.deepEqual(meta(html, 'og:image'), ['https://heyclyde.me/brand/og-banner.png'], `${path}: og:image`)
     assert.deepEqual(meta(html, 'twitter:card'), ['summary_large_image'], `${path}: twitter:card`)
     const bytes = new TextEncoder().encode(html).length
-    assert.ok(bytes <= 50_000, `${path}: ${bytes} bytes`)
+    assert.ok(bytes <= (path === '/' ? HOME_MAX : 50_000), `${path}: ${bytes} bytes`)
   }
   assert.equal(titles.size, INDEXED.length, 'every title is different')
   assert.equal(descs.size, INDEXED.length, 'every description is different')

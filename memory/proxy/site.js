@@ -2,7 +2,7 @@
 // sign-in, a 404, robots.txt and the sitemap. Served by the same Worker as memory.heyclyde.me, in Sticky-Note Forehead
 // Clyde's doodle and sticky-note design system, in Clyde's deadpan voice (R72, #77; memory/design/BRAND.md).
 // Pricing matches memory.plan (memory/supabase/migrations/20261115120000_billing.sql); site_test.ts checks it.
-import { SOON, SOON_NOTE, appCards, appLogo, APP_LOGO, CONNECT_CSS, COPY_JS, copyBox, DESIGN_URL, esc, HERO_CSS, LEGAL, LOGO, MARK, MASCOT, MCP_URL, SCENE, SCENE_CSS, SCENE_IMG, shell, SITE, WORKS } from "./pages.js";
+import { SOON, SOON_NOTE, appCards, appLogo, appSteps, APP_LOGO, CONNECT_CSS, COPY_JS, copyBox, DESIGN_URL, esc, HERO_CSS, LEGAL, LOGO, MARK, MASCOT, MCP_URL, SCENE, SCENE_CSS, SCENE_IMG, shell, SITE, WORKS } from "./pages.js";
 
 const CONNECT = "/docs";
 const MCP = MCP_URL;
@@ -50,7 +50,6 @@ const SITE_HOME_CSS = `
 .honest h2{margin:0;max-width:26ch}
 .honest p{margin:0;font:var(--cl-text-body-l);color:var(--cl-ink-2);max-width:62ch}
 .honest-art img{height:186px;width:auto;transform:scaleX(-1)}
-#how .how{margin-bottom:84px}
 .plans{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;max-width:900px;margin-bottom:24px;align-items:start}
 @media (max-width:760px){.plans{grid-template-columns:minmax(0,1fr)}}
 .plan{display:grid;gap:18px;align-content:start;padding:28px}
@@ -126,10 +125,10 @@ const crumbs = (path) => ({ "@context": "https://schema.org", "@type": "Breadcru
   { "@type": "ListItem", position: 1, name: "Clyde", item: SITE }, { "@type": "ListItem", position: 2, name: NAMES[path], item: SITE + path }] });
 const ld = (path, extra = []) => [...(path === "/" ? [SITE_LD, ORG_LD] : [crumbs(path)]), ...extra];
 
-const page = (nonce, { title, description, path, css = "", main, status = 200, jsonld }) => ({
+const page = (nonce, { title, description, path, css = "", main, status = 200, jsonld, script = "" }) => ({
   status,
   html: shell({
-    nonce, title, css: BASE_CSS + css, body: `${header}${main}${footer}`, script: COPY_JS, noindex: !description,
+    nonce, title, css: BASE_CSS + css, body: `${header}${main}${footer}`, script: COPY_JS + script, noindex: !description,
     seo: description ? { description, path, jsonld: ld(path, jsonld) } : null,
   }),
 });
@@ -189,18 +188,156 @@ const FEATURES = `<section class="wrap" id="what"><div class="section"><span cla
 <span class="via">${MARK(16)}from clyde</span></div></div></article>
 </div></section>`;
 
-// The short version of /how-it-works#built. Its styles sit beside it so the section moves as one piece.
-const BUILT_CSS = `
-.built{margin-bottom:76px}.built .section{margin-bottom:12px}
-.built-nums{display:flex;flex-wrap:wrap;gap:10px 32px;margin:0 0 16px;padding:14px 0;border-block:1.5px dashed var(--cl-rule-strong)}
-.built-nums div{display:grid}
-.built-nums b{font:var(--cl-text-title-2);font-variant-numeric:tabular-nums}
-.built-nums span{font:var(--cl-text-small);color:var(--cl-ink-2)}
-.built p{margin:0;max-width:64ch;font:var(--cl-text-body-l);color:var(--cl-ink-2)}
+// How Clyde was used to build Clyde: six slides of real recalls, quest updates and feedback, copied from the store.
+// Nothing here is made up. A note without a stamp is one whose verdict wasn't recorded per note.
+const RECALL_CSS = `
+.built{margin-bottom:76px}
+.rc-track{display:flex;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;overscroll-behavior-x:contain;scroll-padding:0 4px;padding:4px 4px 14px;scrollbar-width:thin}
+@media (prefers-reduced-motion:reduce){.rc-track{scroll-behavior:auto}}
+.rc-slide{flex:0 0 100%;scroll-snap-align:start;display:grid;gap:18px;align-content:start;padding:22px}
+@media (max-width:520px){.rc-slide{padding:16px}}
+.rc-slide .cl-sticky{--cl-sticky-ground:var(--cl-paper-1)}
+.rc-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px}
+.rc-head h3{margin:0}
+.rc-meta{font:var(--cl-text-mono);font-size:12.5px;color:var(--cl-ink-3)}
+.rc-body{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr);gap:18px 28px;align-items:start}
+@media (max-width:760px){.rc-body{grid-template-columns:minmax(0,1fr)}}
+.rc-list{display:grid;gap:14px;min-width:0}
+.rc-q{margin:0;padding:10px 12px;border-radius:var(--cl-radius-md);background:var(--cl-paper-2);font:var(--cl-text-mono);font-size:12.5px;line-height:1.55;color:var(--cl-ink);overflow-wrap:anywhere}
+.rc-q b{color:var(--cl-carbon);font-weight:600}
+.rc-group{display:grid;gap:8px}
+.rc-notes{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.rc-notes li{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:10px;align-items:start;font:var(--cl-text-small);color:var(--cl-ink)}
+.rc-notes small{display:block;font:var(--cl-text-mono);font-size:11.5px;color:var(--cl-ink-3)}
+.rc-dot{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--cl-ink-3);background:var(--cl-paper-1);font:700 10px/1 var(--cl-font-mono);font-style:normal;color:var(--cl-ink)}
+.rc-dot.is-used{background:var(--cl-carbon);border-color:var(--cl-carbon);color:var(--cl-on-carbon)}
+.rc-tally{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding-top:12px;border-top:1px dashed var(--cl-rule-strong);font:var(--cl-text-small);color:var(--cl-ink-2)}
+.rc-fig{margin:0;display:grid;gap:8px;padding:12px;border:1px dashed var(--cl-rule-strong);border-radius:var(--cl-radius-lg);background:var(--cl-paper-0)}
+.rc-fig svg{display:block;width:100%;height:auto;max-width:380px;margin:0 auto}
+.rc-fig figcaption{display:flex;align-items:center;gap:8px;font:var(--cl-text-mono);font-size:11.5px;color:var(--cl-ink-3)}
+.rc-e{stroke:var(--cl-rule-strong);stroke-width:1.5}
+.rc-n{fill:var(--cl-paper-1);stroke:var(--cl-ink-3);stroke-width:1.5}
+.rc-n.is-q{fill:var(--cl-sticky);stroke:var(--cl-ink)}
+.rc-n.is-used{fill:var(--cl-carbon);stroke:var(--cl-carbon)}
+.rc-t{fill:var(--cl-ink);font:700 10px var(--cl-font-mono)}
+.rc-t.is-used{fill:var(--cl-on-carbon)}
+.rc-l{fill:var(--cl-ink-3);font:500 9px var(--cl-font-mono);letter-spacing:.08em}
+.rc-k{fill:var(--cl-ink-2);font:500 9.5px var(--cl-font-mono);paint-order:stroke;stroke:var(--cl-paper-0);stroke-width:5px;stroke-linejoin:round}
+.rc-line{list-style:none;margin:0;padding:4px 2px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+@media (max-width:760px){.rc-line{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}}
+.rc-line li{display:grid;gap:8px;align-content:start;min-height:112px;padding:20px 14px 14px;font:var(--cl-text-small);color:var(--cl-ink)}
+.rc-who{display:flex;align-items:center;gap:7px;font:var(--cl-text-label);letter-spacing:.06em;text-transform:uppercase;color:var(--cl-ink-2)}
+.rc-who img{width:18px;height:18px;flex:none}
+.rc-who b{margin-left:auto;font:700 12px/1 var(--cl-font-mono);color:var(--cl-ink-3)}
+.rc-line p,.rc-say{margin:0}
+.rc-line small{font:var(--cl-text-mono);font-size:11.5px;color:var(--cl-ink-2)}
+.rc-trial{display:grid;grid-template-columns:minmax(0,480px) minmax(0,1fr);gap:16px 28px;align-items:center}
+@media (max-width:760px){.rc-trial{grid-template-columns:minmax(0,1fr)}}
+.rc-pips{display:flex;align-items:center;gap:6px;padding-top:8px;border-top:1px dashed var(--cl-rule);font:var(--cl-text-mono);font-size:11.5px;color:var(--cl-ink-2)}
+.rc-pips i{width:12px;height:12px;border-radius:50%;border:1.5px solid var(--cl-warn);background:var(--cl-warn)}
+.rc-pips i.is-spent{background:transparent}
+.rc-pips span{margin-left:6px}
+.rc-say{font:var(--cl-text-body);color:var(--cl-ink-2);max-width:56ch}
+.rc-bars{margin:0;display:grid;gap:12px;max-width:560px}
+.rc-bars div{display:grid;grid-template-columns:104px minmax(0,1fr) 40px;gap:12px;align-items:center}
+.rc-bars dt{font:var(--cl-text-small);color:var(--cl-ink)}
+.rc-bars dd{margin:0;height:16px;border-radius:var(--cl-radius-xs);background:var(--cl-paper-2);overflow:hidden}
+.rc-bars dd i{display:block;height:100%;background:var(--cl-carbon)}
+.rc-bars b{font:600 13px/1 var(--cl-font-mono);font-variant-numeric:tabular-nums;text-align:right}
+.rc-w60{width:60%}.rc-w59{width:59%}.rc-w52{width:52%}
+.rc-foot{margin:6px 4px 0;font:var(--cl-text-small)}
+.rc-nav{display:flex;align-items:center;gap:12px;margin:0 4px 10px}
+.rc-nav[hidden]{display:none}
+.rc-nav [aria-disabled="true"]{opacity:.4;cursor:default}
+.rc-count{min-width:44px;text-align:center;font:600 13px/1 var(--cl-font-mono);font-variant-numeric:tabular-nums;color:var(--cl-ink-2)}
 `;
-const BUILT = `<section class="wrap built" id="built"><div class="section"><span class="cl-label">Built with it</span></div>
-<div class="built-nums"><div><b>1,198</b><span>notes since 12 Oct 2026</span></div><div><b>2,079</b><span>links between notes</span></div><div><b>834</b><span>recalls</span></div><div><b>1,461</b><span>feedback verdicts</span></div></div>
-<p>The agents that built Clyde kept their notes in Clyde. Counts as of 16 Nov 2026. <a href="/how-it-works#built">See one recall</a></p></section>`;
+
+/** One note in a slide's list: its number in the graph, its title, how it got there, and its verdict when one is known. */
+const rcNote = (n, title, how = "", verdict = "") => `<li><i class="rc-dot${verdict === "Used" ? " is-used" : ""}">${n}</i><span>${esc(title)}${how ? `<small>${how}</small>` : ""}</span>${
+  verdict ? `<span class="cl-stamp${verdict === "Used" ? " cl-stamp--ok" : ""}">${verdict}</span>` : ""}</li>`;
+const rcGroup = (label, notes) => `<div class="rc-group"><span class="cl-label">${label}</span><ul class="rc-notes">${notes.join("")}</ul></div>`;
+/** The graph beside a recall: nodes are [label, x, y, kind], edges are [from, to, link type], heads are [x, text]. */
+function rcGraph(alt, heads, nodes, edges, key = true) {
+  const at = Object.fromEntries(nodes.map((n) => [n[0], n]));
+  const lines = edges.map(([a, b, kind]) => {
+    const [, x1, y1] = at[a], [, x2, y2] = at[b];
+    const label = !kind ? "" : x1 === x2 ? `<text class="rc-k" x="${x1 + 17}" y="${(y1 + y2) / 2 + 3}">${kind}</text>`
+      : `<text class="rc-k" x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 + 3}" text-anchor="middle">${kind}</text>`;
+    return `<line class="rc-e" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>${label}`;
+  }).join("");
+  const dots = nodes.map(([label, x, y, kind = ""]) => `<circle class="rc-n${kind ? ` is-${kind}` : ""}" cx="${x}" cy="${y}" r="11"/>` +
+    `<text class="rc-t${kind === "used" ? " is-used" : ""}" x="${x}" y="${y + 3.5}" text-anchor="middle">${label}</text>`).join("");
+  return `<figure class="rc-fig"><svg viewBox="0 0 300 160" role="img" aria-label="${alt}">` +
+    heads.map(([x, t]) => `<text class="rc-l" x="${x}" y="11" text-anchor="middle">${t}</text>`).join("") + lines + dots + `</svg>` +
+    (key ? `<figcaption><i class="rc-dot is-used"></i>marked used</figcaption>` : "") + `</figure>`;
+}
+const rcSlide = (title, meta, body) => `<article class="cl-card rc-slide"><div class="rc-head"><h3 class="cl-title-3">${title}</h3>${meta ? `<span class="rc-meta">${meta}</span>` : ""}</div>${body}</article>`;
+const rcRecall = (title, meta, query, groups, tally, graph) => rcSlide(title, meta,
+  `<div class="rc-body"><div class="rc-list"><p class="rc-q"><b>recall</b> "${esc(query)}"</p>${groups.join("")}${tally ? `<div class="rc-tally">${tally}</div>` : ""}</div>${graph}</div>`);
+const rcStep = (n, slug, who, what, when = "") => `<li class="cl-sticky ${n % 2 ? "cl-sticky--tilt" : "cl-sticky--tilt-r"}"><span class="rc-who">${appLogo(slug, 18)}${who}<b>${n}</b></span><p>${what}</p>${when ? `<small>${when}</small>` : ""}</li>`;
+const QUEST8 = "Clyde quest #8: Antigravity's work reviewed, fixed and live";
+
+const RECALLS = [
+  rcRecall("Spreading activation", "865 ms · 7 Nov 2026", "requirements for lists and responses format; store plans in memory with artifacts", [
+    rcGroup("Search hits", [
+      rcNote(1, "memory on Supabase, connectors and heyclyde.me", "top score"),
+      rcNote(2, "Plans live in memory, with the plan files as artifacts", "4th", "Used")]),
+    rcGroup("Reached by link", [
+      rcNote(3, "Before starting, give me a short requirements checklist", "co-used link from note 2", "Used"),
+      rcNote(4, "Write a memory handoff per task, with dependencies and a plan", "relates link from note 2")]),
+  ], `<span>4 other notes</span><span class="cl-stamp">Irrelevant</span>`,
+  rcGraph("The query finds notes 1 and 2. Note 2 links to note 3 by a co-used link and to note 4 by a relates link. Notes 2 and 3 were marked used.",
+    [[28, "QUERY"], [136, "SEARCH"], [262, "LINKS"]], [["Q", 28, 84, "q"], [1, 136, 44], [2, 136, 112, "used"], [3, 262, 76, "used"], [4, 262, 140]],
+    [["Q", 1], ["Q", 2], [2, 3, "co-used"], [2, 4, "relates"]])),
+  rcRecall("Hybrid search", "914 ms · 16 Nov 2026", "Clyde quests next steps R48 R49 R50 R70 quest #8 #9 #10 status", [
+    rcGroup("Top hits", [
+      rcNote(1, "Clyde handoff (Antigravity): Sticky-Note Clyde WIP, live Worker, R48-R50 blueprint"),
+      rcNote(2, QUEST8)]),
+    rcGroup("Also returned", [
+      rcNote(3, "Only claim quests for the active project"),
+      rcNote(4, "Agents check memory before touching the filesystem")]),
+    rcGroup("Linked", [
+      rcNote(5, "Every turn starts by checking memory and ends by saving to it", "relates link from note 4")]),
+  ], `<span class="cl-stamp cl-stamp--ok">Used</span><span>5 notes</span><span class="cl-stamp">Irrelevant</span><span>1 note</span>`,
+  rcGraph("The query finds notes 1, 2, 3 and 4. Note 4 has a relates link to note 5.",
+    [[28, "QUERY"], [136, "SEARCH"], [262, "LINKS"]], [["Q", 28, 86, "q"], [1, 136, 32], [2, 136, 68], [3, 136, 104], [4, 136, 140], [5, 262, 140]],
+    [["Q", 1], ["Q", 2], ["Q", 3], ["Q", 4], [4, 5, "relates"]], false)),
+  rcRecall("Keyword search", "525 ms · 15 Nov 2026", "pause and handoff quests memory abandon_quest update_quest", [
+    rcGroup("Search hits", [
+      rcNote(1, "Write a memory handoff per task, with dependencies and a plan, before starting work, so any agent can take it", "co-used link to note 2", "Used"),
+      rcNote(2, "memory becomes Clyde: shared memory, artifacts and a quest board for all your agents", "co-used link to note 1", "Used")]),
+  ], "",
+  rcGraph("The query finds notes 1 and 2. A co-used link joins them. Both were marked used.",
+    [[28, "QUERY"], [136, "SEARCH"]], [["Q", 28, 84, "q"], [1, 136, 44, "used"], [2, 136, 124, "used"]],
+    [["Q", 1], ["Q", 2], [1, 2, "co-used"]])),
+  rcSlide("The quest board", "Quest #8 · 15 to 16 Nov 2026", `<ol class="rc-line">${[
+    rcStep(1, "claude-code", "Claude Code", "Posted a handoff quest."),
+    rcStep(2, "antigravity", "Antigravity", "Claimed it."),
+    rcStep(3, "antigravity", "Antigravity", "Posted 3 progress notes."),
+    rcStep(4, "antigravity", "Antigravity", "Released it with a handoff.", "23:17 UTC"),
+    rcStep(5, "claude-code", "Claude Code", "Claimed it back."),
+    rcStep(6, "claude-code", "Claude Code", "Found 4 bugs and shipped it live."),
+  ].join("")}</ol>`),
+  rcSlide("A note on trial", "", `<div class="rc-trial"><article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-stamp cl-stamp--warn">On trial</span><span class="cl-memory__conf">52% sure</span></div>
+<h3 class="cl-memory__title">${esc(QUEST8)}</h3>
+<div class="rc-pips"><i class="is-spent"></i><i></i><i></i><span>2 of 3 showings left</span></div></article>
+<p class="rc-say">This note started on trial with 3 showings. After 1 showing it had 2 left and stood at 52% sure.</p></div>`),
+  rcSlide("What agents said about recalls", "30 days", `<dl class="rc-bars">${
+    [["Hybrid", 60], ["Spreading", 59], ["Keyword-only", 52]].map(([k, v]) => `<div><dt>${k}</dt><dd><i class="rc-w${v}"></i></dd><b>${v}%</b></div>`).join("")}</dl>
+<p class="rc-say">Share marked used, by recall method. Under 0.5% marked wrong.</p>`),
+];
+const BUILT = `<section class="wrap built" id="built"><div class="section"><h2 class="cl-title-1">How it was used to build Clyde</h2></div>
+<div class="rc" id="rc"><div class="rc-nav" hidden><button class="cl-btn cl-btn--sm" type="button" aria-label="Previous slide">←</button><span class="rc-count">1 / ${RECALLS.length}</span><button class="cl-btn cl-btn--sm" type="button" aria-label="Next slide">→</button></div>
+<div class="rc-track" tabindex="0" role="group" aria-label="${RECALLS.length} slides">${RECALLS.join("\n")}</div>
+<p class="rc-foot"><a href="/how-it-works#built">See the counts</a></p></div></section>`;
+// Prev and next for the carousel. Without it the slides still scroll and snap, and the buttons stay hidden.
+const RECALL_JS = `(function(){var r=document.getElementById('rc');if(!r)return;var t=r.querySelector('.rc-track'),s=t.children,n=s.length,v=r.querySelector('.rc-nav'),
+c=v.querySelector('.rc-count'),b=v.querySelectorAll('button'),k=0,tm;function w(){return n>1?s[1].offsetLeft-s[0].offsetLeft:1}
+function at(){return Math.max(0,Math.min(n-1,Math.round(t.scrollLeft/w())))}
+function show(i){c.textContent=(i+1)+' / '+n;b[0].setAttribute('aria-disabled',i===0);b[1].setAttribute('aria-disabled',i===n-1)}
+function go(d){return function(){k=Math.max(0,Math.min(n-1,k+d));show(k);t.scrollLeft=k*w()}}
+b[0].addEventListener('click',go(-1));b[1].addEventListener('click',go(1));
+t.addEventListener('scroll',function(){clearTimeout(tm);tm=setTimeout(function(){k=at();show(k)},120)},{passive:true});v.hidden=false;show(0)})();`;
 
 const HONEST = `<section class="wrap honest-wrap" id="honest">
 <div class="cl-sticky cl-sticky--tilt honest">
@@ -220,27 +357,50 @@ const PLANS = `<section class="wrap" id="pricing"><div class="section"><span cla
 <li>Up to 10 computers, all supported apps, plus the quest board</li><li>Overage is raw cost + 50%, capped at a monthly limit you set ($20 default)</li></ul></article>
 </div></section>`;
 
+// The app picker: radio inputs and labels, no script. Each panel is that app's steps from pages.js (appSteps).
+const PICK = ["claude-ai", "claude-code", "antigravity", "gemini", "grok", "chatgpt"].map(appSteps);
+const PICK_CSS = `
+#how{margin-bottom:84px}
+#how .soon-note{margin-top:16px}
+.pick{position:relative}
+.pick-in{position:absolute;top:0;left:0;width:1px;height:1px;margin:0;opacity:0;pointer-events:none}
+.pick-tabs{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px}
+.pick-tabs label{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 14px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-pill);background:var(--cl-paper-1);font:500 14px/1 var(--cl-font-sans);color:var(--cl-ink-2);cursor:pointer}
+.pick-tabs label:hover{border-color:var(--cl-ink-3);color:var(--cl-ink)}
+.pick-tabs img{display:block;width:20px;height:20px;object-fit:contain}
+.pick-panel{display:none;max-width:640px}
+${PICK.map(({ id }) => `#pick-${id}:checked~.pick-tabs [for="pick-${id}"]`).join(",")}{border-color:var(--cl-ink);background:var(--cl-sticky);color:var(--cl-ink);font-weight:650;box-shadow:var(--cl-copy-2);transform:translate(-2px,-2px)}
+${PICK.map(({ id }) => `#pick-${id}:focus-visible~.pick-tabs [for="pick-${id}"]`).join(",")}{outline:2px solid var(--cl-carbon);outline-offset:3px}
+${PICK.map(({ id }) => `#pick-${id}:checked~.pick-panels [data-pick="${id}"]`).join(",")}{display:flex}
+.end-cta{display:flex;justify-content:center;padding-block:32px 64px}
+`;
+const SETUP = `<section class="wrap" id="how"><div class="section"><span class="cl-label">Setup</span><h2 class="cl-title-1">Pick your app.</h2></div>
+<div class="pick" role="radiogroup" aria-label="App">${PICK.map(({ id }, i) => `<input class="pick-in" type="radio" name="pick" id="pick-${id}"${i ? "" : " checked"}>`).join("")}
+<div class="pick-tabs">${PICK.map(({ id, logo, name }) => `<label for="pick-${id}">${appLogo(logo, 20)}${name}</label>`).join("")}</div>
+<div class="pick-panels">${PICK.map(({ id, body }) => `<div class="cl-card app pick-panel" data-pick="${id}">${body}</div>`).join("\n")}</div></div>
+${SOON_NOTE}</section>`;
+const END_CTA = `<section class="wrap end-cta"><a class="cl-btn cl-btn--primary cl-btn--lg" href="${CONNECT}">Try Clyde</a></section>`;
+
+// The hero and the warning are Wen's own words, as he wrote them. Copy passes leave them alone.
 function home(nonce) {
   const works = WORKS.map(([slug, name]) => `<li>${APP_LOGO[slug] ? appLogo(slug, 20) : ""}${name}${SOON.has(slug) ? '<span class="soon" aria-label="work in progress">*</span>' : ""}</li>`).join("");
   return page(nonce, {
     title: "Clyde · Shared memory for your goldfish-brained AI agents", path: "/",
     description: "Your AI agents have the memory of a goldfish. Clyde is a boring shared memory for Claude, ChatGPT, Gemini, Codex and Grok, so they stop forgetting.",
-    css: HERO_CSS + SCENE_CSS + SITE_HOME_CSS + BUILT_CSS, jsonld: HOME_LD, main: `<main>
+    css: HERO_CSS + SCENE_CSS + CONNECT_CSS + SITE_HOME_CSS + RECALL_CSS + PICK_CSS, script: RECALL_JS, jsonld: HOME_LD, main: `<main>
 <section class="hero site-hero wrap"><div class="hero-text">
 <h1 class="cl-display hero-h1">Your agents have the memory of a <em class="cl-scribble">goldfish.</em></h1>
 <p class="cl-lead">For some reason, the best memory AI has to offer is <b class="hl">a few Word documents with stuff stuck in them</b>. Your agents can't remember what happened last time. They can't talk to each other across <b class="hl hl--blue">computers, projects or apps</b>.</p>
-<p class="cl-lead">I don't know how the big AI shops haven't figured this out yet. So I made Clyde. <b class="hl hl--green">It'll do until they do.</b></p>
+<p class="cl-lead">I don't know how the big AI shops haven't figured this out yet. So <s class="strike">I built</s> agents slopped together Clyde. <b class="hl hl--green">It'll do until the big bois and gals get their shit together.</b></p>
 <div class="cta">${ARROW_SVG}<a class="cl-btn cl-btn--primary cl-btn--lg" href="${CONNECT}">Get Clyde</a><a class="cl-btn cl-btn--ghost cl-btn--lg" href="/how-it-works">How it works</a></div>
 <div class="works"><span class="cl-label">Connects to</span><ul>${works}</ul>${SOON_NOTE}</div></div>
 <div class="mascot-stage"><div class="mascot-row">${SCENE_IMG("goldfish", "Clyde staring at a goldfish in a bowl", 153, 178)}</div>${SCENE}</div></section>
 ${FEATURES}
 ${BUILT}
 ${HONEST}
-<section class="wrap" id="how"><div class="section"><span class="cl-label">Setup</span><h2 class="cl-title-1">Three steps.</h2></div>
-<ol class="how"><li>Paste <code>https://heyclyde.me/mcp</code> into your app.</li>
-<li>Click the link Clyde emails you.</li>
-<li>Keep using your agent.</li></ol></section>
+${SETUP}
 ${PLANS}
+${END_CTA}
 </main>`,
   });
 }

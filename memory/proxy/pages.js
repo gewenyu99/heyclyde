@@ -311,6 +311,10 @@ ${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { clyde: { serverUrl: 
 <li><span>Click the email sign-in link.</span></li></ol>${copyBox(MCP_URL)}`,
   },
   {
+    id: "chatgpt", logo: "chatgpt", name: "ChatGPT", sub: "chatgpt.com", tag: "Custom connector",
+    body: `${copyBox(MCP_URL)}<p class="fine">Add it as a custom connector in ChatGPT's developer mode.</p>`,
+  },
+  {
     id: "antigravity-cloud", logo: "antigravity", name: "Antigravity cloud", sub: "Headless cloud environments", tag: "Token",
     body: `<p class="fine">Headless boxes can't open email links. Copy ~/.config/memory/token from a signed-in machine into your cloud environment's secrets. Never commit it to git.</p>
 ${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { clyde: { serverUrl: MCP_URL, headers: { Authorization: "Bearer <your device token>" } } } }, null, 2))}`,
@@ -334,6 +338,10 @@ export const SCENE = `<div class="scene" aria-label="The same Clyde note showing
 <i>clyde</i> recall "checkout slow" <b>→</b> 1 note
   Tax API retries 5x. Don't raise the timeout.
 <b>›</b> capping retries at 2 instead</pre></div></div>`;
+
+/** One app from APPS by id: its logo slug, its name with the red asterisk when it's in SOON, and its install steps.
+ * The picker on heyclyde.me's home page shows these, so the steps are written once. */
+export const appSteps = (id) => { const a = APPS.find((x) => x.id === id); return { id, logo: a.logo, name: esc(a.name) + soon(a.logo), body: a.body }; };
 
 /** One card per app with its install steps. The connect page and heyclyde.me/docs both show them. */
 export const appCards = () => APPS.map((a) => `<article class="cl-card app" data-app="${a.id}" id="${a.id}"><div class="app-head"><span class="app-logo">${appLogo(a.logo)}</span>

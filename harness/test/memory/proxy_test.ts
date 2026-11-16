@@ -126,7 +126,7 @@ Deno.test('the home page lists every app and / still reaches the function', asyn
   assert.match(String(r.headers.get('content-type')), /^text\/html/)
   const html = await r.text()
   const apps = [...html.matchAll(/data-app="([^"]+)"/g)].map((m) => m[1])
-  assert.deepEqual(apps, ['claude-ai', 'claude-code', 'antigravity', 'gemini', 'grok', 'antigravity-cloud'])
+  assert.deepEqual(apps, ['claude-ai', 'claude-code', 'antigravity', 'gemini', 'grok', 'chatgpt', 'antigravity-cloud'])
   assert.equal(h1(html), 'Connect your apps')
   assert.ok(html.includes('https://heyclyde.me/mcp'))
   assert.ok(html.includes('curl -fsSL https://memory.heyclyde.me/install | sh'))
@@ -144,7 +144,8 @@ Deno.test('the home page lists every app and / still reaches the function', asyn
 Deno.test('the home page is small and self-contained', async () => {
   stub(json({ ok: true }))
   const html = await (await get('/')).text()
-  assert.ok(new TextEncoder().encode(html).length <= 40_000, `${html.length} bytes`)
+  // 42 KB since the official app logos (40,175 bytes) and the ChatGPT card (40,805 bytes) went in.
+  assert.ok(new TextEncoder().encode(html).length <= 42_000, `${html.length} bytes`)
   const loads = [...html.matchAll(/<(?:script|link|img|iframe)[^>]*\s(?:src|href)="([^"]+)"/gi)].map((m) => m[1])
   for (const u of loads) assert.ok(!/^(https?:)?\/\//.test(u) && !u.startsWith('http'), `loads ${u}`)
   assert.ok(!/@import|url\(\s*['"]?https?:/i.test(html), 'no CSS loads from elsewhere')
