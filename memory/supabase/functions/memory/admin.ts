@@ -359,6 +359,7 @@ async function createEntry(data: Row) {
     throw new ApiError(422, "id must be 2 to 101 lowercase letters, digits or dashes, and start with a letter or digit.");
   }
   const f = await fields({ sensitivity: "normal", lang: "en", ...Object.fromEntries(FIELDS.filter((k) => k in data).map((k) => [k, data[k]])) });
+  checkTransferability(f.transferability ?? "general", f.project_slug ?? null, f.computer ?? null);
   f.valid_from ??= new Date().toISOString().slice(0, 10);
   f.evidence_sha256 ??= null;
   if (f.project == null && f.pattern === "projects") f.project = id;
@@ -367,7 +368,7 @@ async function createEntry(data: Row) {
   let links = raw.map((l: Row) => link(id, l.dst, l.type));
   if (f.project != null && f.project !== id) links.push({ src: id, dst: f.project, type: "part_of" });
   links = [...new Map(links.map((l) => [`${l.dst}\0${l.type}`, l])).values()];
-  return await sql.begin(async (tx) => {
+  const created = await sql.begin(async (tx) => {
     if ((await tx`select 1 from memory.entry where id = ${id}`).length) throw new ApiError(409, `Entry ${id} already exists.`);
     await checkRefs(tx, id, f);
     await checkDsts(tx, [...new Set(links.map((l) => l.dst))]);
@@ -382,6 +383,17 @@ async function createEntry(data: Row) {
     await audit(tx, "entry.create", `entry:${id}`, null, { ...(await row(tx, id)), links });
     return await entry(tx, id);
   });
+  forgetGraph();
+  return created;
+}
+
+function checkTransferability(transferability: unknown, projectSlug: unknown, computer: unknown) {
+  if (transferability === "project" && !projectSlug) {
+    throw new ApiError(422, 'transferability "project" requires a non-null project_slug.');
+  }
+  if (transferability === "computer" && !computer) {
+    throw new ApiError(422, 'transferability "computer" requires a non-null computer.');
+  }
 }
 
 /** Moving an entry to another project moves its part_of link too. Renaming a project refreshes the search text of
@@ -390,9 +402,14 @@ async function updateEntry(id: string, data: Row) {
   const unknown = Object.keys(data).filter((k) => !FIELDS.includes(k)).sort();
   if (unknown.length) throw new ApiError(422, `Unknown fields: ${unknown.join(", ")}.`);
   if (!Object.keys(data).length) throw new ApiError(422, "Nothing to change.");
-  return await sql.begin(async (tx) => {
+  const updated = await sql.begin(async (tx) => {
     const before = await row(tx, id);
     const f = await fields(data);
+    checkTransferability(
+      f.transferability !== undefined ? f.transferability : before.transferability,
+      "project_slug" in f ? f.project_slug : before.project_slug,
+      "computer" in f ? f.computer : before.computer,
+    );
     await checkRefs(tx, id, f);
     if (f.authority != null && f.authority !== before.authority) await checkAuthority(tx, id, f.authority);
     await tx`update memory.entry set ${tx(f)} where id = ${id}`;
@@ -409,11 +426,13 @@ async function updateEntry(id: string, data: Row) {
       Object.fromEntries(keys.map((k) => [k, after[k]])));
     return await entry(tx, id);
   });
+  forgetGraph();
+  return updated;
 }
 
 /** Only an entry nothing points at goes. One that was ever delivered stays as evidence of what an agent saw. */
 async function deleteEntry(id: string) {
-  return await sql.begin(async (tx) => {
+  const res = await sql.begin(async (tx) => {
     const before = await row(tx, id);
     const [c] = await tx`select (select count(*) from memory.link where src = ${id} or dst = ${id}) as links,
         (select count(*) from memory.retrieval where delivered ? ${id}) as delivered,
@@ -432,6 +451,8 @@ async function deleteEntry(id: string) {
     }
     return { deleted: id };
   });
+  forgetGraph();
+  return res;
 }
 
 /** A supersedes link takes supersede()'s checks and lands in the audit as entry.supersede, the same as there. */

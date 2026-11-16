@@ -88,7 +88,7 @@ export async function nextPage(db: Sql, p: Params, pool: string[], seen: Set<str
   agentScope: AgentScope = null, filter?: EntryFilter): Promise<Page> {
   const unseen = pool.filter((id) => !seen.has(id));
   const window = unseen.slice(0, p.packetItems * 3);
-  const fetched = await fetchEntries(db, window);
+  const fetched = await fetchEntries(db, window, agentScope);
   const rows: Record<string, Row> = {};
   for (const [id, r] of Object.entries(fetched)) {
     if (canReadEntry(agentScope, r, filter)) rows[id] = r;

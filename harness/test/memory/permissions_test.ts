@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict'
 import {
   accessDeniedReason,
+  agentProjectsOf,
   type AgentScope,
   allowedRealms,
   canReadEntry,
@@ -251,30 +252,30 @@ Deno.test('R70 normalizeProjectSlug, normalizeComputer, messageAgentMatches and 
   assert.match(msg, /Access denied:.*home.*outside a-work's permissions/)
 })
 
-Deno.test('R70 entryWhereClauses and questWhereSql emit parameterized realm, project and filter predicates', () => {
-  type Frag = { text: string; vals: unknown[] }
-  const fakeDb: any = Object.assign(
-    (strings: TemplateStringsArray, ...values: unknown[]): Frag => {
-      let text = ''
-      const vals: unknown[] = []
-      for (let i = 0; i < strings.length; i++) {
-        text += strings[i]
-        if (i < values.length) {
-          const v = values[i] as any
-          if (v && typeof v === 'object' && 'text' in v && 'vals' in v) {
-            text += v.text
-            vals.push(...v.vals)
-          } else {
-            vals.push(v)
-            text += `$${vals.length}`
-          }
+type Frag = { text: string; vals: unknown[] }
+const fakeDb: any = Object.assign(
+  (strings: TemplateStringsArray, ...values: unknown[]): Frag => {
+    let text = ''
+    const vals: unknown[] = []
+    for (let i = 0; i < strings.length; i++) {
+      text += strings[i]
+      if (i < values.length) {
+        const v = values[i] as any
+        if (v && typeof v === 'object' && 'text' in v && 'vals' in v) {
+          text += v.text
+          vals.push(...v.vals)
+        } else {
+          vals.push(v)
+          text += `$${vals.length}`
         }
       }
-      return { text, vals }
-    },
-    { unsafe: (s: string): Frag => ({ text: s, vals: [] }) },
-  )
+    }
+    return { text, vals }
+  },
+  { unsafe: (s: string): Frag => ({ text: s, vals: [] }) },
+)
 
+Deno.test('R70 entryWhereClauses and questWhereSql emit parameterized realm, project and filter predicates', () => {
   assert.equal(entryWhereClauses(fakeDb, 'e', null).length, 0)
   const clauses = entryWhereClauses(
     fakeDb,
@@ -309,4 +310,46 @@ Deno.test('R70 TOOLS keeps 18 tools and legacy required schemas', () => {
   for (const prop of ['category', 'context', 'transferability', 'project_slug', 'computer']) {
     assert.ok(prop in rem.inputSchema.properties, `remember missing ${prop}`)
   }
+})
+
+Deno.test('R70 agentProjectsOf ignores sessionRepo when strict_projects and declared projects are set', () => {
+  assert.deepEqual(
+    agentProjectsOf(agent({ projects: ['clyde'], strictProjects: true, sessionRepo: 'gewenyu99/pennywhistle' })),
+    ['clyde'],
+  )
+  assert.deepEqual(
+    agentProjectsOf(agent({ projects: [], strictProjects: true, sessionRepo: 'gewenyu99/pennywhistle' })),
+    ['gewenyu99/pennywhistle'],
+  )
+  assert.deepEqual(
+    agentProjectsOf(agent({ projects: ['clyde'], strictProjects: false, sessionRepo: 'gewenyu99/pennywhistle' })),
+    ['clyde', 'gewenyu99/pennywhistle'],
+  )
+  const strictClyde = agent({ projects: ['clyde'], strictProjects: true, sessionRepo: 'gewenyu99/pennywhistle' })
+  assert.equal(canReadEntry(strictClyde, entry({ transferability: 'project', project_slug: 'pennywhistle' })), false)
+  assert.equal(canReadEntry(strictClyde, entry({ transferability: 'project', project_slug: 'clyde' })), true)
+})
+
+Deno.test('R70 project/computer transferability with missing identifiers fails closed and run: stays context/general', () => {
+  const registered = agent({ context: 'work', projects: ['clyde'], computer: 'macbook-pro' })
+  assert.equal(canReadEntry(registered, entry({ transferability: 'project', project_slug: null })), false)
+  assert.equal(canReadEntry(registered, entry({ transferability: 'computer', computer: null })), false)
+  assert.equal(canReadEntry(null, entry({ transferability: 'project', project_slug: null })), true)
+  assert.equal(canReadEntry(null, entry({ transferability: 'computer', computer: null })), true)
+
+  const nonStrictEmpty = entryWhereClauses(fakeDb, 'e', agent({ projects: [], strictProjects: false })).map((c: Frag) => c.text).join(' AND ')
+  assert.ok(nonStrictEmpty.includes("e.transferability <> 'project' or e.project_slug is not null"), nonStrictEmpty)
+  assert.ok(nonStrictEmpty.includes("e.computer is not null"), nonStrictEmpty)
+  assert.ok(!nonStrictEmpty.includes('e.project_slug is null'), nonStrictEmpty)
+
+  assert.deepEqual(
+    resolveEntryDefaults({ pattern: 'observations', scope: 'run:abc' }, 'box', {
+      agent: 'a', context: 'work', session: 's1',
+    }, null),
+    { category: 'general', context: 'work', transferability: 'context', project_slug: null, computer: 'box' },
+  )
+  assert.deepEqual(
+    resolveEntryDefaults({ pattern: 'observations', scope: 'run:abc' }, 'anyone', null, null),
+    { category: 'general', context: 'general', transferability: 'general', project_slug: null, computer: null },
+  )
 })

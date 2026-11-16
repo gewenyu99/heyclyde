@@ -90,7 +90,9 @@ export async function indexLines(db: Sql, agentScope: AgentScope = null, filter?
   const rows = await db`select e.id, e.title, e.authority, e.scope, e.sensitivity, e.pattern, e.kind, e.confidence, e.verified,
       e.category, e.context, e.transferability, e.project_slug, e.computer,
       p.title as project_title,
-      (select string_agg(l.src, ', ' order by l.src) from memory.link l where l.owner_id = e.owner_id and l.dst = e.id and l.type = 'supersedes') as superseded_by
+      (select string_agg(l.src, ', ' order by l.src)
+        from memory.link l join memory.entry s2 on s2.owner_id = l.owner_id and s2.id = l.src
+        where l.owner_id = e.owner_id and l.dst = e.id and l.type = 'supersedes' ${entryWhereSql(db, "s2", agentScope)}) as superseded_by
     from memory.entry e left join memory.entry p on p.owner_id = e.owner_id and p.id = e.project
     where e.pattern <> 'projects' ${entryWhereSql(db, "e", agentScope, filter)}
     order by e.project, e.pattern, e.id`;
@@ -252,23 +254,30 @@ type Graph = {
   /** The edges under one set's link type weights, built once per distinct weights. */
   edges: Map<string, Edges>;
 };
-let graphCache: Graph | null = null;
+const graphCaches = new Map<string, Graph>();
 
-/** Drop the cached links, so the next ranking reads them fresh. The learner calls it when it changes a co_used link. */
-export const forgetGraph = () => void (graphCache = null);
+/** Drop cached links (for one owner, or all owners when omitted), so the next ranking reads them fresh. */
+export const forgetGraph = (owner?: string | null) => {
+  if (owner) graphCaches.delete(owner);
+  else graphCaches.clear();
+};
 
 /** How many sessions must co-use a pair before its co_used link ranks (R43). */
 export const CO_USE_SESSIONS = 2;
 
-/** The links, cached per isolate for a minute. A co_used link counts only once CO_USE_SESSIONS sessions have co-used the pair. */
+/** The links, cached per owner per isolate for a minute. A co_used link counts only once CO_USE_SESSIONS sessions have co-used the pair. */
 async function graph(db: Sql): Promise<Graph> {
-  if (graphCache && Date.now() - graphCache.at < 60_000) return graphCache;
+  const [{ o }] = await db`select coalesce(memory.owner_default()::text, '') as o`;
+  const ownerKey = o || "default";
+  const hit = graphCaches.get(ownerKey);
+  if (hit && Date.now() - hit.at < 60_000) return hit;
   const links = await db`select l.src, l.dst, l.type, coalesce(l.weight, 1) as weight,
          s.pattern as sp, s.scope as ss, s.category as sc, s.context as sctx, s.transferability as str, s.project_slug as sps, s.computer as scomp,
          d.pattern as dp, d.scope as ds, d.category as dc, d.context as dctx, d.transferability as dtr, d.project_slug as dps, d.computer as dcomp
        from memory.link l join memory.entry s on s.owner_id = l.owner_id and s.id = l.src join memory.entry d on d.owner_id = l.owner_id and d.id = l.dst
-       where l.type <> 'co_used' or exists (select 1 from memory.co_use c
-         where c.owner_id = l.owner_id and c.src = l.src and c.dst = l.dst and cardinality(c.sessions) >= ${CO_USE_SESSIONS})`;
+       where l.owner_id = memory.owner_default()
+         and (l.type <> 'co_used' or exists (select 1 from memory.co_use c
+           where c.owner_id = l.owner_id and c.src = l.src and c.dst = l.dst and cardinality(c.sessions) >= ${CO_USE_SESSIONS}))`;
   const nodes = new Map<string, EntryMeta>();
   for (const l of links) {
     if (!nodes.has(l.src)) {
@@ -278,11 +287,12 @@ async function graph(db: Sql): Promise<Graph> {
       nodes.set(l.dst, { pattern: l.dp, scope: l.ds, category: l.dc, context: l.dctx, transferability: l.dtr, project_slug: l.dps, computer: l.dcomp });
     }
   }
-  graphCache = {
+  const fresh: Graph = {
     links: [...links], at: Date.now(), edges: new Map(), nodes,
     superseded: new Set(links.filter((l) => l.type === "supersedes").map((l) => l.dst as string)),
   };
-  return graphCache;
+  graphCaches.set(ownerKey, fresh);
+  return fresh;
 }
 
 /** A link's type weight under a set: its exact "src_pattern|type|dst_pattern" key, else the type's "*|type|*" key, else 1. A
@@ -534,10 +544,12 @@ export const ARMS: Record<string, (
 };
 
 // ---------------------------------------------------------------- packing
-export async function fetchEntries(db: Sql, ids: string[]): Promise<Record<string, Row>> {
+export async function fetchEntries(db: Sql, ids: string[], agentScope: AgentScope = null): Promise<Record<string, Row>> {
   if (!ids.length) return {};
   const rows = await db`select e.*, s.title as source_title, s.uri as source_uri,
-      (select string_agg(l.src, ', ' order by l.src) from memory.link l where l.owner_id = e.owner_id and l.dst = e.id and l.type = 'supersedes') as superseded_by,
+      (select string_agg(l.src, ', ' order by l.src)
+        from memory.link l join memory.entry s2 on s2.owner_id = l.owner_id and s2.id = l.src
+        where l.owner_id = e.owner_id and l.dst = e.id and l.type = 'supersedes' ${entryWhereSql(db, "s2", agentScope)}) as superseded_by,
       (select jsonb_agg(jsonb_build_object('name', x.name, 'kind', x.kind, 'size', b.size) order by x.name)
         from memory.entry_blob x join memory.blob b on b.owner_id = x.owner_id and b.sha256 = x.sha256
         where x.owner_id = e.owner_id and x.entry_id = e.id) as artifacts

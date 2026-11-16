@@ -210,6 +210,9 @@ begin
   if exists (select 1 from pg_roles where rolname = 'memory_tenant') then
     execute 'grant select on memory.entry_current to memory_tenant';
   end if;
+  if exists (select 1 from pg_roles where rolname = 'memory_console') then
+    execute 'grant select on memory.entry_current to memory_console';
+  end if;
 end $$;
 
 -- ---------------------------------------------------------------- 4. memory.quest

@@ -92,8 +92,10 @@ export function projectMatches(a: string | null | undefined, b: string | null | 
 
 export function agentProjectsOf(agent: AgentScope): string[] {
   if (!agent) return [];
-  return [...new Set([...(agent.projects ?? []), ...(agent.sessionRepo ? [agent.sessionRepo] : [])]
-    .map((p) => p.trim().toLowerCase()).filter(Boolean))];
+  const declared = (agent.projects ?? []).map((p) => p.trim().toLowerCase()).filter(Boolean);
+  const useSessionRepo = !(agent.strictProjects && declared.length > 0);
+  const repos = useSessionRepo && agent.sessionRepo ? [...declared, agent.sessionRepo.trim().toLowerCase()] : declared;
+  return [...new Set(repos.filter(Boolean))];
 }
 
 /** Whether an agent may read an entry under optional explicit recall filters.
@@ -131,8 +133,9 @@ export function canReadEntry(agent: AgentScope, entry: EntryMeta, explicitFilter
     if (realms !== null && !realms.has(ec)) return false;
   }
 
-  // 3. Project isolation.
-  if (t === "project" && entry.project_slug && agent) {
+  // 3. Project isolation (fail closed if project-transferable entry lacks project_slug).
+  if (t === "project" && agent) {
+    if (!entry.project_slug) return false;
     const mine = agentProjectsOf(agent);
     if (agent.strictProjects) {
       if (!mine.some((ap) => projectMatches(ap, entry.project_slug))) return false;
@@ -143,8 +146,9 @@ export function canReadEntry(agent: AgentScope, entry: EntryMeta, explicitFilter
     }
   }
 
-  // 4. Computer isolation.
-  if (t === "computer" && entry.computer && agent) {
+  // 4. Computer isolation (fail closed if computer-transferable entry lacks computer).
+  if (t === "computer" && agent) {
+    if (!entry.computer) return false;
     const myComp = (agent.computer ?? agent.principal)?.trim().toLowerCase();
     if (!myComp || entry.computer.trim().toLowerCase() !== myComp) return false;
   }
@@ -280,21 +284,23 @@ export function entryWhereClauses(db: Sql, alias: string, agent: AgentScope, fil
     const mine = agentProjectsOf(agent);
     if (agent.strictProjects) {
       if (mine.length === 0) {
-        clauses.push(db`(${col("transferability")} <> 'project' or ${col("project_slug")} is null)`);
+        clauses.push(db`${col("transferability")} <> 'project'`);
       } else {
         const projOr = orAll(db, mine.map((ap) => sqlProjectMatch(db, col("project_slug"), ap)));
-        clauses.push(db`(${col("transferability")} <> 'project' or ${col("project_slug")} is null or (${projOr}))`);
+        clauses.push(db`(${col("transferability")} <> 'project' or (${col("project_slug")} is not null and (${projOr})))`);
       }
     } else if (mine.length > 0 && !filter?.project?.trim()) {
       const projOr = orAll(db, mine.map((ap) => sqlProjectMatch(db, col("project_slug"), ap)));
-      clauses.push(db`(${col("transferability")} <> 'project' or ${col("project_slug")} is null or (${projOr}))`);
+      clauses.push(db`(${col("transferability")} <> 'project' or (${col("project_slug")} is not null and (${projOr})))`);
+    } else {
+      clauses.push(db`(${col("transferability")} <> 'project' or ${col("project_slug")} is not null)`);
     }
 
     const myComp = (agent.computer ?? agent.principal)?.trim().toLowerCase() ?? null;
     if (myComp) {
-      clauses.push(db`(${col("transferability")} <> 'computer' or ${col("computer")} is null or lower(${col("computer")}) = ${myComp})`);
+      clauses.push(db`(${col("transferability")} <> 'computer' or (${col("computer")} is not null and lower(${col("computer")}) = ${myComp}))`);
     } else {
-      clauses.push(db`(${col("transferability")} <> 'computer' or ${col("computer")} is null)`);
+      clauses.push(db`${col("transferability")} <> 'computer'`);
     }
   }
 

@@ -543,11 +543,11 @@ const RUN: Record<string, (c: Call) => Promise<string>> = {
       valid_from: args.valid_from || null, links: args.links ?? [], supersedes: args.supersedes ?? [], blobs: args.blobs ?? [],
       // Only when sent, so a write without them keeps the id and digest it always had.
       ...(args.artifacts !== undefined ? { artifacts: args.artifacts } : {}), ...(args.long !== undefined ? { long: args.long } : {}),
-      ...(args.category !== undefined ? { category: args.category } : {}),
-      ...(args.context !== undefined ? { context: args.context } : {}),
-      ...(args.transferability !== undefined ? { transferability: args.transferability } : {}),
-      ...(args.project_slug !== undefined ? { project_slug: args.project_slug } : {}),
-      ...(args.computer !== undefined ? { computer: args.computer } : {}),
+      ...(args.category !== undefined && args.category !== null ? { category: args.category } : {}),
+      ...(args.context !== undefined && args.context !== null ? { context: args.context } : {}),
+      ...(args.transferability !== undefined && args.transferability !== null ? { transferability: args.transferability } : {}),
+      ...(args.project_slug !== undefined && args.project_slug !== null ? { project_slug: args.project_slug } : {}),
+      ...(args.computer !== undefined && args.computer !== null ? { computer: args.computer } : {}),
     };
     const me = nameOf(c);
     const r = await remember(payload, "agent", me, c.principal, {
@@ -660,7 +660,7 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
         select ${sid}, ${client}, ${principal}, a.name, ${ui},
           a.context, a.projects, a.computer, a.strict_projects
         from (select 1) one
-        left join memory.agent_binding b on b.principal = ${principal} and b.client = ${client}
+        left join memory.agent_binding b on b.owner_id = memory.owner_default() and b.principal = ${principal} and b.client = ${client}
         left join memory.agent a on a.owner_id = b.owner_id and a.name = b.agent
         on conflict do nothing`;
       return result(id, {

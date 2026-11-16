@@ -10,7 +10,7 @@ import { bearer, bedFor, idOf, marker, nonce, note } from './bed.ts'
 import { waitFor } from '../helpers.ts'
 import { apply, SKIP, sql, startRealMemory, type RealMemory } from './server.ts'
 
-const MIGRATION = '20261116010000_agent_permissions_categories.sql'
+const MIGRATION = '20261116020000_agent_permissions_categories.sql'
 
 let memory: RealMemory
 let bed: ReturnType<typeof bedFor>
@@ -347,13 +347,17 @@ test('R70 project, computer and spreading-graph boundaries stay isolated', { ski
   const idClyde = idOf(clydeNote.text), idPenny = idOf(pennyNote.text)
   const idLaptop = idOf(laptopNote.text), idMini = idOf(miniNote.text)
 
-  // Connect clydeNote -> pennyNote -> miniNote AND clydeNote -> pennyNote -> beyondForbidden via spreading graph links!
+  // Two graph-only targets with zero shared query tokens; embeddings are deleted after syncEmbeddings()
+  // so only spreading can reach them. idAllowed connects directly from idClyde; idBeyond connects ONLY via forbidden idPenny.
   const beyondForbidden = await aClyde.send('remember', note('Unrelated graph target', {
     body: 'This has no query tokens and should not be reached across a forbidden link.',
     transferability: 'project',
     project_slug: 'clyde',
   }))
   const idBeyond = idOf(beyondForbidden.text)
+  sql(`insert into memory.link (src, dst, type, weight) values ('${idPenny}', '${idMini}', 'relates', 3.0), ('${idPenny}', '${idBeyond}', 'relates', 3.0) on conflict (owner_id, src, dst, type) do nothing`)
+
+  // Writing bridged and allowedTarget via remember(..., links) invalidates cached graphs after the SQL link inserts above.
   const bridged = await aClyde.send('remember', note(`${m} bridge`, {
     body: `${m} bridge entry.`,
     transferability: 'project',
@@ -361,15 +365,36 @@ test('R70 project, computer and spreading-graph boundaries stay isolated', { ski
     links: [{ type: 'relates', to: idPenny }],
   }))
   assert.equal(bridged.error, false, bridged.text)
-  sql(`insert into memory.link (src, dst, type, weight) values ('${idPenny}', '${idMini}', 'relates', 3.0), ('${idPenny}', '${idBeyond}', 'relates', 3.0) on conflict (owner_id, src, dst, type) do nothing`)
+  const idBridged = idOf(bridged.text)
+
+  const allowedTarget = await aClyde.send('remember', note('Allowed direct graph neighbor', {
+    body: 'Reachable directly from clydeNote via permitted spreading edge without query tokens.',
+    transferability: 'project',
+    project_slug: 'clyde',
+    links: [{ type: 'relates', to: idClyde }],
+  }))
+  assert.equal(allowedTarget.error, false, allowedTarget.text)
+  const idAllowed = idOf(allowedTarget.text)
+
+  // get_entry on bridged must strip forbidden linked entry idPenny and its title.
+  const bridgedEntry = await aClyde.send('get_entry', { id: idBridged })
+  assert.equal(bridgedEntry.error, false, bridgedEntry.text)
+  assert.ok(!bridgedEntry.text.includes(idPenny), `get_entry leaked forbidden linked id:\n${bridgedEntry.text}`)
+  assert.ok(!bridgedEntry.text.includes('penny tuning'), `get_entry leaked forbidden linked title:\n${bridgedEntry.text}`)
 
   await syncEmbeddings()
+  sql(`delete from memory.entry_embedding where entry_id in ('${idBeyond}', '${idAllowed}')`)
 
   for (const arm of ['spreading.v5', 'spreading.v1', 'hybrid.v1', 'index.v1']) {
     await serve(arm)
     const r = await aClyde.send('recall', { query: m })
     assert.ok(r.text.includes(idClyde), `${arm} missing clyde:\n${r.text}`)
     assert.ok(r.text.includes(idLaptop), `${arm} missing work-laptop:\n${r.text}`)
+    if (arm.startsWith('spreading')) {
+      assert.ok(r.text.includes(idAllowed), `${arm} failed to traverse permitted edge to idAllowed:\n${r.text}`)
+    } else {
+      assert.ok(!r.text.includes(idAllowed), `${arm} unexpectedly returned unembedded tokenless idAllowed:\n${r.text}`)
+    }
     assert.ok(!r.text.includes(idPenny), `${arm} leaked pennywhistle:\n${r.text}`)
     assert.ok(!r.text.includes(idMini), `${arm} leaked mac-mini:\n${r.text}`)
     assert.ok(!r.text.includes(idBeyond), `${arm} traversed forbidden spreading edge:\n${r.text}`)

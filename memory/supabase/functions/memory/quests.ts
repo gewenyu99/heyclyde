@@ -330,8 +330,14 @@ export async function completeQuest(who: Who, args: Record<string, unknown>) {
   const entry = field(errs, args.entry_id, "entry_id", 200);
   const scope = whoToScope(who);
   const files = await artifacts(errs, args.artifacts, scope);
-  if (entry && !(await sql`select 1 from memory.entry where id = ${entry}`).length) {
-    errs.push(`No entry ${entry}. Remember what the work produced, then pass that entry's id.`);
+  if (entry) {
+    const [entryRow] = await sql`select sensitivity, category, context, transferability, project_slug, computer, pattern, scope
+      from memory.entry where owner_id = memory.owner_default() and id = ${entry}`;
+    if (!entryRow) {
+      errs.push(`No entry ${entry}. Remember what the work produced, then pass that entry's id.`);
+    } else if (!canReadEntry(scope, entryRow)) {
+      errs.push(`Entry ${entry} is outside your permissions.`);
+    }
   }
   if (errs.length) throw new Refused(errs.join("\n"));
   await reopenExpired();

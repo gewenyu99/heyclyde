@@ -40,8 +40,8 @@ export function memoryCard(raw: Row, trial = false, chancesLeft: number | null =
   };
 }
 
-async function withProvenance(ids: string[], viewer: Viewer) {
-  const rows = await fetchEntries(sql, ids);
+async function withProvenance(ids: string[], viewer: Viewer, agentScope: AgentScope = null) {
+  const rows = await fetchEntries(sql, ids, agentScope);
   for (const [id, line] of await provenanceLines(sql, ids, viewer)) if (id in rows) rows[id] = { ...rows[id], provenance: line };
   return rows;
 }
@@ -56,11 +56,11 @@ async function recallCard(c: CardCall) {
     where id = ${rid} and mcp_session = ${c.session}`;
   if (!r) return null;
   const main: string[] = r.delivered ?? [], trial: string[] = r.on_trial ?? [];
-  const rows = await withProvenance([...main, ...trial], c.viewer);
+  const scope = c.agentScope ?? null;
+  const rows = await withProvenance([...main, ...trial], c.viewer, scope);
   const left = trial.length
     ? new Map((await sql`select id, chances_left from memory.entry where id = any(${trial}::text[])`).map((x) => [x.id as string, Number(x.chances_left)]))
     : new Map<string, number>();
-  const scope = c.agentScope ?? null;
   return {
     retrieval_id: rid, query: String(r.query ?? ""), degraded: r.degraded ?? null, page: r.parent_id ? "more" : "packet",
     items: [
@@ -73,13 +73,17 @@ async function recallCard(c: CardCall) {
 /** get_entry and remember: one memory in full, with its links and its artifacts' hashes, so the card can open them. */
 async function entryCard(id: string, viewer: Viewer, agentScope: AgentScope = null) {
   if (!id) return null;
-  const rows = await withProvenance([id], viewer);
+  const rows = await withProvenance([id], viewer, agentScope);
   if (!(id in rows) || !canReadEntry(agentScope, rows[id])) return null;
   const card = memoryCard(rows[id]);
-  const links = await sql`select 'to' as dir, l.type, l.dst as other, e.title from memory.link l
-      join memory.entry e on e.owner_id = l.owner_id and e.id = l.dst where l.src = ${id}
-    union all select 'from', l.type, l.src, e.title from memory.link l join memory.entry e on e.owner_id = l.owner_id and e.id = l.src where l.dst = ${id}
-    order by 1, 2, 3 limit 20`;
+  const linkRows = await sql`select 'to' as dir, l.type, l.dst as other, e.title,
+        e.category, e.context, e.transferability, e.project_slug, e.computer, e.pattern, e.scope
+      from memory.link l join memory.entry e on e.owner_id = l.owner_id and e.id = l.dst where l.src = ${id}
+    union all select 'from', l.type, l.src, e.title,
+        e.category, e.context, e.transferability, e.project_slug, e.computer, e.pattern, e.scope
+      from memory.link l join memory.entry e on e.owner_id = l.owner_id and e.id = l.src where l.dst = ${id}
+    order by 1, 2, 3`;
+  const links = linkRows.filter((l) => canReadEntry(agentScope, l)).slice(0, 20);
   const blobs = card.private ? [] : await sql`select x.name, x.sha256, x.kind, b.media_type, b.size from memory.entry_blob x
     join memory.blob b on b.owner_id = x.owner_id and b.sha256 = x.sha256 where x.entry_id = ${id} order by x.name`;
   return {
@@ -98,8 +102,11 @@ async function artifactCard(c: CardCall) {
   const head = /^Blob ([0-9a-f]{64}): ([^,]+), characters (\d+) to (\d+) of (\d+)\./.exec(c.text);
   const link = /^Blob ([0-9a-f]{64}): ([^,]+), (\d+) bytes\. Download it within 10 minutes: (https:\/\/\S+)$/.exec(c.text);
   if (!head && !link) return null;
-  const [named] = await sql`select x.name from memory.entry_blob x join memory.entry e on e.owner_id = x.owner_id and e.id = x.entry_id
-    where x.owner_id = memory.owner_default() and x.sha256 = ${sha} and e.sensitivity <> 'private' order by x.name limit 1`;
+  const candidates = await sql`select x.name, e.category, e.context, e.transferability, e.project_slug, e.computer, e.pattern, e.scope
+    from memory.entry_blob x join memory.entry e on e.owner_id = x.owner_id and e.id = x.entry_id
+    where x.owner_id = memory.owner_default() and x.sha256 = ${sha} and e.sensitivity <> 'private'
+    order by x.name`;
+  const named = candidates.find((e) => canReadEntry(c.agentScope ?? null, e));
   const name = named ? String(named.name) : sha.slice(0, 12);
   if (link) return { artifact: { sha256: sha, name, media_type: link[2], size: Number(link[3]), url: link[4], text: null } };
   const body = c.text.slice(c.text.indexOf("\n\n") + 2);
@@ -138,7 +145,7 @@ async function questsCard(c: CardCall) {
 async function agentCard(c: CardCall) {
   const name = String(c.args.name ?? "").trim().toLowerCase();
   const [a] = await sql`select name, context, surface, description, computer, projects, agent_type, strict_projects, created_at, last_seen
-    from memory.agent where name = ${name}`;
+    from memory.agent where owner_id = memory.owner_default() and name = ${name}`;
   if (!a) return null;
   return {
     agent: {

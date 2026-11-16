@@ -373,10 +373,11 @@ async function artifacts(value: unknown, errs: string[]): Promise<Row[]> {
 // ---------------------------------------------------------------- checks against the graph, then the write
 /** The invariants that need the graph: targets exist, the project is a project, and supersession never hides an
  * entry from anyone who could see it before. */
-async function check(db: Sql, e: Row) {
+async function check(db: Sql, e: Row, agentScope: AgentScope = null) {
   const targets = [...new Set([e.project, ...e.links.map(([, to]: string[]) => to), ...e.supersedes].filter(Boolean))];
   const known: Record<string, Row> = Object.fromEntries(
-    (await db`select id, pattern, authority, scope from memory.entry where id = any(${targets}::text[])`).map((r) => [r.id, r]),
+    (await db`select id, pattern, authority, scope, category, context, transferability, project_slug, computer
+      from memory.entry where owner_id = memory.owner_default() and id = any(${targets}::text[])`).map((r) => [r.id, r]),
   );
   const errs: string[] = [];
   const p = e.project;
@@ -386,12 +387,18 @@ async function check(db: Sql, e: Row) {
       : `Project ${p} doesn't exist.`);
   } else if (p !== null && known[p].pattern !== "projects") {
     errs.push(`${p} is a ${known[p].pattern} entry, not a project.`);
+  } else if (p !== null && !canReadEntry(agentScope, known[p])) {
+    errs.push(`Project ${p} is outside your permissions.`);
   }
   for (const [t, to] of e.links) if (!(to in known)) errs.push(`Dangling link: ${t} ${to}, which doesn't exist.`);
   for (const old of e.supersedes) {
     const o = known[old];
     if (!o) {
       errs.push(`Can't supersede ${old}: it doesn't exist.`);
+      continue;
+    }
+    if (!canReadEntry(agentScope, o)) {
+      errs.push(`Can't supersede ${old}: it is outside your permissions.`);
       continue;
     }
     if (RANK[o.authority] > RANK[e.authority]) {
@@ -402,7 +409,7 @@ async function check(db: Sql, e: Row) {
     }
   }
   const s = e.source;
-  if (!(s.kind && s.title) && !(await db`select 1 from memory.source where id = ${s.id}`).length) {
+  if (!(s.kind && s.title) && !(await db`select 1 from memory.source where owner_id = memory.owner_default() and id = ${s.id}`).length) {
     errs.push(`Source ${s.id} is new, so it needs a kind and a title.`);
   }
   if (errs.length) throw new Refused(errs.join("\n"));
@@ -410,7 +417,7 @@ async function check(db: Sql, e: Row) {
 
 /** True when this payload already landed. Refused when its id holds an entry with different content. */
 async function landed(db: Sql, e: Row) {
-  const [row] = await db`select payload_sha256 from memory.entry where id = ${e.id}`;
+  const [row] = await db`select payload_sha256 from memory.entry where owner_id = memory.owner_default() and id = ${e.id}`;
   if (!row) return false;
   if (row.payload_sha256 !== e.digest) throw new Refused(`Entry ${e.id} already exists. Write a new entry that supersedes it.`);
   return true;
@@ -608,7 +615,7 @@ export function resolveEntryDefaults(
   } else if (e.context !== undefined) {
     context = e.context;
     transferability = context === "general" ? "general" : (projectSlug ? "project" : "context");
-  } else if (scopeStr.startsWith("repo:") || scopeStr.startsWith("run:") || projectSlug) {
+  } else if (scopeStr.startsWith("repo:") || projectSlug) {
     transferability = "project";
     context = callerRealm ?? "general";
   } else if (scopeStr === "global" && ["preferences", "recommendations", "references"].includes(e.pattern)) {
@@ -631,10 +638,17 @@ export async function remember(payload: unknown, caller: string, agentName = "ag
   if (await landed(sql, e)) return { id: e.id, blobs: await blobsOf(e.id), embedded: false };
   let sessionRepo: string | null = origin?.repo ?? null;
   if (sessionRepo === null && origin?.session) {
-    const [sess] = await sql`select repo from memory.mcp_session where id = ${origin.session}`;
+    const [sess] = await sql`select repo from memory.mcp_session
+      where owner_id = memory.owner_default() and id = ${origin.session}`;
     sessionRepo = sess?.repo ?? null;
   }
   Object.assign(e, resolveEntryDefaults(e, principal, origin, sessionRepo));
+  if (e.transferability === "project" && !e.project_slug) {
+    throw new Refused('transferability "project" requires project_slug (or a repo/single-project agent).');
+  }
+  if (e.transferability === "computer" && !e.computer) {
+    throw new Refused('transferability "computer" requires computer (or a named device/agent computer).');
+  }
   // Secrets and identifiers come out first. Then the judge reads what would be stored and can refuse it. A judge that
   // can't answer refuses too: memory fails closed. A private or confidential entry reaches a third-party model by its
   // title alone, so the judge reads only that, and its body rests on redaction.
@@ -694,7 +708,7 @@ export async function remember(payload: unknown, caller: string, agentName = "ag
       await sql.begin(async (tx) => {
         if (await landed(tx, e)) return;
         await ensureNotesProject(tx, e);
-        await check(tx, e);
+        await check(tx, e, origin?.agentScope ?? null);
         // One cap for the whole memory: the check and the insert take turns.
         if (e.blobs.some((b: Row) => !b.existing)) await tx`select pg_advisory_xact_lock(hashtext('memory-blob-quota'))`;
         await settle(tx);

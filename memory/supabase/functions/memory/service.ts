@@ -106,7 +106,7 @@ export async function rankAndPack(
   const settled = ranked.filter((r) => !onTrial(r)), waiting = ranked.filter(onTrial);
   const lines = ranked.every(([, , line]) => line !== null);
   const window = (list: Ranked[]) => list.slice(0, p.rowWindow).map(([id]) => id);
-  const fetched = lines ? {} : await fetchEntries(db, [...window(settled), ...window(waiting)]);
+  const fetched = lines ? {} : await fetchEntries(db, [...window(settled), ...window(waiting)], agentScope);
   const rows: Record<string, Row> = {};
   for (const [id, row] of Object.entries(fetched)) {
     if (canReadEntry(agentScope, row, entryFilter)) rows[id] = row;
@@ -314,15 +314,20 @@ export async function recallMore(session: string, retrievalId: string, viewer: V
 
 /** The entry rendered for an agent, with its links and blobs. null when there is no such entry. */
 export async function getEntry(session: string, id: string, viewer: Viewer = null, agentScope: AgentScope = null): Promise<string | null> {
-  const rows = await fetchEntries(sql, [id]);
+  const rows = await fetchEntries(sql, [id], agentScope);
   if (!(id in rows)) return null;
   if (!canReadEntry(agentScope, rows[id])) throw new Refused(accessDeniedReason(agentScope, rows[id]));
   const provenance = (await provenanceLines(sql, [id], viewer)).get(id);
   if (provenance) rows[id].provenance = provenance;
-  const links = await sql`select 'to' as dir, l.type, l.dst as other, e.title from memory.link l
+  const linkRows = await sql`select 'to' as dir, l.type, l.dst as other, e.title,
+        e.category, e.context, e.transferability, e.project_slug, e.computer, e.pattern, e.scope
+      from memory.link l
       join memory.entry e on e.owner_id = l.owner_id and e.id = l.dst where l.src = ${id}
-    union all select 'from', l.type, l.src, e.title from memory.link l join memory.entry e on e.owner_id = l.owner_id and e.id = l.src where l.dst = ${id}
+    union all select 'from', l.type, l.src, e.title,
+        e.category, e.context, e.transferability, e.project_slug, e.computer, e.pattern, e.scope
+      from memory.link l join memory.entry e on e.owner_id = l.owner_id and e.id = l.src where l.dst = ${id}
     order by 1, 2, 3`;
+  const links = linkRows.filter((l) => canReadEntry(agentScope, l));
   const blobs = await sql`select x.name, x.sha256, x.kind, b.media_type, b.size from memory.entry_blob x
     join memory.blob b on b.owner_id = x.owner_id and b.sha256 = x.sha256 where x.entry_id = ${id} order by x.name`;
   await sql`insert into memory.event (session_id, event, payload) values (${session}, 'get_entry', ${sql.json({ entry_id: id })})`;
@@ -474,13 +479,15 @@ async function syncRepoToAgent(sessionId: string | null, agent: string | null, p
   let boundAgent: string | null = null;
   let boundOwner: string | null = null;
   if (sessionId) {
-    const [bound] = await sql`select c.owner_id, c.agent from memory.mcp_client c where c.session_id = ${sessionId} and c.agent is not null`;
+    const [bound] = await sql`select c.owner_id, c.agent from memory.mcp_client c
+      where c.owner_id = memory.owner_default() and c.session_id = ${sessionId} and c.agent is not null`;
     boundAgent = bound?.agent ?? null;
     boundOwner = bound?.owner_id ?? null;
   } else if (agent && principal) {
     const rows = await sql`select distinct a.owner_id, a.name from memory.agent a
-      where a.name = ${agent} or exists (select 1 from memory.agent_binding b
-        where b.owner_id = a.owner_id and b.principal = ${principal} and b.agent = a.name and memory.agent_name(b.client) = ${agent})`;
+      where a.owner_id = memory.owner_default()
+        and (a.name = ${agent} or exists (select 1 from memory.agent_binding b
+          where b.owner_id = a.owner_id and b.principal = ${principal} and b.agent = a.name and memory.agent_name(b.client) = ${agent}))`;
     if (rows.length === 1) {
       boundAgent = rows[0].name;
       boundOwner = rows[0].owner_id;
