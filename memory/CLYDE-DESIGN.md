@@ -146,7 +146,7 @@ The account lifecycle. Owner: `entitled()` in `auth.ts`, the single call site R3
 | lapsed | Read and export only | 90 days pass, after emails at day 60 and day 83 | deleted, final |
 | comp | No limits, no billing | None | final |
 
-`plan` is one of `free`, `clyde` or `owner`, a check constraint. `comp` rows carry plan `owner`, which is Wen and anyone he adds. Every limit is a column of `memory.plan`, one row per plan, built by the R38 billing session (migration `20261115000000_billing.sql`). A number changes by SQL or `PUT /api/v1/billing/plans/<id>`, live within 60 s, with no deploy.
+`plan` is one of `free`, `clyde` or `owner`, a check constraint. A `comp` row is held by every confirmed account whose email is on `memory.allowed_email`, on the allowlist's own plan: `owner` for Wen, `clyde` with hard caps for anyone else he adds (R50). Triggers on `allowed_email` and `account` keep the two in step, so removing an address takes its comp away within the entitlement cache's minute, and `entitled()` reads entitlements alone. The plan's `entries_total` caps the memories an owner holds (100 on `free`); past it remember answers with an Upgrade link. Every limit is a column of `memory.plan`, one row per plan, built by the R38 billing session (migration `20261115000000_billing.sql`). A number changes by SQL or `PUT /api/v1/billing/plans/<id>`, live within 60 s, with no deploy.
 
 **Free slots.** The free row's `seats` column is 1,000. A free entitlement is granted when `count(*) where plan = 'free'` is under it, inside one transaction with `for update` on the plan row, so two sign-ups never take slot 1,000 together. A deleted free account frees its slot.
 
