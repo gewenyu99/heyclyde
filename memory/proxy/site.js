@@ -345,7 +345,7 @@ const COMPLAINTS = [
   { q: "Explaining the same thing across a thousand conversations.", src: "https://www.reddit.com/r/ClaudeAI/comments/1kpdoia/megathread_for_claude_performance_discussion/", site: "reddit.com/r/ClaudeAI",
     a: "Your agent recalls the note when a chat starts, so you say it once." },
   { q: "Claude keeps making the mistake I already corrected.", src: "https://claudelab.net/en/articles/claude-ai/claude-keeps-making-same-mistake-fix", site: "claudelab.net",
-    a: "The correction is saved as a note, and recall returns it when that work comes up again." },
+    a: "Your correction is saved as a note, and it comes back next time." },
   { q: "ChatGPT says it saved my preference, but the next chat doesn't have it.", src: "https://community.openai.com/t/fails-to-update-memory-even-though-it-says-it-has/987812", site: "community.openai.com",
     a: "Remember returns the note's ID, so you can check it was saved." },
   { q: "We moved to pnpm, and Claude Code still runs npm from an old note.", src: "https://www.besthub.dev/articles/why-claude-code-still-runs-npm-after-you-switched-to-pnpm-the-memory-invalidation-problem-e9a0e83509b7", site: "besthub.dev",
@@ -353,13 +353,13 @@ const COMPLAINTS = [
   { q: "ChatGPT and Claude have no idea what the other one said.", src: "https://dev.to/doremi/the-pain-of-switching-ai-platforms-and-how-i-fixed-it-for-myself-44h2", site: "dev.to",
     a: "Both apps read the same notes." },
   { q: "“Cursor with Claude has memory of a goldfish.”", src: "https://forum.cursor.com/t/cursor-with-claude-has-memory-of-a-goldfish/118276", site: "forum.cursor.com",
-    a: "Your notes stay in Clyde between chats." },
+    a: "Somebody already wrote our headline." },
   { q: "My rules get lost in a long CLAUDE.md.", src: "https://dev.to/docat0209/5-patterns-that-make-claude-code-actually-follow-your-rules-44dh", site: "dev.to",
     a: "Recall returns only the few notes that match what you're doing." },
 ];
 const MADE_UP = [
   ["For the 50th time, reports go in Times New Roman.", "Reports use Times New Roman, 12 pt."],
-  ["It's Kat with a K.", "Kat spells it with a K."],
+  ["It's Kat. With a K.", "Kat spells it with a K."],
 ];
 const WALL_CSS = `
 .cm-wall{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:20px;margin-bottom:76px}
