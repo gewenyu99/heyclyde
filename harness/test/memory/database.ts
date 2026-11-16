@@ -13,8 +13,7 @@
 import postgres from 'npm:postgres@3.4.7'
 
 const MIGRATIONS = new URL('../../../memory/supabase/migrations/', import.meta.url)
-/** Wen's owner id in the tests: setting owner_id, which every row written as postgres with no memory.owner belongs to. */
-export const WEN_ID = '7e570000-0000-4000-8000-00000000c1de'
+import { WEN_ID } from './tenants.ts'
 
 const SOURCES = [
   ['src-a', 'claude_chat', 'Test chat', 'https://example.com/a', '2026-09-01'],

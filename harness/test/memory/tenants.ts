@@ -5,6 +5,10 @@
  * and after it (where each row's owner comes from memory.owner).
  */
 
+/** Wen's owner id in the tests: setting owner_id, which every row written as postgres with no memory.owner belongs to, and
+ * the tenant the runtime token and the console run as. */
+export const WEN_ID = '7e570000-0000-4000-8000-00000000c1de'
+
 export const GLOBAL_TABLES = [
   'setting', 'link_type_weight', 'param_set', 'allocation', 'auth_miss', 'question', 'qrel', 'allowed_email', 'plan',
   'billing_event', 'billing_action', 'signup_attempt', 'oauth_consent', 'install_claim', 'openai_usage', 'embed_usage',

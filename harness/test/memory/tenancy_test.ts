@@ -38,3 +38,11 @@ Deno.test('R48: every conflict target names owner_id', () => {
   assert.ok(checked >= 10, `found ${checked} conflict targets on owned tables`)
   assert.deepEqual(missing, [])
 })
+
+/** R49 (#54): only db.ts switches a request to memory_tenant. */
+Deno.test('R49: one place switches the role', () => {
+  const lines = sources(ROOT).flatMap(({ name, text }) =>
+    text.split('\n').map((line, i) => ({ where: `${name}:${i + 1}`, line })).filter((l) => l.line.includes('set local role memory_tenant')))
+  assert.equal(lines.length, 1, JSON.stringify(lines))
+  assert.match(lines[0].where, /^db\.ts:/)
+})
