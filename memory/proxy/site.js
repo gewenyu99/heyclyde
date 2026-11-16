@@ -59,9 +59,6 @@ const SITE_HOME_CSS = `
 .plan li::before{content:"+";font:600 13px/22px var(--cl-font-mono);color:var(--cl-ok)}
 .plan li.no::before{content:"−";color:var(--cl-ink-3)}
 .plan .cl-btn{justify-self:start}
-.faq{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-bottom:84px}
-@media (max-width:760px){.faq{grid-template-columns:minmax(0,1fr)}}
-.faq div{padding:18px 20px}.faq h3{margin:0 0 6px}.faq p{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2)}
 .band{display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;padding:40px 44px;margin-bottom:24px;border-radius:var(--cl-radius-xl);background:var(--cl-ink);color:var(--cl-on-ink);box-shadow:var(--cl-copy-2)}
 .band-copy{display:grid;gap:10px}
 .band .cl-label{color:var(--cl-carbon-copy)}
@@ -102,6 +99,12 @@ const DOC_CSS = `
 .paper .cite{font:var(--cl-text-mono);font-size:12.5px;overflow-wrap:anywhere}
 `;
 
+const FAQ_CSS = `
+.faq{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-bottom:84px}
+@media (max-width:760px){.faq{grid-template-columns:minmax(0,1fr)}}
+.faq div{padding:18px 20px}.faq h3{margin:0 0 6px}.faq p{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2)}
+`;
+
 const ARROW_SVG = `<svg class="doodle-arrow" viewBox="0 0 120 36" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 20 C36 14 72 23 108 17"/><path d="M95 8 C102 12 108 15 113 17 C107 21 101 25 96 30"/></svg>`;
 
 const header = `<header class="bar wrap"><a class="logo" href="/" aria-label="clyde home">${LOGO()}</a>
@@ -109,7 +112,7 @@ const header = `<header class="bar wrap"><a class="logo" href="/" aria-label="cl
 <span class="acts"><a class="cl-btn cl-btn--primary" href="${CONNECT}">Get Clyde</a></span></header>`;
 
 const footer = `<footer class="foot"><div class="wrap"><span class="brand">${MARK(22)}clyde · shared memory for agents</span>
-<nav><a href="/docs">Docs</a><a href="/how-it-works">How it works</a><a href="mailto:${SUPPORT}">${SUPPORT}</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="${DESIGN_URL}">Design system</a></nav>
+<nav><a href="/docs">Docs</a><a href="/how-it-works">How it works</a><a href="/faq">FAQ</a><a href="mailto:${SUPPORT}">${SUPPORT}</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="${DESIGN_URL}">Design system</a></nav>
 <span class="legal">${LEGAL}</span></div></footer>`;
 
 /** One page. A page with a description is indexed, gets its search tags, and is in the sitemap. */
@@ -149,10 +152,6 @@ const HOME_LD = [
       { "@type": "Offer", name: "Free", price: "0", priceCurrency: "USD" },
       { "@type": "Offer", name: "Clyde", price: "12.99", priceCurrency: "USD" },
     ],
-  },
-  {
-    "@context": "https://schema.org", "@type": "FAQPage",
-    mainEntity: FAQ.map(([q, a]) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: a } })),
   },
 ];
 
@@ -216,8 +215,6 @@ ${HONEST}
 <li><span class="n">2</span><b>Click the email link</b><p>Sign in via magic link. No passwords.</p></li>
 <li><span class="n">3</span><b>Talk like normal</b><p>Your agent takes the notes.</p></li></ol></section>
 ${PLANS}
-<section class="wrap" id="seo"><div class="section"><span class="cl-label">SEO content</span><h2 class="cl-title-1">Questions people search for.</h2></div>
-<div class="faq">${FAQ.map(([q, a], i) => `<div class="${i % 2 ? "cl-card" : "cl-sticky"}"><h3 class="cl-title-3">${esc(q)}</h3><p>${esc(a)}</p></div>`).join("")}</div></section>
 <section class="wrap"><div class="band"><div class="band-copy"></div><a class="cl-btn cl-btn--lg" href="${CONNECT}">Get Clyde</a></div></section>
 </main>`,
   });
@@ -344,6 +341,16 @@ ${sticky("Summary: Clyde is provided as-is without warranty. Do not store secret
 <h2>Governing law</h2>
 <p>These terms are governed by the laws of Ontario and Canada, with exclusive jurisdiction in the courts of Ontario. Contact: ${MAIL}.</p></main>`;
 
+const FAQ_LD = [{
+  "@context": "https://schema.org", "@type": "FAQPage",
+  mainEntity: FAQ.map(([q, a]) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: a } })),
+}];
+
+const FAQ_PAGE = `<main class="doc wrap">${hero("SEO content", "SEO <em>content</em>",
+  "Questions people search for, answered plainly. Mostly here for search engines.",
+  SCENE_IMG("goldfish", "Clyde staring eye-to-eye at a goldfish in a bowl", 142, 165), "")}
+<div class="faq">${FAQ.map(([q, a], i) => `<div class="${i % 2 ? "cl-card" : "cl-sticky"}"><h3 class="cl-title-3">${esc(q)}</h3><p>${esc(a)}</p></div>`).join("")}</div></main>`;
+
 // ---- The routes ----
 
 const PAGES = {
@@ -352,6 +359,8 @@ const PAGES = {
     description: "Connect Clyde to Claude, Claude Code, Codex, Gemini, Antigravity, or Grok using https://heyclyde.me/mcp." }),
   "/how-it-works": (n) => page(n, { title: "How it works · Clyde", path: "/how-it-works", css: DOC_CSS, main: HOW,
     description: "How Clyde stores, ranks, and decays shared agent notes, and the research behind it." }),
+  "/faq": (n) => page(n, { title: "Clyde FAQ · shared memory for AI agents", path: "/faq", css: DOC_CSS + FAQ_CSS, main: FAQ_PAGE, jsonld: FAQ_LD,
+    description: "What Clyde is, how it differs from ChatGPT and Claude memory, what an MCP memory server is, how it decides what to keep, and what it costs." }),
   "/privacy": (n) => page(n, { title: "Privacy · Clyde", path: "/privacy", css: DOC_CSS, main: PRIVACY,
     description: "What data Clyde stores, which subprocessors handle it, and how to export or delete your account." }),
   "/terms": (n) => page(n, { title: "Terms · Clyde", path: "/terms", css: DOC_CSS, main: TERMS,
