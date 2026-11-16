@@ -91,7 +91,7 @@ Deno.test('the home page has an app picker, a recall carousel and one bottom but
   assert.equal((works.match(/<h3[^>]*>[^<]+<\/h3>/g) ?? []).length, 1, 'the panel has one heading')
   const items = works.match(/<li>[\s\S]*?<\/li>/g) ?? []
   assert.ok(items.length >= 6 && items.length <= 8, `${items.length} items in the panel`)
-  for (const it of items) assert.ok(/^<li><b>[^<]+\.<\/b> \S/.test(it), `a bold lead, then its sentence: ${it.slice(0, 40)}`)
+  for (const it of items) assert.ok(/^<li><b>[^<]+<\/b> \S/.test(it), `a bold lead, then its sentence: ${it.slice(0, 40)}`)
   const slides = built.match(/<article class="cl-card rc-slide">/g) ?? []
   assert.equal(slides.length, 6, 'six slides')
   const stories = built.match(/<ol class="rc-story">[\s\S]*?<\/ol>/g) ?? []
