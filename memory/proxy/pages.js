@@ -313,7 +313,7 @@ export const WORKS = [["claude", "Claude"], ["claude-code", "Claude Code"], ["co
 
 export const SCENE = `<div class="scene" aria-label="Clyde answering in Claude and in Codex from the same memory">
 <div class="win w1"><div class="win-top"><i class="dots"></i>Claude<span>chat</span></div><div class="body">
-<div class="ask">Plan dinner for Friday. Remember Dana's dietary stuff?</div><p class="say">From Gemini 3 weeks ago:</p>
+<div class="ask">Plan dinner for Friday. Dana's coming.</div><p class="say">From Gemini 3 weeks ago:</p>
 <article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-chip">Preference</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">93%</span></div>
 <h3 class="cl-memory__title">Dana hates cilantro. Keep it out of everything.</h3>
 <div class="cl-prov"><span class="cl-prov__who">atlas</span><span>Gemini</span><span class="cl-prov__sep">/</span><span>phone</span><span class="cl-prov__sep">/</span><span>3 w ago</span></div></article>
