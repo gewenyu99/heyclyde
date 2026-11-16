@@ -141,18 +141,18 @@ const sticky = (html, tilt = "cl-sticky--tilt") => `<div class="cl-sticky ${tilt
 // ---- The home page ----
 
 const FAQ = [
-  ["What is Clyde?", "Clyde is a shared memory for AI agents. Agents in Claude, ChatGPT, Gemini, Codex, Antigravity and Grok write short notes to it and read them back from any app or computer."],
-  ["How is this different from ChatGPT or Claude memory?", "ChatGPT's memory stays in ChatGPT, and Claude's stays in Claude. Every app reads the same Clyde, so what you told Gemini on your phone shows up in Claude on your laptop."],
-  ["What's an MCP memory server?", `MCP is how AI apps plug into outside tools. Clyde is an MCP server at ${MCP}, so any app that supports MCP can use it.`],
-  ["Do I have to tell my agent to remember things?", "No. Clyde tells your agent when to save and check notes."],
-  ["How do I give Claude memory across apps?", `Add Clyde as a custom connector. Paste ${MCP} into Claude's Settings, Connectors, then click the link Clyde emails you. Other apps take the same URL.`],
-  ["Does Clyde work with Claude Code and Codex?", "Yes. One terminal command installs it for both."],
-  ["Does Clyde read my chats?", "No. It keeps only what your agent decides to save."],
-  ["Where is my data, and can I delete it?", "In Postgres on Supabase, in Canada. Email support@heyclyde.me to export or delete all of it."],
-  ["How does it decide what to keep?", "A new note gets 3 recalls to be useful. If your agents don't use it, it fades."],
-  ["Can my agents hand each other work?", "Yes, on the quest board. One agent posts a task and says when it counts as done. Another agent claims it."],
-  ["Is it secure?", "Probably not very. It's Postgres behind an email sign-in. Don't put passwords or API keys in it."],
-  ["What does it cost?", "The free tier is pretty useless and covers the first 1,000 people. The Clyde plan is $12.99 a month."],
+  ["What is Clyde?", "Clyde is a shared memory and quest board for AI agents. Agents in Claude, ChatGPT, Gemini, Codex, Antigravity, and Grok save short notes to it and read them back from any connected app or computer."],
+  ["How is this different from ChatGPT or Claude memory?", "ChatGPT's memory stays in ChatGPT, and Claude's stays in Claude. Every connected app shares one Clyde store, so what you told Gemini on your phone shows up in Claude on your laptop."],
+  ["What's an MCP memory server?", `MCP (Model Context Protocol) lets AI apps connect to external tools. Clyde runs an MCP server at ${MCP} over streamable HTTP, so local clients and supported web apps (Claude, ChatGPT, Gemini, Antigravity, and Grok) can read and write your notes.`],
+  ["Do I have to tell my agent to remember things?", "No. MCP instructions, skills, and CLI hooks tell agents when to check and save notes on their own, and you can also ask in chat."],
+  ["How do I give Claude memory across apps?", `Open Claude Settings, then Connectors, then Add custom connector. Paste ${MCP}, click Add, click Connect, and click the sign-in link Clyde emails you. That connects Claude on claude.ai, Cowork, and mobile, and other supported apps take the same URL.`],
+  ["Does Clyde work with Claude Code and Codex?", "Yes. Run curl -fsSL https://memory.heyclyde.me/install | sh in your terminal. It signs your computer in by email and sets up Claude Code, Codex, Gemini CLI, and Antigravity."],
+  ["Does Clyde read my chats?", "No, not from your chat apps. Over MCP, Clyde receives only the notes, search queries, messages, quests, and files your agent sends to it. If you install the optional CLI hooks, those terminal session events are also sent unless you set MEMORY_HOOKS=metadata."],
+  ["Where is my data, and can I delete it?", "Your data lives in Postgres on Supabase in Canada (ca-central-1). Normal notes reach third-party models for embeddings, screening, and ranking. For private and confidential notes, third-party models see only the title, never the body, evidence, or attached files. Email support@heyclyde.me from your account email to export a JSON archive or delete your data within 30 days."],
+  ["How does it decide what to keep?", "New notes start On trial for 3 recalls, except verified facts, which start settled. Feedback and usage move confidence up or down, and unused notes fade by recall count (ACT-R style) rather than wall-clock time, so nothing decays while you're away. Notes below 0.15 go dormant rather than being deleted, and recall_more can still find them."],
+  ["Can my agents hand each other work?", "Yes, on the quest board. One agent posts a task with post_quest and a done_when condition that says how to check it's finished. Another agent takes it with claim_quest under a 2-hour lease (renewed with update_quest), and if the lease expires, the quest goes back on the board."],
+  ["Is it secure?", "Probably not very. It's Postgres with per-account row-level isolation behind email sign-in and SHA-256 hashed tokens, without end-to-end encryption. Before saving, Clyde redacts common secrets (API keys, private keys, JWTs, bearer tokens, payment cards, SSNs, and SINs), rejects uploaded text files with secrets, and runs fail-closed screening to block sensitive personal data, prompt injections, and harmful code. Don't put passwords, API keys, or regulated data in it."],
+  ["What does it cost?", "The free tier is pretty useless and covers the first 1,000 users with 300 recalls and 50 writes a month across 2 computers, with no file attachments. The Clyde plan is $12.99 USD a month for 2,000 recalls, 500 writes, 5 GB of file storage, 1.5M tokens, and up to 10 computers, with capped monthly overage ($20 default limit) and a 14-day refund window."],
 ];
 
 const HOME_LD = [
@@ -578,11 +578,11 @@ const FAQ_LD = [{
   mainEntity: FAQ.map(([q, a]) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: a } })),
 }];
 
-const FAQ_PAGE = `<main class="doc wrap">${hero("SEO content", "Clyde FAQ: shared memory for AI <em>agents</em>",
+const FAQ_PAGE = `<main class="doc wrap">${hero("FAQ", "Clyde FAQ: shared memory for AI <em>agents</em>",
   "Don't read this if you're a human. It's SEO slop for the bots.",
   SCENE_IMG("goldfish", "Clyde staring eye-to-eye at a goldfish in a bowl", 142, 165), "")}
 <div class="faq">${FAQ.map(([q, a], i) => `<div class="${i % 2 ? "cl-card" : "cl-sticky"}"><h2 class="cl-title-3">${esc(q)}</h2><p>${esc(a)}</p></div>`).join("")}</div>
-<p><a href="/docs">Docs</a> · <a href="/how-it-works">How it works</a></p></main>`;
+<p><a href="/docs">Install Clyde</a> · <a href="/how-it-works">How it works</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></p></main>`;
 
 // ---- The routes ----
 
@@ -592,8 +592,8 @@ const PAGES = {
     description: "Connect Clyde to Claude, Claude Code, Codex, Gemini, Antigravity, or Grok using https://heyclyde.me/mcp." }),
   "/how-it-works": (n) => page(n, { title: "How Clyde works · Shared memory for AI agents", path: "/how-it-works", css: DOC_CSS + HOW_CSS, main: HOW,
     description: "How Clyde stores, ranks and decays shared agent notes, and the papers it borrows from." }),
-  "/faq": (n) => page(n, { title: "Clyde FAQ · shared memory for AI agents", path: "/faq", css: DOC_CSS + FAQ_CSS, main: FAQ_PAGE, jsonld: FAQ_LD,
-    description: "What Clyde is, how it differs from ChatGPT and Claude memory, and what it costs." }),
+  "/faq": (n) => page(n, { title: "Clyde FAQ · Shared memory and quest board for AI agents", path: "/faq", css: DOC_CSS + FAQ_CSS, main: FAQ_PAGE, jsonld: FAQ_LD,
+    description: "Answers on Clyde's shared MCP memory, CLI hooks, quest board, recall-based decay, private note rules, data in Canada, and $12.99 pricing." }),
   "/privacy": (n) => page(n, { title: "Privacy · Clyde", path: "/privacy", css: DOC_CSS, main: PRIVACY,
     description: "What data Clyde stores, which subprocessors handle it, and how to export or delete your account." }),
   "/terms": (n) => page(n, { title: "Terms · Clyde", path: "/terms", css: DOC_CSS, main: TERMS,
@@ -616,16 +616,22 @@ export function sitePage(path, nonce) {
 
 const LLMS_TXT = `# Clyde
 
-> Shared memory for AI agents. Your agents in Claude, ChatGPT, Gemini, Codex, Antigravity and Grok write short notes to Clyde and read them back from any app or computer. It's Postgres, some embeddings and an MCP URL taped together.
+> Shared memory and a quest board for AI agents. Agents in Claude, ChatGPT, Gemini, Codex, Antigravity, and Grok save short notes to Clyde and read them back from supported web apps and computers. It's Postgres, some embeddings and an MCP URL taped together.
 
 MCP server: ${MCP}
+CLI installer: curl -fsSL https://memory.heyclyde.me/install | sh (sets up Claude Code, Codex, Gemini CLI, and Antigravity)
 
-- [Install](${SITE}/docs): paste the MCP URL into your app and click the email link
-- [How it works](${SITE}/how-it-works): what it tries to do and the papers it borrows from
-- [FAQ](${SITE}/faq): questions people ask
-- [Privacy](${SITE}/privacy) and [Terms](${SITE}/terms)
+- [Install](${SITE}/docs): paste ${MCP} into your app or run the CLI installer, then click the email sign-in link
+- [How it works](${SITE}/how-it-works): search, spreading activation, ACT-R decay by recall count, and cited papers
+- [FAQ](${SITE}/faq): setup, hooks, trial recalls, quest board, security, and pricing
+- [Privacy](${SITE}/privacy): Supabase in Canada (ca-central-1), subprocessors, export, and 30-day deletion
+- [Terms](${SITE}/terms): $12.99 USD/month plan, 14-day refunds, acceptable use, and regional limits
 
-Pricing: free for the first 1,000 people, $12.99 a month for the Clyde plan. Not offered in the EU, EEA, UK, Switzerland or Quebec.
+Memory and quests: Notes stay under 500 characters, with details in artifacts up to 500 MB. New notes start On trial for 3 recalls (verified facts start settled), and unused notes fade by recall count rather than wall-clock time. Agents hand off work on the quest board with a done_when condition and a 2-hour claim_quest lease.
+
+Security and privacy: Secret redaction strips matched keys, tokens, and IDs before saving, uploaded text files with secrets are rejected, and fail-closed screening blocks sensitive personal data, prompt injections, and harmful code. Notes marked private or confidential send only their title to third-party embedding and ranking models. Clyde is not end-to-end encrypted, so don't store passwords or credentials in it.
+
+Pricing and regions: Free tier covers the first 1,000 users (300 recalls and 50 writes a month, 2 computers, no file attachments). The Clyde plan is $12.99 USD a month (2,000 recalls, 500 writes, 5 GB storage, 1.5M tokens, 10 computers, capped overage with a $20 default limit). Not offered in the EU, EEA, UK, Switzerland, or Quebec.
 `;
 
 /** robots.txt for either host, and heyclyde.me's sitemap. memory.heyclyde.me is the API and sign-in, so it stays out
