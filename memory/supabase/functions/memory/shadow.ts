@@ -13,6 +13,7 @@ import { sha256 } from "./embed.ts";
 import { JUDGE_VERSION, relevance } from "./judge.ts";
 import { paramSet } from "./params.ts";
 import type { Viewer } from "./provenance.ts";
+import type { AgentScope, EntryFilter } from "./permissions.ts";
 import { type Judge, rankAndPack } from "./service.ts";
 
 export const MAX_SHADOWS = 2;
@@ -31,6 +32,7 @@ export type Judgment = { id: string; text: string; p: number };
 /** What a shadow needs of the recall it shadows. `judgments` are the served judge's answers, for the cache. */
 export type Served = {
   retrieval: string; query: string; task: string; scope: string | null; cNow: number | null; set: string; judgments: Judgment[]; viewer: Viewer;
+  agentScope?: AgentScope; entryFilter?: EntryFilter;
 };
 
 /** The shadow sets, at most MAX_SHADOWS, in id order. */
@@ -87,7 +89,9 @@ export async function runShadows(s: Served) {
     if (!spent) {
       try {
         const set = await paramSet(sql, id);
-        const r = await rankAndPack(sql, set, s.query, s.task, s.scope, true, false, s.viewer, { asOf: s.cNow, judge: cachedJudge(querySha, stats) });
+        const r = await rankAndPack(sql, set, s.query, s.task, s.scope, true, false, s.viewer, {
+          asOf: s.cNow, judge: cachedJudge(querySha, stats), agentScope: s.agentScope, entryFilter: s.entryFilter,
+        });
         if (r.degraded) status = r.degraded.includes(OverBudget.name) ? "skipped:budget" : "skipped:error";
         else {
           ranking = r.ranked.slice(0, SHADOW_RANKING).map(([id, score]) => ({ id, score }));

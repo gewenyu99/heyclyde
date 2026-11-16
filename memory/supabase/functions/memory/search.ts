@@ -3,6 +3,15 @@ import { config } from "./config.ts";
 import { type Row, type Sql } from "./db.ts";
 import { embed, toPgvector } from "./embed.ts";
 import { type Params, SPREAD, spreadKnobs } from "./params.ts";
+import {
+  type AgentScope,
+  canReadEntry,
+  type EntryFilter,
+  type EntryMeta,
+  entryWhereSql,
+  entryWhereStartSql,
+  hasFilter,
+} from "./permissions.ts";
 
 export type Ranked = [id: string, score: number, line: string | null];
 /** Each ranker's own list, by name, for the features a recall logs. A ranker with no score of its own gives null. */
@@ -77,14 +86,15 @@ export function discount(scores: Ranked[], info: Map<string, Scoped>, scope: str
 
 // ---------------------------------------------------------------- index: grep the index map
 /** The INDEX.md map, one line per entry, superseded entries struck through, as build.py writes it. */
-export async function indexLines(db: Sql) {
+export async function indexLines(db: Sql, agentScope: AgentScope = null, filter?: EntryFilter) {
   const rows = await db`select e.id, e.title, e.authority, e.scope, e.sensitivity, e.pattern, e.kind, e.confidence, e.verified,
+      e.category, e.context, e.transferability, e.project_slug, e.computer,
       p.title as project_title,
-      (select string_agg(l.src, ', ' order by l.src) from memory.link l where l.dst = e.id and l.type = 'supersedes') as superseded_by
-    from memory.entry e left join memory.entry p on p.id = e.project
-    where e.pattern <> 'projects'
+      (select string_agg(l.src, ', ' order by l.src) from memory.link l where l.owner_id = e.owner_id and l.dst = e.id and l.type = 'supersedes') as superseded_by
+    from memory.entry e left join memory.entry p on p.owner_id = e.owner_id and p.id = e.project
+    where e.pattern <> 'projects' ${entryWhereSql(db, "e", agentScope, filter)}
     order by e.project, e.pattern, e.id`;
-  return rows.map((r) => {
+  return rows.filter((r) => canReadEntry(agentScope, r, filter)).map((r) => {
     const title = r.superseded_by ? `~~${r.title}~~ → ${r.superseded_by}` : r.title;
     const lock = r.sensitivity === "private" ? " 🔒" : "";
     // Ranking reads `line`, as it was before kinds. `shown` is what the packet prints: kind, confidence, and a draft marked unreviewed.
@@ -104,10 +114,17 @@ export async function indexLines(db: Sql) {
  *
  * A superseded line stays, struck through, but gets no scope boost. Its line names its replacement, so it matches
  * every word the replacement does and would otherwise outrank it. */
-export async function indexSearch(db: Sql, query: string, scope: string | null, p: Params): Promise<ArmResult> {
+export async function indexSearch(
+  db: Sql,
+  query: string,
+  scope: string | null,
+  p: Params,
+  agentScope: AgentScope = null,
+  filter?: EntryFilter,
+): Promise<ArmResult> {
   const q = tokens(query);
   const hits: Ranked[] = [], scoped = new Set<string>(), info = new Map<string, Scoped>();
-  for (const l of await indexLines(db)) {
+  for (const l of await indexLines(db, agentScope, filter)) {
     const words = tokens(l.line + " " + l.id.replaceAll("-", " "));
     let hit = 0;
     for (const t of q) if (words.has(t)) hit++;
@@ -122,25 +139,26 @@ export async function indexSearch(db: Sql, query: string, scope: string | null, 
 }
 
 // ---------------------------------------------------------------- hybrid: keyword plus vector search
-async function englishRanks(db: Sql, query: string, limit: number): Promise<string[]> {
+async function englishRanks(db: Sql, query: string, limit: number, agentScope: AgentScope = null, filter?: EntryFilter): Promise<string[]> {
   // plainto_tsquery ANDs every term, which a natural-language question rarely satisfies. OR them instead.
-  const rows = await db`select id, ts_rank_cd(tsv_en, t.q) as score from memory.entry_current
+  const rows = await db`select e.id, ts_rank_cd(e.tsv_en, t.q) as score from memory.entry_current e
     cross join (select nullif(replace(plainto_tsquery('english', ${query})::text, ' & ', ' | '), '')::tsquery as q) t
-    where t.q is not null and tsv_en @@ t.q
-    order by score desc, id limit ${limit}`;
+    where t.q is not null and e.tsv_en @@ t.q ${entryWhereSql(db, "e", agentScope, filter)}
+    order by score desc, e.id limit ${limit}`;
   return rows.map((r) => r.id);
 }
 
 /** PGroonga over search_text, indexed as bigrams. The query's 中文 bigrams are OR'ed, the way the English ranker ORs
  * its terms. pgroonga_score only counts when the index runs, so the scan is forced onto it. */
-async function chineseRanks(db: Sql, query: string, limit: number): Promise<string[]> {
+async function chineseRanks(db: Sql, query: string, limit: number, agentScope: AgentScope = null, filter?: EntryFilter): Promise<string[]> {
   const terms = [...new Set(bigrams(query))];
   if (!terms.length) return [];
   const run = async (tx: Sql) => {
     await tx`set local enable_seqscan = off`;
     return await tx`select e.id, extensions.pgroonga_score(e.tableoid, e.ctid) as score from memory.entry e
       where e.search_text operator(extensions.&@~) ${terms.join(" OR ")}
-        and not exists (select 1 from memory.link l where l.dst = e.id and l.type = 'supersedes')
+        and not exists (select 1 from memory.link l where l.owner_id = e.owner_id and l.dst = e.id and l.type = 'supersedes')
+        ${entryWhereSql(tx, "e", agentScope, filter)}
       order by score desc, e.id limit ${limit}`;
   };
   const rows = "begin" in db ? await (db as any).begin(run) : await run(db);
@@ -159,7 +177,7 @@ async function queryVector(query: string) {
   return queryVectors.get(key)!;
 }
 
-async function vectorRanks(db: Sql, query: string, limit: number): Promise<[string[], string | null]> {
+async function vectorRanks(db: Sql, query: string, limit: number, agentScope: AgentScope = null, filter?: EntryFilter): Promise<[string[], string | null]> {
   let vec: number[];
   try {
     vec = await queryVector(query);
@@ -170,7 +188,8 @@ async function vectorRanks(db: Sql, query: string, limit: number): Promise<[stri
   // entries crowd those 40, few or none survive. An iterative scan keeps going until the limit is met. pgvector 0.8+.
   const run = async (tx: Sql) => {
     await tx`set local hnsw.iterative_scan = strict_order`;
-    return await tx`select x.entry_id as id from memory.entry_embedding x join memory.entry_current e on e.id = x.entry_id
+    return await tx`select x.entry_id as id from memory.entry_embedding x join memory.entry_current e on e.owner_id = x.owner_id and e.id = x.entry_id
+      ${entryWhereStartSql(tx, "e", agentScope, filter)}
       order by x.embedding <=> ${toPgvector(vec)}::extensions.vector limit ${limit}`;
   };
   const rows = "begin" in db ? await (db as any).begin(run) : await run(db);
@@ -188,19 +207,26 @@ export function rrf(rankings: string[][], weights: number[] | undefined, k: numb
 
 /** Each ranker's list on its own, so an eval can tell which one lost an entry. The 中文 ranker only runs on queries
  * with 中文 in them, so English keyword evidence never counts twice. */
-export async function hybridComponents(db: Sql, query: string, p: Params) {
-  const [vec, degraded] = await vectorRanks(db, query, p.candidates);
-  const en = await englishRanks(db, query, p.candidates);
+export async function hybridComponents(db: Sql, query: string, p: Params, agentScope: AgentScope = null, filter?: EntryFilter) {
+  const [vec, degraded] = await vectorRanks(db, query, p.candidates, agentScope, filter);
+  const en = await englishRanks(db, query, p.candidates, agentScope, filter);
   let zh: string[] = [], keyword = en;
   if (CJK.test(query)) {
-    zh = await chineseRanks(db, query, p.candidates);
+    zh = await chineseRanks(db, query, p.candidates, agentScope, filter);
     keyword = rrf([en, zh], undefined, p.rrfK).map(([id]) => id);
   }
   return { parts: { en, zh, keyword, vec }, degraded };
 }
 
-export async function hybridSearch(db: Sql, query: string, scope: string | null, p: Params): Promise<ArmResult> {
-  const { parts, degraded } = await hybridComponents(db, query, p);
+export async function hybridSearch(
+  db: Sql,
+  query: string,
+  scope: string | null,
+  p: Params,
+  agentScope: AgentScope = null,
+  filter?: EntryFilter,
+): Promise<ArmResult> {
+  const { parts, degraded } = await hybridComponents(db, query, p, agentScope, filter);
   let fused = rrf([parts.keyword, parts.vec], [1, p.vecWeight], p.rrfK).map(([id, s]): Ranked => [id, s, null]);
   if (scope && fused.length) {
     const rows = await db`select id from memory.entry where id = any(${fused.map(([id]) => id)}::text[]) and scope = ${scope}`;
@@ -222,6 +248,7 @@ export async function hybridSearch(db: Sql, query: string, scope: string | null,
 type Edges = Map<string, [string, number][]>;
 type Graph = {
   links: Row[]; superseded: Set<string>; at: number;
+  nodes: Map<string, EntryMeta>;
   /** The edges under one set's link type weights, built once per distinct weights. */
   edges: Map<string, Edges>;
 };
@@ -236,12 +263,23 @@ export const CO_USE_SESSIONS = 2;
 /** The links, cached per isolate for a minute. A co_used link counts only once CO_USE_SESSIONS sessions have co-used the pair. */
 async function graph(db: Sql): Promise<Graph> {
   if (graphCache && Date.now() - graphCache.at < 60_000) return graphCache;
-  const links = await db`select l.src, l.dst, l.type, coalesce(l.weight, 1) as weight, s.pattern as sp, d.pattern as dp
-       from memory.link l join memory.entry s on s.id = l.src join memory.entry d on d.id = l.dst
+  const links = await db`select l.src, l.dst, l.type, coalesce(l.weight, 1) as weight,
+         s.pattern as sp, s.scope as ss, s.category as sc, s.context as sctx, s.transferability as str, s.project_slug as sps, s.computer as scomp,
+         d.pattern as dp, d.scope as ds, d.category as dc, d.context as dctx, d.transferability as dtr, d.project_slug as dps, d.computer as dcomp
+       from memory.link l join memory.entry s on s.owner_id = l.owner_id and s.id = l.src join memory.entry d on d.owner_id = l.owner_id and d.id = l.dst
        where l.type <> 'co_used' or exists (select 1 from memory.co_use c
-         where c.src = l.src and c.dst = l.dst and cardinality(c.sessions) >= ${CO_USE_SESSIONS})`;
+         where c.owner_id = l.owner_id and c.src = l.src and c.dst = l.dst and cardinality(c.sessions) >= ${CO_USE_SESSIONS})`;
+  const nodes = new Map<string, EntryMeta>();
+  for (const l of links) {
+    if (!nodes.has(l.src)) {
+      nodes.set(l.src, { pattern: l.sp, scope: l.ss, category: l.sc, context: l.sctx, transferability: l.str, project_slug: l.sps, computer: l.scomp });
+    }
+    if (!nodes.has(l.dst)) {
+      nodes.set(l.dst, { pattern: l.dp, scope: l.ds, category: l.dc, context: l.dctx, transferability: l.dtr, project_slug: l.dps, computer: l.dcomp });
+    }
+  }
   graphCache = {
-    links: [...links], at: Date.now(), edges: new Map(),
+    links: [...links], at: Date.now(), edges: new Map(), nodes,
     superseded: new Set(links.filter((l) => l.type === "supersedes").map((l) => l.dst as string)),
   };
   return graphCache;
@@ -315,20 +353,29 @@ export function phrasePatterns(query: string, limit: number): string[] {
 }
 
 /** Entries whose title or body holds one of the query's phrases, titles first. */
-async function phraseHits(db: Sql, query: string, p: Params): Promise<string[]> {
+async function phraseHits(db: Sql, query: string, p: Params, agentScope: AgentScope = null, filter?: EntryFilter): Promise<string[]> {
   const patterns = phrasePatterns(query, p.candidates * 2);
   if (!patterns.length) return [];
-  const rows = await db`select id from memory.entry_current where title ~* any(${patterns}::text[]) or body ~* any(${patterns}::text[])
-    order by (title ~* any(${patterns}::text[])) desc, id limit ${p.candidates}`;
+  const rows = await db`select e.id from memory.entry_current e
+    where (e.title ~* any(${patterns}::text[]) or e.body ~* any(${patterns}::text[]))
+      ${entryWhereSql(db, "e", agentScope, filter)}
+    order by (e.title ~* any(${patterns}::text[])) desc, e.id limit ${p.candidates}`;
   return rows.map((r) => r.id);
 }
 
 /** The seeds every spreading mode starts from: hybrid's top candidates. Under bestfirst, entries holding a phrase of the query
  * join them at the best seed's score, so a phrase seed is never weaker than a keyword or vector one. */
-async function spreadSeeds(db: Sql, query: string, scope: string | null, p: Params): Promise<ArmResult> {
-  const [ranked, degraded, trace] = await hybridSearch(db, query, scope, p);
+async function spreadSeeds(
+  db: Sql,
+  query: string,
+  scope: string | null,
+  p: Params,
+  agentScope: AgentScope = null,
+  filter?: EntryFilter,
+): Promise<ArmResult> {
+  const [ranked, degraded, trace] = await hybridSearch(db, query, scope, p, agentScope, filter);
   if (spreadKnobs(p).mode !== "bestfirst") return [ranked, degraded, trace];
-  const hits = await phraseHits(db, query, p);
+  const hits = await phraseHits(db, query, p, agentScope, filter);
   if (!hits.length) return [ranked, degraded, trace];
   const top = ranked.reduce((a, [, s]) => Math.max(a, s), 0) || 1;
   const seeds = new Map(ranked.map(([id, s]) => [id, s]));
@@ -396,12 +443,42 @@ export function bestFirst(out: Edges, seeds: Map<string, number>, maxHops: numbe
   return { best, frontier };
 }
 
+function permittedEdges(out: Edges, g: Graph, agentScope: AgentScope, filter?: EntryFilter): Edges {
+  if (!agentScope && !hasFilter(filter)) return out;
+  const allowed = (id: string) => {
+    const meta = g.nodes.get(id);
+    return meta ? canReadEntry(agentScope, meta, filter) : true;
+  };
+  const filtered: Edges = new Map();
+  for (const [src, list] of out) {
+    if (!allowed(src)) continue;
+    const kept = list.filter(([dst]) => allowed(dst));
+    if (kept.length) filtered.set(src, kept);
+  }
+  return filtered;
+}
+
 /** The hook for recall_more: pick the same queue up from a recall's logged frontier, with limits of the caller's choosing (the
  * set's, when it names none). Gives every node reached with its path strength, frontier nodes included; the caller keeps the
  * ones it hasn't delivered. */
-export async function spreadMore(db: Sql, frontier: Frontier, p: Params, limits: { maxHops?: number; minPath?: number } = {}) {
+export async function spreadMore(
+  db: Sql,
+  frontier: Frontier,
+  p: Params,
+  limits: { maxHops?: number; minPath?: number } = {},
+  agentScope: AgentScope = null,
+  filter?: EntryFilter,
+) {
   const k = spreadKnobs(p);
-  return bestFirst(edgesUnder(await graph(db), p.linkTypeWeights), new Map(frontier), limits.maxHops ?? k.maxHops,
+  const g = await graph(db);
+  const out = permittedEdges(edgesUnder(g, p.linkTypeWeights), g, agentScope, filter);
+  const allowedFrontier = (!agentScope && !hasFilter(filter))
+    ? frontier
+    : frontier.filter(([id]) => {
+      const m = g.nodes.get(id);
+      return m ? canReadEntry(agentScope, m, filter) : true;
+    });
+  return bestFirst(out, new Map(allowedFrontier), limits.maxHops ?? k.maxHops,
     limits.minPath ?? k.minPath, SPREAD.frontierCap);
 }
 
@@ -420,10 +497,17 @@ export function bestFirstRanked(out: Edges, seeds: Ranked[], superseded: Set<str
   return [ranked, frontier];
 }
 
-export async function spreadingSearch(db: Sql, query: string, scope: string | null, p: Params): Promise<ArmResult> {
-  const [seedsRanked, degraded, seedTrace] = await spreadSeeds(db, query, scope, p);
+export async function spreadingSearch(
+  db: Sql,
+  query: string,
+  scope: string | null,
+  p: Params,
+  agentScope: AgentScope = null,
+  filter?: EntryFilter,
+): Promise<ArmResult> {
+  const [seedsRanked, degraded, seedTrace] = await spreadSeeds(db, query, scope, p, agentScope, filter);
   const g = await graph(db);
-  const out = edgesUnder(g, p.linkTypeWeights);
+  const out = permittedEdges(edgesUnder(g, p.linkTypeWeights), g, agentScope, filter);
   if (spreadKnobs(p).mode === "bestfirst") {
     const [ranked, frontier] = bestFirstRanked(out, seedsRanked, g.superseded, p);
     return [ranked, degraded, { ...seedTrace, spreading: scored(ranked) }, frontier];
@@ -436,7 +520,14 @@ export async function spreadingSearch(db: Sql, query: string, scope: string | nu
   return [ranked, degraded, { ...seedTrace, spreading: scored(ranked) }];
 }
 
-export const ARMS: Record<string, (db: Sql, query: string, scope: string | null, p: Params) => Promise<ArmResult>> = {
+export const ARMS: Record<string, (
+  db: Sql,
+  query: string,
+  scope: string | null,
+  p: Params,
+  agentScope?: AgentScope,
+  filter?: EntryFilter,
+) => Promise<ArmResult>> = {
   index: indexSearch,
   hybrid: hybridSearch,
   spreading: spreadingSearch,
@@ -446,10 +537,11 @@ export const ARMS: Record<string, (db: Sql, query: string, scope: string | null,
 export async function fetchEntries(db: Sql, ids: string[]): Promise<Record<string, Row>> {
   if (!ids.length) return {};
   const rows = await db`select e.*, s.title as source_title, s.uri as source_uri,
-      (select string_agg(l.src, ', ' order by l.src) from memory.link l where l.dst = e.id and l.type = 'supersedes') as superseded_by,
+      (select string_agg(l.src, ', ' order by l.src) from memory.link l where l.owner_id = e.owner_id and l.dst = e.id and l.type = 'supersedes') as superseded_by,
       (select jsonb_agg(jsonb_build_object('name', x.name, 'kind', x.kind, 'size', b.size) order by x.name)
-        from memory.entry_blob x join memory.blob b on b.sha256 = x.sha256 where x.entry_id = e.id) as artifacts
-    from memory.entry e left join memory.source s on s.id = e.source_id where e.id = any(${ids}::text[])`;
+        from memory.entry_blob x join memory.blob b on b.owner_id = x.owner_id and b.sha256 = x.sha256
+        where x.owner_id = e.owner_id and x.entry_id = e.id) as artifacts
+    from memory.entry e left join memory.source s on s.owner_id = e.owner_id and s.id = e.source_id where e.id = any(${ids}::text[])`;
   return Object.fromEntries(rows.map((r) => [r.id, r]));
 }
 

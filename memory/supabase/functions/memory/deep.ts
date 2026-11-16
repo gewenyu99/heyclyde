@@ -4,6 +4,7 @@
 // with its kind, strength and state. A page asks no judge and embeds nothing, and it spends no trial chance.
 import type { Row, Sql } from "./db.ts";
 import type { Params } from "./params.ts";
+import { type AgentScope, canReadEntry, type EntryFilter, entryWhereSql } from "./permissions.ts";
 import { artifactsLine, bigrams, clip, estimateTokens, fetchEntries, type Frontier, MORE, redact, spreadMore } from "./search.ts";
 
 export const DEPTHS = ["packet", "deep"];
@@ -32,18 +33,20 @@ export function renderDeepItem(n: number, row: Row, p: Params) {
 }
 
 /** Entries recall hides that match the query's words: dormant ones and superseded ones, best keyword match first. */
-async function hidden(db: Sql, request: string, p: Params): Promise<string[]> {
+async function hidden(db: Sql, request: string, p: Params, agentScope: AgentScope = null, filter?: EntryFilter): Promise<string[]> {
   const rows = await db`select e.id from memory.entry e
     cross join (select nullif(replace(plainto_tsquery('english', ${request})::text, ' & ', ' | '), '')::tsquery as q) t
     where t.q is not null and e.tsv_en @@ t.q and e.pattern <> 'projects'
-      and (e.confidence < ${p.dormant} or exists (select 1 from memory.link l where l.dst = e.id and l.type = 'supersedes'))
+      and (e.confidence < ${p.dormant} or exists (select 1 from memory.link l where l.owner_id = e.owner_id and l.dst = e.id and l.type = 'supersedes'))
+      ${entryWhereSql(db, "e", agentScope, filter)}
     order by ts_rank_cd(e.tsv_en, t.q) desc, e.id limit ${p.candidates}`;
   const out = rows.map((r) => r.id as string);
   const terms = [...new Set(bigrams(request))];
   if (terms.length) {
     const zh = await db`select e.id from memory.entry e where e.search_text like any(${terms.map((t) => `%${t}%`)}::text[])
         and e.pattern <> 'projects'
-        and (e.confidence < ${p.dormant} or exists (select 1 from memory.link l where l.dst = e.id and l.type = 'supersedes'))
+        and (e.confidence < ${p.dormant} or exists (select 1 from memory.link l where l.owner_id = e.owner_id and l.dst = e.id and l.type = 'supersedes'))
+        ${entryWhereSql(db, "e", agentScope, filter)}
       order by e.id limit ${p.candidates}`;
     for (const r of zh) if (!out.includes(r.id)) out.push(r.id);
   }
@@ -52,7 +55,15 @@ async function hidden(db: Sql, request: string, p: Params): Promise<string[]> {
 
 /** Everything a recall's pages can show, in order: its candidates as it ranked them, then the nodes best-first reaches from its
  * frontier, strongest first, then the hidden matches. */
-export async function deepPool(db: Sql, p: Params, request: string, candidates: string[], frontier: Frontier | null): Promise<string[]> {
+export async function deepPool(
+  db: Sql,
+  p: Params,
+  request: string,
+  candidates: string[],
+  frontier: Frontier | null,
+  agentScope: AgentScope = null,
+  filter?: EntryFilter,
+): Promise<string[]> {
   const pool = [...candidates], have = new Set(pool);
   const add = (id: string) => {
     if (!have.has(id)) {
@@ -61,10 +72,10 @@ export async function deepPool(db: Sql, p: Params, request: string, candidates: 
     }
   };
   if (frontier?.length) {
-    const { best } = await spreadMore(db, frontier, p);
+    const { best } = await spreadMore(db, frontier, p, {}, agentScope, filter);
     [...best].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).forEach(([id]) => add(id));
   }
-  for (const id of await hidden(db, request, p)) add(id);
+  for (const id of await hidden(db, request, p, agentScope, filter)) add(id);
   return pool;
 }
 
@@ -73,10 +84,15 @@ export type Page = { delivered: string[]; chunks: string[]; left: number; capped
 /** The next page of `pool` past `seen`, up to the packet's item and token budgets, numbered from `start`. An entry deleted since
  * the recall is skipped. `decorate` adds provenance to the rows it is handed before they're rendered. */
 export async function nextPage(db: Sql, p: Params, pool: string[], seen: Set<string>, candidates: number, start = 1,
-  decorate: (rows: Record<string, Row>, ids: string[]) => Promise<void> = async () => {}): Promise<Page> {
+  decorate: (rows: Record<string, Row>, ids: string[]) => Promise<void> = async () => {},
+  agentScope: AgentScope = null, filter?: EntryFilter): Promise<Page> {
   const unseen = pool.filter((id) => !seen.has(id));
   const window = unseen.slice(0, p.packetItems * 3);
-  const rows = await fetchEntries(db, window);
+  const fetched = await fetchEntries(db, window);
+  const rows: Record<string, Row> = {};
+  for (const [id, r] of Object.entries(fetched)) {
+    if (canReadEntry(agentScope, r, filter)) rows[id] = r;
+  }
   await decorate(rows, window.filter((id) => id in rows));
   const delivered: string[] = [], chunks: string[] = [];
   let used = 0;

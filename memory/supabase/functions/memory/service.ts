@@ -15,6 +15,19 @@ import { relevance, screen } from "./judge.ts";
 import { BAD_VERDICT, checkFeedback, feedbackFooter, REMIND_MAX, reminderLine, VERDICTS } from "./feedback.ts";
 import { renderTrialItem, TRIAL_CHANCES } from "./trial.ts";
 import { provenanceLines, type Viewer } from "./provenance.ts";
+import {
+  accessDeniedReason,
+  AGENT_CONTEXTS,
+  type AgentScope,
+  canReadEntry,
+  CATEGORY_RE,
+  ENTRY_CONTEXTS,
+  type EntryFilter,
+  hasFilter,
+  messageAgentMatches,
+  normalizeProjectSlug,
+  TRANSFERABILITIES,
+} from "./permissions.ts";
 
 const RID = /retrieval ([0-9a-f-]{36})/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -71,18 +84,33 @@ function itemText(line: string | null, row: Row | undefined) {
  * With `lane` and a set whose trialItems is above 0, entries that still have chances left leave the main list. The best
  * trialItems of them that the judge rates at or above trialFloor come back in `trial`, ranked by the same arm, for recall
  * to spend a chance on. Previews and the eval pass no lane, so they spend nothing and rank every entry in one list. */
-export async function rankAndPack(db: Sql, set: ParamSet, query: string, task = "", scope: string | null = null, filter = true, lane = false,
-  viewer: Viewer = null, opts: { asOf?: number | null; judge?: Judge } = {}) {
+export async function rankAndPack(
+  db: Sql,
+  set: ParamSet,
+  query: string,
+  task = "",
+  scope: string | null = null,
+  filter = true,
+  lane = false,
+  viewer: Viewer = null,
+  opts: { asOf?: number | null; judge?: Judge; agentScope?: AgentScope; entryFilter?: EntryFilter } = {},
+) {
   const p = set.params;
+  const agentScope = opts.agentScope ?? null;
+  const entryFilter = opts.entryFilter;
   const request = task ? `${task}\n${query}`.trim() : query;
-  const [armRanked, armDegraded, trace, frontier] = await ARMS[set.arm](db, request, scope || null, p);
+  const [armRanked, armDegraded, trace, frontier] = await ARMS[set.arm](db, request, scope || null, p, agentScope, entryFilter);
   const { tilted: ranked, conf: confidence, chances, relevance: rel, clock, cNow, failed } = await tilt(db, armRanked, p, opts.asOf ?? null);
   const split = lane && (p.trialItems ?? 0) > 0 && set.arm !== "index";
   const onTrial = ([id]: Ranked) => split && (chances.get(id) ?? 0) > 0;
   const settled = ranked.filter((r) => !onTrial(r)), waiting = ranked.filter(onTrial);
   const lines = ranked.every(([, , line]) => line !== null);
   const window = (list: Ranked[]) => list.slice(0, p.rowWindow).map(([id]) => id);
-  const rows = lines ? {} : await fetchEntries(db, [...window(settled), ...window(waiting)]);
+  const fetched = lines ? {} : await fetchEntries(db, [...window(settled), ...window(waiting)]);
+  const rows: Record<string, Row> = {};
+  for (const [id, row] of Object.entries(fetched)) {
+    if (canReadEntry(agentScope, row, entryFilter)) rows[id] = row;
+  }
   let candidates = settled, rejected: string[] = [], filterDegraded: string | null = null, trial: string[] = [];
   const judged = new Map<string, number>(), judgments: { id: string; text: string; p: number }[] = [];
   if (filter && ranked.length) {
@@ -140,18 +168,50 @@ export function packetText(chunks: string[], lines: boolean, degraded: string | 
  * serves its run's notes in the main list, and an HTTP recall (clyde-flow) has no way to give feedback or see a trial list.
  *
  * With depth "deep" (R29), the packet is followed by the page recall_more would give next, and the one row logs both. */
+function cleanFilter(raw?: EntryFilter): EntryFilter | undefined {
+  if (!raw) return undefined;
+  const out: EntryFilter = {};
+  if (raw.category !== undefined && raw.category !== null && raw.category !== "") {
+    const cat = String(raw.category).trim().toLowerCase();
+    if (!CATEGORY_RE.test(cat)) throw new Refused("category must be 1 to 40 lowercase letters, digits or dashes.");
+    out.category = cat;
+  }
+  if (raw.context !== undefined && raw.context !== null && raw.context !== "") {
+    const ctx = String(raw.context).trim().toLowerCase();
+    if (ctx !== "all" && ctx !== "both" && !(ENTRY_CONTEXTS as readonly string[]).includes(ctx)) {
+      throw new Refused("context must be general, work, home, hobby, personal or all.");
+    }
+    out.context = ctx === "both" ? "all" : ctx;
+  }
+  if (raw.project !== undefined && raw.project !== null && raw.project !== "") {
+    const proj = normalizeProjectSlug(raw.project);
+    if (!proj) throw new Refused("project must be a valid project slug like clyde or owner/repo.");
+    out.project = proj;
+  }
+  if (raw.transferability !== undefined && raw.transferability !== null && raw.transferability !== "") {
+    const tr = String(raw.transferability).trim().toLowerCase();
+    if (!(TRANSFERABILITIES as readonly string[]).includes(tr)) {
+      throw new Refused("transferability must be general, context, project or computer.");
+    }
+    out.transferability = tr;
+  }
+  return hasFilter(out) ? out : undefined;
+}
+
 export function recall(session: string, query: string, task = "", client: string | null = null,
-  scope: string | null = null, principal = "anyone", agent: string = agentName(client), depth: unknown = "packet") {
+  scope: string | null = null, principal = "anyone", agent: string = agentName(client), depth: unknown = "packet",
+  agentScope: AgentScope = null, entryFilter?: EntryFilter) {
   // The retrieval row logs what the recall spent at OpenAI and which unit it was, for the guardrails (R34).
-  return tallied((spent) => recallOnce(spent, session, query, task, client, scope, principal, agent, depth));
+  return tallied((spent) => recallOnce(spent, session, query, task, client, scope, principal, agent, depth, agentScope, entryFilter));
 }
 
 async function recallOnce(spent: { tokens: number }, session: string, query: string, task: string, client: string | null,
-  scope: string | null, principal: string, agent: string, depth: unknown) {
+  scope: string | null, principal: string, agent: string, depth: unknown, agentScope: AgentScope = null, rawFilter?: EntryFilter) {
   if (scope && !SCOPE_RE.test(scope)) throw new Refused(`scope ${JSON.stringify(scope)} must look like run:<id>, or be left out.`);
   if (typeof depth !== "string" || !DEPTHS.includes(depth)) {
     throw new Refused(`depth must be "packet" (the default) or "deep" (the packet and the next page), not ${JSON.stringify(depth)}.`);
   }
+  const entryFilter = cleanFilter(rawFilter);
   query = redactText(query)[0];
   task = redactText(task)[0];
   const started = performance.now();
@@ -160,14 +220,14 @@ async function recallOnce(spent: { tokens: number }, session: string, query: str
   const mcp = client !== "http";
   const viewer = { device: principal, agent };
   const { ranked, degraded, delivered: packed, chunks, lines, rejected, trial, rows, frontier, features: logged, cNow, judgments } =
-    await rankAndPack(sql, set, query, task, scope, true, mcp && !scope, viewer);
+    await rankAndPack(sql, set, query, task, scope, true, mcp && !scope, viewer, { agentScope, entryFilter });
   let delivered = packed, deeper = "";
   const rid = crypto.randomUUID();
   if (depth === "deep") {
     const request = task ? `${task}\n${query}`.trim() : query;
     const candidates = ranked.map(([id]) => id);
-    const pool = await deepPool(sql, set.params, request, candidates, frontier ?? null);
-    const page = await nextPage(sql, set.params, pool, new Set([...packed, ...trial]), candidates.length, packed.length + 1, decorate(viewer));
+    const pool = await deepPool(sql, set.params, request, candidates, frontier ?? null, agentScope, entryFilter);
+    const page = await nextPage(sql, set.params, pool, new Set([...packed, ...trial]), candidates.length, packed.length + 1, decorate(viewer), agentScope, entryFilter);
     delivered = [...packed, ...page.delivered];
     deeper = `\n\n${PAGE_HEAD}\n\n${page.chunks.length ? page.chunks.join("\n\n") + "\n\n" : ""}${closingLine(page, rid, set.params)}`;
   }
@@ -184,6 +244,7 @@ async function recallOnce(spent: { tokens: number }, session: string, query: str
     const text = mcp ? `${packet}\n${feedbackFooter(rid)}` : packet;
     // c_now is the clock reading every feature is as of, so a replay rebuilds them from events alone.
     const context: Row = { param_set: set.id, c_now: cNow, candidates: logged };
+    if (entryFilter) context.filter = entryFilter;
     // Best-first spreading's frontier (R44), for recall_more to resume the same queue from.
     if (frontier?.length) context.frontier = frontier.map(([id, strength]) => ({ id, strength }));
     if (shown.length) context.trial = shown.map((id) => ({ id, chance: TRIAL_CHANCES - left.get(id)! }));
@@ -197,7 +258,7 @@ async function recallOnce(spent: { tokens: number }, session: string, query: str
   });
   // Shadow sets (R34) rank the same request after the response is out, as of the same clock reading. They never tick the
   // clock and never change this packet.
-  background(runShadows({ retrieval: rid, query, task, scope, cNow, set: set.id, judgments, viewer }));
+  background(runShadows({ retrieval: rid, query, task, scope, cNow, set: set.id, judgments, viewer, agentScope, entryFilter }));
   return `retrieval ${rid}\n\n${text}`;
 }
 
@@ -209,7 +270,7 @@ const decorate = (viewer: Viewer) => async (rows: Record<string, Row>, ids: stri
 /** recall_more (R29): the next page past a recall and the pages before it, for the MCP session that made the recall. It is logged as
  * a child retrieval with the recall's arm, query, task and scope, so feedback on it moves what it showed like a packet's. A scope
  * given here is ignored: the page comes from the ranking the recall made. Asks no judge, embeds nothing and spends no trial chance. */
-export async function recallMore(session: string, retrievalId: string, viewer: Viewer = null) {
+export async function recallMore(session: string, retrievalId: string, viewer: Viewer = null, agentScope: AgentScope = null) {
   const started = performance.now();
   if (!UUID.test(retrievalId)) return `No retrieval ${retrievalId}.`;
   // The recall and every page between it and this one. Each shows what the ones before it didn't.
@@ -232,9 +293,10 @@ export async function recallMore(session: string, retrievalId: string, viewer: V
   const frontier: Frontier | null = Array.isArray(root.context?.frontier)
     ? root.context.frontier.map((f: { id: string; strength: number }) => [f.id, f.strength])
     : null;
+  const entryFilter = (root.context?.filter ?? undefined) as EntryFilter | undefined;
   const request = root.task ? `${root.task}\n${root.query}`.trim() : root.query;
-  const pool = await deepPool(sql, set.params, request, candidates, frontier);
-  const page = await nextPage(sql, set.params, pool, seen, candidates.length, 1, decorate(viewer));
+  const pool = await deepPool(sql, set.params, request, candidates, frontier, agentScope, entryFilter);
+  const page = await nextPage(sql, set.params, pool, seen, candidates.length, 1, decorate(viewer), agentScope, entryFilter);
   // The ranking was the recall's, so a recall that ranked without vectors pages without them too. A page judges nothing.
   const degraded = String(root.degraded ?? "").split("; ").filter((d) => d.startsWith("embed-failed")).join("; ") || null;
   const rid = crypto.randomUUID();
@@ -251,29 +313,42 @@ export async function recallMore(session: string, retrievalId: string, viewer: V
 }
 
 /** The entry rendered for an agent, with its links and blobs. null when there is no such entry. */
-export async function getEntry(session: string, id: string, viewer: Viewer = null): Promise<string | null> {
+export async function getEntry(session: string, id: string, viewer: Viewer = null, agentScope: AgentScope = null): Promise<string | null> {
   const rows = await fetchEntries(sql, [id]);
   if (!(id in rows)) return null;
+  if (!canReadEntry(agentScope, rows[id])) throw new Refused(accessDeniedReason(agentScope, rows[id]));
   const provenance = (await provenanceLines(sql, [id], viewer)).get(id);
   if (provenance) rows[id].provenance = provenance;
   const links = await sql`select 'to' as dir, l.type, l.dst as other, e.title from memory.link l
-      join memory.entry e on e.id = l.dst where l.src = ${id}
-    union all select 'from', l.type, l.src, e.title from memory.link l join memory.entry e on e.id = l.src where l.dst = ${id}
+      join memory.entry e on e.owner_id = l.owner_id and e.id = l.dst where l.src = ${id}
+    union all select 'from', l.type, l.src, e.title from memory.link l join memory.entry e on e.owner_id = l.owner_id and e.id = l.src where l.dst = ${id}
     order by 1, 2, 3`;
   const blobs = await sql`select x.name, x.sha256, x.kind, b.media_type, b.size from memory.entry_blob x
-    join memory.blob b on b.sha256 = x.sha256 where x.entry_id = ${id} order by x.name`;
+    join memory.blob b on b.owner_id = x.owner_id and b.sha256 = x.sha256 where x.entry_id = ${id} order by x.name`;
   await sql`insert into memory.event (session_id, event, payload) values (${session}, 'get_entry', ${sql.json({ entry_id: id })})`;
   return renderEntry(rows[id], links, blobs);
 }
 
 /** The blob and whether some public entry attaches it. A blob only private entries reach stays private, and so does
  * one no entry reaches any more. null when memory has no such blob. */
-export async function readBlob(sha: string): Promise<Row | null> {
-  const [row] = await sql`select b.media_type, b.size, b.content, b.stored,
-      coalesce(bool_or(e.sensitivity <> 'private'), false) as public
-    from memory.blob b left join memory.entry_blob x on x.sha256 = b.sha256 left join memory.entry e on e.id = x.entry_id
-    where b.sha256 = ${sha.trim().toLowerCase()} group by b.owner_id, b.sha256`;
-  return row ?? null;
+export async function readBlob(sha: string, agentScope: AgentScope = null): Promise<Row | null> {
+  const clean = sha.trim().toLowerCase();
+  const [blob] = await sql`select owner_id, sha256, media_type, size, content, stored
+    from memory.blob where owner_id = memory.owner_default() and sha256 = ${clean}`;
+  if (!blob) return null;
+  const entries = await sql`select e.sensitivity, e.category, e.context, e.transferability, e.project_slug, e.computer, e.pattern, e.scope
+    from memory.entry_blob x
+    join memory.entry e on e.owner_id = x.owner_id and e.id = x.entry_id
+    where x.owner_id = ${blob.owner_id} and x.sha256 = ${clean}`;
+  const nonPrivate = entries.filter((e) => e.sensitivity !== "private");
+  const isPublic = nonPrivate.length > 0;
+  const permitted = isPublic && nonPrivate.some((e) => canReadEntry(agentScope, e));
+  return {
+    ...blob,
+    public: isPublic,
+    permitted,
+    deniedReason: isPublic && !permitted ? accessDeniedReason(agentScope, nonPrivate[0]) : null,
+  };
 }
 
 /** upload_blob: a URL to PUT a big file to. Records what the device declared, so remember can refuse a file that isn't it.
@@ -309,11 +384,12 @@ export const notInBackup = (sha: string) => `Blob ${sha} wasn't in the backup.`;
 
 /** A blob's text, one page of characters at a time, with the call for the next page. A blob in Storage that isn't text
  * comes back as a link that downloads it for 10 minutes. */
-export async function getBlob(sha: string, offset = 0, limit = 20000) {
+export async function getBlob(sha: string, offset = 0, limit = 20000, agentScope: AgentScope = null) {
   sha = sha.trim().toLowerCase();
-  const row = await readBlob(sha);
+  const row = await readBlob(sha, agentScope);
   if (!row) return `No blob ${sha}.`;
   if (!row.public) return PRIVATE_BLOB;
+  if (!row.permitted) throw new Refused(row.deniedReason ?? `Access denied: blob ${sha} is outside ${agentScope?.name ?? "this agent"}'s permissions.`);
   let bytes: Uint8Array | null;
   if (row.stored === "storage") {
     if (!store.storageOn()) return notInBackup(sha);
@@ -391,16 +467,52 @@ export function noNul(value: any): any {
 
 /** Store a lifecycle hook payload, with the agent memory-hook names. A recall's PostToolUse also ties the MCP session
  * to the client's session id. */
-export async function hook(event: string, payload: Row, agent: string | null = null) {
+async function syncRepoToAgent(sessionId: string | null, agent: string | null, principal: string | null, cwd: string | null) {
+  if (!cwd) return;
+  const [{ repo }] = await sql`select nullif(lower(memory.repo_of(${cwd}::text)), '') as repo`;
+  if (!repo) return;
+  let boundAgent: string | null = null;
+  let boundOwner: string | null = null;
+  if (sessionId) {
+    const [bound] = await sql`select c.owner_id, c.agent from memory.mcp_client c where c.session_id = ${sessionId} and c.agent is not null`;
+    boundAgent = bound?.agent ?? null;
+    boundOwner = bound?.owner_id ?? null;
+  } else if (agent && principal) {
+    const rows = await sql`select distinct a.owner_id, a.name from memory.agent a
+      where a.name = ${agent} or exists (select 1 from memory.agent_binding b
+        where b.owner_id = a.owner_id and b.principal = ${principal} and b.agent = a.name and memory.agent_name(b.client) = ${agent})`;
+    if (rows.length === 1) {
+      boundAgent = rows[0].name;
+      boundOwner = rows[0].owner_id;
+    }
+  }
+  if (!boundAgent || !boundOwner) return;
+  await sql`update memory.agent set projects = array_append(projects, ${repo}::text), last_seen = now()
+    where owner_id = ${boundOwner} and name = ${boundAgent}
+      and not strict_projects and not (${repo}::text = any(projects))
+      and coalesce(array_length(projects, 1), 0) < 20`;
+  if (sessionId) {
+    await sql`update memory.mcp_client c set session_projects = array_append(coalesce(c.session_projects, '{}'), ${repo}::text)
+      from memory.agent a
+      where c.owner_id = a.owner_id and c.session_id = ${sessionId} and c.agent = a.name and not a.strict_projects
+        and not (${repo}::text = any(coalesce(c.session_projects, '{}')))
+        and coalesce(array_length(c.session_projects, 1), 0) < 20`;
+  }
+}
+
+export async function hook(event: string, payload: Row, agent: string | null = null, principal: string | null = null) {
   event = noNul(event);
   payload = redact(noNul(payload));
   const sessionId = typeof payload.session_id === "string" ? payload.session_id : null;
   await sql`insert into memory.event (session_id, event, payload, agent) values (${sessionId}, ${event}, ${sql.json(payload)}, ${agent})`;
+  const cwd = typeof payload.cwd === "string" && payload.cwd.trim() ? payload.cwd.trim() : null;
+  if (event === "SessionStart" && cwd) {
+    await syncRepoToAgent(null, agent, principal, cwd);
+  }
   if (event === "PostToolUse" && String(payload.tool_name ?? "").endsWith("recall") && sessionId) {
     const m = RID.exec(JSON.stringify(payload.tool_response ?? ""));
     if (m) {
       // The folder the client reports is the MCP session's, so a note it writes records where it was written.
-      const cwd = typeof payload.cwd === "string" && payload.cwd.trim() ? payload.cwd.trim() : null;
       const [tied] = await sql`update memory.mcp_session set claude_session_id = ${sessionId},
           cwd = coalesce(${cwd}::text, cwd), repo = coalesce(memory.repo_of(${cwd}::text), repo),
           cwd_from = case when ${cwd}::text is not null then 'hook' else cwd_from end
@@ -409,6 +521,7 @@ export async function hook(event: string, payload: Row, agent: string | null = n
       if (tied && cwd) {
         await sql`update memory.entry_provenance set cwd = ${cwd}::text, repo = memory.repo_of(${cwd}::text)
           where session = ${tied.id} and cwd is null`;
+        await syncRepoToAgent(tied.id, agent, principal, cwd);
       }
     }
   }
@@ -428,9 +541,29 @@ const AGENT = /^[a-z0-9_-]{1,40}$/;
 // A delivery that isn't acknowledged comes back after this long, up to three times.
 const REDELIVER_MINUTES = 30;
 
-export async function postMessage(db: Sql, sender: string, to: string, body: string) {
+export async function postMessage(
+  db: Sql,
+  sender: string,
+  to: string,
+  body: string,
+  opts?: { context?: unknown; project?: unknown },
+) {
   to = to.trim().toLowerCase();
   body = body.trim();
+  let targetContext: string | null = null;
+  if (opts?.context !== undefined && opts?.context !== null && opts?.context !== "") {
+    const c = typeof opts.context === "string" ? opts.context.trim().toLowerCase() : "";
+    if (!(AGENT_CONTEXTS as readonly string[]).includes(c)) {
+      return "context must be work, home, hobby, personal or both.";
+    }
+    targetContext = c;
+  }
+  let targetProject: string | null = null;
+  if (opts?.project !== undefined && opts?.project !== null && opts?.project !== "") {
+    const p = normalizeProjectSlug(opts.project);
+    if (!p) return "project must be a valid project slug like clyde or owner/repo.";
+    targetProject = p;
+  }
   // claude, codex and all, or any other agent memory has seen in the last 30 days.
   const known = AGENTS.includes(to) ||
     (AGENT.test(to) && (await db`select exists (select 1 from memory.agent_names() a where a = ${to}::text) as known`)[0].known);
@@ -448,16 +581,33 @@ export async function postMessage(db: Sql, sender: string, to: string, body: str
     }
     if (why) return `Not posted: ${why}`;
   }
-  // One statement, so a message never exists without its deliveries. All fans out to registered agents and the claude and
-  // codex families seen lately (R47), never an unregistered client name, and never the sender. When that's no one, nothing
-  // is posted.
-  const [row] = await db`with r as (
-      select a as name from memory.board_agents() a where ${to}::text = 'all' and a <> ${sender}::text
-      union select ${to}::text where ${to}::text <> 'all'),
-    m as (insert into memory.message (sender, recipient, body)
-      select ${sender}::text, ${to}::text, ${body}::text where exists (select 1 from r) returning id),
-    d as (insert into memory.message_delivery (message_id, recipient) select m.id, r.name from m, r returning 1)
-    select id from m`;
+  const scopedAll = to === "all" && ((targetContext && targetContext !== "both") || targetProject !== null);
+  let row: Row | undefined;
+  if (scopedAll) {
+    const candidates = await db`select name, context, projects from memory.agent
+      where owner_id = memory.owner_default() and last_seen > now() - interval '30 days' and name <> ${sender}::text`;
+    const names = candidates
+      .filter((a) => messageAgentMatches({ name: a.name, context: a.context, projects: a.projects ?? [] }, targetContext, targetProject))
+      .map((a) => a.name as string);
+    if (names.length) {
+      [row] = await db`with m as (insert into memory.message (sender, recipient, body)
+          values (${sender}::text, 'all', ${body}::text) returning owner_id, id),
+        d as (insert into memory.message_delivery (owner_id, message_id, recipient)
+          select m.owner_id, m.id, r.name from m, unnest(${names}::text[]) as r(name) returning 1)
+        select id from m`;
+    }
+  } else {
+    // One statement, so a message never exists without its deliveries. All fans out to registered agents and the claude and
+    // codex families seen lately (R47), never an unregistered client name, and never the sender. When that's no one, nothing
+    // is posted.
+    [row] = await db`with r as (
+        select a as name from memory.board_agents() a where ${to}::text = 'all' and a <> ${sender}::text
+        union select ${to}::text where ${to}::text <> 'all'),
+      m as (insert into memory.message (sender, recipient, body)
+        select ${sender}::text, ${to}::text, ${body}::text where exists (select 1 from r) returning id),
+      d as (insert into memory.message_delivery (message_id, recipient) select m.id, r.name from m, r returning 1)
+      select id from m`;
+  }
   if (!row) return "No other agent has been seen in the last 30 days, so nobody got it.";
   return `Posted message ${row.id} to ${to}.`;
 }

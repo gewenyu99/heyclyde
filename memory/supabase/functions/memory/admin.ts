@@ -8,7 +8,7 @@ import { config } from "./config.ts";
 import { type Row, type Sql, sql } from "./db.ts";
 import { contentSha, entryText, sha256, syncEmbeddings } from "./embed.ts";
 import { forgetParamSet, type Params, ParamError, paramSet, resolveParams } from "./params.ts";
-import { ARMS, hybridComponents } from "./search.ts";
+import { ARMS, forgetGraph, hybridComponents } from "./search.ts";
 import { clocked, finalScore } from "./features.ts";
 import { MAX_SHADOWS } from "./shadow.ts";
 import * as service from "./service.ts";
@@ -16,6 +16,7 @@ import { redact, redactText } from "./redact.ts";
 import { screen } from "./judge.ts";
 import { MIN_QUOTE, squash, verifyEvidence } from "./evidence.ts";
 import { canonical, MEDIA_TYPE_RE, remember, Refused } from "./write.ts";
+import { CATEGORY_RE, ENTRY_CONTEXTS, normalizeComputer, normalizeProjectSlug, TRANSFERABILITIES } from "./permissions.ts";
 import { forget as forgetEntitlements } from "./billing/entitlement.ts";
 import { SECRETS as BILLING_SECRETS } from "./billing/index.ts";
 
@@ -41,9 +42,9 @@ export const SENSITIVITIES = ["normal", "private", "confidential"];
 const EVIDENCE_KINDS = ["quote", "assistant", "summary", "memory"];
 const AGENTS = ["claude", "codex"];
 const FIELDS = ["title", "body", "pattern", "authority", "scope", "sensitivity", "lang", "valid_from", "source_id",
-  "evidence_kind", "evidence", "project"];
+  "evidence_kind", "evidence", "project", "category", "context", "transferability", "project_slug", "computer"];
 const REQUIRED = ["id", "title", "body", "pattern", "authority", "scope"];
-const NULLABLE = ["valid_from", "source_id", "evidence_kind", "evidence", "project"];
+const NULLABLE = ["valid_from", "source_id", "evidence_kind", "evidence", "project", "project_slug", "computer"];
 const HIDDEN = ["tsv_en", "search_text"];
 // The most characters a text field takes. Anything not named takes 200.
 const MAX_LEN: Record<string, number> = { title: 500, body: 50000, evidence: 50000, note: 4000, query: 4000, task: 4000 };
@@ -194,9 +195,11 @@ const STATES: Record<string, string | null> = { current: `not ${SUPERSEDED}`, su
 
 async function entries(p: Row) {
   const clauses: any[] = STATES[p.superseded] ? [u(STATES[p.superseded]!)] : [];
-  for (const col of ["project", "authority", "pattern", "sensitivity"]) {
+  for (const col of ["project", "authority", "pattern", "sensitivity", "context", "transferability"]) {
     if (p[col]) clauses.push(sql`${u("e." + col)} = ${p[col]}`);
   }
+  if (p.category) clauses.push(sql`e.category = ${String(p.category).trim().toLowerCase()}`);
+  if (p.project_slug) clauses.push(sql`lower(e.project_slug) = ${String(p.project_slug).trim().toLowerCase()}`);
   // id, title and body only. The search text also carries the project's title, so a word from it would match every
   // entry in the project. ilike covers 中文 substrings too.
   if (p.q) {
@@ -205,6 +208,7 @@ async function entries(p: Row) {
       or to_tsvector('english', concat_ws(' ', e.title, e.body)) @@ plainto_tsquery('english', ${p.q}))`);
   }
   const query = sql`select e.id, e.title, e.pattern, e.authority, e.scope, e.sensitivity, e.lang, e.valid_from, e.project,
+      e.category, e.context, e.transferability, e.project_slug, e.computer,
       p.title as project_title, ${u(SUPERSEDED_BY)} as superseded_by,
       (select count(*) from memory.link l where l.src = e.id or l.dst = e.id) as links,
       (select count(*) from memory.retrieval r where r.delivered ? e.id) as delivered,
@@ -258,6 +262,11 @@ const VALID: Record<string, [(v: string) => boolean, string]> = {
   lang: [(v) => LANG.test(v), "lang must be a language code like en or zh."],
   valid_from: [isDate, "valid_from must be a date like 2026-10-10."],
   evidence_kind: [(v) => EVIDENCE_KINDS.includes(v), "evidence_kind must be quote, assistant, summary or memory."],
+  category: [(v) => CATEGORY_RE.test(v.trim().toLowerCase()), "category must be 1 to 40 lowercase letters, digits or dashes."],
+  context: [(v) => (ENTRY_CONTEXTS as readonly string[]).includes(v.trim().toLowerCase()), "context must be general, work, home, hobby or personal."],
+  transferability: [(v) => (TRANSFERABILITIES as readonly string[]).includes(v.trim().toLowerCase()), "transferability must be general, context, project or computer."],
+  project_slug: [(v) => Boolean(normalizeProjectSlug(v)), "project_slug must be a valid project slug."],
+  computer: [(v) => Boolean(normalizeComputer(v)), "computer must be 1 to 64 characters."],
 };
 
 function shortEnough(k: string, v: string) {
@@ -277,7 +286,11 @@ async function fields(data: Row) {
     shortEnough(k, v);
     const [ok, error] = VALID[k] ?? [(x: string) => Boolean(x), `${k} cannot be empty.`];
     if (!ok(v)) throw new ApiError(422, error);
-    out[k] = redactText(k === "title" ? v.trim() : v)[0];
+    const cleaned = ["category", "context", "transferability"].includes(k) ? v.trim().toLowerCase()
+      : k === "project_slug" ? (normalizeProjectSlug(v) ?? v.trim().toLowerCase())
+      : k === "computer" ? (normalizeComputer(v) ?? v.trim())
+      : k === "title" ? v.trim() : v;
+    out[k] = redactText(cleaned)[0];
   }
   if ("evidence" in out) out.evidence_sha256 = out.evidence ? await sha256(out.evidence) : null;
   return out;
@@ -433,6 +446,7 @@ async function addLink(src: string, dst: unknown, type: unknown) {
     if (!ins.length) throw new ApiError(409, `${src} already has a ${l.type} link to ${l.dst}.`);
     if (l.type === "supersedes") await audit(tx, "entry.supersede", `entry:${l.dst}`, null, l);
     else await audit(tx, "link.create", `entry:${src}`, null, l);
+    forgetGraph();
     return l;
   });
 }
@@ -442,6 +456,7 @@ async function deleteLink(src: string, type: string, dst: string) {
     const [l] = await tx`delete from memory.link where src = ${src} and dst = ${dst} and type = ${type} returning src, dst, type`;
     if (!l) throw new ApiError(404, `No ${type} link from ${src} to ${dst}.`);
     await audit(tx, "link.delete", `entry:${src}`, l, null);
+    forgetGraph();
     return { deleted: l };
   });
 }
@@ -458,6 +473,7 @@ async function supersede(id: string, by: unknown) {
       throw new ApiError(409, `${by} already supersedes ${id}.`);
     }
     await audit(tx, "entry.supersede", `entry:${id}`, null, { src: by, dst: id, type: "supersedes" });
+    forgetGraph();
     return await entry(tx, id);
   });
 }
@@ -1036,7 +1052,7 @@ async function importRows(req: Request) {
       const cols = [...new Set(rows.flatMap((r) => Object.keys(r)))];
       for (let i = 0; i < rows.length; i += 500) {
         const chunk = rows.slice(i, i + 500).map((r) =>
-          Object.fromEntries(cols.map((c) => [c, r[c] == null ? null : JSONB.has(c) && !(table === "agent" && c === "context") ? tx.json(r[c]) : r[c]]))
+          Object.fromEntries(cols.map((c) => [c, r[c] == null ? null : JSONB.has(c) && (c !== "context" || table === "retrieval") ? tx.json(r[c]) : r[c]]))
         );
         const done = await tx`insert into ${tx("memory." + table)} ${tx(chunk, ...cols)} on conflict do nothing returning 1`;
         counts[table] = (counts[table] ?? 0) + done.length;
@@ -1564,6 +1580,8 @@ const ROUTES: Route[] = [
   ["GET", /^\/entries$/, 200, (_r, _m, q) => entries({
     q: q.text("q"), project: q.text("project"), authority: q.choice("authority", AUTHORITIES), pattern: q.text("pattern"),
     sensitivity: q.choice("sensitivity", SENSITIVITIES), superseded: q.choice("superseded", Object.keys(STATES), "current"),
+    category: q.text("category"), context: q.choice("context", [...ENTRY_CONTEXTS]),
+    transferability: q.choice("transferability", [...TRANSFERABILITIES]), project_slug: q.text("project_slug"),
     sort: q.choice("sort", Object.keys(ENTRY_SORTS), "id"), ...q.page(),
   })],
   ["POST", /^\/entries$/, 201, async (r) => createEntry(await body(r))],

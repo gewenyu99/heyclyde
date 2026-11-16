@@ -12,6 +12,14 @@ import { CARD_KEY as CARD, readUiResource, requestWantsUi, UI_EXTENSION, uiResou
 import { type Badge, cardData } from "./ui/data.ts";
 import { clientStatus, installerNote, SERVER_VERSION } from "./version.ts";
 import { Refused, remember } from "./write.ts";
+import {
+  AGENT_CONTEXTS,
+  AGENT_TYPES,
+  type AgentScope,
+  type EntryFilter,
+  normalizeComputer,
+  normalizeProjectSlug,
+} from "./permissions.ts";
 
 export const MAX_MCP_BODY = 12 * 1024 * 1024;
 const RID = /^retrieval ([0-9a-f-]{36})/;
@@ -19,19 +27,19 @@ const VERSIONS =["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 // R53 (#58): the stores' reviews read this text. It says what each tool does and never tells the model what to call or
 // when. The recall-first and feedback guidance lives in the Claude Code plugin's skill (plugins/memory/skills/clyde).
 export const INSTRUCTIONS = "Clyde keeps one set of notes for all of a person's AI agents: what one agent learns, every other agent can " +
-  "recall. register_agent names the agent once per token and app (name, context work, personal or both, surface, " +
-  "description), so its notes and messages carry that name. recall searches the notes: decisions, preferences, " +
-  "observations and past reactions. Each result packet starts with a retrieval id. recall_more takes that id and returns " +
-  "the next page, dormant and replaced notes included. feedback takes the same id and a verdict (used, irrelevant or " +
-  "wrong) for each result shown, those under On trial included, or nothing_useful, and ranking learns from it. remember " +
-  "writes a note: it needs only pattern, title, body and evidence. A note stays under 500 characters, with the details " +
-  "in artifacts: [{name, kind, text or base64 or sha256}]. recall lists a note's artifacts by name and kind, get_blob " +
-  "reads one, and upload_blob takes a file too big to send inline. Agents leave each other messages: check_messages " +
-  "lists them with ids, ack_messages marks them handled, and post_message sends one. The quest board hands work between " +
-  "agents: post_quest puts a task up with a title, a short brief, done_when (how anyone can tell it's finished) and the " +
-  "details in artifacts. list_quests shows the open quests for a context. claim_quest takes one under a 2-hour lease, so " +
-  "no other agent works on it. update_quest reports progress and renews the lease, and a lease that runs out puts the " +
-  "quest back on the board. complete_quest closes a quest with the evidence and the id of the note the work produced. " +
+  "recall. register_agent names the agent once per token and app (name, context work, home, hobby, personal or both, surface, " +
+  "description, plus optional projects, computer, type, strict_projects), so its notes and messages carry that name. recall searches " +
+  "the notes: decisions, preferences, observations and past reactions, with optional category, context, project or transferability " +
+  "filters. Each result packet starts with a retrieval id. recall_more takes that id and returns the next page, dormant and " +
+  "replaced notes included. feedback takes the same id and a verdict (used, irrelevant or wrong) for each result shown, those under " +
+  "On trial included, or nothing_useful, and ranking learns from it. remember writes a note: it needs only pattern, title, body " +
+  "and evidence. A note stays under 500 characters, with the details in artifacts: [{name, kind, text or base64 or sha256}]. recall " +
+  "lists a note's artifacts by name and kind, get_blob reads one, and upload_blob takes a file too big to send inline. Agents leave " +
+  "each other messages: check_messages lists them with ids, ack_messages marks them handled, and post_message sends one. The quest " +
+  "board hands work between agents: post_quest puts a task up with a title, a short brief, done_when (how anyone can tell it's " +
+  "finished) and the details in artifacts. list_quests shows the open quests for a context and projects. claim_quest takes one " +
+  "under a 2-hour lease, so no other agent works on it. update_quest reports progress and renews the lease, and a lease that runs out " +
+  "puts the quest back on the board. complete_quest closes a quest with the evidence and the id of the note the work produced. " +
   "abandon_quest gives a claimed quest back, or withdraws a posted one. Done quests stay as history that recall finds.";
 
 const str = (description: string) => ({ type: "string", description });
@@ -51,14 +59,22 @@ export const TOOLS = [
     description: "Names the agent using this token and app, once. Clyde keeps it for this token and app, so later sessions " +
       "start registered, and the agent's notes and messages carry its name. Until then, each reply carries a reminder.\n\n" +
       "name: a short lowercase handle, like clyde-work or journeymate-ios. An agent that has a name reuses it.\n" +
-      "context: work, personal or both: the part of the person's life the agent works on.\n" +
+      "context: work, home, hobby, personal or both: the part of the person's life the agent works on.\n" +
       "surface: where the agent runs, like claude-code, claude.ai, cowork, codex or a script.\n" +
-      "description: one or two sentences on what the agent does.",
+      "description: one or two sentences on what the agent does.\n" +
+      "projects: optional list of project slugs or owner/repo names the agent works on.\n" +
+      "computer: optional machine name the agent runs on.\n" +
+      "type: optional role (coding, exploration, research, review, ops, assistant or other).\n" +
+      "strict_projects: optional boolean; true locks project-scoped reads to the declared projects.",
     inputSchema: {
       type: "object", required: ["name", "context", "surface", "description"],
       properties: {
-        name: str("Lowercase handle, letters, digits and dashes"), context: str("work, personal or both"),
+        name: str("Lowercase handle, letters, digits and dashes"), context: str("work, home, hobby, personal or both"),
         surface: str("Where the agent runs"), description: str("What the agent does"),
+        projects: { type: "array", items: { type: "string" }, description: "Project slugs or owner/repo names" },
+        computer: str("Computer or machine name (1-64 characters)"),
+        type: { type: "string", enum: [...AGENT_TYPES], description: "Agent type: coding, exploration, research, review, ops, assistant or other" },
+        strict_projects: { type: "boolean", description: "True to strictly limit project-scoped reads to declared projects" },
       },
     },
   },
@@ -70,6 +86,7 @@ export const TOOLS = [
       "task: optional one-line description of the current work, to sharpen the search.\n" +
       "scope: optional run scope like run:abc. That run's notes rank first. Other runs' notes are searched too.\n" +
       "depth: optional, packet (the default) or deep, which adds the page recall_more would give next.\n" +
+      "category, context, project, transferability: optional filters to narrow results within permitted scope.\n" +
       "Results start with a retrieval id, which recall_more and feedback take. feedback on a recall tells Clyde which " +
       "results helped, so ranking learns what to keep.",
     inputSchema: {
@@ -77,6 +94,10 @@ export const TOOLS = [
       properties: {
         query: str("What to find"), task: str("The current work"), scope: str("run:<id>"),
         depth: str("packet (default) or deep: the packet and the next page past it, in one request"),
+        category: str("Optional category filter, e.g. architecture, billing, style, preferences"),
+        context: str("Optional realm filter: general, work, home, hobby, personal or all"),
+        project: str("Optional project slug filter, e.g. clyde or owner/repo"),
+        transferability: str("Optional transferability filter: general, context, project or computer"),
       },
     },
   },
@@ -160,6 +181,11 @@ export const TOOLS = [
         artifacts: { type: "array", items: { type: "object" }, description: "[{name, kind, text | base64 | sha256}]" },
         blobs: { type: "array", items: { type: "object" }, description: "Same as artifacts" },
         long: { type: "boolean", description: "Allow a body past 500 characters" },
+        category: str("Optional category slug (1-40 lowercase chars, e.g. architecture, billing, style)"),
+        context: str("Optional realm: general, work, home, hobby or personal"),
+        transferability: str("Optional transferability: general, context, project or computer"),
+        project_slug: str("Optional project slug (e.g. clyde or owner/repo)"),
+        computer: str("Optional computer name (1-64 characters)"),
       },
     },
   },
@@ -192,10 +218,17 @@ export const TOOLS = [
     name: "post_message",
     ...hints("Post message", false, false),
     description: "Leaves a message for the person's other agents. to: claude, codex, all, or another agent Clyde has seen in " +
-      "the last 30 days. all reaches the registered agents and claude and codex. They see it at their next check or prompt. " +
-      "A message to all that no other agent could receive isn't posted. Work another agent should pick up goes on the quest " +
-      "board, with post_quest.",
-    inputSchema: { type: "object", required: ["to", "body"], properties: { to: str("claude, codex, all or another agent's name"), body: str("The message") } },
+      "the last 30 days. all reaches the registered agents and claude and codex (optionally filtered by context and project). " +
+      "They see it at their next check or prompt. A message to all that no other agent could receive isn't posted. Work " +
+      "another agent should pick up goes on the quest board, with post_quest.",
+    inputSchema: {
+      type: "object", required: ["to", "body"],
+      properties: {
+        to: str("claude, codex, all or another agent's name"), body: str("The message"),
+        context: str("Optional realm filter when to='all': work, home, hobby, personal or both"),
+        project: str("Optional project slug filter when to='all'"),
+      },
+    },
   },
   {
     name: "check_messages",
@@ -224,8 +257,9 @@ export const TOOLS = [
       "done_when: one line any agent can check to tell the quest is finished, up to 300 characters.\n" +
       "tags: up to 8 lowercase words.\n" +
       "priority: high, normal (default) or low.\n" +
-      "context: work, personal or both. Default: the agent's registered context.\n" +
+      "context: work, home, hobby, personal or both. Default: the agent's registered context.\n" +
       "for: who may claim it: any (default), claude, codex, or one agent's name.\n" +
+      "project, computer, agent_type: optional restrictions on who can see and claim this quest.\n" +
       "artifacts: [{name, sha256}] of files Clyde already holds, like a plan saved with remember. get_entry lists them.\n" +
       "Returns the quest's id. Every agent sees it at session start and in list_quests.",
     inputSchema: {
@@ -234,8 +268,10 @@ export const TOOLS = [
         title: str("Up to 120 characters"), brief: str("What to do and why, up to 500 characters"),
         done_when: str("How anyone can tell it's finished, up to 300 characters"),
         tags: { type: "array", items: { type: "string" }, description: "Up to 8 lowercase words" },
-        priority: str("high, normal (default) or low"), context: str("work, personal or both. Default: the agent's own"),
+        priority: str("high, normal (default) or low"), context: str("work, home, hobby, personal or both. Default: the agent's own"),
         for: str("any (default), claude, codex, or an agent's name"),
+        project: str("Optional project slug"), computer: str("Optional computer restriction"),
+        agent_type: { type: "string", enum: [...AGENT_TYPES], description: "Optional agent type restriction" },
         artifacts: { type: "array", items: { type: "object" }, description: HELD },
       },
     },
@@ -246,12 +282,14 @@ export const TOOLS = [
     description: "Reads the quest board. By default, the open quests this agent may claim in its context, high priority first.\n\n" +
       "show: open (default), mine (quests this agent posted or claimed), done (finished, with their evidence and entries) or all.\n" +
       "tag: only quests with this tag.\n" +
-      "context: work, personal, both or all. Default: the agent's registered context, else all.\n" +
+      "context: work, home, hobby, personal, both or all. Default: the agent's registered context, else all.\n" +
+      "project: optional project slug filter.\n" +
       "limit: how many, 1 to 50, default 20.",
     inputSchema: {
       type: "object",
       properties: {
-        show: str("open (default), mine, done or all"), tag: str("One tag"), context: str("work, personal, both or all"),
+        show: str("open (default), mine, done or all"), tag: str("One tag"), context: str("work, home, hobby, personal, both or all"),
+        project: str("Optional project slug filter"),
         limit: int("1 to 50, default 20"),
       },
     },
@@ -328,20 +366,39 @@ function installNote(who: Principal) {
 }
 
 /** The profile a session is registered as, or null. */
-type Profile = { name: string; context: string; surface: string };
+type Profile = {
+  name: string;
+  context: string;
+  surface: string;
+  computer: string | null;
+  projects: string[];
+  agent_type: string;
+  strict_projects: boolean;
+};
 type Call = {
-  session: string; client: string | null; agent: Profile | null; principal: string; args: Record<string, any>; note: string;
-  entitlement?: Verdict;
+  session: string; client: string | null; agent: Profile | null; sessionRepo: string | null;
+  principal: string; args: Record<string, any>; note: string; entitlement?: Verdict;
 };
 const s = (v: unknown, fallback = "") => typeof v === "string" ? v : fallback;
+const scopeOf = (c: Pick<Call, "agent" | "sessionRepo" | "principal">): AgentScope =>
+  c.agent ? {
+    name: c.agent.name,
+    context: c.agent.context,
+    computer: c.agent.computer,
+    projects: c.agent.projects,
+    agentType: c.agent.agent_type,
+    strictProjects: c.agent.strict_projects,
+    sessionRepo: c.sessionRepo,
+    principal: c.principal,
+  } : null;
 
 /** The one line every reply of an unregistered session ends with, as a content block of its own so the tool's text is never
  * changed. Registration is gentle: nothing is refused for lack of it. */
 export const NUDGE = "memory: you haven't registered yet. Call register_agent {name, context, surface, description} once: " +
-  "context is work, personal or both. memory remembers it for this token and app, and your notes and messages then carry your name.";
+  "context is work, home, hobby, personal or both (plus optional projects, computer, type, strict_projects). memory remembers it for this token and app, and your notes and messages then carry your name.";
 
 const AGENT_NAME = /^[a-z0-9][a-z0-9-]{1,39}$/;
-const CONTEXTS = ["work", "personal", "both"];
+const CONTEXTS: string[] = [...AGENT_CONTEXTS];
 const RESERVED = ["claude", "codex", "all", "wen", "memory"];
 // Control characters, NUL included, would reach a note's source line, and Postgres refuses NUL.
 // deno-lint-ignore no-control-regex
@@ -355,21 +412,82 @@ async function register({ session, client, principal, args }: Call) {
   const surface = plain(args.surface, 40), description = plain(args.description, 500);
   const errs = [
     AGENT_NAME.test(name) ? "" : "name must be 2 to 40 lowercase letters, digits and dashes, starting with a letter or digit.",
-    CONTEXTS.includes(context) ? "" : "context must be work, personal or both.",
+    CONTEXTS.includes(context) ? "" : "context must be work, home, hobby, personal or both.",
     surface ? "" : "surface is required: where you run, like claude-code or claude.ai.",
     description ? "" : "description is required: what you do for Wen.",
     RESERVED.includes(name) ? `${name} is reserved. Pick a name of your own.` : "",
   ].filter(Boolean);
+
+  const projectsProvided = args.projects !== undefined;
+  let projects: string[] = [];
+  if (projectsProvided && args.projects !== null) {
+    if (!Array.isArray(args.projects) || args.projects.length > 50) {
+      errs.push("projects must be a list of up to 50 project slugs.");
+    } else {
+      const seen = new Set<string>();
+      for (const raw of args.projects) {
+        const slug = normalizeProjectSlug(raw);
+        if (!slug) {
+          errs.push("each project must be a valid slug or owner/repo name.");
+          break;
+        }
+        if (!seen.has(slug)) {
+          seen.add(slug);
+          projects.push(slug);
+        }
+      }
+    }
+  }
+
+  const computerProvided = args.computer !== undefined;
+  let computer: string | null = null;
+  if (computerProvided && args.computer !== null && args.computer !== "") {
+    computer = normalizeComputer(args.computer);
+    if (!computer) errs.push("computer must be 1 to 64 characters.");
+  }
+
+  const rawType = args.type !== undefined ? args.type : args.agent_type;
+  const typeProvided = rawType !== undefined;
+  let agentType = "other";
+  if (typeProvided && rawType !== null && rawType !== "") {
+    const t = typeof rawType === "string" ? rawType.trim().toLowerCase() : "";
+    if (!(AGENT_TYPES as readonly string[]).includes(t)) {
+      errs.push(`type must be one of ${AGENT_TYPES.join(", ")}.`);
+    } else {
+      agentType = t;
+    }
+  }
+
+  const strictProvided = args.strict_projects !== undefined;
+  let strictProjects = false;
+  if (strictProvided && args.strict_projects !== null) {
+    if (typeof args.strict_projects !== "boolean") errs.push("strict_projects must be true or false.");
+    else strictProjects = args.strict_projects;
+  }
+
   if (errs.length) throw new Refused(errs.join("\n"));
   // One statement, so two credentials racing for a new name leave one owner. The where keeps a name with the credential that took it.
-  const [agent] = await sql`insert into memory.agent (name, context, surface, description, registered_by)
-    values (${name}, ${context}, ${surface}, ${description}, ${principal})
-    on conflict (owner_id, name) do update set context = excluded.context, surface = excluded.surface,
-      description = excluded.description, last_seen = now()
+  const [agent] = await sql`insert into memory.agent (name, context, surface, description, registered_by, computer, projects, agent_type, strict_projects)
+    values (${name}, ${context}, ${surface}, ${description}, ${principal}, ${computer}, ${projects}::text[], ${agentType}, ${strictProjects})
+    on conflict (owner_id, name) do update set
+      context = excluded.context,
+      surface = excluded.surface,
+      description = excluded.description,
+      computer = case when ${computerProvided}::boolean then excluded.computer else memory.agent.computer end,
+      projects = case when ${projectsProvided}::boolean then excluded.projects else memory.agent.projects end,
+      agent_type = case when ${typeProvided}::boolean then excluded.agent_type else memory.agent.agent_type end,
+      strict_projects = case when ${strictProvided}::boolean then excluded.strict_projects else memory.agent.strict_projects end,
+      last_seen = now()
       where memory.agent.registered_by is not distinct from excluded.registered_by
-    returning name, (xmax = 0) as created`;
+    returning name, context, computer, projects, agent_type, strict_projects, (xmax = 0) as created`;
   if (!agent) throw new Refused(`${name} is already registered by another credential. Pick a name of your own.`);
-  await sql`update memory.mcp_client set agent = ${name} where session_id = ${session} and principal = ${principal}`;
+  await sql`update memory.mcp_client set
+      agent = ${name},
+      session_context = ${agent.context},
+      session_projects = ${agent.projects ?? []}::text[],
+      session_computer = ${agent.computer},
+      session_strict_projects = ${agent.strict_projects}
+    where session_id = ${session} and principal = ${principal}`;
   if (client) {
     await sql`insert into memory.agent_binding (principal, client, agent) values (${principal}, ${client}, ${name})
       on conflict (owner_id, principal, client) do update set agent = excluded.agent, updated_at = now()`;
@@ -391,15 +509,29 @@ function mailboxes(c: Pick<Call, "agent" | "client">): string[] {
 const questor = (c: Call): quests.Who => ({
   name: nameOf(c), family: service.agentName(c.client), principal: c.principal, session: c.session,
   context: c.agent?.context ?? null, profile: c.agent ? `${c.agent.name}, a ${c.agent.context} agent on ${c.agent.surface}` : null,
+  computer: c.agent?.computer ?? null, projects: c.agent?.projects ?? [], agentType: c.agent?.agent_type ?? null,
+  strictProjects: c.agent?.strict_projects ?? false, sessionRepo: c.sessionRepo,
 });
+
+function recallFilter(args: Record<string, unknown>): EntryFilter {
+  const out: EntryFilter = {};
+  for (const key of ["category", "context", "project", "transferability"] as const) {
+    if (args[key] !== undefined && args[key] !== null) {
+      if (typeof args[key] !== "string") throw new Refused(`${key} must be text.`);
+      out[key] = args[key] as string;
+    }
+  }
+  return out;
+}
 
 const RUN: Record<string, (c: Call) => Promise<string>> = {
   register_agent: register,
   recall: (c) => service.recall(c.session, s(c.args.query), s(c.args.task), c.client, s(c.args.scope) || null, c.principal, nameOf(c),
-    c.args.depth ?? "packet"),
-  recall_more: (c) => service.recallMore(c.session, s(c.args.retrieval_id), { device: c.principal, agent: nameOf(c) }),
-  get_entry: async (c) => (await service.getEntry(c.session, s(c.args.id), { device: c.principal, agent: nameOf(c) })) ?? `No entry ${s(c.args.id)}.`,
-  get_blob: ({ args }) => service.getBlob(s(args.sha256), Number(args.offset ?? 0), Number(args.limit ?? 20000)),
+    c.args.depth ?? "packet", scopeOf(c), recallFilter(c.args)),
+  recall_more: (c) => service.recallMore(c.session, s(c.args.retrieval_id), { device: c.principal, agent: nameOf(c) }, scopeOf(c)),
+  get_entry: async (c) => (await service.getEntry(c.session, s(c.args.id), { device: c.principal, agent: nameOf(c) }, scopeOf(c))) ?? `No entry ${s(c.args.id)}.`,
+  get_blob: ({ args, agent, sessionRepo, principal }) =>
+    service.getBlob(s(args.sha256), Number(args.offset ?? 0), Number(args.limit ?? 20000), scopeOf({ agent, sessionRepo, principal })),
   upload_blob: ({ principal, args }) => service.uploadBlob(principal, args),
   remember: async (c) => {
     const { args } = c;
@@ -411,11 +543,17 @@ const RUN: Record<string, (c: Call) => Promise<string>> = {
       valid_from: args.valid_from || null, links: args.links ?? [], supersedes: args.supersedes ?? [], blobs: args.blobs ?? [],
       // Only when sent, so a write without them keeps the id and digest it always had.
       ...(args.artifacts !== undefined ? { artifacts: args.artifacts } : {}), ...(args.long !== undefined ? { long: args.long } : {}),
+      ...(args.category !== undefined ? { category: args.category } : {}),
+      ...(args.context !== undefined ? { context: args.context } : {}),
+      ...(args.transferability !== undefined ? { transferability: args.transferability } : {}),
+      ...(args.project_slug !== undefined ? { project_slug: args.project_slug } : {}),
+      ...(args.computer !== undefined ? { computer: args.computer } : {}),
     };
     const me = nameOf(c);
     const r = await remember(payload, "agent", me, c.principal, {
       agent: me, context: c.agent?.context ?? null, session: c.session,
       profile: c.agent ? `${c.agent.name}, a ${c.agent.context} agent on ${c.agent.surface}` : null,
+      computer: c.agent?.computer ?? null, projects: c.agent?.projects ?? [], repo: c.sessionRepo, agentScope: scopeOf(c),
     });
     await limits.countBlobs(c.entitlement, r.blobs);
     return [`Remembered ${r.id}.`,
@@ -423,7 +561,7 @@ const RUN: Record<string, (c: Call) => Promise<string>> = {
       "Keyword search finds it now. Vector search finds it after the next embedding sync."].join("\n");
   },
   feedback: ({ session, args }) => service.agentFeedback(session, args),
-  post_message: (c) => service.postMessage(sql, nameOf(c), s(c.args.to), s(c.args.body)),
+  post_message: (c) => service.postMessage(sql, nameOf(c), s(c.args.to), s(c.args.body), { context: c.args.context, project: c.args.project }),
   check_messages: async (c) => ((await service.checkMessages(mailboxes(c))) || "No new messages.") + (c.note ? `\n${c.note}` : ""),
   ack_messages: (c) => service.ackMessages(mailboxes(c), c.args.ids),
   dismiss_messages: (c) => service.dismissMessages(mailboxes(c), c.args.ids),
@@ -441,13 +579,32 @@ const error = (id: RpcMessage["id"], code: number, message: string) => ({ jsonrp
 
 /** The client name a session gave at initialize, and the agent it is. A session opened under another credential is no one:
  * its id is not a bearer token. */
-async function sessionOf(session: string | null, principal: string): Promise<{ client: string | null; agent: Profile | null; ui: boolean }> {
-  if (!session) return { client: null, agent: null, ui: false };
-  const [row] = await sql`select c.client, c.principal, c.ui, a.name, a.context, a.surface from memory.mcp_client c
-    left join memory.agent a on a.name = c.agent where c.session_id = ${session}`;
+async function sessionOf(
+  session: string | null,
+  principal: string,
+): Promise<{ client: string | null; agent: Profile | null; sessionRepo: string | null; ui: boolean }> {
+  if (!session) return { client: null, agent: null, sessionRepo: null, ui: false };
+  const [row] = await sql`select c.client, c.principal, c.ui,
+      c.session_context, c.session_projects, c.session_computer, c.session_strict_projects,
+      a.name, a.context, a.surface, a.computer, a.projects, a.agent_type, a.strict_projects,
+      s.repo as session_repo
+    from memory.mcp_client c
+    left join memory.agent a on a.owner_id = c.owner_id and a.name = c.agent
+    left join memory.mcp_session s on s.owner_id = c.owner_id and s.id = c.session_id
+    where c.session_id = ${session}`;
   const mine = row?.principal === principal && row?.name;
   return {
-    client: row?.client ?? null, agent: mine ? { name: row.name, context: row.context, surface: row.surface } : null,
+    client: row?.client ?? null,
+    agent: mine ? {
+      name: row.name,
+      context: row.session_context ?? row.context,
+      surface: row.surface,
+      computer: row.session_computer ?? row.computer ?? null,
+      projects: Array.isArray(row.session_projects) ? row.session_projects : (Array.isArray(row.projects) ? row.projects : []),
+      agent_type: row.agent_type ?? "other",
+      strict_projects: row.session_strict_projects ?? row.strict_projects ?? false,
+    } : null,
+    sessionRepo: (row?.principal === principal ? row?.session_repo : null) ?? null,
     ui: row?.principal === principal && row?.ui === true,
   };
 }
@@ -498,8 +655,13 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
       const ui = wantsUi(msg.params);
       // A credential and app that registered before start as that agent. A client that can't use memory yet (R38)
       // connects, but leaves no session behind.
-      if (!who.denied) await sql`insert into memory.mcp_client (session_id, client, principal, agent, ui)
-        values (${sid}, ${client}, ${principal}, (select agent from memory.agent_binding where principal = ${principal} and client = ${client}), ${ui})
+      if (!who.denied) await sql`insert into memory.mcp_client (session_id, client, principal, agent, ui,
+          session_context, session_projects, session_computer, session_strict_projects)
+        select ${sid}, ${client}, ${principal}, a.name, ${ui},
+          a.context, a.projects, a.computer, a.strict_projects
+        from (select 1) one
+        left join memory.agent_binding b on b.principal = ${principal} and b.client = ${client}
+        left join memory.agent a on a.owner_id = b.owner_id and a.name = b.agent
         on conflict do nothing`;
       return result(id, {
         protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0],
@@ -550,28 +712,37 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
       };
       const principal = who.device ?? who.role;
       let nudge: { type: string; text: string }[] = [];
-      let cards = false, badge: Badge | null = null;
+      let cards = false, badge: Badge | null = null, currentScope: AgentScope = null;
       try {
         const known = await sessionOf(session, principal);
         // Registration is gentle: an unregistered session works, and hears this after every reply until it registers.
         if (!known.agent && name !== "register_agent") nudge = [{ type: "text", text: NUDGE }];
         if (known.agent) {
-          await sql`update memory.agent set last_seen = now() where name = ${known.agent.name} and last_seen < now() - interval '1 minute'`;
+          await sql`update memory.agent set last_seen = now()
+            where owner_id = memory.owner_default() and name = ${known.agent.name} and last_seen < now() - interval '1 minute'`;
         }
         cards = known.ui || requestWantsUi(msg.params);
         badge = badgeOf(known);
+        currentScope = scopeOf({ agent: known.agent, sessionRepo: known.sessionRepo, principal });
         const args = msg.params?.arguments ?? {};
-        const text = await run({ session: sid, client: known.client, agent: known.agent, principal, args, note: installNote(who), entitlement: who.entitlement });
+        const text = await run({
+          session: sid, client: known.client, agent: known.agent, sessionRepo: known.sessionRepo,
+          principal, args, note: installNote(who), entitlement: who.entitlement,
+        });
         // R67: the text is what it always was. A card-rendering client also gets the card's data, in _meta, which the
         // model never reads. A registration's card shows the agent it just became.
-        if (cards && name === "register_agent") badge = badgeOf(await sessionOf(session, principal));
-        const meta = cards ? await card({ tool: name, args, text, error: false, session: sid, viewer: { device: principal, agent: badge.name }, badge }) : null;
+        if (cards && name === "register_agent") {
+          const updated = await sessionOf(session, principal);
+          badge = badgeOf(updated);
+          currentScope = scopeOf({ agent: updated.agent, sessionRepo: updated.sessionRepo, principal });
+        }
+        const meta = cards ? await card({ tool: name, args, text, error: false, session: sid, viewer: { device: principal, agent: badge.name }, badge, agentScope: currentScope }) : null;
         return result(id, { content: [{ type: "text", text: await remind(text) }, ...nudge], ...meta });
       } catch (e) {
         if (!(e instanceof Refused)) console.error(e);
         const text = e instanceof Refused ? e.message : `Error: ${(e as Error).message}`;
         const meta = cards && badge
-          ? await card({ tool: name, args: msg.params?.arguments ?? {}, text, error: true, session: sid, viewer: { device: principal, agent: badge.name }, badge })
+          ? await card({ tool: name, args: msg.params?.arguments ?? {}, text, error: true, session: sid, viewer: { device: principal, agent: badge.name }, badge, agentScope: currentScope })
           : null;
         return result(id, { content: [{ type: "text", text: await remind(text) }, ...nudge], isError: true, ...meta });
       }

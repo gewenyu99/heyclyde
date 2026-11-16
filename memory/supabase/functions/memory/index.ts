@@ -16,6 +16,7 @@ import * as quests from "./quests.ts";
 import * as store from "./blobs.ts";
 import { CLIENT_VERSION, clientStatus, installerNote, SERVER_VERSION } from "./version.ts";
 import { Refused, remember } from "./write.ts";
+import type { EntryFilter } from "./permissions.ts";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { FILES } from "./client/files.ts";
 
@@ -65,7 +66,7 @@ async function hooks(req: Request, event: string, url: URL, who: Principal) {
   const agent = (url.searchParams.get("agent") ?? "").toLowerCase();
   let body = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : { body: payload };
   if (who.hooks === "metadata") body = Object.fromEntries(HOOK_METADATA.filter((k) => k in body).map((k) => [k, body[k]]));
-  await service.hook(event, body, AGENT.test(agent) ? agent : null);
+  await service.hook(event, body, AGENT.test(agent) ? agent : null, who.device ?? who.role);
   // memory-hook prints whatever comes back into the agent's context, so an answer is a decision to make. SessionStart's is the
   // board (R47): unread messages and open quests, in at most 5 lines. A board that fails costs the session nothing.
   if (event === "SessionStart" && AGENT.test(agent)) {
@@ -102,16 +103,23 @@ async function httpRemember(req: Request, who: Principal) {
 
 async function httpRecall(req: Request, who: Principal) {
   const body = (await jsonObject(req, 1 << 20)) ?? {};
-  const { query, task = "", scope = null } = body;
+  const { query, task = "", scope = null, category = null, context = null, project = null, transferability = null } = body;
   // R29 leaves clyde-flow's recall out: it has no recall_more, so a depth is refused rather than ignored.
   if (!(typeof query === "string" && query.trim()) || typeof task !== "string" || (scope !== null && typeof scope !== "string") || "depth" in body) {
     return json({ error: "body must be {query, task, scope}, with a non-empty query" }, 400);
+  }
+  const filter: EntryFilter = {};
+  for (const [k, v] of [["category", category], ["context", context], ["project", project], ["transferability", transferability]] as const) {
+    if (v !== null) {
+      if (typeof v !== "string") return json({ error: `${k} must be a string` }, 400);
+      filter[k] = v;
+    }
   }
   await limits.burst(who.entitlement);
   await limits.charge(who.entitlement, "recalls_month");
   try {
     // Each scope is its own session, so a run draws one arm and keeps it.
-    return text(await service.recall(`http-${scope || "global"}`, query, task, "http", scope || null, who.device ?? who.role));
+    return text(await service.recall(`http-${scope || "global"}`, query, task, "http", scope || null, who.device ?? who.role, "http", "packet", null, filter));
   } catch (e) {
     if (e instanceof Refused) return json({ error: e.message }, 400);
     throw e;

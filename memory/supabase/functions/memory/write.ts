@@ -7,6 +7,16 @@ import { sha256 } from "./embed.ts";
 import { MIN_QUOTE, squash, verifyEvidence } from "./evidence.ts";
 import { redactText } from "./redact.ts";
 import { screen } from "./judge.ts";
+import {
+  type AgentScope,
+  canReadEntry,
+  CATEGORY_RE,
+  ENTRY_CONTEXTS,
+  normalizeComputer,
+  normalizeProjectSlug,
+  TRANSFERABILITIES,
+} from "./permissions.ts";
+import { forgetGraph } from "./search.ts";
 
 const AUTHORITY = new Set(["approved", "observed", "draft"]);
 const LINK_TYPES = new Set(["supersedes", "supports", "contradicts", "derived_from", "relates", "part_of", "corrects"]);
@@ -21,7 +31,14 @@ const RANK: Record<string, number> = { draft: 0, observed: 1, approved: 2 };
 // part_of comes from `project` and supersedes from `supersedes`, so `links` takes the other types.
 const FREE_LINKS = new Set([...LINK_TYPES].filter((t) => t !== "part_of" && t !== "supersedes"));
 const FIELDS = new Set(["id", "pattern", "title", "body", "authority", "scope", "sensitivity", "lang", "valid_from",
-  "source", "evidence_kind", "evidence", "evidence_event", "kind", "project", "links", "supersedes", "blobs", "artifacts", "long"]);
+  "source", "evidence_kind", "evidence", "evidence_event", "kind", "project", "links", "supersedes", "blobs", "artifacts", "long",
+  "category", "context", "transferability", "project_slug", "computer"]);
+const DEFAULT_CATEGORY: Record<string, string> = {
+  decisions: "architecture",
+  preferences: "preferences",
+  projects: "product",
+  reactions: "workflow",
+};
 // What a note claims. A fact is checkable against an event memory holds, wen is Wen's own words, an observation is an
 // agent's inference or summary, and a plan says what someone means to do.
 const KINDS = ["fact", "wen", "observation", "plan"];
@@ -160,6 +177,32 @@ export async function validate(payload: unknown, caller: string, agentName = "ag
 
   if ("valid_from" in p && !isDate(p.valid_from)) errs.push(`valid_from ${JSON.stringify(p.valid_from)} must be a YYYY-MM-DD date.`);
   e.valid_from = "valid_from" in p ? p.valid_from : today();
+
+  if ("category" in p) {
+    const cat = typeof p.category === "string" ? p.category.trim().toLowerCase() : "";
+    if (!CATEGORY_RE.test(cat)) errs.push("category must be 1 to 40 lowercase letters, digits or dashes.");
+    else e.category = cat;
+  }
+  if ("context" in p) {
+    const ctx = typeof p.context === "string" ? p.context.trim().toLowerCase() : "";
+    if (!(ENTRY_CONTEXTS as readonly string[]).includes(ctx)) errs.push("context must be general, work, home, hobby or personal.");
+    else e.context = ctx;
+  }
+  if ("transferability" in p) {
+    const tr = typeof p.transferability === "string" ? p.transferability.trim().toLowerCase() : "";
+    if (!(TRANSFERABILITIES as readonly string[]).includes(tr)) errs.push("transferability must be general, context, project or computer.");
+    else e.transferability = tr;
+  }
+  if ("project_slug" in p) {
+    const ps = normalizeProjectSlug(p.project_slug);
+    if (!ps) errs.push("project_slug must be a valid project slug like clyde or owner/repo.");
+    else e.project_slug = ps;
+  }
+  if ("computer" in p) {
+    const comp = normalizeComputer(p.computer);
+    if (!comp) errs.push("computer must be 1 to 64 characters.");
+    else e.computer = comp;
+  }
 
   if (e.project !== null && typeof e.project !== "string") errs.push("project must be an entry id.");
   else if (e.project === null && e.pattern !== "projects") {
@@ -399,10 +442,10 @@ async function ensureNotesProject(db: Sql, e: Row) {
   await db`insert into memory.source (id, kind, title, uri, date) values (${s.id}, ${s.kind}, ${s.title}, ${s.uri}, current_date)
     on conflict (owner_id, id) do nothing`;
   await db`insert into memory.entry (id, pattern, title, body, authority, scope, sensitivity, lang, valid_from, source_id,
-      evidence_kind, evidence, evidence_sha256, project, origin, kind, confidence, chances_left)
+      evidence_kind, evidence, evidence_sha256, project, origin, kind, confidence, chances_left, category)
     values (${e.project}, 'projects', ${`Notes by ${who}`}, ${`Notes ${who} wrote through remember with no project of their own.`},
       'draft', 'global', 'normal', 'en', ${today()}, ${s.id}, 'summary', ${evidence}, ${await sha256(evidence)}, ${e.project},
-      'runtime', 'observation', ${START.observation.confidence}, 0)
+      'runtime', 'observation', ${START.observation.confidence}, 0, 'product')
     on conflict (owner_id, id) do nothing`;
 }
 
@@ -420,10 +463,11 @@ async function insert(db: Sql, e: Row) {
   }
   const inserted = await db`insert into memory.entry (id, pattern, title, body, authority, scope, sensitivity, lang, valid_from,
       source_id, evidence_kind, evidence, evidence_sha256, project, origin, payload_sha256, kind, confidence, chances_left,
-      evidence_event, verified)
+      evidence_event, verified, category, context, transferability, project_slug, computer)
     values (${e.id}, ${e.pattern}, ${e.title}, ${e.body}, ${e.authority}, ${e.scope}, ${e.sensitivity}, ${e.lang},
       ${e.valid_from}, ${s.id}, ${e.evidence_kind}, ${e.evidence}, ${await sha256(e.evidence)}, ${e.project ?? e.id},
-      'runtime', ${e.digest}, ${e.kind}, ${e.confidence}, ${e.chances}, ${e.evidence_event}, ${e.verified})
+      'runtime', ${e.digest}, ${e.kind}, ${e.confidence}, ${e.chances}, ${e.evidence_event}, ${e.verified},
+      ${e.category}, ${e.context}, ${e.transferability}, ${e.project_slug ?? null}, ${e.computer ?? null})
     on conflict (owner_id, id) do nothing returning id`;
   if (!inserted.length) return false;
   const all: [string, string][] = [
@@ -440,7 +484,7 @@ async function insert(db: Sql, e: Row) {
     await db`insert into memory.entry_provenance (entry_id, device, agent, agent_context, repo, cwd, session, run_scope)
       select ${e.id}::text, ${e.prov.device}::text, ${e.prov.agent}::text, ${e.prov.context}::text, s.repo, s.cwd, ${e.prov.session}::text,
         ${String(e.scope).startsWith("run:") ? e.scope : null}::text
-      from (select 1) one left join memory.mcp_session s on s.id = ${e.prov.session}::text
+      from (select 1) one left join memory.mcp_session s on s.owner_id = memory.owner_default() and s.id = ${e.prov.session}::text
       on conflict (owner_id, entry_id) do nothing`;
   }
   for (const b of e.blobs) if (b.uploaded && !b.existing) await store.claim(b.sha256);
@@ -459,15 +503,24 @@ const overQuota = (need: number, used: number, cap: number) =>
  * hash, then secrets in its text), and a file that fails is deleted. A sha256 with no file waiting is a blob memory already
  * holds, but only one some non-private entry attaches: a private blob can't be cited by hash, since that would tell anyone who
  * guessed the file that memory has it. */
-async function resolveCited(e: Row, principal: string) {
+async function resolveCited(e: Row, principal: string, agentScope: AgentScope = null) {
   const cited: Row[] = e.blobs.filter((b: Row) => b.cited);
   if (!cited.length) return;
   const shas = cited.map((b) => b.sha256);
   const waiting = new Map((await sql`select sha256, size, media_type from memory.upload
     where principal = ${principal} and sha256 = any(${shas}::text[])`).map((r) => [r.sha256 as string, r]));
-  const held = new Map((await sql`select b.sha256, b.size, b.media_type, b.stored, coalesce(bool_or(n.sensitivity <> 'private'), false) as public
-    from memory.blob b left join memory.entry_blob x on x.sha256 = b.sha256 left join memory.entry n on n.id = x.entry_id
-    where b.sha256 = any(${shas}::text[]) group by b.owner_id, b.sha256`).map((r) => [r.sha256 as string, r]));
+  const blobRows = await sql`select b.sha256, b.size, b.media_type, b.stored,
+      n.sensitivity, n.category, n.context, n.transferability, n.project_slug, n.computer, n.pattern, n.scope
+    from memory.blob b
+    left join memory.entry_blob x on x.owner_id = b.owner_id and x.sha256 = b.sha256
+    left join memory.entry n on n.owner_id = x.owner_id and n.id = x.entry_id
+    where b.owner_id = memory.owner_default() and b.sha256 = any(${shas}::text[])`;
+  const held = new Map<string, Row>();
+  for (const r of blobRows) {
+    const prev = held.get(r.sha256 as string) ?? { sha256: r.sha256, size: r.size, media_type: r.media_type, stored: r.stored, public: false };
+    if (r.sensitivity && r.sensitivity !== "private" && canReadEntry(agentScope, r)) prev.public = true;
+    held.set(r.sha256 as string, prev);
+  }
   // The cap on new bytes counts what upload_blob was told, before any file is read.
   const declared = cited.reduce((n, b) => n + (held.has(b.sha256) ? 0 : waiting.get(b.sha256)?.size ?? 0), 0);
   if (declared > store.MAX_ENTRY_STORED_BYTES) {
@@ -506,7 +559,8 @@ async function resolveCited(e: Row, principal: string) {
 
 /** The blobs a landed entry already holds, in the shape remember answers with. */
 async function blobsOf(id: string) {
-  return (await sql`select x.name, x.sha256, x.kind, b.size from memory.entry_blob x join memory.blob b on b.sha256 = x.sha256
+  return (await sql`select x.name, x.sha256, x.kind, b.size from memory.entry_blob x
+    join memory.blob b on b.owner_id = x.owner_id and b.sha256 = x.sha256
     where x.entry_id = ${id} order by x.name`).map(SHAPE);
 }
 
@@ -516,12 +570,71 @@ async function blobsOf(id: string) {
 /** What memory knows about a write besides the payload (R41): the agent that made it, that agent's work context, the MCP session,
  * and `profile`, the registered agent's one-line description for the note's source. The device is the principal. None of it
  * comes from the caller's payload. */
-export type Origin = { agent: string; context: string | null; session: string | null; profile?: string | null };
+export type Origin = {
+  agent: string;
+  context: string | null;
+  session: string | null;
+  profile?: string | null;
+  computer?: string | null;
+  projects?: string[];
+  repo?: string | null;
+  agentScope?: AgentScope;
+};
+
+/** Resolve R70 category, context, transferability, project_slug, and computer without mutating the pre-digest payload. */
+export function resolveEntryDefaults(
+  e: Row,
+  principal: string,
+  origin: Origin | null,
+  sessionRepo: string | null = null,
+) {
+  const category = e.category ?? DEFAULT_CATEGORY[e.pattern] ?? "general";
+  const scopeStr = String(e.scope ?? "global");
+  const projectSlug = e.project_slug ??
+    (scopeStr.startsWith("repo:") ? normalizeProjectSlug(scopeStr.slice(5)) : null) ??
+    normalizeProjectSlug(origin?.repo ?? sessionRepo) ??
+    (origin?.projects?.length === 1 ? normalizeProjectSlug(origin.projects[0]) : null);
+  const computer = e.computer ?? origin?.computer ?? (principal && principal !== "anyone" ? normalizeComputer(principal) : null);
+  const callerRealm = origin?.context && ["work", "home", "hobby", "personal"].includes(origin.context) ? origin.context : null;
+
+  let context: string;
+  let transferability: string;
+  if (e.context !== undefined && e.transferability !== undefined) {
+    context = e.context;
+    transferability = e.transferability;
+  } else if (e.transferability !== undefined) {
+    transferability = e.transferability;
+    context = transferability === "general" ? "general" : (callerRealm ?? "general");
+  } else if (e.context !== undefined) {
+    context = e.context;
+    transferability = context === "general" ? "general" : (projectSlug ? "project" : "context");
+  } else if (scopeStr.startsWith("repo:") || scopeStr.startsWith("run:") || projectSlug) {
+    transferability = "project";
+    context = callerRealm ?? "general";
+  } else if (scopeStr === "global" && ["preferences", "recommendations", "references"].includes(e.pattern)) {
+    context = "general";
+    transferability = "general";
+  } else if (callerRealm) {
+    context = callerRealm;
+    transferability = "context";
+  } else {
+    context = "general";
+    transferability = "general";
+  }
+
+  return { category, context, transferability, project_slug: projectSlug, computer };
+}
 
 export async function remember(payload: unknown, caller: string, agentName = "agent", principal = "anyone", origin: Origin | null = null) {
   const e = await validate(payload, caller, agentName, origin?.profile ?? null);
   e.prov = { device: principal, agent: origin?.agent ?? agentName, context: origin?.context ?? null, session: origin?.session ?? null };
   if (await landed(sql, e)) return { id: e.id, blobs: await blobsOf(e.id), embedded: false };
+  let sessionRepo: string | null = origin?.repo ?? null;
+  if (sessionRepo === null && origin?.session) {
+    const [sess] = await sql`select repo from memory.mcp_session where id = ${origin.session}`;
+    sessionRepo = sess?.repo ?? null;
+  }
+  Object.assign(e, resolveEntryDefaults(e, principal, origin, sessionRepo));
   // Secrets and identifiers come out first. Then the judge reads what would be stored and can refuse it. A judge that
   // can't answer refuses too: memory fails closed. A private or confidential entry reaches a third-party model by its
   // title alone, so the judge reads only that, and its body rests on redaction.
@@ -529,7 +642,7 @@ export async function remember(payload: unknown, caller: string, agentName = "ag
   // The quote check reads the redacted evidence, since the event it cites was stored redacted.
   const { chances, ...start } = await classify(sql, e, caller);
   Object.assign(e, start, { chances });
-  await resolveCited(e, principal);
+  await resolveCited(e, principal, origin?.agentScope ?? null);
   const uploads: Row[] = e.blobs.filter((b: Row) => b.uploaded);
   for (const b of e.blobs) {
     if (b.cited) continue;
@@ -604,5 +717,6 @@ export async function remember(payload: unknown, caller: string, agentName = "ag
     // A file memory already held: the copy in incoming/ is not needed.
     if (b.existing) await store.remove(b.sha256, "incoming").catch(() => {});
   }
+  if (e.links.length || e.supersedes.length || e.project) forgetGraph();
   return { id: e.id, blobs: e.blobs.map(SHAPE), embedded: false };
 }

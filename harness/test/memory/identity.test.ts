@@ -145,7 +145,7 @@ test('R19: register_agent refuses bad names, contexts, empty fields and reserved
   const s = await open(memory.token, 'r19-t4-app')
   const cases: [Record<string, unknown>, string][] = [
     [{ name: 'x' }, NAME_ERR], [{ name: 'a'.repeat(41) }, NAME_ERR], [{ name: '-lead' }, NAME_ERR], [{ name: 'has space' }, NAME_ERR],
-    [{ context: 'home' }, 'context must be work, personal or both.'],
+    [{ context: 'invalid-realm' }, 'context must be work, home, hobby, personal or both.'],
     [{ surface: '' }, 'surface is required: where you run, like claude-code or claude.ai.'],
     [{ description: '' }, 'description is required: what you do for Wen.'],
     ...['claude', 'codex', 'all', 'wen', 'memory'].map((name): [Record<string, unknown>, string] => [{ name }, `${name} is reserved. Pick a name of your own.`]),
@@ -174,7 +174,7 @@ test('R19: register_agent accepts names at the edges and refuses blank or non-st
     [{ surface: '   ' }, 'surface is required: where you run, like claude-code or claude.ai.'],
     [{ description: '\t' }, 'description is required: what you do for Wen.'],
     [{ name: 123 }, NAME_ERR],
-    [{ context: null }, 'context must be work, personal or both.'],
+    [{ context: null }, 'context must be work, home, hobby, personal or both.'],
   ]
   for (const [override, want] of bad) {
     const r = await s.send('register_agent', { ...GOOD, name: 'r19-edge', ...override })

@@ -8,15 +8,50 @@ import { screen } from "./judge.ts";
 import { redactText } from "./redact.ts";
 import { agentName, claimMessages, messageLine } from "./service.ts";
 import { Refused, remember } from "./write.ts";
+import {
+  AGENT_CONTEXTS,
+  AGENT_TYPES,
+  type AgentScope,
+  allowedRealms,
+  canReadEntry,
+  normalizeComputer,
+  normalizeProjectSlug,
+  questPermitted,
+  questWhereSql,
+} from "./permissions.ts";
 
 /** The agent calling: the name it writes under, its client family (claude, codex or its own client name), its credential, its
- * MCP session, and its registered context, if it has one. */
-export type Who = { name: string; family: string; principal: string; session: string | null; context: string | null; profile: string | null };
+ * MCP session, and its registered context and permission scope, if it has one. */
+export type Who = {
+  name: string;
+  family: string;
+  principal: string;
+  session: string | null;
+  context: string | null;
+  profile: string | null;
+  computer?: string | null;
+  projects?: string[];
+  agentType?: string | null;
+  strictProjects?: boolean;
+  sessionRepo?: string | null;
+};
+
+const whoToScope = (who: Who): AgentScope =>
+  who.context === null ? null : {
+    name: who.name,
+    context: who.context,
+    computer: who.computer ?? null,
+    projects: who.projects ?? [],
+    agentType: who.agentType ?? "other",
+    strictProjects: Boolean(who.strictProjects),
+    sessionRepo: who.sessionRepo ?? null,
+    principal: who.principal,
+  };
 
 export const LEASE_MINUTES = 120;
 const LEASE_MIN = 15, LEASE_MAX = 480;
 const PRIORITIES = ["high", "normal", "low"];
-const CONTEXTS = ["work", "personal", "both"];
+const CONTEXTS: string[] = [...AGENT_CONTEXTS];
 const SHOWS = ["open", "mine", "done", "all"];
 const NAME = /^[a-z0-9][a-z0-9_-]{0,39}$/;
 // Control characters but newline and tab, NUL included, which Postgres refuses.
@@ -62,7 +97,7 @@ async function judged(text: string, verb: string) {
 }
 
 /** Artifacts a quest links: [{name, sha256}] of blobs memory already holds on some entry that isn't private. */
-async function artifacts(errs: string[], raw: unknown): Promise<{ name: string; sha256: string }[]> {
+async function artifacts(errs: string[], raw: unknown, agentScope: AgentScope = null): Promise<{ name: string; sha256: string }[]> {
   if (raw === undefined || raw === null) return [];
   if (!Array.isArray(raw) || raw.length > 8) {
     errs.push("artifacts must be a list of at most 8 {name, sha256}.");
@@ -82,14 +117,19 @@ async function artifacts(errs: string[], raw: unknown): Promise<{ name: string; 
     out.push({ name, sha256: sha });
   }
   // A private entry's blob can't be cited by hash: that would tell anyone who guessed the file that memory has it.
-  const held = new Set((await sql`select distinct x.sha256 from memory.entry_blob x join memory.entry e on e.id = x.entry_id
-    where x.sha256 = any(${out.map((o) => o.sha256)}::text[]) and e.sensitivity <> 'private'`).map((r) => r.sha256 as string));
+  const rows = await sql`select x.sha256, e.sensitivity, e.category, e.context, e.transferability, e.project_slug, e.computer, e.pattern, e.scope
+    from memory.entry_blob x join memory.entry e on e.owner_id = x.owner_id and e.id = x.entry_id
+    where x.owner_id = memory.owner_default() and x.sha256 = any(${out.map((o) => o.sha256)}::text[]) and e.sensitivity <> 'private'`;
+  const held = new Set(rows.filter((r) => canReadEntry(agentScope, r)).map((r) => r.sha256 as string));
   for (const o of out) if (!held.has(o.sha256)) errs.push(`memory holds no artifact ${o.sha256}. Attach the file to a note with remember first.`);
   return out;
 }
 
 /** Quest contexts an agent of this context works in. null is every context. */
-const contextsFor = (ctx: string | null) => ctx === "work" ? ["work", "both"] : ctx === "personal" ? ["personal", "both"] : CONTEXTS;
+const contextsFor = (ctx: string | null) => {
+  const realms = allowedRealms(ctx);
+  return realms === null ? CONTEXTS : [...realms, "both"];
+};
 /** Who may claim a quest: anyone, the agent's family, or the agent by name. */
 const claimants = (who: Pick<Who, "name" | "family">) => [...new Set(["any", who.name, who.family])];
 const mayClaim = (q: Row, who: Who) => claimants(who).includes(q.assignee);
@@ -107,22 +147,43 @@ export async function postQuest(who: Who, args: Record<string, unknown>) {
   const priority = s(args.priority).trim().toLowerCase() || "normal";
   if (!PRIORITIES.includes(priority)) errs.push("priority must be high, normal or low.");
   const context = s(args.context).trim().toLowerCase() || (who.context ?? "both");
-  if (!CONTEXTS.includes(context)) errs.push("context must be work, personal or both.");
+  if (!CONTEXTS.includes(context)) errs.push("context must be work, home, hobby, personal or both.");
   const assignee = s(args.for ?? args.assignee).trim().toLowerCase() || "any";
   if (!NAME.test(assignee)) errs.push("for must be any, claude, codex or an agent's name.");
+  let project: string | null = null;
+  if (args.project !== undefined && args.project !== null && args.project !== "") {
+    project = normalizeProjectSlug(args.project);
+    if (!project) errs.push("project must be a valid project slug like clyde or owner/repo.");
+  }
+  let computer: string | null = null;
+  if (args.computer !== undefined && args.computer !== null && args.computer !== "") {
+    computer = normalizeComputer(args.computer);
+    if (!computer) errs.push("computer must be 1 to 64 characters.");
+  }
+  let agentType: string | null = null;
+  if (args.agent_type !== undefined && args.agent_type !== null && args.agent_type !== "") {
+    const t = s(args.agent_type).trim().toLowerCase();
+    if (!(AGENT_TYPES as readonly string[]).includes(t)) {
+      errs.push(`agent_type must be one of ${AGENT_TYPES.join(", ")}.`);
+    } else {
+      agentType = t;
+    }
+  }
   let tags: string[] = [];
   if (args.tags !== undefined && args.tags !== null) {
     const raw = Array.isArray(args.tags) ? args.tags : [args.tags];
     tags = [...new Set(raw.map((t) => s(t).trim().toLowerCase()))];
     if (tags.length > 8 || !tags.every((t) => NAME.test(t))) errs.push("tags: at most 8, each lowercase letters, digits, - and _, up to 40 characters.");
   }
-  const files = await artifacts(errs, args.artifacts);
+  const files = await artifacts(errs, args.artifacts, whoToScope(who));
   if (errs.length) throw new Refused(errs.join("\n"));
   const [t, b, d] = [title, brief, doneWhen].map((x) => redactText(x)[0]);
   await judged([t, b, d].join("\n\n"), "posted");
   const id = await sql.begin(async (tx) => {
-    const [q] = await tx`insert into memory.quest (title, brief, done_when, tags, priority, context, assignee, posted_by, posted_device, posted_session)
-      values (${t}, ${b}, ${d}, ${tags}::text[], ${priority}, ${context}, ${assignee}, ${who.name}, ${who.principal}, ${who.session})
+    const [q] = await tx`insert into memory.quest (title, brief, done_when, tags, priority, context, assignee, project, computer, agent_type,
+        posted_by, posted_device, posted_session)
+      values (${t}, ${b}, ${d}, ${tags}::text[], ${priority}, ${context}, ${assignee}, ${project}, ${computer}, ${agentType},
+        ${who.name}, ${who.principal}, ${who.session})
       returning id`;
     await tx`insert into memory.quest_note (quest_id, author, device, kind) values (${q.id}, ${who.name}, ${who.principal}, 'post')`;
     for (const f of files) await tx`insert into memory.quest_blob (quest_id, name, sha256, role) values (${q.id}, ${f.name}, ${f.sha256}, 'brief')`;
@@ -134,7 +195,8 @@ export async function postQuest(who: Who, args: Record<string, unknown>) {
 
 /** One quest as a list line. */
 function questLine(q: Row) {
-  const head = `- #${q.id} [${q.priority}, ${q.context}] ${oneLine(q.title)} (from ${q.posted_by}${q.assignee !== "any" ? `, for ${q.assignee}` : ""})`;
+  const proj = q.project ? `, ${q.project}` : "";
+  const head = `- #${q.id} [${q.priority}, ${q.context}${proj}] ${oneLine(q.title)} (from ${q.posted_by}${q.assignee !== "any" ? `, for ${q.assignee}` : ""})`;
   if (q.state === "claimed") return `${head}. Claimed by ${q.claimed_by} until ${hhmm(q.lease_until)}.`;
   if (q.state === "done") {
     return `${head}. Done by ${q.claimed_by} on ${hhmm(q.closed_at).slice(0, 10)}: ${clip(oneLine(q.evidence ?? ""), 300)} ` +
@@ -150,18 +212,30 @@ export async function listQuests(who: Who, args: Record<string, unknown>) {
   const show = s(args.show).trim().toLowerCase() || "open";
   if (!SHOWS.includes(show)) throw new Refused("show must be open, mine, done or all.");
   const ctxArg = s(args.context).trim().toLowerCase();
-  if (ctxArg && ![...CONTEXTS, "all"].includes(ctxArg)) throw new Refused("context must be work, personal, both or all.");
+  if (ctxArg && ![...CONTEXTS, "all"].includes(ctxArg)) throw new Refused("context must be work, home, hobby, personal, both or all.");
+  let projectFilter: string | null = null;
+  if (args.project !== undefined && args.project !== null && args.project !== "") {
+    projectFilter = normalizeProjectSlug(args.project);
+    if (!projectFilter) throw new Refused("project must be a valid project slug like clyde or owner/repo.");
+  }
+  const scope = whoToScope(who);
   const ctx = ctxArg === "all" ? null : ctxArg || who.context;
-  const contexts = show === "mine" ? CONTEXTS : ctxArg === "both" ? CONTEXTS : contextsFor(ctx);
+  const requested = ctxArg === "all" ? CONTEXTS : ctxArg === "both" ? CONTEXTS : contextsFor(ctx);
+  const contexts = show === "mine"
+    ? CONTEXTS
+    : scope && scope.context !== "both"
+    ? requested.filter((c) => contextsFor(scope.context).includes(c))
+    : requested;
   const tag = s(args.tag).trim().toLowerCase();
   const limit = Math.min(Math.max(Number(args.limit) || 20, 1), 50);
   await reopenExpired();
-  const states = show === "open" ? ["open"] : show === "done" ? ["done"] : show === "mine" ? ["open", "claimed", "done", "abandoned"] : ["open", "claimed", "done", "abandoned"];
+  const states = show === "open" ? ["open"] : show === "done" ? ["done"] : ["open", "claimed", "done", "abandoned"];
   const rows = await sql`select q.*, count(*) over () as total from memory.quest q
     where q.state = any(${states}::text[]) and q.context = any(${contexts}::text[])
       and (${tag}::text = '' or q.tags @> array[${tag}::text])
       and (${show}::text <> 'open' or q.assignee = any(${claimants(who)}::text[]))
       and (${show}::text <> 'mine' or q.claimed_by = ${who.name}::text or q.posted_by = ${who.name}::text)
+      ${questWhereSql(sql, "q", scope, projectFilter)}
     order by case when ${show}::text = 'open' then array_position(array['high', 'normal', 'low'], q.priority) else 0 end,
       coalesce(q.closed_at, q.updated_at) desc, q.id desc
     limit ${limit}`;
@@ -176,7 +250,8 @@ export async function listQuests(who: Who, args: Record<string, unknown>) {
 
 /** A claimed quest in full: what to do, how to tell it's done, its artifacts and its last notes. */
 async function briefing(db: Sql, q: Row) {
-  const files = await db`select x.name, x.sha256, x.role, b.size from memory.quest_blob x join memory.blob b on b.sha256 = x.sha256
+  const files = await db`select x.name, x.sha256, x.role, b.size from memory.quest_blob x
+    join memory.blob b on b.owner_id = x.owner_id and b.sha256 = x.sha256
     where x.quest_id = ${q.id} order by x.role, x.name`;
   const notes = await db`select author, kind, body, created_at from memory.quest_note where quest_id = ${q.id} order by id desc limit 5`;
   return [
@@ -205,6 +280,8 @@ export async function claimQuest(who: Who, args: Record<string, unknown>) {
     const mine = q.state === "claimed" && q.claimed_by === who.name && q.claimed_device === who.principal;
     if (q.state === "claimed" && !mine) throw new Refused(`Quest #${id} is already claimed by ${q.claimed_by} until ${hhmm(q.lease_until)}.`);
     if (!mayClaim(q, who)) throw new Refused(`Quest #${id} is for ${q.assignee}, so ${who.name} can't claim it.`);
+    const perm = questPermitted(whoToScope(who), q);
+    if (!perm.ok) throw new Refused(`Quest #${id} is outside ${who.name}'s permissions: ${perm.reason}.`);
     const [c] = await tx`update memory.quest set state = 'claimed', claimed_by = ${who.name}, claimed_device = ${who.principal},
         claimed_session = ${who.session}, claimed_at = coalesce(case when ${mine} then claimed_at end, now()),
         lease_minutes = ${minutes}, lease_until = now() + make_interval(mins => ${minutes}::int), updated_at = now()
@@ -251,7 +328,8 @@ export async function completeQuest(who: Who, args: Record<string, unknown>) {
   const errs: string[] = [];
   const evidence = redactText(field(errs, args.evidence, "evidence", 2000))[0];
   const entry = field(errs, args.entry_id, "entry_id", 200);
-  const files = await artifacts(errs, args.artifacts);
+  const scope = whoToScope(who);
+  const files = await artifacts(errs, args.artifacts, scope);
   if (entry && !(await sql`select 1 from memory.entry where id = ${entry}`).length) {
     errs.push(`No entry ${entry}. Remember what the work produced, then pass that entry's id.`);
   }
@@ -262,11 +340,17 @@ export async function completeQuest(who: Who, args: Record<string, unknown>) {
   let history: string;
   try {
     const body = clip(oneLine(`${q.brief} Done when: ${q.done_when} ${who.name} did it: ${evidence}`), 500);
+    const qCtx = q.context === "both" ? "general" : q.context;
+    const qTr = q.project ? "project" : q.context === "both" ? "general" : "context";
     const wrote = await remember({
       pattern: "observations", title: `Quest #${id} done: ${q.title}`, body, evidence, kind: "observation", evidence_kind: "summary",
       authority: "draft", sensitivity: "normal", lang: "en", scope: null, project: null, valid_from: null, evidence_event: null,
       links: [{ type: "relates", to: entry }], supersedes: [], blobs: [],
-    }, "agent", who.name, who.principal, { agent: who.name, context: who.context, session: who.session, profile: who.profile });
+      context: qCtx, transferability: qTr, ...(q.project ? { project_slug: q.project } : {}),
+    }, "agent", who.name, who.principal, {
+      agent: who.name, context: who.context, session: who.session, profile: who.profile,
+      computer: who.computer, projects: who.projects, repo: who.sessionRepo, agentScope: scope,
+    });
     history = wrote.id;
   } catch (err) {
     if (!(err instanceof Refused)) throw err;
@@ -317,28 +401,43 @@ export async function abandonQuest(who: Who, args: Record<string, unknown>) {
   });
 }
 
-/** The work context of the agent a hook speaks for: the registered agent of that name, or the one this credential's client of
- * that family registered as. null when there is none, or more than one context. */
-async function hookContext(principal: string, agent: string): Promise<string | null> {
-  const rows = await sql`select distinct a.context from memory.agent a
-    where a.name = ${agent} or a.name in (select b.agent from memory.agent_binding b
-      where b.principal = ${principal} and memory.agent_name(b.client) = ${agent})`;
-  return rows.length === 1 ? rows[0].context : null;
+/** The scope of the agent a hook speaks for: the registered agent of that name, or the one this credential's client of
+ * that family registered as. null when there is none, or more than one distinct agent. */
+async function hookAgent(principal: string, agent: string): Promise<AgentScope> {
+  const rows = await sql`select distinct a.name, a.context, a.computer, a.projects, a.agent_type, a.strict_projects
+    from memory.agent a
+    where a.owner_id = memory.owner_default()
+      and (a.name = ${agent} or exists (select 1 from memory.agent_binding b
+        where b.owner_id = a.owner_id and b.principal = ${principal} and b.agent = a.name and memory.agent_name(b.client) = ${agent}))`;
+  if (rows.length !== 1) return null;
+  const r = rows[0];
+  return {
+    name: r.name,
+    context: r.context,
+    computer: r.computer ?? null,
+    projects: r.projects ?? [],
+    agentType: r.agent_type ?? "other",
+    strictProjects: Boolean(r.strict_projects),
+    principal,
+  };
 }
 
 /** The board a hook prints, in at most 5 lines: unread messages, acknowledged as they print, then open quests this agent may
  * claim in its context. "start" (SessionStart) shows every open quest under a one-line summary. "prompt" (the hook inbox) shows
  * only quests posted since this computer's agent last saw the board, in the inbox's own format. "" when there is nothing. */
 export async function board(principal: string, agent: string, mode: "start" | "prompt"): Promise<string> {
-  const ctx = await hookContext(principal, agent);
+  const scope = await hookAgent(principal, agent);
+  const ctx = scope?.context ?? null;
   await reopenExpired();
   const [seen] = await sql`select last_quest from memory.board_seen where principal = ${principal} and agent = ${agent}`;
   const after = mode === "prompt" ? Number(seen?.last_quest ?? 0) : 0;
   const who = { name: agent, family: agentName(agent) };
   const quests = await sql`select q.*, count(*) over () as total from memory.quest q
     where q.state = 'open' and q.id > ${after} and q.context = any(${contextsFor(ctx)}::text[]) and q.assignee = any(${claimants(who)}::text[])
+      ${questWhereSql(sql, "q", scope)}
     order by array_position(array['high', 'normal', 'low'], q.priority), q.id desc limit ${BOARD_LINES}`;
-  const [{ n }] = await sql`select count(*)::int as n from memory.message_delivery d join memory.message m on m.id = d.message_id
+  const [{ n }] = await sql`select count(*)::int as n from memory.message_delivery d
+    join memory.message m on m.owner_id = d.owner_id and m.id = d.message_id
     where d.recipient = ${agent} and d.acked_at is null and d.dropped_at is null and d.visible_after <= now() and m.expires_at > now()`;
   const M = Number(n), Q = quests.length ? Number(quests[0].total) : 0;
   const [{ top }] = await sql`select coalesce(max(id), 0) as top from memory.quest`;

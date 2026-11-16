@@ -146,6 +146,8 @@ function artChips(list, openable) {
 function memoryTop(m) {
   var state = m.superseded_by ? ["superseded", "superseded"] : m.trial ? ["trial", "on trial" + (m.chance ? " · " + m.chance + " of 3" : "")] : ["settled", m.unreviewed ? "unreviewed" : "settled"];
   return h("div", { class: "cl-memory__top" }, kindChip(m.kind, m.verified),
+    m.category && m.category !== "general" ? h("span", { class: "cl-chip", text: m.category }) : null,
+    m.context && m.context !== "general" ? h("span", { class: "cl-chip", text: m.context }) : null,
     h("span", { class: "cl-state cl-state--" + state[0], text: state[1] }),
     m.private ? h("span", { class: "cl-chip", text: "private" }) : null,
     h("span", { class: "cl-memory__conf", title: "confidence" }, meter(m.confidence), Math.round(Number(m.confidence || 0) * 100) + "%"));

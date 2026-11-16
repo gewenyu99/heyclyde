@@ -103,7 +103,7 @@ test('R47 post_quest refuses fields past their limits and writes nothing', { ski
   const ok = { title: 'A quest', brief: 'A brief.', done_when: 'It is done.' }
   const bad: Record<string, unknown>[] = [
     { title: 'x'.repeat(121) }, { brief: 'x'.repeat(501) }, { done_when: '' }, { done_when: 'x'.repeat(301) },
-    { priority: 'urgent' }, { context: 'home' }, { tags: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'] }, { for: 'Bad Name' },
+    { priority: 'urgent' }, { context: 'invalid-realm' }, { tags: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'] }, { for: 'Bad Name' },
   ]
   const before = countOf('quest', 'true')
   for (const b of bad) {
@@ -292,8 +292,10 @@ test('R47 list_quests filters by state, mine, tag and context, and defaults to t
   assert.ok(!mine.has(p) && !mine.has(d), [...mine].join(','))
   const theirs = listed((await home.send('list_quests', {})).text)
   assert.ok(theirs.has(p) && theirs.has(b) && !theirs.has(w), [...theirs].join(','))
-  const all = listed((await a.send('list_quests', { context: 'all' })).text)
+  const all = listed((await poster.send('list_quests', { context: 'all' })).text)
   assert.ok(all.has(w) && all.has(p) && all.has(b), [...all].join(','))
+  const isolated = listed((await a.send('list_quests', { context: 'all' })).text)
+  assert.ok(isolated.has(w) && isolated.has(b) && !isolated.has(p), [...isolated].join(','))
   const tagged = listed((await a.send('list_quests', { tag: 'r47t' })).text)
   assert.ok(tagged.has(w) && !tagged.has(b), [...tagged].join(','))
   const own = listed((await a.send('list_quests', { show: 'mine' })).text)
