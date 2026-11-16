@@ -37,7 +37,7 @@ export type Principal = {
 /** Which credential a path takes. /healthz and the console's files take none. Any path not named takes none of them
  * and gets 401. */
 export function credentialFor(path: string): Kind | null {
-  if (path === "/billing/usage/report") return "cron";
+  if (path === "/billing/usage/report" || path === "/billing/guard") return "cron";
   if (isWebhook(path)) return "webhook";
   if (path === "/billing/checkout" || path === "/billing/thanks") return "open";
   if (path === "/healthz" || path === "/install" || path.startsWith("/install/")) return "open";
@@ -167,6 +167,19 @@ async function resolve(kind: Kind, token: string, seen: Seen): Promise<Principal
   return null;
 }
 
+/** Records a signed-in user's account, the owner billing keys on. A new account takes one of the free plan's seats while any
+ * are left and free is open (R74: memory.claim_free_seat, under a lock on the free plan's row, so no race passes the cap).
+ * True when the account holds a free seat. */
+export async function ensureAccount(id: string, email: string, confirmed: boolean): Promise<boolean> {
+  const [row] = await sql`insert into memory.account as a (owner_id, email, email_confirmed, free_slot)
+    values (${id}, ${email.toLowerCase()}, ${confirmed}, false)
+    on conflict (owner_id) do update set email = excluded.email, email_confirmed = excluded.email_confirmed
+    returning (xmax = 0) as created, free_slot`;
+  if (!row?.created) return Boolean(row?.free_slot);
+  const [{ seat }] = await sql`select memory.claim_free_seat(${id}::uuid) as seat`;
+  return Boolean(seat);
+}
+
 /** The entitlement check (R38), the one place it runs: for each request's owner in authenticate, and for cron working an
  * owner's rows (R50: the embedding sync stays within the owner's token cap). */
 export async function entitlementOf(owner: string): Promise<Verdict> {
@@ -213,14 +226,7 @@ async function ownerOf(jwt: string) {
   // Supabase Auth's user ids are uuids. Anything else has no owner, and can't get in with sign-in open.
   const id = UUID.test(String(user?.id ?? "")) ? String(user.id).toLowerCase() : null;
   const claims: Record<string, unknown> | null = ok && (id || !(await openSignup())) ? { ...claimsOf(jwt), sub: id } : null;
-  if (claims && id) {
-    // A new account takes one of the free plan's seats while any are left (the first 1,000, Wen 2026-11-15).
-    await sql`insert into memory.account as a (owner_id, email, email_confirmed, free_slot)
-      values (${id}, ${String(user.email).toLowerCase()}, ${confirmed},
-        (select count(*) from memory.account where free_slot) < coalesce((select seats from memory.plan where id = 'free'), 2147483647))
-      on conflict (owner_id) do update set email = excluded.email, email_confirmed = excluded.email_confirmed
-      where (a.email, a.email_confirmed) is distinct from (excluded.email, excluded.email_confirmed)`;
-  }
+  if (claims && id) await ensureAccount(id, String(user.email), confirmed);
   if (owners.size > 100) owners.clear();
   owners.set(key, { until: Date.now() + 60_000, claims });
   return claims;

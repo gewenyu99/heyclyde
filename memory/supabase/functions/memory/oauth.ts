@@ -5,10 +5,10 @@
 // emails the allowlisted owner a sign-in link, and the waiting window reloads itself
 // until that link is clicked, on this device or any other. The click signs the owner in on the server, approves the
 // request, and the window moves on to the client with its code.
-import { allowed, clientKey, DOMAIN, openSignup, viaProxy } from "./auth.ts";
-import { geoBlocked, geoOf } from "./billing/entitlement.ts";
+import { allowed, clientKey, DOMAIN, ensureAccount, entitlementOf, openSignup, viaProxy } from "./auth.ts";
+import { checkoutLink, geoBlocked, geoOf } from "./billing/entitlement.ts";
 import { REFUSAL } from "./billing/regions.ts";
-import { sql } from "./db.ts";
+import { root, sql } from "./db.ts";
 
 const AUTH = () => `${Deno.env.get("SUPABASE_URL")}/auth/v1`;
 const ID = /^[A-Za-z0-9_-]{8,100}$/;
@@ -44,6 +44,8 @@ const text = (body: string, status = 200, headers: Record<string, string> = {}) 
  * Supabase gets the line as text. The Worker at memory.heyclyde.me asks for JSON and renders the page itself, since
  * Supabase won't serve HTML from its own domain. */
 type Page = { json: boolean };
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function page(p: Page, state: string, line: string, status = 200, extra: Record<string, unknown> = {}, headers: Record<string, string> = {}) {
   if (!p.json) return text(`memory: ${line}`, status, headers);
   return Response.json({ state, message: `memory: ${line}`, ...extra }, { status, headers: { "cache-control": "no-store" } });
@@ -211,7 +213,23 @@ async function approve(p: Page, id: string, code: string | null, error: string |
     }
   }
   await sql`update memory.oauth_consent set redirect_url = ${redirect!}, client_name = ${name} where authorization_id = ${id}`;
-  return page(p, "connected", `connected ${name}. Go back to the window that asked; it finishes by itself.`, 200, { client: name });
+  const full = await freeTierFull(user);
+  return page(p, "connected", `connected ${name}. Go back to the window that asked; it finishes by itself.${full ? ` ${full.line}` : ""}`, 200,
+    { client: name, ...(full ? { free_full: true, checkout_url: full.url } : {}) });
+}
+
+/** With sign-up open (R74): a new account past the free tier's last seat, or while it is closed, connects but its tools need a
+ * plan, so the page says so with the checkout link and the price. Null when the account holds a seat or a plan. */
+async function freeTierFull(user: { id?: string; email?: string } | undefined) {
+  const id = String(user?.id ?? "").toLowerCase();
+  if (!user?.email || !UUID.test(id) || !(await openSignup())) return null;
+  if (await ensureAccount(id, user.email, true)) return null;
+  if ((await entitlementOf(id)).plan.open) return null;
+  const [plan] = await root`select p.price_micro_usd_month as price from memory.plan p
+    where p.id = coalesce((select value from memory.setting where name = 'checkout_plan'), 'clyde')`;
+  const url = await checkoutLink(id);
+  const price = plan ? `$${(Number(plan.price) / 1e6).toFixed(2)} a month` : "a month";
+  return { url, line: `Clyde's free tier is full, so its tools need the Clyde plan at ${price}: ${url}` };
 }
 
 /** The waiting window reloads here until the link is clicked, then goes on to the client. */

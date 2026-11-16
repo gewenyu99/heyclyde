@@ -21,6 +21,7 @@ import { forget as forgetEntitlements } from "./billing/entitlement.ts";
 import { entitlementOf } from "./auth.ts";
 import * as limits from "./billing/limits.ts";
 import { SECRETS as BILLING_SECRETS } from "./billing/index.ts";
+import * as guard from "./billing/guard.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 
@@ -1689,6 +1690,7 @@ const ROUTES: Route[] = [
     return deleteSecret(m[1]);
   }],
   ["GET", /^\/billing\/plans$/, 200, () => plans()],
+  ["GET", /^\/billing\/guard$/, 200, async () => (await guard.last()) ?? { decision: null, at: null, metrics: {} }],
   ["PUT", /^\/billing\/plans\/([^/]+)$/, 200, async (r, m) => putPlan(m[1], await body(r))],
   ["GET", /^\/billing\/entitlements$/, 200, (_r, _m, q) => entitlements(q.text("state") ?? null, q.page())],
   ["GET", /^\/billing\/usage\/([^/]+)$/, 200, (_r, m) => usageOf(m[1])],

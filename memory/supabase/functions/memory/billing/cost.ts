@@ -31,11 +31,25 @@ export const CEILING: Assumptions = { payoutSubscribers: 1, supabaseUsers: 20, n
 export const PLANNED: Assumptions = { payoutSubscribers: 20, supabaseUsers: 20, nonUsShare: 1, disputeRate: 0.01 };
 
 const SUPABASE_PRO_USD = 25;
+
+/** What Supabase Pro includes each month and what it charges past that, per unit (published rates, checked 2026-11-15).
+ * The one table of them: the margin math below, overage billing (limits.ts), the cost guard (guard.ts, R74) and R66's margin
+ * check all read it. Sizes are bytes; a GB is 1e9 bytes. */
+export const SUPABASE_PRO = {
+  db_bytes: { included: 8e9, usd_per_unit: 0.125 / 1e9, monthly: false },
+  storage_bytes: { included: 100e9, usd_per_unit: 0.0213 / 1e9, monthly: false },
+  egress_bytes: { included: 250e9, usd_per_unit: 0.09 / 1e9, monthly: true },
+  invocations: { included: 2e6, usd_per_unit: 2 / 1e6, monthly: true },
+  mau: { included: 100_000, usd_per_unit: 0.00325, monthly: true },
+} as const;
+export type ProMetric = keyof typeof SUPABASE_PRO;
+/** Micro-USD in a dollar. */
+export const MICRO_USD = 1e6;
 const DISPUTE_USD = 15;
 // Polar: 5% + $0.50 a sale, 1.5% more on non-US cards. A month with a payout costs $2 + 0.25% + $0.25.
 const FEE_RATE = 0.05, FEE_FIXED = 0.5, NON_US_RATE = 0.015, PAYOUT_FIXED = 2.25, PAYOUT_RATE = 0.0025;
 // Storage beyond Supabase Pro's 100 GB, per GB-month. Below it, blobs cost nothing extra.
-const STORAGE_USD_PER_GB = 0.0213;
+const STORAGE_USD_PER_GB = SUPABASE_PRO.storage_bytes.usd_per_unit * 1e9;
 
 export type Plan = { price_micro_usd_month: number; openai_tokens_month: number | null; blob_bytes_total: number | null };
 
@@ -57,8 +71,8 @@ export function costOf(plan: Plan, a: Assumptions) {
 
 // Unit costs for overage, in micro-USD (checked 2026-11-15): Supabase Edge invocations at $2 a million past Pro's 2M, and
 // Storage at $0.0213 a GB-month past Pro's 100 GB.
-export const INVOCATION_MICRO_USD = 2;
-export const STORAGE_MICRO_USD_PER_GB_MONTH = 21_300;
+export const INVOCATION_MICRO_USD = SUPABASE_PRO.invocations.usd_per_unit * 1e6;
+export const STORAGE_MICRO_USD_PER_GB_MONTH = SUPABASE_PRO.storage_bytes.usd_per_unit * 1e9 * 1e6;
 /** The highest OpenAI price per token, in micro-USD: what an overage token costs. */
 export const TOKEN_MICRO_USD = Math.max(...Object.values(OPENAI_PRICES_MICRO_USD_PER_M)) / 1e6;
 

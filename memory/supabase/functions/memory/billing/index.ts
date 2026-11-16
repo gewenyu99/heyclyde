@@ -1,6 +1,7 @@
 // Billing's routes and the providers behind them (R38). /billing/<provider> takes that provider's signed webhooks, and
 // /billing/checkout sends a signed-in owner to the provider's checkout. Everything provider-specific lives in this folder;
 // the rest of the function knows only entitlement.ts and limits.ts.
+import * as guard from "./guard.ts";
 import { DOMAIN } from "../auth.ts";
 import { setting, sql } from "../db.ts";
 import { chargeFor } from "./cost.ts";
@@ -71,6 +72,7 @@ async function report() {
 
 export async function handle(req: Request, path: string, url: URL, proxied: boolean): Promise<Response> {
   if (path === "/billing/usage/report") return req.method === "POST" ? report() : new Response(null, { status: 405, headers: { allow: "POST" } });
+  if (path === "/billing/guard") return req.method === "POST" ? Response.json(await guard.run()) : new Response(null, { status: 405, headers: { allow: "POST" } });
   if (path === "/billing/checkout") return req.method === "GET" ? checkout(req, url, proxied) : new Response(null, { status: 405, headers: { allow: "GET" } });
   if (path === "/billing/thanks") return text("thanks. Your Clyde subscription starts within a minute. Go back to your app.", 200);
   const m = /^\/billing\/([a-z]+)(\/webhook)?$/.exec(path);
