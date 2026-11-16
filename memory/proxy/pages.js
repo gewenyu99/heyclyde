@@ -295,7 +295,7 @@ const APPS = [
   },
   {
     id: "antigravity", logo: "antigravity", name: "Antigravity", sub: "Desktop IDE and CLI", tag: "Config",
-    body: `<p class="fine">The install script above covers it. Or add this to ~/.gemini/config/mcp_config.json and sign in when your browser opens.</p>
+    body: `<p class="fine">The Claude Code and Codex one-liner sets it up too. Or add this to ~/.gemini/config/mcp_config.json and sign in when your browser opens.</p>
 ${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { clyde: { serverUrl: MCP_URL } } }, null, 2))}`,
   },
   {

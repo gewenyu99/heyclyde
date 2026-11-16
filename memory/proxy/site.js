@@ -192,7 +192,7 @@ const FEATURES = `<section class="wrap" id="what"><div class="section"><span cla
 // Nothing here is made up. A note without a stamp is one whose verdict wasn't recorded per note.
 const RECALL_CSS = `
 .built{margin-bottom:76px}
-.rc-track{display:flex;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;overscroll-behavior-x:contain;scroll-padding:0 4px;padding:4px 4px 14px;scrollbar-width:thin}
+.rc-track{display:flex;align-items:flex-start;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;overscroll-behavior-x:contain;scroll-padding:0 4px;padding:4px 4px 14px;scrollbar-width:thin}
 @media (prefers-reduced-motion:reduce){.rc-track{scroll-behavior:auto}}
 .rc-slide{flex:0 0 100%;scroll-snap-align:start;display:grid;gap:18px;align-content:start;padding:22px}
 @media (max-width:520px){.rc-slide{padding:16px}}
