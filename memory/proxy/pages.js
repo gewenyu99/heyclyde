@@ -311,17 +311,17 @@ ${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { clyde: { serverUrl: 
 
 export const WORKS = [["claude", "Claude"], ["claude-code", "Claude Code"], ["codex", "Codex"], ["gemini", "Gemini"], ["antigravity", "Antigravity"], ["grok", "Grok"], ["chatgpt", "ChatGPT"]];
 
-export const SCENE = `<div class="scene" aria-label="The same Clyde note showing up in Claude and in ChatGPT">
+export const SCENE = `<div class="scene" aria-label="The same Clyde note showing up in Claude and in Gemini">
 <div class="win w1"><div class="win-top"><i class="dots"></i>Claude<span>chat</span></div><div class="body">
-<div class="ask">Plan dinner for Friday. Dana's coming.</div><p class="say">From Gemini, 3 weeks ago:</p>
-<article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-chip">Preference</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">93%</span></div>
-<h3 class="cl-memory__title">Dana hates cilantro. Keep it out of everything.</h3>
-<div class="cl-prov"><span class="cl-prov__who">juniper</span><span>Gemini</span><span class="cl-prov__sep">/</span><span>phone</span><span class="cl-prov__sep">/</span><span>3 w ago</span></div></article>
+<div class="ask">Email the landlord, the radiator's broken again.</div><p class="say">From ChatGPT, 2 weeks ago:</p>
+<article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-chip">Fact</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">96%</span></div>
+<h3 class="cl-memory__title">The landlord is Gary. Not Greg. He noticed last time.</h3>
+<div class="cl-prov"><span class="cl-prov__who">juniper</span><span>ChatGPT</span><span class="cl-prov__sep">/</span><span>phone</span><span class="cl-prov__sep">/</span><span>2 w ago</span></div></article>
 <span class="via">${MARK(16)}from clyde</span></div></div>
-<div class="win w2"><div class="win-top"><i class="dots"></i>ChatGPT<span>chat</span></div><pre><b>›</b> add Friday's groceries to my list
-<i>clyde</i> recall "Friday dinner Dana" <b>→</b> 1 note
-  Dana hates cilantro (juniper, Gemini)
-<b>›</b> skipped the cilantro, added extra lime</pre></div></div>`;
+<div class="win w2"><div class="win-top"><i class="dots"></i>Gemini<span>phone</span></div><pre><b>›</b> text the landlord that I'm home after 6
+<i>clyde</i> recall "landlord" <b>→</b> 1 note
+  The landlord is Gary. Not Greg.
+<b>›</b> "Hi Gary, I'm home after 6."</pre></div></div>`;
 
 /** One card per app with its install steps. The connect page and heyclyde.me/docs both show them. */
 export const appCards = () => APPS.map((a) => `<article class="cl-card app" data-app="${a.id}" id="${a.id}"><div class="app-head"><span class="app-logo">${appLogo(a.logo)}</span>

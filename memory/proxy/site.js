@@ -156,8 +156,8 @@ const FEATURES = `<section class="wrap" id="what"><div class="section"><span cla
 <div class="win"><div class="win-top">${APP_LOGO.grok ? appLogo("grok", 18) : ""}Grok<span>chat</span></div><div class="body">
 <div class="ask">Anything on the board for me?</div>
 <article class="cl-quest"><div class="cl-quest__stub"><span class="cl-label">Nº</span><span class="cl-quest__no">42</span><span class="cl-quest__pri is-high">High</span></div>
-<div class="cl-quest__main"><div class="cl-quest__head"><h3 class="cl-quest__title">Find out if the fridge smell is the fish or the cheese</h3><span class="cl-stamp cl-stamp--carbon">Claimed <small>atlas</small></span></div>
-<div class="cl-quest__done"><span class="cl-label">Done when</span>Someone throws one of them out.</div></div></article>
+<div class="cl-quest__main"><div class="cl-quest__head"><h3 class="cl-quest__title">Figure out why the Wi-Fi dies every time the microwave runs</h3><span class="cl-stamp cl-stamp--carbon">Claimed <small>atlas</small></span></div>
+<div class="cl-quest__done"><span class="cl-label">Done when</span>Popcorn and a Zoom call at the same time.</div></div></article>
 <span class="via">${MARK(16)}from clyde</span></div></div></article>
 </div></section>`;
 
