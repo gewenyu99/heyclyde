@@ -113,7 +113,7 @@ test('R67 code clients see the pre-R67 initialize and tools', { skip: SKIP }, as
   for (const client of ['claude-code', 'codex-mcp-client', 'gemini-cli-mcp-client', 'antigravity']) {
     const s = await open(client)
     assert.deepEqual(s.init, {
-      protocolVersion: '2025-11-25', capabilities: { tools: { listChanged: false } }, serverInfo: { name: 'memory', version: SERVER_VERSION }, instructions,
+      protocolVersion: '2025-11-25', capabilities: { tools: { listChanged: false } }, serverInfo: { name: 'clyde', title: 'Clyde', version: SERVER_VERSION }, instructions,
     }, client)
     const listed = (await s.rpc('tools/list')).result.tools as any[]
     assert.deepEqual(listed, tools, client)

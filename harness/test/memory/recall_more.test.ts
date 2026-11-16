@@ -526,7 +526,8 @@ test('R29: tools/list describes recall_more and recall\'s depth', { skip: SKIP }
 test('R29: server instructions and the empty packet tell agents to dig deeper', { skip: SKIP }, async () => {
   const s = await mcp()
   assert.match(s.init.instructions, /recall_more/)
-  assert.ok(s.init.instructions.includes('before saying memory has nothing'), s.init.instructions)
+  // R53 (#58): "before saying memory has nothing" moved to the plugin's skill. The instructions say what recall_more returns.
+  assert.ok(s.init.instructions.includes('the next page, dormant and replaced notes included'), s.init.instructions)
   const r = await s.tool('recall', { query: 'xqzzyv nomatch' })
   assert.match(r.text, /Nothing in memory matches/)
   assert.match(r.text, /recall_more/)

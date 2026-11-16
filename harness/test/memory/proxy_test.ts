@@ -96,12 +96,19 @@ Deno.test('every page is locked down', async () => {
 })
 
 Deno.test('non-JSON replies pass through', async () => {
-  for (const [status, body] of [[200, 'memory: plain'], [500, 'boom'], [429, 'memory: too many']] as const) {
+  for (const [status, body] of [[200, 'memory: plain'], [429, 'memory: too many']] as const) {
     stub(() => new Response(body, { status, headers: { 'content-type': 'text/plain; charset=utf-8' } }))
     const r = await get('/oauth/consent?authorization_id=abc12345')
     assert.equal(r.status, status)
     assert.equal(await r.text(), body)
   }
+  // R53: a bare 5xx becomes a 502 that says what happened, on a sign-in route as its error page.
+  stub(() => new Response('boom', { status: 500, headers: { 'content-type': 'text/plain; charset=utf-8' } }))
+  const failed = await get('/oauth/consent?authorization_id=abc12345')
+  assert.equal(failed.status, 502)
+  const page = await failed.text()
+  assert.equal(h1(page), 'Something went wrong')
+  assert.ok(page.includes('status 500'), page)
   // Every other route goes to the function as it came, with the proxy's headers and no JSON ask.
   stub(json({ ok: true }))
   const r = await get('/healthz', { accept: 'text/html', 'x-memory-client': 'spoofed', 'cf-connecting-ip': '203.0.113.5' })

@@ -7,7 +7,7 @@ import { allowed, authenticate, baseOf, type Principal, viaProxy } from "./auth.
 import * as billing from "./billing/index.ts";
 import * as limits from "./billing/limits.ts";
 import { config } from "./config.ts";
-import { sql } from "./db.ts";
+import { setting, sql } from "./db.ts";
 import { learn } from "./learn.ts";
 import * as mcp from "./mcp.ts";
 import * as oauth from "./oauth.ts";
@@ -260,6 +260,12 @@ async function serve(req: Request, url: URL, path: string, who: Principal): Prom
   if (path === "/mcp" || path === "/mcp/") return mcp.handle(req, who);
   if (path.startsWith("/billing/")) return billing.handle(req, path, url, await viaProxy(req));
   if (path.startsWith("/.well-known/oauth-protected-resource")) return oauth.resourceMetadata(await baseOf(req));
+  // Google Connected Apps verifies the domain by this file (R58). Its content is a setting, empty until Google issues it.
+  if (path === "/.well-known/google-connected-apps") {
+    return new Response(await setting("google_connected_apps_verification"), {
+      headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+    });
+  }
   if (path.startsWith("/oauth/")) {
     // The Worker asks for JSON and renders the pages (R46). Anyone else, a caller straight to Supabase included, gets text.
     const asJson = (req.headers.get("accept") ?? "").includes("application/json") && await viaProxy(req);
@@ -344,8 +350,14 @@ Deno.serve(async (req) => {
     if (e instanceof limits.Limited) res = e.response;
     else if (e instanceof admin.ApiError) res = json({ error: e.error }, e.status);
     else {
-      console.error(e);
-      res = json({ error: "The server hit an error. Its log has the details." }, 500);
+      // R53: an error says what happened and how to find it in the log, and an MCP client gets it as JSON-RPC.
+      const ref = crypto.randomUUID().slice(0, 8);
+      console.error(`ref ${ref}:`, e);
+      const message = `Clyde hit an unexpected error handling this request (ref ${ref}): ${(e as Error)?.name ?? "Error"}. ` +
+        "Try again, and report the ref if it keeps happening.";
+      res = routeOf(new URL(req.url)).startsWith("/mcp")
+        ? json({ jsonrpc: "2.0", id: null, error: { code: -32603, message } }, 500)
+        : json({ error: message }, 500);
     }
   }
   for (const [k, v] of Object.entries(CORS)) res.headers.set(k, v);

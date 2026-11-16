@@ -11,11 +11,13 @@ const ORIGIN = "https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory";
 const SIGN_IN = new Set(["/oauth/consent", "/oauth/wait", "/oauth/approve"]);
 const ID = /^[A-Za-z0-9_-]{8,100}$/;
 
-function pass(req, url, env, extra = {}) {
+async function pass(req, url, env, extra = {}) {
   const headers = new Headers(req.headers);
   headers.delete("host");
   headers.set("x-memory-proxy", env.PROXY_SECRET);
   headers.delete("x-memory-client");
+  // Which host the caller used (R53). Only this Worker sets it.
+  headers.delete("x-memory-host");
   const ip = req.headers.get("cf-connecting-ip");
   if (ip) headers.set("x-memory-client", ip);
   // Where Cloudflare saw the caller, for the blocked-country checks (R38). A client's own cf-ipcountry or cf-region-code
@@ -26,10 +28,34 @@ function pass(req, url, env, extra = {}) {
   if (req.cf?.regionCode) headers.set("cf-region-code", req.cf.regionCode);
   for (const [k, v] of Object.entries(extra)) headers.set(k, v);
   const hasBody = !["GET", "HEAD"].includes(req.method);
-  return fetch(ORIGIN + (url.pathname === "/" ? "" : url.pathname) + url.search, {
-    method: req.method, headers, body: hasBody ? req.body : undefined, redirect: "manual",
-  });
+  let res;
+  try {
+    res = await fetch(ORIGIN + (url.pathname === "/" ? "" : url.pathname) + url.search, {
+      method: req.method, headers, body: hasBody ? req.body : undefined, redirect: "manual",
+    });
+  } catch (e) {
+    return failed(url, `Clyde's server couldn't be reached (${e?.message ?? e}). Try again in a minute.`);
+  }
+  // R53: a 5xx that isn't the function's own JSON (a gateway's bare "Internal Server Error", a boot failure) becomes one
+  // that says what happened.
+  if (res.status >= 500 && !(res.headers.get("content-type") ?? "").startsWith("application/json")) {
+    return failed(url, `Clyde's server failed with status ${res.status} before it could answer. Try again in a minute.`);
+  }
+  return res;
 }
+
+/** A 502 with a message: JSON-RPC on /mcp, so an MCP client shows it, and {error} elsewhere, which a sign-in route
+ * renders as its error page. */
+function failed(url, message) {
+  const body = url.pathname.startsWith("/mcp") ? { jsonrpc: "2.0", id: null, error: { code: -32603, message } }
+    : { state: "error", error: message, message };
+  return Response.json(body, { status: 502, headers: { "cache-control": "no-store" } });
+}
+
+// heyclyde.me hands these to the function (R53, R58): the MCP endpoint listings use, its discovery file and Google's
+// verification file. Every other path there is the site.
+const SITE_API = (path) => path === "/mcp" || path === "/mcp/" || path.startsWith("/.well-known/oauth-protected-resource") ||
+  path === "/.well-known/google-connected-apps";
 
 function nonce() {
   const b = crypto.getRandomValues(new Uint8Array(18));
@@ -81,6 +107,7 @@ export default {
     const url = new URL(req.url);
     // heyclyde.me is Clyde's public home (R69); www goes there. Neither host reaches the function.
     if (url.hostname === "www.heyclyde.me") return Response.redirect(`https://heyclyde.me${url.pathname}${url.search}`, 301);
+    if (url.hostname === "heyclyde.me" && SITE_API(url.pathname)) return pass(req, url, env, { "x-memory-host": "heyclyde.me" });
     if (url.hostname === "heyclyde.me") {
       if (req.method !== "GET" && req.method !== "HEAD") return new Response("Method not allowed", { status: 405, headers: { allow: "GET, HEAD" } });
       const n = nonce();

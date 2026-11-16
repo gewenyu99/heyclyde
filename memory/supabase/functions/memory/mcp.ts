@@ -16,69 +16,77 @@ import { Refused, remember } from "./write.ts";
 export const MAX_MCP_BODY = 12 * 1024 * 1024;
 const RID = /^retrieval ([0-9a-f-]{36})/;
 const VERSIONS =["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
-export const INSTRUCTIONS = "Wen's memory. Register once with register_agent (name, context work, personal or both, surface, " +
-  "description): memory remembers it for this token and app, and your notes and messages then carry your name. You can use " +
-  "memory before you have, and each reply reminds you until you do. Call recall before acting on anything that depends on Wen's decisions, " +
-  "preferences or history. When a recall misses, call recall_more(retrieval_id) for the next page, dormant and replaced notes " +
-  "included, before saying memory has nothing. Wen's other agents leave you messages. Call check_messages when you start a task, " +
-  "and post_message to reach them. check_messages numbers each message: call ack_messages with those ids once you've " +
-  "handled them, or they come back. To keep what you learn, call remember: it needs only pattern, title, body and " +
-  "evidence, and every other agent can recall the note at once. Give feedback after every recall: one feedback call " +
-  "with a verdict (used, irrelevant or wrong) for each result, or nothing_useful when none helped. The packet shows " +
-  "some results under On trial, new notes still earning their place, so judge those too. Keep each memory under 500 " +
-  "characters and put the details in artifacts: remember takes artifacts: [{name, kind, text or base64 or sha256}], and " +
-  "recall lists a memory's artifacts by name and kind. Open one with get_blob. A file too big to send inline goes " +
-  "through upload_blob. memory also keeps a quest board, where agents hand each other work. post_quest puts a task up: a " +
-  "title, a short brief, done_when (how anyone can tell it's finished), and the details in artifacts. list_quests shows the " +
-  "open quests for your context. claim_quest takes one under a 2-hour lease, so no other agent works on it. update_quest " +
-  "reports progress and renews the lease, and a lease that runs out puts the quest back on the board. When done_when holds, " +
-  "remember what the work produced, then call complete_quest with the evidence and that entry's id. abandon_quest gives a " +
-  "claimed quest back, or withdraws one you posted. Done quests stay in memory as history that recall finds.";
+// R53 (#58): the stores' reviews read this text. It says what each tool does and never tells the model what to call or
+// when. The recall-first and feedback guidance lives in the Claude Code plugin's skill (plugins/memory/skills/clyde).
+export const INSTRUCTIONS = "Clyde keeps one set of notes for all of a person's AI agents: what one agent learns, every other agent can " +
+  "recall. register_agent names the agent once per token and app (name, context work, personal or both, surface, " +
+  "description), so its notes and messages carry that name. recall searches the notes: decisions, preferences, " +
+  "observations and past reactions. Each result packet starts with a retrieval id. recall_more takes that id and returns " +
+  "the next page, dormant and replaced notes included. feedback takes the same id and a verdict (used, irrelevant or " +
+  "wrong) for each result shown, those under On trial included, or nothing_useful, and ranking learns from it. remember " +
+  "writes a note: it needs only pattern, title, body and evidence. A note stays under 500 characters, with the details " +
+  "in artifacts: [{name, kind, text or base64 or sha256}]. recall lists a note's artifacts by name and kind, get_blob " +
+  "reads one, and upload_blob takes a file too big to send inline. Agents leave each other messages: check_messages " +
+  "lists them with ids, ack_messages marks them handled, and post_message sends one. The quest board hands work between " +
+  "agents: post_quest puts a task up with a title, a short brief, done_when (how anyone can tell it's finished) and the " +
+  "details in artifacts. list_quests shows the open quests for a context. claim_quest takes one under a 2-hour lease, so " +
+  "no other agent works on it. update_quest reports progress and renews the lease, and a lease that runs out puts the " +
+  "quest back on the board. complete_quest closes a quest with the evidence and the id of the note the work produced. " +
+  "abandon_quest gives a claimed quest back, or withdraws a posted one. Done quests stay as history that recall finds.";
 
 const str = (description: string) => ({ type: "string", description });
 const int = (description: string) => ({ type: "integer", description });
+/** A tool's title and hints. None reaches outside Clyde. A tool that writes says whether it can delete, supersede or
+ * overwrite (destructive) or only adds. */
+const hints = (title: string, readOnly: boolean, destructive?: boolean) => ({
+  title,
+  annotations: { title, readOnlyHint: readOnly, ...(readOnly ? {} : { destructiveHint: Boolean(destructive) }), openWorldHint: false },
+});
+const HELD = "[{name, sha256}] of files Clyde holds";
 
 export const TOOLS = [
   {
     name: "register_agent",
-    description: "Say which of Wen's agents you are, once. memory remembers it for this token and app, so later sessions start " +
-      "registered, and your notes' source and your messages carry your name. Until you do, every reply reminds you.\n\n" +
-      "name: a short lowercase handle, like clyde-work or journeymate-ios. Reuse your name if you have one.\n" +
-      "context: work, personal or both. What part of Wen's life you work on.\n" +
-      "surface: where you run, like claude-code, claude.ai, cowork, codex or a script.\n" +
-      "description: one or two sentences on what you do for Wen.",
+    ...hints("Register agent", false, true),
+    description: "Names the agent using this token and app, once. Clyde keeps it for this token and app, so later sessions " +
+      "start registered, and the agent's notes and messages carry its name. Until then, each reply carries a reminder.\n\n" +
+      "name: a short lowercase handle, like clyde-work or journeymate-ios. An agent that has a name reuses it.\n" +
+      "context: work, personal or both: the part of the person's life the agent works on.\n" +
+      "surface: where the agent runs, like claude-code, claude.ai, cowork, codex or a script.\n" +
+      "description: one or two sentences on what the agent does.",
     inputSchema: {
       type: "object", required: ["name", "context", "surface", "description"],
       properties: {
         name: str("Lowercase handle, letters, digits and dashes"), context: str("work, personal or both"),
-        surface: str("Where you run"), description: str("What you do for Wen"),
+        surface: str("Where the agent runs"), description: str("What the agent does"),
       },
     },
   },
   {
     name: "recall",
-    description: "Search Wen's memory: his decisions, preferences, observations and past reactions.\n\n" +
-      "query: what you need to know, in English or 中文.\n" +
-      "task: optional one-line description of what you are doing, to sharpen the search.\n" +
+    ...hints("Recall notes", true),
+    description: "Searches the notes the person's agents have saved: decisions, preferences, observations and past reactions.\n\n" +
+      "query: what to find, in English or 中文.\n" +
+      "task: optional one-line description of the current work, to sharpen the search.\n" +
       "scope: optional run scope like run:abc. That run's notes rank first. Other runs' notes are searched too.\n" +
       "depth: optional, packet (the default) or deep, which adds the page recall_more would give next.\n" +
-      "Results start with a retrieval id and end with the feedback call to make. Give feedback after every recall, one call " +
-      "for the whole packet, so memory learns which results to keep.",
+      "Results start with a retrieval id, which recall_more and feedback take. feedback on a recall tells Clyde which " +
+      "results helped, so ranking learns what to keep.",
     inputSchema: {
       type: "object", required: ["query"],
       properties: {
-        query: str("What you need to know"), task: str("What you are doing"), scope: str("run:<id>"),
-        depth: str("packet (default) or deep: the packet and the next page past it, in one call"),
+        query: str("What to find"), task: str("The current work"), scope: str("run:<id>"),
+        depth: str("packet (default) or deep: the packet and the next page past it, in one request"),
       },
     },
   },
   {
     name: "recall_more",
-    description: "Dig deeper when a recall missed: the next page past what that recall showed, in the order it ranked them, then " +
-      "the notes recall leaves out, dormant (low strength) and superseded ones included. Each item is labelled with its kind, " +
-      "strength and state: settled, on trial, dormant, or superseded by its replacement. Call it before saying memory has " +
-      "nothing. Each page has its own retrieval id: give feedback on it, and pass it to recall_more for the page after. A " +
-      "dormant note you mark used comes back. Only the session that made the recall can dig into it.",
+    ...hints("Recall more", true),
+    description: "The next page of a recall: past what that recall showed, in the order it ranked them, then the notes recall " +
+      "leaves out, dormant (low strength) and superseded ones included. Each item is labelled with its kind, strength and " +
+      "state: settled, on trial, dormant, or superseded by its replacement. Each page has its own retrieval id, for feedback " +
+      "and for the page after. A dormant note rated used comes back. Only the session that made the recall can page through it.",
     inputSchema: {
       type: "object", required: ["retrieval_id"],
       properties: { retrieval_id: str("The retrieval id of the recall, or of the last recall_more page") },
@@ -86,12 +94,14 @@ export const TOOLS = [
   },
   {
     name: "get_entry",
-    description: "Open one memory entry by id, with its evidence, source, links and artifacts.",
+    ...hints("Get note", true),
+    description: "Opens one note by id, with its evidence, source, links and artifacts.",
     inputSchema: { type: "object", required: ["id"], properties: { id: str("Entry id") } },
   },
   {
     name: "get_blob",
-    description: "Read an artifact that get_entry lists, as text, one page at a time. The reply says how to get the next page. " +
+    ...hints("Read artifact", true),
+    description: "Reads an artifact that get_entry lists, as text, one page at a time. The reply says how to get the next page. " +
       "An image, video, audio file or other non-text artifact comes back as a link that downloads it for 10 minutes.",
     inputSchema: {
       type: "object", required: ["sha256"],
@@ -100,10 +110,11 @@ export const TOOLS = [
   },
   {
     name: "upload_blob",
-    description: "Send a file to memory that is too big to put in remember inline, up to 500 MB: an image, video, audio, PDF, " +
-      "zip or long text. Give its sha256, its size in bytes and its media type. memory replies with a URL: PUT the file there " +
-      "within two hours (curl -X PUT --data-binary @file '<url>'), then cite the sha256 in remember as an artifact: " +
-      "artifacts: [{name, kind, sha256}]. memory checks the hash and size before it keeps the file. Text with a secret in it is refused.",
+    ...hints("Upload file", false, false),
+    description: "Takes a file too big to send inline with remember, up to 500 MB: an image, video, audio, PDF, zip or long " +
+      "text. Give its sha256, its size in bytes and its media type. The reply is a URL to PUT the file to within two hours " +
+      "(curl -X PUT --data-binary @file '<url>'). remember then cites the sha256 as an artifact: artifacts: [{name, kind, " +
+      "sha256}]. Clyde checks the hash and size when the file is cited. Text with a secret in it is refused.",
     inputSchema: {
       type: "object", required: ["sha256", "size"],
       properties: { sha256: str("sha256 of the file, 64 hex digits"), size: int("Size in bytes"), media_type: str("Like image/png. Default application/octet-stream") },
@@ -111,27 +122,29 @@ export const TOOLS = [
   },
   {
     name: "remember",
-    description: "Write one note to Wen's memory. Every other agent can recall it at once, labelled by its kind and marked " +
-      "unreviewed until Wen or clyde-flow reviews it.\n\n" +
+    ...hints("Remember a note", false, true),
+    description: "Writes one note. Every other agent can recall it at once, labelled by its kind and marked unreviewed until " +
+      "the person or a reviewing agent reviews it. supersedes replaces earlier notes.\n\n" +
       "pattern: projects, decisions, observations, preferences, recommendations, references or reactions.\n" +
-      "title, body: a one-line title, and the summary recall ranks on. Keep a memory under 500 characters and put the details " +
-      "in artifacts. A body over 500 characters is refused unless you pass long: true. 4000 is the most.\n" +
+      "title, body: a one-line title, and the summary recall ranks on. A note stays under 500 characters, with the details " +
+      "in artifacts. A body over 500 characters is refused unless long is true. 4000 is the most.\n" +
       "evidence: what backs it.\n" +
-      "kind: observation (default: your inference or summary), fact, wen or plan. A fact starts high only when its " +
-      "evidence is a line from a tool's output that memory holds. Pass evidence_event, the id the hook printed as " +
-      "'memory event <n>', and put that line word for word in evidence. If it isn't in that event, the note is stored as " +
-      "an observation. wen is Wen's own words, from a prompt event. plan is what you mean to do.\n" +
+      "kind: observation (default: an inference or summary), fact, wen or plan. A fact starts high only when its evidence " +
+      "is a line from a tool's output that Clyde holds: evidence_event is the event id the hook printed, and evidence " +
+      "quotes that line word for word. If it isn't in that event, the note is stored as an observation. wen is the " +
+      "person's own words, from a prompt event. plan is what the agent means to do.\n" +
       "evidence_event: the id of the hook event that holds the evidence line.\n" +
       "scope: optional, default global. run:<id> hands a note off within a run, and that run's recalls rank it first.\n" +
-      "evidence_kind: summary, assistant or memory.\n" +
-      "project: optional, default your own notes project. Give the id of a projects entry to file the note under it.\n" +
+      "evidence_kind: summary or assistant.\n" +
+      "project: optional, default the agent's own notes project. The id of a projects entry files the note under it.\n" +
       'links: [{"type": "supports|contradicts|derived_from|relates|corrects", "to": "<id>"}].\n' +
       "supersedes: ids of notes in the same run that this note replaces. Hybrid recall stops serving them, and the " +
       "index arm lists them struck through.\n" +
       'artifacts: [{"name": "plan.md", "kind": "document", "text": "..."}] for the details: a plan, log, transcript, image, code. ' +
-      "Each has a name and one of text (UTF-8), base64 (binary, up to 4 MiB; use upload_blob for bigger files) or sha256 (a file " +
-      "sent with upload_blob). kind is image, video, audio, document, skill, artifact, data or other, and memory derives it when you " +
-      "leave it out. Recall lists a memory's artifacts by name, kind and size, never their content. blobs still works as the same field.\n" +
+      "Each has a name and one of text (UTF-8), base64 (binary, up to 4 MiB; upload_blob takes bigger files) or sha256 (a " +
+      "file sent with upload_blob). kind is image, video, audio, document, skill, artifact, data or other, and Clyde derives " +
+      "it when it's left out. Recall lists a note's artifacts by name, kind and size, never their content. blobs still works " +
+      "as the same field.\n" +
       "long: true lets a body past 500 characters through.\n" +
       "Returns the entry's id and each artifact's sha256.",
     inputSchema: {
@@ -140,8 +153,8 @@ export const TOOLS = [
         pattern: str("Entry pattern"), title: str("One-line title"), body: str("Summary recall ranks on"),
         evidence: str("What backs it"), kind: str("observation (default), fact, wen or plan"),
         evidence_event: { type: "integer", description: "The hook event id that holds the evidence line" },
-        scope: str("global (default) or run:<id>"), project: str("A projects entry id, default your notes project"),
-        evidence_kind: str("summary, assistant or memory"), authority: str("Leave out"), sensitivity: str("normal, private (title only for everyone) or confidential (work: title only for outside models)"),
+        scope: str("global (default) or run:<id>"), project: str("A projects entry id, default the agent's notes project"),
+        evidence_kind: str("summary or assistant"), authority: str("Leave out"), sensitivity: str("normal, private (title only for everyone) or confidential (work: title only for outside models)"),
         lang: str("Language code, default en"), valid_from: str("YYYY-MM-DD"),
         links: { type: "array", items: { type: "object" } }, supersedes: { type: "array", items: { type: "string" } },
         artifacts: { type: "array", items: { type: "object" }, description: "[{name, kind, text | base64 | sha256}]" },
@@ -152,23 +165,24 @@ export const TOOLS = [
   },
   {
     name: "feedback",
-    description: "Report how a recall went, once per recall, after every recall. Name each result you were shown, including " +
-      "those under On trial: entries: [{entry_id, verdict}] with verdict used, irrelevant or wrong. Say nothing_useful: true " +
-      "when none helped. A result you leave out counts as not used. Only the session that made the recall can give feedback, " +
-      "and only once. The older form still works: verdict (helpful, used, irrelevant, wrong), with entry_id for one result.",
+    ...hints("Rate a recall", false, false),
+    description: "Rates the results of one recall, once: entries: [{entry_id, verdict}] with verdict used, irrelevant or " +
+      "wrong, for each result shown, those under On trial included, or nothing_useful: true when none helped. A result left " +
+      "out counts as not used. Only the session that made the recall can rate it, and only once. The older form still " +
+      "works: verdict (helpful, used, irrelevant, wrong), with entry_id for one result.",
     inputSchema: {
       type: "object", required: ["retrieval_id"],
       properties: {
         retrieval_id: str("From the packet"),
         entries: {
-          type: "array", description: "A verdict for each result you were shown",
+          type: "array", description: "A verdict for each result shown",
           items: {
             type: "object", required: ["entry_id", "verdict"],
             properties: { entry_id: str("A result's id"), verdict: { type: "string", enum: ["used", "irrelevant", "wrong"] } },
           },
         },
         items: { type: "array", description: "Same as entries", items: { type: "object" } },
-        nothing_useful: { type: "boolean", description: "True when no result helped. Don't send it with entries." },
+        nothing_useful: { type: "boolean", description: "True when no result helped. Not sent with entries." },
         verdict: str("Overall, or for entry_id: helpful, used, irrelevant, wrong or nothing_useful"), entry_id: str("One result, with verdict"),
         note: str("Why, up to 4,000 characters"),
       },
@@ -176,21 +190,25 @@ export const TOOLS = [
   },
   {
     name: "post_message",
-    description: "Leave a message for Wen's other agents. to: claude, codex, all, or another agent memory has seen in the last " +
-      "30 days. all reaches the registered agents and claude and codex. They see it at their next check or prompt. A message " +
-      "to all that no other agent could receive isn't posted. For work another agent should pick up, post_quest instead.",
+    ...hints("Post message", false, false),
+    description: "Leaves a message for the person's other agents. to: claude, codex, all, or another agent Clyde has seen in " +
+      "the last 30 days. all reaches the registered agents and claude and codex. They see it at their next check or prompt. " +
+      "A message to all that no other agent could receive isn't posted. Work another agent should pick up goes on the quest " +
+      "board, with post_quest.",
     inputSchema: { type: "object", required: ["to", "body"], properties: { to: str("claude, codex, all or another agent's name"), body: str("The message") } },
   },
   {
     name: "check_messages",
-    description: "Read your waiting messages from Wen's other agents, oldest first, up to 20, each with an id. Reading " +
-      "doesn't finish them: call ack_messages with the ids once you've handled them. One you don't acknowledge comes " +
-      "back after 30 minutes, up to 3 times, then it's dropped and its sender is told.",
+    ...hints("Check messages", true),
+    description: "Lists the messages waiting for this agent from the person's other agents, oldest first, up to 20, each with " +
+      "an id. Reading doesn't finish them: ack_messages marks them handled. One left unacknowledged comes back after 30 " +
+      "minutes, up to 3 times, then it's dropped and its sender is told.",
     inputSchema: { type: "object", properties: {} },
   },
   {
     name: "ack_messages",
-    description: "Mark messages handled, by the ids check_messages listed (the hook prints the same ids). Only your own can be acknowledged.",
+    ...hints("Acknowledge messages", false, true),
+    description: "Marks messages handled, by the ids check_messages listed (the hook prints the same ids). Only this agent's own can be acknowledged.",
     inputSchema: {
       type: "object", required: ["ids"],
       properties: { ids: { type: "array", items: { type: "integer" }, description: "Message ids from check_messages" } },
@@ -198,16 +216,17 @@ export const TOOLS = [
   },
   {
     name: "post_quest",
-    description: "Put a task on memory's quest board for Wen's other agents to claim, like a mission board. Use it for work " +
-      "another agent should pick up, not to tell one agent something (that's post_message).\n\n" +
+    ...hints("Post quest", false, false),
+    description: "Puts a task on the quest board for the person's other agents to claim, like a mission board. It's for work " +
+      "another agent should pick up, not for telling one agent something (that's post_message).\n\n" +
       "title: up to 120 characters.\n" +
-      "brief: what to do and why, up to 500 characters. Put the details in artifacts.\n" +
+      "brief: what to do and why, up to 500 characters. The details go in artifacts.\n" +
       "done_when: one line any agent can check to tell the quest is finished, up to 300 characters.\n" +
       "tags: up to 8 lowercase words.\n" +
       "priority: high, normal (default) or low.\n" +
-      "context: work, personal or both. Default: your registered context.\n" +
+      "context: work, personal or both. Default: the agent's registered context.\n" +
       "for: who may claim it: any (default), claude, codex, or one agent's name.\n" +
-      "artifacts: [{name, sha256}] of files memory already holds, like a plan you saved with remember. get_entry lists them.\n" +
+      "artifacts: [{name, sha256}] of files Clyde already holds, like a plan saved with remember. get_entry lists them.\n" +
       "Returns the quest's id. Every agent sees it at session start and in list_quests.",
     inputSchema: {
       type: "object", required: ["title", "brief", "done_when"],
@@ -215,18 +234,19 @@ export const TOOLS = [
         title: str("Up to 120 characters"), brief: str("What to do and why, up to 500 characters"),
         done_when: str("How anyone can tell it's finished, up to 300 characters"),
         tags: { type: "array", items: { type: "string" }, description: "Up to 8 lowercase words" },
-        priority: str("high, normal (default) or low"), context: str("work, personal or both. Default: yours"),
+        priority: str("high, normal (default) or low"), context: str("work, personal or both. Default: the agent's own"),
         for: str("any (default), claude, codex, or an agent's name"),
-        artifacts: { type: "array", items: { type: "object" }, description: "[{name, sha256}] of files memory holds" },
+        artifacts: { type: "array", items: { type: "object" }, description: HELD },
       },
     },
   },
   {
     name: "list_quests",
-    description: "Read memory's quest board. By default, the open quests you may claim in your context, high priority first.\n\n" +
-      "show: open (default), mine (quests you posted or claimed), done (finished, with their evidence and entries) or all.\n" +
+    ...hints("List quests", true),
+    description: "Reads the quest board. By default, the open quests this agent may claim in its context, high priority first.\n\n" +
+      "show: open (default), mine (quests this agent posted or claimed), done (finished, with their evidence and entries) or all.\n" +
       "tag: only quests with this tag.\n" +
-      "context: work, personal, both or all. Default: your registered context, else all.\n" +
+      "context: work, personal, both or all. Default: the agent's registered context, else all.\n" +
       "limit: how many, 1 to 50, default 20.",
     inputSchema: {
       type: "object",
@@ -238,9 +258,10 @@ export const TOOLS = [
   },
   {
     name: "claim_quest",
-    description: "Take a quest from the board, so no other agent works on it. The claim is a lease, 2 hours unless you say " +
-      "otherwise: update_quest renews it, and if it runs out the quest goes back on the board. The reply has the brief, " +
-      "done_when, the artifacts and the latest notes. Only one agent can hold a quest.",
+    ...hints("Claim quest", false, false),
+    description: "Takes a quest from the board, so no other agent works on it. The claim is a lease, 2 hours unless " +
+      "lease_minutes says otherwise: update_quest renews it, and if it runs out the quest goes back on the board. The reply " +
+      "has the brief, done_when, the artifacts and the latest notes. Only one agent can hold a quest.",
     inputSchema: {
       type: "object", required: ["id"],
       properties: { id: int("The quest's id from list_quests"), lease_minutes: int("15 to 480, default 120") },
@@ -248,32 +269,35 @@ export const TOOLS = [
   },
   {
     name: "update_quest",
-    description: "Report progress on a quest you claimed. The note goes on the quest for every agent to read, and your lease " +
+    ...hints("Update quest", false, false),
+    description: "Reports progress on a claimed quest. The note goes on the quest for every agent to read, and the lease " +
       "starts over.",
     inputSchema: {
       type: "object", required: ["id", "note"],
-      properties: { id: int("The quest's id"), note: str("What you did and what's left, up to 1000 characters") },
+      properties: { id: int("The quest's id"), note: str("What was done and what's left, up to 1000 characters") },
     },
   },
   {
     name: "complete_quest",
-    description: "Finish a quest you claimed, once its done_when holds. First remember what the work produced, then pass that " +
-      "entry's id. memory writes a history note linked to it, so recall can say what agents did.\n\n" +
-      "evidence: how you know done_when holds, up to 2000 characters.\n" +
-      "entry_id: the memory entry the work produced.\n" +
-      "artifacts: optional [{name, sha256}] of files memory holds that back the evidence.",
+    ...hints("Complete quest", false, false),
+    description: "Finishes a claimed quest whose done_when holds. entry_id names the note, saved with remember, that records " +
+      "what the work produced, and Clyde writes a history note linked to it, so recall can say what agents did.\n\n" +
+      "evidence: how done_when is known to hold, up to 2000 characters.\n" +
+      "entry_id: the note the work produced.\n" +
+      "artifacts: optional [{name, sha256}] of files Clyde holds that back the evidence.",
     inputSchema: {
       type: "object", required: ["id", "evidence", "entry_id"],
       properties: {
-        id: int("The quest's id"), evidence: str("How you know done_when holds"), entry_id: str("The entry the work produced"),
-        artifacts: { type: "array", items: { type: "object" }, description: "[{name, sha256}] of files memory holds" },
+        id: int("The quest's id"), evidence: str("How done_when is known to hold"), entry_id: str("The entry the work produced"),
+        artifacts: { type: "array", items: { type: "object" }, description: HELD },
       },
     },
   },
   {
     name: "abandon_quest",
-    description: "Let go of a quest. If you claimed it, it goes back on the board for another agent, with your reason in its " +
-      "notes. If you posted it, it's withdrawn for good.",
+    ...hints("Abandon quest", false, true),
+    description: "Lets go of a quest. A claimed quest goes back on the board for another agent, with the reason in its " +
+      "notes. A posted quest is withdrawn for good.",
     inputSchema: {
       type: "object", required: ["id", "reason"],
       properties: { id: int("The quest's id"), reason: str("Why, up to 500 characters") },
@@ -281,7 +305,8 @@ export const TOOLS = [
   },
   {
     name: "dismiss_messages",
-    description: "Clear messages without handling them: ids from check_messages, or \"all\" for everything waiting for you.",
+    ...hints("Dismiss messages", false, true),
+    description: "Clears messages without handling them: ids from check_messages, or \"all\" for everything waiting.",
     inputSchema: {
       type: "object",
       properties: {
@@ -479,7 +504,7 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
       return result(id, {
         protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0],
         capabilities: ui ? { tools: { listChanged: false }, resources: {}, extensions: { [UI_EXTENSION]: {} } } : { tools: { listChanged: false } },
-        serverInfo: { name: "memory", version: SERVER_VERSION },
+        serverInfo: { name: "clyde", title: "Clyde", version: SERVER_VERSION },
         instructions: INSTRUCTIONS,
       });
     }

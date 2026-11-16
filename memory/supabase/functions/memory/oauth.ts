@@ -15,7 +15,7 @@ const ID = /^[A-Za-z0-9_-]{8,100}$/;
 const FRESH = "15 minutes";
 // Where an approved code may go, over https: Claude's callbacks, Antigravity's (https://antigravity.google/oauth-callback),
 // Grok's and the Gemini app's (R45). Grok and the Gemini app don't document their callbacks, so both of xAI's hosts and
-// gemini.google.com are allowed, each exactly, never a subdomain. No other Google host is, without evidence it's used.
+// gemini.google.com are allowed, each exactly, never a subdomain. Google's redirect service is below.
 // A program on this computer (Claude Code, Gemini CLI and other local clients) may use http too. Anything else is refused
 // and its redirect_uri logged to admin_audit as oauth_deny, so a client someone registered for themselves can't collect a
 // code, and an app whose real callback differs shows it on its first try.
@@ -56,7 +56,7 @@ export function resourceMetadata(base: string) {
     resource: `${base}/mcp`,
     authorization_servers: [AUTH()],
     bearer_methods_supported: ["header"],
-    resource_name: "memory",
+    resource_name: "Clyde",
   });
 }
 

@@ -334,13 +334,13 @@ test('R33: tools/list feedback takes retrieval_id, entries and nothing_useful, a
   assert.equal(props.nothing_useful.type, 'boolean')
 })
 
-test('R33: server instructions and the recall description require feedback after every recall', { skip: SKIP }, async () => {
+// R53 (#58) moved "after every recall" into the plugin's skill. The server's text still names feedback and what it takes.
+test('R33: server instructions and the recall description name feedback and the retrieval id it takes', { skip: SKIP }, async () => {
   const { init, rpc } = await mcp()
-  assert.match(init.instructions, /feedback/i)
-  assert.match(init.instructions, /after every recall/i)
+  assert.match(init.instructions, /feedback takes the same id/i)
   const recall = (await rpc('tools/list', {})).result.tools.find((t: any) => t.name === 'recall')
   assert.match(recall.description, /feedback/i)
-  assert.match(recall.description, /every recall/i)
+  assert.match(recall.description, /retrieval id/i)
 })
 
 /** A session that has made a recall delivering `n` settled entries, ready for feedback. */

@@ -54,6 +54,7 @@ export function credentialFor(path: string): Kind | null {
 
 // memory's own address. A Cloudflare Worker there passes requests through and proves it with a shared secret.
 export const DOMAIN = "https://memory.heyclyde.me";
+export const SITE = "https://heyclyde.me";
 const DIRECT = () => `${Deno.env.get("SUPABASE_URL")}/functions/v1/memory`;
 
 /** True when the request came through the Worker at memory.heyclyde.me. Only its SHA-256 is stored. */
@@ -64,7 +65,10 @@ export async function viaProxy(req: Request) {
 
 /** The address the caller used, for the URLs memory hands back: the resource an MCP client checks, the sign-in links. */
 export async function baseOf(req: Request) {
-  return (await viaProxy(req)) ? DOMAIN : DIRECT();
+  if (!(await viaProxy(req))) return DIRECT();
+  // R53: heyclyde.me serves /mcp and its discovery file too, and the Worker says when it was the host. A caller's own
+  // x-memory-host never reaches here: the Worker drops it.
+  return req.headers.get("x-memory-host") === "heyclyde.me" ? SITE : DOMAIN;
 }
 
 /** The client's address. Through the Worker, it's the one Cloudflare saw. Otherwise it's the platform's
