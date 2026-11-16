@@ -191,235 +191,241 @@ const FEATURES = `<section class="wrap" id="what"><div class="section"><span cla
 <span class="via">${MARK(16)}from clyde</span></div></div></article>
 </div></section>`;
 
-// How Clyde was used to build Clyde: six slides copied from the store. One recall that followed links, drawn as a graph,
-// three notes saved in one place and recalled days later in another, a quest and the feedback counts. Nothing here is made up.
-// The graph lights in 6 steps over a 16 s loop: query, search, seeds, links, hop 1, verdicts. Each number is
-// the percent of the loop where a step starts. Notes pop in (rc-s). Links draw from their source and column heads fade in (rc-d).
-const RC_STEPS = [3, 7.5, 12.5, 20, 25, 32.5];
-const RC_STEPS_CSS = RC_STEPS.map((a, i) => `.rc-s${i + 1}{animation:rc-s${i + 1} 16s infinite both}.rc-d${i + 1}{animation:rc-d${i + 1} 16s infinite both}
-@keyframes rc-s${i + 1}{0%,${a}%{opacity:0;transform:scale(.5)}${a + 1.5}%{opacity:1;transform:scale(1.2)}${a + 3}%,92%{opacity:1;transform:scale(1)}96%,100%{opacity:0;transform:scale(1)}}
-@keyframes rc-d${i + 1}{0%,${a}%{opacity:0;stroke-dashoffset:1}${a + .2}%{opacity:1;stroke-dashoffset:1}${a + 4.5}%,92%{opacity:1;stroke-dashoffset:0}96%,100%{opacity:0;stroke-dashoffset:0}}`).join("\n");
+// Why Clyde holds up in daily use: six interactive walkthroughs (no card grid above), each showing a real user problem,
+// what happens in chat and memory, and why it helps.
 const RECALL_CSS = `
-.built{margin-bottom:76px}
-.rc-track{display:flex;align-items:flex-start;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;overscroll-behavior-x:contain;scroll-padding:0 4px;padding:4px 4px 14px;scrollbar-width:thin}
+.built{margin-bottom:84px}
+.rc-nav{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 14px;margin:0 4px 14px}
+.rc-nav[hidden]{display:none}
+.rc-steps{display:flex;flex-wrap:wrap;gap:7px}
+.rc-pill{appearance:none;height:32px;padding:0 12px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-pill);background:var(--cl-paper-1);color:var(--cl-ink-2);font:600 12.5px/1 var(--cl-font-sans);cursor:pointer}
+.rc-pill:hover{border-color:var(--cl-ink-3);color:var(--cl-ink)}
+.rc-pill[aria-current="step"]{border-color:var(--cl-ink);background:var(--cl-sticky);color:var(--cl-ink);box-shadow:var(--cl-copy-1);transform:translate(-1px,-1px)}
+.rc-arrows{display:flex;align-items:center;gap:8px}
+.rc-nav [aria-disabled="true"]{opacity:.4;pointer-events:none}
+.rc-count{min-width:42px;text-align:center;font:600 12.5px/1 var(--cl-font-mono);font-variant-numeric:tabular-nums;color:var(--cl-ink-2)}
+.rc-track{position:relative;display:flex;align-items:stretch;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;overscroll-behavior-x:contain;scroll-padding:0 4px;padding:4px 4px 14px;scrollbar-width:thin}
 @media (prefers-reduced-motion:reduce){.rc-track{scroll-behavior:auto}}
-.rc-slide{flex:0 0 100%;scroll-snap-align:start;display:grid;gap:18px;align-content:start;padding:22px}
+.rc-slide{flex:0 0 100%;scroll-snap-align:start;display:grid;grid-template-rows:auto 1fr;gap:18px;padding:24px}
 @media (max-width:520px){.rc-slide{padding:16px}}
 .rc-slide .cl-sticky{--cl-sticky-ground:var(--cl-paper-1)}
-.rc-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px}
-.rc-head h3{margin:0}
-.rc-meta{font:var(--cl-text-mono);font-size:12.5px;color:var(--cl-ink-3)}
-.rc-body{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:18px 28px;align-items:start}
-@media (max-width:760px){.rc-body{grid-template-columns:minmax(0,1fr)}}
-.rc-list{display:grid;gap:14px;min-width:0}
-.rc-q{margin:0;padding:10px 12px;border-radius:var(--cl-radius-md);background:var(--cl-paper-2);font:var(--cl-text-mono);font-size:12.5px;line-height:1.55;color:var(--cl-ink);overflow-wrap:anywhere}
-.rc-q b{color:var(--cl-carbon);font-weight:600}
-.rc-group{display:grid;gap:8px}
-.rc-notes{list-style:none;margin:0;padding:0;display:grid;gap:8px}
-.rc-notes li{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:10px;align-items:start;font:var(--cl-text-small);color:var(--cl-ink)}
-.rc-notes small{display:block;font:var(--cl-text-mono);font-size:11.5px;color:var(--cl-ink-3)}
-.rc-dot{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--cl-ink-3);background:var(--cl-paper-1);font:700 10px/1 var(--cl-font-mono);font-style:normal;color:var(--cl-ink)}
-.rc-dot.is-used{background:var(--cl-carbon);border-color:var(--cl-carbon);color:var(--cl-on-carbon)}
-.rc-tally{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding-top:12px;border-top:1px dashed var(--cl-rule-strong);font:var(--cl-text-small);color:var(--cl-ink-2)}
-.rc-mech{display:flex;flex-wrap:wrap;gap:6px}
-.rc-seed{grid-column:2/-1}
-.rc-ttl{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
-.rc-score{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;max-width:260px;margin-top:5px}
-.rc-bar{height:6px;border-radius:var(--cl-radius-xs);background:var(--cl-paper-2);overflow:hidden}
-.rc-bar i{display:block;height:100%;background:var(--cl-carbon)}
-.rc-score b{font:600 12px/1 var(--cl-font-mono);font-variant-numeric:tabular-nums;color:var(--cl-ink)}
-.rc-p100{width:100%}.rc-p71{width:71%}.rc-p50{width:50%}.rc-p48{width:48%}
-.rc-fig{margin:0;display:grid;gap:8px;padding:12px;border:1px dashed var(--cl-rule-strong);border-radius:var(--cl-radius-lg);background:var(--cl-paper-0)}
-@media (max-width:520px){.rc-fig{padding:8px}}
-.rc-fig svg{display:block;width:100%;height:auto;max-width:540px;margin:0 auto}
-.rc-fig figcaption{font:var(--cl-text-mono);font-size:11.5px;color:var(--cl-ink-3)}
-.rc-e{fill:none;stroke:var(--cl-rule-strong)}
-.rc-eq{stroke-width:1.5;stroke-dasharray:3 3}
-.rc-el{stroke:var(--cl-carbon);stroke-dasharray:1;stroke-dashoffset:0}
-.rc-el.rc-eq{stroke:var(--cl-ink);stroke-dasharray:3 3}
-.rc-n{fill:var(--cl-paper-1);stroke:var(--cl-rule-strong);stroke-width:1.5}
-.rc-nq{fill:var(--cl-sticky);stroke:var(--cl-ink)}
-.rc-nl{fill:var(--cl-carbon-wash);stroke:var(--cl-carbon)}
-.rc-nu{fill:var(--cl-carbon);stroke:var(--cl-carbon)}
-.rc-ring{fill:none;stroke:var(--cl-carbon);stroke-width:1.5;stroke-dasharray:3 3}
-.rc-t{fill:var(--cl-ink-3);font:700 10px var(--cl-font-mono)}
-.rc-tl{fill:var(--cl-ink)}
-.rc-tu{fill:var(--cl-on-carbon)}
-.rc-l{fill:var(--cl-ink-3);font:500 9px var(--cl-font-mono);letter-spacing:.08em}
-.rc-ll{fill:var(--cl-ink);font-weight:700}
-.rc-k{fill:var(--cl-ink-2);font:500 9.5px var(--cl-font-mono);paint-order:stroke;stroke:var(--cl-paper-0);stroke-width:5px;stroke-linejoin:round}
-.rc-st{fill:var(--cl-paper-1);stroke:var(--cl-ok);stroke-width:2}
-.rc-stt{fill:var(--cl-ok);font:700 10px var(--cl-font-mono);letter-spacing:.12em}
-.rc-on{transform-box:fill-box;transform-origin:center}
-${RC_STEPS_CSS}
-@media (prefers-reduced-motion:reduce){.rc-on,.rc-el{animation:none}}
-.rc-works{display:grid;gap:14px;margin:0 4px 26px;padding:18px 20px;border:1px dashed var(--cl-rule-strong);border-radius:var(--cl-radius-lg)}
-.rc-works h3{margin:0}
-.rc-works ol{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 26px}
-.rc-works li{font:var(--cl-text-small);color:var(--cl-ink-2)}
-.rc-works li b{display:block;margin-bottom:2px;font:var(--cl-text-label);letter-spacing:.06em;text-transform:uppercase;color:var(--cl-carbon)}
-.rc-works code{font:var(--cl-text-mono);font-size:12px;color:var(--cl-ink)}
-@media (max-width:1000px){.rc-works ol{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (max-width:560px){.rc-works{padding:14px 16px}.rc-works ol{grid-template-columns:minmax(0,1fr);gap:12px}}
-.rc-line{list-style:none;margin:0;padding:4px 2px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
-@media (max-width:760px){.rc-line{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}}
-.rc-line li{display:grid;gap:8px;align-content:start;min-height:112px;padding:20px 14px 14px;font:var(--cl-text-small);color:var(--cl-ink)}
-.rc-who{display:flex;align-items:center;gap:7px;font:var(--cl-text-label);letter-spacing:.06em;text-transform:uppercase;color:var(--cl-ink-2)}
-.rc-who img{width:18px;height:18px;flex:none}
-.rc-who b{margin-left:auto;font:700 12px/1 var(--cl-font-mono);color:var(--cl-ink-3)}
-.rc-line p,.rc-say{margin:0}
-.rc-line small{font:var(--cl-text-mono);font-size:11.5px;color:var(--cl-ink-2)}
-.rc-story{list-style:none;margin:0;padding:0 0 6px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr) minmax(0,.85fr);gap:36px}
-.rc-story>li{position:relative;display:grid;grid-template-rows:auto 1fr;gap:10px;min-width:0}
-.rc-story>li+li::before{content:"→";position:absolute;left:-27px;top:calc(50% + 4px);font:700 18px/1 var(--cl-font-mono);color:var(--cl-ink-3)}
-@media (max-width:760px){.rc-story{grid-template-columns:minmax(0,1fr);gap:34px}.rc-story>li+li::before{content:"↓";left:calc(50% - 6px);top:-27px}}
-.rc-step{display:flex;align-items:center;gap:8px}
-.rc-story p{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2)}
-.rc-story .cl-memory{align-content:start;gap:12px;padding:16px;border-color:var(--cl-carbon);box-shadow:var(--cl-copy-2)}
-.rc-story .cl-memory__title{font:600 17px/25px var(--cl-font-sans);color:var(--cl-ink)}
-.rc-got{display:grid;align-content:start;gap:10px;padding:16px}
-.rc-how{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
-.rc-how .cl-stamp{margin-left:auto;transform:rotate(-3deg)}
-.rc-story .cl-sticky{display:grid;align-content:start;gap:10px;align-self:start;padding:22px 16px 18px}
-.rc-story .cl-sticky p{font:500 15px/22px var(--cl-font-sans);color:var(--cl-ink)}
-.rc-say{margin:0}
-.rc-line small{font:var(--cl-text-mono);font-size:11.5px;color:var(--cl-ink-2)}
-.rc-story{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:30px;align-items:start}
-.rc-story li{position:relative;display:grid;gap:8px;min-width:0}
-.rc-story li+li::before{content:"→";position:absolute;left:-23px;top:50%;font:700 16px/1 var(--cl-font-mono);color:var(--cl-ink-3)}
-@media (max-width:760px){.rc-story{grid-template-columns:minmax(0,1fr)}.rc-story li+li::before{content:"↓";left:50%;top:-23px}}
-.rc-story p{margin:0;font:var(--cl-text-small);color:var(--cl-ink)}
-.rc-story .cl-memory__title{font-weight:600}
-.rc-got{display:grid;gap:8px;padding:14px}
-.rc-how{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
-.rc-how .cl-stamp{margin-left:auto}
-.rc-say{font:var(--cl-text-body);color:var(--cl-ink-2);max-width:56ch}
-.rc-bars{margin:0;display:grid;gap:12px;max-width:560px}
-.rc-bars div{display:grid;grid-template-columns:104px minmax(0,1fr) 40px;gap:12px;align-items:center}
-.rc-bars dt{font:var(--cl-text-small);color:var(--cl-ink)}
-.rc-bars dd{margin:0;height:16px;border-radius:var(--cl-radius-xs);background:var(--cl-paper-2);overflow:hidden}
-.rc-bars dd i{display:block;height:100%;background:var(--cl-carbon)}
-.rc-bars b{font:600 13px/1 var(--cl-font-mono);font-variant-numeric:tabular-nums;text-align:right}
-.rc-w60{width:60%}.rc-w59{width:59%}.rc-w52{width:52%}
-.rc-foot{margin:6px 4px 0;font:var(--cl-text-small)}
-.rc-nav{display:flex;align-items:center;gap:12px;margin:0 4px 10px}
-.rc-nav[hidden]{display:none}
-.rc-nav [aria-disabled="true"]{opacity:.4;cursor:default}
-.rc-count{min-width:44px;text-align:center;font:600 13px/1 var(--cl-font-mono);font-variant-numeric:tabular-nums;color:var(--cl-ink-2)}
+.rc-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.rc-head h3{margin:0;font:var(--cl-text-title-2)}
+.rc-body{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(0,.88fr);gap:20px 28px;align-items:center}
+@media (max-width:860px){.rc-body{grid-template-columns:minmax(0,1fr)}}
+.rc-stage{display:grid;gap:12px;padding:16px;border:1px dashed var(--cl-rule-strong);border-radius:var(--cl-radius-lg);background:var(--cl-paper-0);min-width:0}
+@media (max-width:520px){.rc-stage{padding:12px}}
+.rc-stage svg{display:block;width:100%;height:auto;max-width:520px;margin:0 auto}
+.rc-cap{margin:0;font:var(--cl-text-mono);font-size:11.5px;color:var(--cl-ink-3)}
+.rc-chat{display:grid;gap:10px;padding:13px 14px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-md);background:var(--cl-paper-1)}
+.rc-who{display:flex;align-items:center;justify-content:space-between;gap:8px;font:var(--cl-text-label);letter-spacing:.06em;text-transform:uppercase;color:var(--cl-ink-3)}
+.rc-ask{justify-self:end;max-width:90%;padding:8px 12px;border-radius:12px 12px 3px 12px;background:var(--cl-ink);color:var(--cl-on-ink);font:var(--cl-text-small)}
+.rc-agent{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2)}
+.rc-agent code,.rc-how code{font:var(--cl-text-mono);font-size:12px;color:var(--cl-ink)}
+.rc-note{padding:11px 13px;display:grid;gap:5px}
+.rc-note p{margin:0;font:var(--cl-text-small);color:var(--cl-ink)}
+.rc-note small{font:var(--cl-text-mono);font-size:11px;color:var(--cl-ink-3)}
+.rc-files{display:flex;flex-wrap:wrap;gap:7px}
+.rc-file{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px dashed var(--cl-edge);border-radius:var(--cl-radius-sm);background:var(--cl-paper-0);font:var(--cl-text-mono);font-size:11.5px;color:var(--cl-ink-3)}
+.rc-file.is-open{border-style:solid;border-color:var(--cl-carbon);background:var(--cl-carbon-wash);color:var(--cl-ink)}
+.rc-lane{display:grid;gap:8px;padding:12px 13px;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-md);background:var(--cl-paper-1)}
+.rc-lane-top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.rc-quote{margin:0;font:var(--cl-text-small);color:var(--cl-ink)}
+.rc-strikes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+@media (max-width:520px){.rc-strikes{grid-template-columns:minmax(0,1fr)}}
+.rc-strike{padding:7px 9px;border:1px dashed var(--cl-edge);border-radius:var(--cl-radius-sm);background:var(--cl-paper-0);font:var(--cl-text-mono);font-size:11px;color:var(--cl-ink-3)}
+.rc-strike b{display:block;color:var(--cl-ink-2);margin-bottom:2px}
+.rc-dead{opacity:.62}
+.rc-dead p{text-decoration:line-through;text-decoration-color:var(--cl-bad)}
+.rc-how{list-style:none;margin:0;padding:0;display:grid;gap:12px;counter-reset:hw}
+.rc-how li{counter-increment:hw;display:grid;grid-template-columns:26px minmax(0,1fr);gap:11px;align-items:start;font:var(--cl-text-small);color:var(--cl-ink-2)}
+.rc-how li::before{content:counter(hw);width:26px;height:26px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--cl-carbon);background:var(--cl-carbon-wash);font:700 11.5px/1 var(--cl-font-mono);color:var(--cl-ink)}
+.rc-how b{display:block;margin-bottom:2px;font:var(--cl-text-body);font-weight:650;color:var(--cl-ink)}
+.rc-foot{margin:6px 4px 0;font:var(--cl-text-small);color:var(--cl-ink-2)}
+.sv-sheet{fill:var(--cl-paper-1);stroke:var(--cl-edge);stroke-width:1.4}
+.sv-dim{fill:var(--cl-paper-1);stroke:var(--cl-rule-strong);stroke-width:1.2;opacity:.55}
+.sv-hit{fill:var(--cl-carbon-wash);stroke:var(--cl-carbon);stroke-width:1.6}
+.sv-note{fill:var(--cl-sticky);stroke:var(--cl-sticky-edge);stroke-width:1.5}
+.sv-strip{fill:var(--cl-sticky-strip)}
+.sv-ask{fill:var(--cl-ink)}
+.sv-ask-t{fill:var(--cl-on-ink);font:600 10px var(--cl-font-sans)}
+.sv-ask-s{fill:var(--cl-on-ink);opacity:.78;font:500 8.5px var(--cl-font-mono)}
+.sv-dash{fill:none;stroke:var(--cl-edge);stroke-width:1.4;stroke-dasharray:3 3}
+.sv-dash-hit{fill:none;stroke:var(--cl-ink);stroke-width:1.6;stroke-dasharray:3 3}
+.sv-link{fill:none;stroke:var(--cl-carbon);stroke-linecap:round}
+.sv-ok-line{fill:none;stroke:var(--cl-ok);stroke-width:2.4;stroke-linecap:round}
+.sv-axis{fill:none;stroke:var(--cl-edge);stroke-width:1.3}
+.sv-dash-c{fill:none;stroke:var(--cl-carbon);stroke-width:1.5;stroke-dasharray:4 3}
+.sv-sheet-c{fill:var(--cl-paper-1);stroke:var(--cl-carbon);stroke-width:1.4;stroke-dasharray:4 3}
+.sv-st{fill:var(--cl-paper-1);stroke:var(--cl-ok);stroke-width:1.8}
+.sv-stt{fill:var(--cl-ok);font:700 9.5px var(--cl-font-mono);letter-spacing:.1em}
+.sv-lbl{fill:var(--cl-ink-3);font:600 8.5px var(--cl-font-mono);letter-spacing:.08em}
+.sv-lbl-c{fill:var(--cl-carbon);font:700 9px var(--cl-font-mono)}
+.sv-mono{fill:var(--cl-ink);font:600 10px var(--cl-font-mono)}
+.sv-txt{fill:var(--cl-ink);font:500 10px var(--cl-font-sans)}
+.sv-sub{fill:var(--cl-ink-3);font:500 8.8px var(--cl-font-mono)}
+.sv-ok{fill:var(--cl-ok);font:700 9px var(--cl-font-mono)}
+.sv-dot{fill:var(--cl-carbon)}
+.sv-dot-ok{fill:var(--cl-ok)}
+.sv-ant{fill:var(--cl-ink);stroke:var(--cl-ink);stroke-width:1.1;stroke-linecap:round}
 `;
 
-/** One note in a slide's list: its number in the graph, its title, how it got there, and its verdict when one is known. */
-const rcNote = (n, title, how = "", verdict = "") => `<li><i class="rc-dot${verdict === "Used" ? " is-used" : ""}">${n}</i><span>${esc(title)}${how ? `<small>${how}</small>` : ""}</span>${
-  verdict ? `<span class="cl-stamp${verdict === "Used" ? " cl-stamp--ok" : ""}">${verdict}</span>` : ""}</li>`;
-const rcGroup = (label, notes) => `<div class="rc-group"><span class="cl-label">${label}</span><ul class="rc-notes">${notes.join("")}</ul></div>`;
-/** A seed in the ranked list: its hybrid score, and a bar as wide as its share of the top score. */
-const rcSeed = (n, title, score, pct, verdict = "") => `<li><i class="rc-dot${verdict === "Used" ? " is-used" : ""}">${n}</i><span class="rc-seed"><span class="rc-ttl"><span>${esc(title)}</span>` +
-  `${verdict ? `<span class="cl-stamp cl-stamp--ok">${verdict}</span>` : ""}</span><span class="rc-score"><span class="rc-bar"><i class="rc-p${pct}"></i></span><b>${score}</b></span></span></li>`;
-// The spreading recall's graph. Where each note sits, the seeds' hybrid scores, and the links the spread followed:
-// [from, to, link type, learned weight, the step that draws it, a sideways shift for a second link between the same notes].
-// Three columns 140 apart, centred in the 368-wide viewBox: the query, the seeds, and the notes one hop out.
-const RC_AT = { Q: [40, 136], 1: [180, 46], 2: [180, 106], 3: [180, 166], 4: [180, 226], 5: [320, 136], 6: [320, 226] };
-const RC_SCORE = { 1: "0.0645", 2: "0.0460", 3: "0.0321", 4: "0.0307" };
-const RC_LINKS = [[4, 5, "relates", "1.0", 4, 0], [4, 6, "co_used", "0.1", 4, 0]];
-const RC_LIT = { Q: 1, 1: 3, 2: 3, 3: 3, 4: 3, 5: 5, 6: 5 };
-// [note, stamp x, stamp y]: each USED stamp sits under its note, below note 4's score.
-const RC_USED = [[4, 180, 274], [6, 320, 274]];
-function rcGraph(alt) {
-  const r1 = (v) => Math.round(v * 10) / 10;
-  const dot = (id, cls, tcls) => `<circle class="rc-n${cls}" cx="${RC_AT[id][0]}" cy="${RC_AT[id][1]}" r="${id === "Q" ? 12 : 11}"/>` +
-    `<text class="rc-t${tcls}" x="${RC_AT[id][0]}" y="${RC_AT[id][1] + 3.5}" text-anchor="middle">${id}</text>`;
-  const heads = [[RC_AT.Q[0], "QUERY", 1], [RC_AT[1][0], "SEEDS", 3], [RC_AT[5][0], "HOP 1", 5]].map(([x, t, step]) =>
-    `<text class="rc-l" x="${x}" y="12" text-anchor="middle">${t}</text><g class="rc-on rc-d${step}"><text class="rc-l rc-ll" x="${x}" y="12" text-anchor="middle">${t}</text></g>`).join("");
-  // A search hit is a dashed line of one width. It isn't a link, so it has no weight. It stays dashed when lit, so it fades in.
-  const hits = [1, 2, 3, 4].map((n) => `M${RC_AT.Q.join(" ")}L${RC_AT[n].join(" ")}`).map((d) =>
-    `<path class="rc-e rc-eq" d="${d}"/><path class="rc-e rc-eq rc-el rc-d2" d="${d}"/>`).join("");
-  // A link is as thick as its learned weight, with its type and weight written along it.
-  const links = RC_LINKS.map(([a, b, kind, weight, step, shift]) => {
-    const [x1, y1] = RC_AT[a], [x2, y2] = RC_AT[b], len = Math.hypot(x2 - x1, y2 - y1), nx = -(y2 - y1) / len, ny = (x2 - x1) / len;
-    const wide = r1(0.8 + 3.2 * Number(weight)), d = `M${r1(x1 + nx * shift)} ${r1(y1 + ny * shift)}L${r1(x2 + nx * shift)} ${r1(y2 + ny * shift)}`;
-    const off = shift > 0 ? shift + wide / 2 + 10 : shift - wide / 2 - 4, lx = r1((x1 + x2) / 2 + nx * off), ly = r1((y1 + y2) / 2 + ny * off);
-    return `<path class="rc-e" stroke-width="${wide}" d="${d}"/><path class="rc-e rc-el rc-d${step}" pathLength="1" stroke-width="${wide}" d="${d}"/>` +
-      `<text class="rc-k" x="${lx}" y="${ly}" text-anchor="middle" transform="rotate(${r1(Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI)} ${lx} ${ly})">${kind} ${weight}</text>`;
-  }).join("");
-  const scores = Object.entries(RC_SCORE).map(([n, v]) => `<text class="rc-k" x="${RC_AT[n][0]}" y="${RC_AT[n][1] + 25}" text-anchor="middle">${v}</text>`).join("");
-  const ids = Object.keys(RC_LIT).sort((a, b) => (a === "Q") - (b === "Q"));
-  const lit = ids.map((id) => `<g class="rc-on rc-s${RC_LIT[id]}">${dot(id, id === "Q" ? " rc-nq" : " rc-nl", " rc-tl")}</g>`).join("");
-  const used = RC_USED.map(([id, sx, sy]) => `<g class="rc-on rc-s6">${dot(id, " rc-nu", " rc-tu")}<circle class="rc-ring" cx="${RC_AT[id][0]}" cy="${RC_AT[id][1]}" r="16"/></g>` +
-    `<g class="rc-on rc-s6"><g transform="rotate(-6 ${sx} ${sy})"><rect class="rc-st" x="${sx - 22}" y="${sy - 9.5}" width="44" height="19" rx="2"/><text class="rc-stt" x="${sx + 1}" y="${sy + 4}" text-anchor="middle">USED</text></g></g>`).join("");
-  return `<figure class="rc-fig"><svg viewBox="0 0 368 296" role="img" aria-label="${alt}">${heads}${hits}${links}${scores}${ids.map((id) => dot(id, "", "")).join("")}${lit}${used}</svg>` +
-    `<figcaption>A line is as thick as its link's learned weight. Dashed lines are search hits.</figcaption></figure>`;
-}
-const rcSlide = (title, meta, body) => `<article class="cl-card rc-slide"><div class="rc-head"><h3 class="cl-title-3">${title}</h3>${meta ? `<span class="rc-meta">${meta}</span>` : ""}</div>${body}</article>`;
-const rcStep = (n, slug, who, what, when = "") => `<li class="cl-sticky ${n % 2 ? "cl-sticky--tilt" : "cl-sticky--tilt-r"}"><span class="rc-who">${appLogo(slug, 18)}${who}<b>${n}</b></span><p>${what}</p>${when ? `<small>${when}</small>` : ""}</li>`;
-const rcWho = (slug, who) => `<span class="rc-who">${appLogo(slug, 18)}${who}</span>`;
-/** A note saved in one place and recalled days later in another: the note, the recall that found it, and what the agent did next. */
-const rcStory = (title, meta, [on, slug, by, note], [later, slug2, who, doing, query, took], did) => rcSlide(title, meta, `<ol class="rc-story">
-<li><span class="rc-step"><i class="rc-dot">1</i><span class="cl-label">Saved · ${on}</span></span><article class="cl-card cl-memory"><p class="cl-memory__title">"${esc(note)}"</p>${rcWho(slug, by)}</article></li>
-<li><span class="rc-step"><i class="rc-dot">2</i><span class="cl-label">${later}</span></span><div class="cl-card rc-got">${rcWho(slug2, who)}<p>${doing}</p><p class="rc-q"><b>recall</b> "${esc(query)}"</p>
-<div class="rc-how"><span class="cl-chip">Hybrid search</span><span class="rc-meta">${took}</span><span class="cl-stamp cl-stamp--ok">Used</span></div></div></li>
-<li><span class="rc-step"><i class="rc-dot is-used">3</i><span class="cl-label">What it did</span></span><div class="cl-sticky cl-sticky--tilt-r">${rcWho(slug2, who)}<p>${did}</p></div></li></ol>`);
+const antSvg = (x, y, deg) => `<g class="sv-ant" transform="translate(${x} ${y}) rotate(${deg})">` +
+  `<ellipse cx="-4.5" cy="0" rx="2.5" ry="1.8"/><ellipse cx="0" cy="0" rx="1.8" ry="1.3"/><ellipse cx="4" cy="0" rx="2" ry="1.5"/>` +
+  `<path d="M-2 -1.3L-3.5 -3.6M-2 1.3L-3.5 3.6M0 -1.3L0 -3.8M0 1.3L0 3.8M2 -1.3L3.5 -3.6M2 1.3L3.5 3.6M5.6 -.7L7.6 -2.4M5.6 .7L7.6 2.4" fill="none"/></g>`;
+
+const SPREAD_SVG = `<svg viewBox="0 0 460 212" role="img" aria-label="Your webhook prompt matches billing/webhooks.ts by wording, then follows a co-use link from past chats to pull in the stripe listen testing rule">` +
+  `<text class="sv-lbl" x="50" y="15" text-anchor="middle">PROMPT</text>` +
+  `<text class="sv-lbl" x="190" y="15" text-anchor="middle">WORDING HITS</text>` +
+  `<text class="sv-lbl" x="381" y="15" text-anchor="middle">PULLED IN BY LINK</text>` +
+  `<path class="sv-dash" d="M90 110L118 48"/>` +
+  `<path class="sv-dash-hit" d="M90 122L118 124"/>` +
+  `<rect class="sv-ask" x="10" y="96" width="80" height="48" rx="8"/>` +
+  `<text class="sv-ask-t" x="50" y="117" text-anchor="middle">"webhook"</text>` +
+  `<text class="sv-ask-s" x="50" y="132" text-anchor="middle">your prompt</text>` +
+  `<rect class="sv-dim" x="118" y="26" width="144" height="42" rx="5"/>` +
+  `<text class="sv-txt" x="127" y="44">Billing table schema</text>` +
+  `<text class="sv-sub" x="127" y="58">too broad · skipped</text>` +
+  `<rect class="sv-hit" x="118" y="96" width="144" height="56" rx="5"/>` +
+  `<text class="sv-mono" x="127" y="117">billing/webhooks.ts</text>` +
+  `<text class="sv-sub" x="127" y="133">matched "webhook"</text>` +
+  `<path class="sv-link" stroke-width="3.2" d="M262 120Q287 90 312 120"/>` +
+  `<text class="sv-lbl-c" x="287" y="84" text-anchor="middle">used together</text>` +
+  `<rect class="sv-note" x="312" y="96" width="138" height="56" rx="4"/>` +
+  `<rect class="sv-strip" x="312" y="96" width="138" height="8"/>` +
+  `<text class="sv-mono" x="320" y="118">Run stripe listen</text>` +
+  `<text class="sv-txt" x="320" y="133">or local tests 400</text>` +
+  `<text class="sv-sub" x="320" y="146">0 shared words</text>` +
+  `<g transform="rotate(-4 190 178)"><rect class="sv-st" x="164" y="168" width="52" height="20" rx="3"/><text class="sv-stt" x="190" y="181.5" text-anchor="middle">USED</text></g>` +
+  `<g transform="rotate(-4 381 178)"><rect class="sv-st" x="355" y="168" width="52" height="20" rx="3"/><text class="sv-stt" x="381" y="181.5" text-anchor="middle">USED</text></g>` +
+  `</svg>`;
+
+const DECAY_SVG = `<svg viewBox="0 0 460 198" role="img" aria-label="A paused side project stays warm across a 30-day vacation with zero recalls, while an ignored temporary note in an active repo cools into sleep">` +
+  `<path class="sv-axis" d="M54 22V158H444"/>` +
+  `<text class="sv-lbl" x="46" y="48" text-anchor="end">WARM</text>` +
+  `<text class="sv-lbl" x="46" y="148" text-anchor="end">ASLEEP</text>` +
+  `<path class="sv-ok-line" d="M60 44H436"/>` +
+  `<circle class="sv-dot-ok" cx="60" cy="44" r="4"/><circle class="sv-dot-ok" cx="436" cy="44" r="4"/>` +
+  `<text class="sv-ok" x="68" y="35">30-day vacation on side project (0 recalls): stays warm</text>` +
+  `<path class="sv-link" stroke-width="2.4" d="M60 80Q138 106 208 112L222 68Q314 94 436 102"/>` +
+  `<circle class="sv-dot" cx="222" cy="68" r="4"/>` +
+  `<text class="sv-lbl-c" x="230" y="68">used again → warms back up</text>` +
+  `<path class="sv-dash" d="M60 108Q112 150 436 151"/>` +
+  `<text class="sv-sub" x="164" y="132">Old "freeze deploys" note → sleeps (still searchable)</text>` +
+  `<text class="sv-sub" x="76" y="176" text-anchor="middle">Recall #1</text>` +
+  `<text class="sv-sub" x="248" y="176" text-anchor="middle">Recall #20</text>` +
+  `<text class="sv-sub" x="420" y="176" text-anchor="middle">Recall #40</text>` +
+  `</svg>`;
+
+const ANTS_SVG = `<svg viewBox="0 0 460 212" role="img" aria-label="Ants reinforce useful link paths on past queries while candidate rankers run in shadow behind live search">` +
+  `<text class="sv-lbl" x="230" y="14" text-anchor="middle">1. ANTS TEST WHICH LINK TYPES REACH USEFUL NOTES</text>` +
+  `<path class="sv-dash" d="M88 68L178 92M282 92L372 68"/>` +
+  `<path class="sv-link" stroke-width="3.6" d="M88 54L178 34M282 34L372 54"/>` +
+  `${antSvg(130, 44, -12)}${antSvg(316, 42, 12)}${antSvg(344, 48, 12)}` +
+  `<rect class="sv-sheet" x="16" y="44" width="72" height="34" rx="6"/><text class="sv-mono" x="52" y="65" text-anchor="middle">Query</text>` +
+  `<rect class="sv-hit" x="178" y="20" width="104" height="26" rx="5"/><text class="sv-mono" x="230" y="36.5" text-anchor="middle">used together</text>` +
+  `<rect class="sv-dim" x="178" y="80" width="104" height="24" rx="5"/><text class="sv-sub" x="230" y="95" text-anchor="middle">broad repo link</text>` +
+  `<rect class="sv-note" x="372" y="42" width="74" height="38" rx="4"/><rect class="sv-strip" x="372" y="42" width="74" height="7"/>` +
+  `<text class="sv-mono" x="409" y="66" text-anchor="middle">Used note</text>` +
+  `<text class="sv-lbl" x="230" y="126" text-anchor="middle">2. NEW RANKERS RACE IN SHADOW BEFORE GOING LIVE</text>` +
+  `<rect class="sv-note" x="16" y="152" width="76" height="36" rx="4"/><rect class="sv-strip" x="16" y="152" width="76" height="7"/>` +
+  `<text class="sv-mono" x="54" y="175" text-anchor="middle">Your chat</text>` +
+  `<path class="sv-link" stroke-width="2.2" d="M92 164L126 149"/>` +
+  `<path class="sv-dash-c" d="M92 176L126 191"/>` +
+  `<rect class="sv-sheet" x="126" y="134" width="320" height="30" rx="5"/>` +
+  `<text class="sv-txt" x="136" y="153">Live search answers your agent right away</text>` +
+  `<rect class="sv-sheet-c" x="126" y="174" width="320" height="30" rx="5"/>` +
+  `<text class="sv-sub" x="136" y="193">Shadow ranker: 0% live risk · rolls back if picks slip</text>` +
+  `</svg>`;
+
+const rcSlide = (step, tab, title, stage, cap, points) => `<article class="cl-card rc-slide" data-step="${step - 1}">
+<div class="rc-head"><span class="cl-chip cl-chip--carbon">${step} of 6 · ${esc(tab)}</span><h3>${esc(title)}</h3></div>
+<div class="rc-body"><div class="rc-stage">${stage}<p class="rc-cap">${esc(cap)}</p></div>
+<ol class="rc-how">${points.map(([lead, body]) => `<li><span><b>${esc(lead)}</b>${body}</span></li>`).join("")}</ol></div></article>`;
+
+const WALK_STEPS = ["1. Connected notes", "2. Compact context", "3. 3-recall trial", "4. Pushback", "5. No vacation rot", "6. Ants & shadow tests"];
 
 const RECALLS = [
-  rcSlide("Spreading activation", "865 ms · 7 Nov 2026 · spreading.v6", `<p class="rc-q"><b>recall</b> "requirements for lists and responses format; store plans in memory with artifacts"</p>
-<div class="rc-mech">${["Keyword plus vector", "Reciprocal rank, k=10", "Personalized PageRank", "Restart 0.5", "20 iterations", "Paths up to 3 hops"].map((c) => `<span class="cl-chip">${c}</span>`).join("")}</div>
-<div class="rc-body">${rcGraph("The query's search finds four seed notes. From note 4, a relates link of weight 1.0 reaches note 5 and a co_used link of weight 0.1 reaches note 6. " +
-    "Notes 4 and 6 were marked used.")}
-<div class="rc-list">${rcGroup("Seeds, by hybrid score", [
-    rcSeed(1, "Clyde on Supabase, connectors and heyclyde.me", RC_SCORE[1], 100),
-    rcSeed(2, "Clyde's project package", RC_SCORE[2], 71),
-    rcSeed(3, "Your personal knowledge graph", RC_SCORE[3], 50),
-    rcSeed(4, "Plans live in Clyde, with the plan files as artifacts", RC_SCORE[4], 48, "Used")])}${rcGroup("Along the links", [
-    rcNote(5, "Write a handoff per task, with dependencies and a plan", "relates 1.0 from note 4"),
-    rcNote(6, "Before starting, give me a short requirements checklist", "co_used 0.1 from note 4", "Used")])}
-<div class="rc-tally"><span>2 notes</span><span class="cl-stamp cl-stamp--ok">Used</span><span>4 others</span><span class="cl-stamp">Irrelevant</span></div></div></div>`),
-  rcStory("You said it once", "Claude Code to Antigravity",
-    ["7 Nov 2026", "claude-code", "Your words, in a Claude Code chat", "After fixing, an independent audit agent reviews the changes before I see them."],
-    ["9 days later · 16 Nov", "antigravity", "Antigravity", "While working on a different project, it recalled that note and marked it used.", "gemini decisions, secrets, relevance", "2.6 s"],
-    `Its handoff that night listed "run an independent audit agent before shipping".`),
-  rcStory("Line by line", "Claude Code to Antigravity",
-    ["11 Nov 2026", "claude-code", "Your words, in Claude Code", "Never search and replace across docs or PRs; make each change line by line."],
-    ["5 days later · 16 Nov", "antigravity", "Antigravity", "Before editing heyclyde.me's copy, it recalled that note and marked it used.", "site SEO pages, landing page, docs, locked lines", "958 ms"],
-    "It edited the site copy line by line."),
-  rcStory("How you ship", "One Claude Code session to another",
-    ["9 Nov 2026", "claude-code", "One Claude Code session", "like-vincent changes go straight to main, then install right after."],
-    ["4 days later · 13 Nov", "claude-code", "Another Claude Code session", "It asked how to publish a change and marked that note used.", "how to publish a like-vincent plugin change: release, version bump, branch, PR", "2.4 s"],
-    "It pushed to main and reinstalled, with no PR or version bump."),
-  rcSlide("The quest board", "Quest #8 · 15 to 16 Nov 2026", `<ol class="rc-line">${[
-    rcStep(1, "claude-code", "Claude Code", "Posted a handoff quest."),
-    rcStep(2, "antigravity", "Antigravity", "Claimed it."),
-    rcStep(3, "antigravity", "Antigravity", "Posted 3 progress notes."),
-    rcStep(4, "antigravity", "Antigravity", "Released it with a handoff.", "23:17 UTC"),
-    rcStep(5, "claude-code", "Claude Code", "Claimed it back."),
-    rcStep(6, "claude-code", "Claude Code", "Found 4 bugs and shipped it live."),
-  ].join("")}</ol>`),
-  rcSlide("What agents said about recalls", "30 days", `<dl class="rc-bars">${
-    [["Hybrid", 60], ["Spreading", 59], ["Keyword-only", 52]].map(([k, v]) => `<div><dt>${k}</dt><dd><i class="rc-w${v}"></i></dd><b>${v}%</b></div>`).join("")}</dl>
-<p class="rc-say">Recalled notes marked used, by search method. Under 0.5% were marked wrong.</p>`),
+  rcSlide(1, "Connected notes", "It grabs the related rule you didn't think to ask for.",
+    SPREAD_SVG,
+    "Search matches one note by wording, then walks links from past chats to pull in the second.",
+    [
+      ["Plain search only matches your words.", `You ask Claude to add a Stripe webhook. You never said "listen" or "test," so search finds <code>billing/webhooks.ts</code> and misses your <code>stripe listen</code> note.`],
+      ["Related notes ride in together.", "Earlier billing chats used those two notes together, so spreading activation pulls the testing note in right behind the webhook file."],
+      ["Your agent skips a 20-minute trap.", "Claude writes the handler and starts the local listener before running tests, without you having to remind it."],
+    ]),
+  rcSlide(2, "Compact context", "It keeps 14-page specs out of a 2-line CSS chat.",
+    `<div class="rc-chat"><div class="rc-who"><span>Claude · today</span><span>Quick UI fix</span></div>
+<div class="rc-ask">Fix the padding on the sign-in button.</div>
+<div class="cl-sticky rc-note"><p>"Auth rewrite moves sessions to HttpOnly cookies. Spec and bug screenshot attached."</p><small>112 of 500 chars · loaded in recall</small></div>
+<div class="rc-files"><span class="rc-file">auth-spec.md · 14 pages (left on side)</span><span class="rc-file">login-bug.png · 1.4 MB (left on side)</span></div></div>
+<div class="rc-chat"><div class="rc-who"><span>Codex · tomorrow</span><span>Backend work</span></div>
+<div class="rc-ask">Build the session cookie swap from the auth plan.</div>
+<div class="rc-files"><span class="rc-file is-open">auth-spec.md · opened on demand</span><span class="cl-stamp cl-stamp--ok">Used</span></div></div>`,
+    "Every recall stays light. Heavy plans, logs, and screenshots open only when an agent asks for them.",
+    [
+      ["Dumping everything into chat slows agents down.", "Pasting long specs and logs into a rules file makes every chat wade through thousands of lines just to fix a button."],
+      ["Notes stay short, files wait on the side.", "Notes cap at 500 characters, just enough to state the call. Full plans, logs, and screenshots attach on the side rather than riding in every prompt."],
+      ["Heavy files open only when needed.", "Today's CSS fix reads two lines and moves on. Tomorrow's backend chat opens the 14-page auth spec on demand."],
+    ]),
+  rcSlide(3, "3-recall trial", "One wrong guess from an agent doesn't become law.",
+    `<div class="rc-lane"><div class="rc-lane-top"><span class="cl-label">Your exact words in chat</span><span class="cl-stamp cl-stamp--ok">Settled day one</span></div>
+<p class="rc-quote">"Never mock Postgres in integration tests."</p></div>
+<div class="rc-lane"><div class="rc-lane-top"><span class="cl-label">Agent's own hunch (saw 1 old file)</span><span class="cl-chip">On trial · 3 chances</span></div>
+<p class="rc-quote">"This repo runs its tests on Jest."</p>
+<div class="rc-strikes"><div class="rc-strike"><b>Recall 1</b>Checks repo, sees Vitest, skips</div><div class="rc-strike"><b>Recall 2</b>Skipped again</div><div class="rc-strike"><b>Recall 3</b>Drops out on its own</div></div></div>`,
+    "Quoted facts from your session start trusted. Agent hunches get 3 recalls to earn their spot or drop out.",
+    [
+      ["Agents love saving confident bad guesses.", "An agent spots one old helper file, decides your Vitest repo uses Jest, and writes that guess into memory like a rule."],
+      ["Unquoted hunches start on a 3-recall trial.", "Facts backed by your own words in chat start settled day one. Anything an agent infers on its own gets three recalls to prove it helps."],
+      ["Bad guesses clean themselves out.", "When the next three test tasks skip the Jest hunch, Clyde drops it on its own. Useful hunches get used and stay."],
+    ]),
+  rcSlide(4, "Pushback", "Snap at your agent once to fix it for good.",
+    `<div class="rc-chat"><div class="rc-who"><span>Claude Code · terminal</span><span>Stale note recalled</span></div>
+<div class="cl-sticky rc-note rc-dead"><p>"Deploy staging with ./scripts/push-stage.sh"</p><small>Docked after your reply</small></div>
+<p class="rc-agent">Running <code>./scripts/push-stage.sh</code>...</p>
+<div class="rc-ask">Stop, that script died in May. GitHub Actions deploys staging on push now.</div>
+<div class="cl-sticky rc-note"><div class="rc-lane-top"><p>"Staging deploys via GitHub Actions on push."</p><span class="cl-stamp cl-stamp--ok">Replaces old</span></div></div></div>`,
+    "When your next message pushes back, Clyde demotes the note that misled the agent and saves the fix over it.",
+    [
+      [`Saying "stop" usually fixes only today's window.`, "You tell an agent to stop running a dead deploy script, and the old note still sits in memory waiting to trip up tomorrow's chat."],
+      ["Your pushback docks the note behind the mistake.", `Agents politely report that lots of notes "helped." Your next reply is the real signal, so snapping back demotes the note that misled it.`],
+      ["Fixed once across every app.", "Your correction replaces the dead note, so Codex on your laptop and Claude on your phone both stop running that script."],
+    ]),
+  rcSlide(5, "No vacation rot", "Going on vacation doesn't wipe your side project.",
+    DECAY_SVG,
+    "Decay counts recalls rather than calendar days, so paused projects stay warm and cold clutter goes to sleep.",
+    [
+      ["Calendar timers punish you for taking a break.", "Expire notes after 30 days and a month off wipes your side project. Never fade anything and February's deploy freeze clutters November's chats."],
+      ["Notes cool on recalls, not calendar days.", "A note cools down only when recalls run and agents keep walking past it. Leave a repo untouched for a month and nothing fades."],
+      ["Old clutter goes to sleep, never to the trash.", "Ignored one-off notes step out of everyday recalls in busy repos, and stay searchable whenever you ask an agent to dig back."],
+    ]),
+  rcSlide(6, "Ants & shadow tests", "Search tunes itself in the background, never on live chats.",
+    ANTS_SVG,
+    "An ant colony tests link weights offline and new rankers run in shadow first, with plain weights kept whenever they tie.",
+    [
+      ["Not every link between notes means the same thing.", "Two notes used together in real fixes matter far more than two notes that just live in the same big repo."],
+      ["Simulated ants test which links find useful notes.", "Ants replay past searches across your graph to weight the link types that reach helpful notes, and plain equal weights stay whenever they tie."],
+      ["New rankers have to win in shadow first.", "Updates score recalls silently in the background with zero risk to live chats, ship only if agents use more picks, and roll back if picks slip."],
+    ]),
 ];
-// What the spread does, in the numbers the code runs with (memory/supabase and eval/ants.py).
-const WORKS_PANEL = [
-  ["Seeds", "Hybrid search picks starting notes by keyword and by meaning, merged by reciprocal rank."],
-  ["Spread", "Activation flows from the seeds over typed links by personalized PageRank (restart 0.5, 20 rounds), up to 3 hops."],
-  ["Weights", "Each link counts as its type's weight times its own learned weight."],
-  ["Ants", "An ant colony (<code>eval/ants.py</code>, 3 hops, α 1, β 2, 10% exploration) trains the link-type weights on test questions and hasn't beaten plain weights yet, so they're all 1.0."],
-  ["Learning", "When an agent uses two notes together, their <code>co_used</code> link gains 0.1, up to 1, counts only after 2 different sessions, and loses 0.05 for every 200 times one shows up without the other."],
-  ["Feedback", "A new note gets 3 showings On trial and its confidence moves 0.12 per verdict, a settled note moves 0.02, and under 0.15 a note goes dormant, where it's skipped and never deleted."],
-  ["Temperature", "Recency and use are scored ACT-R style on the recall clock (decay 0.5, floored at −3, the last 1,000 recalls), so notes don't cool while you're away. A use or the owner's confirmation counts 3 and an open counts 1."],
-  ["Three rankers", "Keyword, hybrid and spreading split traffic 1:2:2 while a fourth (log-odds with temperature) runs in shadow, and agents' verdicts decide which one wins."],
-];
-const BUILT = `<section class="wrap built" id="built"><div class="section"><h2 class="cl-title-1">How it was used to build Clyde</h2></div>
-<div class="rc-works"><h3 class="cl-title-3">How the spreading works</h3><ol>${WORKS_PANEL.map(([lead, say]) => `<li><b>${lead}</b> ${say}</li>`).join("")}</ol></div>
-<div class="rc" id="rc"><div class="rc-nav" hidden><button class="cl-btn cl-btn--sm" type="button" aria-label="Previous slide">←</button><span class="rc-count">1 / ${RECALLS.length}</span><button class="cl-btn cl-btn--sm" type="button" aria-label="Next slide">→</button></div>
-<div class="rc-track" tabindex="0" role="group" aria-label="${RECALLS.length} slides">${RECALLS.join("\n")}</div>
-<p class="rc-foot"><a href="/how-it-works#built">See the counts</a></p></div></section>`;
-// Prev and next for the carousel. Without it the slides still scroll and snap, and the buttons stay hidden.
-const RECALL_JS = `(function(){var r=document.getElementById('rc');if(!r)return;var t=r.querySelector('.rc-track'),s=t.children,n=s.length,v=r.querySelector('.rc-nav'),
-c=v.querySelector('.rc-count'),b=v.querySelectorAll('button'),k=0,tm;function w(){return n>1?s[1].offsetLeft-s[0].offsetLeft:1}
-function at(){return Math.max(0,Math.min(n-1,Math.round(t.scrollLeft/w())))}
-function show(i){c.textContent=(i+1)+' / '+n;b[0].setAttribute('aria-disabled',i===0);b[1].setAttribute('aria-disabled',i===n-1)}
-function go(d){return function(){k=Math.max(0,Math.min(n-1,k+d));show(k);t.scrollLeft=k*w()}}
-b[0].addEventListener('click',go(-1));b[1].addEventListener('click',go(1));
-t.addEventListener('scroll',function(){clearTimeout(tm);tm=setTimeout(function(){k=at();show(k)},120)},{passive:true});v.hidden=false;show(0)})();`;
+
+const BUILT = `<section class="wrap built" id="built"><div class="section"><span class="cl-label">Why it holds up</span>
+<h2 class="cl-title-1">Why it doesn't turn into a <em class="cl-scribble">junk drawer.</em></h2>
+<p class="cl-lead">Saving notes is the easy part. Keeping bad guesses, giant files, and stale rules out of today's chat is the part most memory tools get wrong.</p></div>
+<div class="rc" id="rc"><div class="rc-nav" hidden><div class="rc-steps">${WALK_STEPS.map((s, i) => `<button class="rc-pill" type="button" data-go="${i}"${i ? "" : ' aria-current="step"'}>${esc(s)}</button>`).join("")}</div>
+<div class="rc-arrows"><button class="cl-btn cl-btn--sm" type="button" data-dir="-1" aria-label="Previous walkthrough">←</button><span class="rc-count">1 / ${RECALLS.length}</span><button class="cl-btn cl-btn--sm" type="button" data-dir="1" aria-label="Next walkthrough">→</button></div></div>
+<div class="rc-track" tabindex="0" role="region" aria-label="${RECALLS.length} memory walkthroughs">${RECALLS.join("\n")}</div>
+<p class="rc-foot"><a href="/how-it-works">How it works and the papers behind it</a> · <a href="/how-it-works#built">Numbers from building Clyde</a></p></div></section>`;
+// Walkthrough tabs plus prev and next. Without script, the slides still scroll and snap, and the controls stay hidden.
+const RECALL_JS = `(function(){var r=document.getElementById('rc');if(!r)return;var t=r.querySelector('.rc-track'),s=t.children,n=s.length,v=r.querySelector('.rc-nav'),` +
+  `c=v.querySelector('.rc-count'),p=v.querySelectorAll('[data-go]'),b=v.querySelectorAll('[data-dir]'),k=0,tm;function w(){return n>1?s[1].offsetLeft-s[0].offsetLeft:1}` +
+  `function at(){return Math.max(0,Math.min(n-1,Math.round(t.scrollLeft/w())))}` +
+  `function show(i){c.textContent=(i+1)+' / '+n;b[0].setAttribute('aria-disabled',i===0);b[1].setAttribute('aria-disabled',i===n-1);p.forEach(function(x,j){if(j===i)x.setAttribute('aria-current','step');else x.removeAttribute('aria-current')})}` +
+  `function to(i){k=Math.max(0,Math.min(n-1,i));show(k);t.scrollLeft=k*w()}` +
+  `b[0].addEventListener('click',function(){to(k-1)});b[1].addEventListener('click',function(){to(k+1)});` +
+  `p.forEach(function(x){x.addEventListener('click',function(){to(Number(x.getAttribute('data-go')))})});` +
+  `t.addEventListener('scroll',function(){clearTimeout(tm);tm=setTimeout(function(){k=at();show(k)},120)},{passive:true});v.hidden=false;show(0)})();`;
 
 // R73 (#78): real complaints about agents that forget, each paraphrased with a link to where it was posted, and what
 // Clyde does about it. Then two made-up ones in the same spirit. listing_check.py "complaint sources" checks every src.

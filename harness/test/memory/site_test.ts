@@ -83,59 +83,37 @@ Deno.test('the home page has an app picker, a recall carousel and one bottom but
   assert.equal((how.match(/class="soon-note"/g) ?? []).length, 1, 'the asterisk legend, once')
   assert.ok(!how.includes('<script'), 'the picker needs no script')
 
-  // The carousel: six slides that scroll and snap without script, and buttons that only show once the script runs.
+  // Six user-focused walkthrough slides directly under the heading (no card grid above), scrolling and snapping without script.
   const built = section('built')
-  // Above the slides, a panel says how the spread works: 6 to 8 items, each a bold lead and its sentences.
-  const works = /<div class="rc-works">[\s\S]*?<\/ol><\/div>/.exec(built)?.[0] ?? ''
-  assert.ok(works && built.indexOf('<h2') < built.indexOf(works) && built.indexOf(works) < built.indexOf('<div class="rc-track"'), 'the panel sits under the heading, before the slides')
-  assert.equal((works.match(/<h3[^>]*>[^<]+<\/h3>/g) ?? []).length, 1, 'the panel has one heading')
-  const items = works.match(/<li>[\s\S]*?<\/li>/g) ?? []
-  assert.ok(items.length >= 6 && items.length <= 8, `${items.length} items in the panel`)
-  for (const it of items) assert.ok(/^<li><b>[^<]+<\/b> \S/.test(it), `a bold lead, then its sentence: ${it.slice(0, 40)}`)
-  const slides = built.match(/<article class="cl-card rc-slide">/g) ?? []
-  assert.equal(slides.length, 6, 'six slides')
-  const stories = built.match(/<ol class="rc-story">[\s\S]*?<\/ol>/g) ?? []
-  assert.equal(stories.length, 3, 'three saved-then-recalled stories, first')
-  assert.ok(built.indexOf('<div class="rc-track"') < built.indexOf('<svg') && built.indexOf('<svg') < built.indexOf('<ol class="rc-story">'), 'the spreading recall leads the carousel')
-  for (const st of stories) {
-    assert.equal((st.match(/<li>/g) ?? []).length, 3, 'a story is three steps: saved, recalled, what it did')
-    assert.equal((st.match(/<article class="cl-card cl-memory">/g) ?? []).length, 1, 'the saved note is a memory card')
-    assert.equal((st.match(/class="rc-q"/g) ?? []).length, 1, 'the query that recalled it')
-    assert.equal((st.match(/class="cl-stamp cl-stamp--ok"/g) ?? []).length, 1, 'a used stamp')
-    assert.equal((st.match(/class="cl-sticky /g) ?? []).length, 1, 'what the agent did, on a sticky note')
-    assert.ok(/class="cl-label">\d+ days later/.test(st), 'how many days passed')
+  assert.ok(built.indexOf('<h2') < built.indexOf('<div class="rc" id="rc">'), 'the walkthrough sits directly under the section heading')
+  assert.ok(!built.includes('mc-grid') && !built.includes('mc-card'), 'no detail card grid sits above the walkthrough')
+  const slides = [...built.matchAll(/<article class="cl-card rc-slide" data-step="(\d+)">([\s\S]*?)<\/article>/g)]
+  assert.deepEqual(slides.map((m) => m[1]), ['0', '1', '2', '3', '4', '5'], 'six ordered walkthrough slides')
+  for (const [, step, slide] of slides) {
+    assert.equal((slide.match(/<h3>[^<]+<\/h3>/g) ?? []).length, 1, `step ${step}: one outcome heading`)
+    assert.ok(slide.includes('<div class="rc-stage">') && slide.includes('<p class="rc-cap">'), `step ${step}: a visual stage and caption`)
+    const points = [...slide.matchAll(/<li><span><b>([^<]+)<\/b>([\s\S]*?)<\/span><\/li>/g)]
+    assert.equal(points.length, 3, `step ${step}: a three-step walkthrough`)
   }
-  assert.equal((built.match(/<svg[^>]*role="img"[^>]*aria-label="[^"]+"/g) ?? []).length, 1, 'a labelled graph on the spreading recall')
-  assert.equal((built.match(/class="rc-q"/g) ?? []).length, 4, 'a query on each recall')
-  // The graph: it lights in six steps, links are as thick as their weights and labelled, and two notes end stamped used.
-  const graph = /<svg[\s\S]*?<\/svg>/.exec(built)?.[0] ?? ''
-  const steps = new Set(attr(graph, /class="[^"]*\brc-[sd](\d)\b[^"]*"/g))
-  assert.deepEqual([...steps].sort(), ['1', '2', '3', '4', '5', '6'], 'six steps: query, search, seeds, links, hop 1, verdicts')
-  for (const n of steps) assert.ok(html.includes(`@keyframes rc-s${n}{`) && html.includes(`@keyframes rc-d${n}{`), `step ${n} has its keyframes`)
-  assert.deepEqual(attr(graph, /<text class="rc-l"[^>]*>([^<]+)</g), ['QUERY', 'SEEDS', 'HOP 1'], 'the waves, in order')
-  const links = [...graph.matchAll(/<path class="rc-e" stroke-width="([\d.]+)"[^>]*\/><path class="rc-e rc-el rc-d\d" pathLength="1" stroke-width="\1"[^>]*\/><text class="rc-k"[^>]*>(relates|co_used) (\d\.\d)</g)]
-  assert.equal(links.length, 2, 'two links, each drawn dim and lit, with its type and weight')
-  const byWeight = links.map((m) => [Number(m[3]), Number(m[1])]).sort((a, b) => a[0] - b[0])
-  for (let i = 1; i < byWeight.length; i++) assert.ok(byWeight[i][1] > byWeight[i - 1][1], `a link of weight ${byWeight[i][0]} is thicker than one of ${byWeight[i - 1][0]}`)
-  assert.equal((graph.match(/<text class="rc-stt"[^>]*>USED</g) ?? []).length, 2, 'two used stamps in the graph')
-  assert.equal((graph.match(/class="rc-n rc-nu"/g) ?? []).length, 2, 'two notes end highlighted')
-  assert.ok(/@media \(prefers-reduced-motion:reduce\)\{\.rc-on,\.rc-el\{animation:none\}\}/.test(html), 'reduced motion shows the final state')
-  assert.ok(!/\.rc-(on|el|nl|nu)\{[^}]*opacity:0/.test(html), 'nothing in the graph is hidden unless its animation hides it')
-  assert.equal((built.match(/<span class="rc-score">/g) ?? []).length, 4, 'the ranked list scores four seeds')
-  for (const w of attr(built, /<i class="rc-p(\d+)"><\/i>/g)) assert.ok(html.includes(`.rc-p${w}{width:${w}%}`), `the ${w}% score bar is ${w}% wide`)
-  assert.ok((built.match(/class="cl-stamp[^"]*"/g) ?? []).length >= 6, 'verdict stamps')
-  assert.equal((built.match(/<li class="cl-sticky /g) ?? []).length, 6, 'the quest timeline is six sticky notes')
-  assert.equal((built.match(/<i class="rc-w\d+"><\/i>/g) ?? []).length, 3, 'three bars')
-  for (const w of attr(built, /<i class="rc-w(\d+)"><\/i>/g)) assert.ok(html.includes(`.rc-w${w}{width:${w}%}`), `the ${w}% bar is ${w}% wide`)
+  for (const svg of built.matchAll(/<svg viewBox="[^"]+" role="img" aria-label="([^"]+)">/g)) {
+    assert.ok(svg[1].length >= 20, `labelled SVG diagram: ${svg[1]}`)
+  }
+  assert.ok(slides[0][2].includes('billing/webhooks.ts') && slides[0][2].includes('stripe listen'), 'walkthrough 1 shows connected notes on a webhook example')
+  assert.ok(slides[1][2].includes('auth-spec.md') && slides[1][2].includes('500 characters'), 'walkthrough 2 shows compact notes with side attachments')
+  assert.ok(slides[2][2].includes('On trial') && slides[2][2].includes('Vitest'), 'walkthrough 3 shows the 3-recall trial filtering a bad guess')
+  assert.ok(slides[3][2].includes('push-stage.sh') && slides[3][2].includes('GitHub Actions'), 'walkthrough 4 shows pushback replacing a stale note')
+  assert.ok(slides[4][2].includes('30-day vacation') && slides[4][2].includes('searchable'), 'walkthrough 5 shows recall-counted decay sparing paused projects')
+  assert.ok(slides[5][2].includes('class="sv-ant"') && slides[5][2].includes('Shadow ranker'), 'walkthrough 6 shows ant link testing and shadow rankers')
   assert.ok(/\.rc-track\{[^}]*overflow-x:auto[^}]*scroll-snap-type:x mandatory/.test(html), 'the track scrolls sideways and snaps')
   assert.ok(/\.rc-slide\{[^}]*scroll-snap-align:start/.test(html), 'each slide is a snap point')
   assert.ok(/<div class="rc-track" tabindex="0"/.test(built), 'the track takes keyboard focus')
-  assert.ok(/<div class="rc-nav" hidden>/.test(built), 'prev and next stay hidden without script')
-  assert.equal((built.match(/<button[^>]*aria-label="[^"]+"/g) ?? []).length, 2, 'a labelled prev and next button')
-  assert.ok(/<span class="rc-count">1 \/ 6<\/span>/.test(built), 'a slide count')
+  assert.ok(/<div class="rc-nav" hidden>/.test(built), 'step controls stay hidden without script')
+  assert.deepEqual(attr(built, /<button class="rc-pill"[^>]*data-go="(\d+)"/g), ['0', '1', '2', '3', '4', '5'], 'a pill button for each walkthrough')
+  assert.equal((built.match(/<button[^>]*data-dir="-?1"[^>]*aria-label="[^"]+"/g) ?? []).length, 2, 'a labelled prev and next button')
+  assert.ok(/<span class="rc-count">1 \/ 6<\/span>/.test(built), 'a walkthrough count')
   assert.ok(built.includes('href="/how-it-works#built"'), 'a link to /how-it-works#built')
-  assert.ok(/<script nonce="[A-Za-z0-9]{16,}">[^<]*getElementById\('rc'\)/.test(html), 'the carousel script carries the nonce')
-  assert.ok(!html.includes('built-nums'), 'the old Built with it block is gone')
+  assert.ok(/<script nonce="[A-Za-z0-9]{16,}">[^<]*getElementById\('rc'\)/.test(html), 'the walkthrough script carries the nonce')
+  assert.ok(!html.includes('built-nums') && !html.includes('rc-works'), 'the old text blocks are gone')
 
   // One button at the bottom, after pricing. The plan cards have none.
   const pricing = section('pricing')
