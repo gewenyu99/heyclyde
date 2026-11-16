@@ -83,7 +83,7 @@ export function tallied<T>(work: (spent: { tokens: number }) => Promise<T>): Pro
   return tally.run(spent, () => work(spent));
 }
 
-export async function meter(kind: Kind, tokens: number) {
+export async function meter(kind: Kind, tokens: number, _model?: string) {
   if (!tokens) return;
   const spent = kind === "shadow" || kind === "research" ? undefined : tally.getStore();
   if (spent) spent.tokens += tokens;

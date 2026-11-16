@@ -5,12 +5,13 @@
 // (side-session notes, clyde-design-pricing-facts.md).
 // No imports and no Deno globals, so the tier 3 tests (node) import this file as it is.
 
-// What OpenAI charges per million tokens, in micro-USD, for the models memory calls (checked 2026-11-15). A plan's whole
-// token cap is priced at the highest of these.
+// What OpenAI and Gemini charge per million tokens, in micro-USD, for the models memory calls (checked 2026-11-15). A plan's
+// whole token cap is priced at the highest of these.
 export const OPENAI_PRICES_MICRO_USD_PER_M: Record<string, number> = {
   "text-embedding-3-large": 130_000,
   "text-embedding-3-small": 20_000,
   "gpt-6-luna": 100_000,
+  "gemini-decision-1": 100_000,
 };
 
 export type Assumptions = {

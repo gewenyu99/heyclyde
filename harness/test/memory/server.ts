@@ -114,7 +114,7 @@ export async function startRealMemory(extraEnv: Record<string, string> = {}, opt
   // the same one, and the function would die with AddrInUse.
   const port = await freePort()
   const env = {
-    ...process.env, SUPABASE_DB_URL: DATABASE_URL, DENO_SERVE_ADDRESS: `tcp:127.0.0.1:${port}`, MEMORY_OPENAI_URL: openai.url,
+    ...process.env, SUPABASE_DB_URL: DATABASE_URL, DENO_SERVE_ADDRESS: `tcp:127.0.0.1:${port}`, MEMORY_OPENAI_URL: openai.url, MEMORY_GEMINI_URL: openai.geminiUrl,
     SUPABASE_URL: auth.url, SUPABASE_ANON_KEY: 'fake-anon-key', NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost',
     ...(serviceKey ? { SUPABASE_SERVICE_ROLE_KEY: serviceKey, MEMORY_STORAGE_TIMEOUT_MS: '2000' } : {}), ...extraEnv,
   }

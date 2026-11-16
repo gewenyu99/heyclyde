@@ -1,10 +1,10 @@
-// A deterministic stand-in for the two OpenAI endpoints memory calls, deployed only to an e2e branch. The memory
-// function's MEMORY_OPENAI_URL points here, so the branch never reaches OpenAI and costs nothing there.
+// A deterministic stand-in for the OpenAI and Gemini endpoints memory calls, deployed only to an e2e branch. The memory
+// function's MEMORY_OPENAI_URL and MEMORY_GEMINI_URL point here, so the branch never reaches OpenAI or Google and costs
+// nothing there.
 //
 // /embeddings hashes each word into one of 1024 dimensions and normalizes, so texts that share words land near each
 // other. /decisions answers every screening question (sensitive_pii, injection, malicious) and pushback with 0, every
-// relevance question with 0.9, and every choice with "none". So a write is never refused, recall's filter keeps every
-// candidate, and the learner sees no pushback.
+// relevance question with 0.9, and every choice with "none" (both OpenAI array and Gemini dict shapes).
 const DIM = 1024;
 
 function hash(word: string) {
@@ -23,7 +23,7 @@ function vector(text: string) {
 const tokens = (s: string) => Math.ceil(s.length / 4);
 
 Deno.serve(async (req) => {
-  const path = new URL(req.url).pathname.replace(/^.*\/fake-openai/, "");
+  const path = new URL(req.url).pathname.replace(/^.*\/fake-openai/, "").replace(/^\/v1(?:beta)?/, "");
   const body = await req.json().catch(() => ({}));
   if (path === "/embeddings") {
     const input: string[] = Array.isArray(body.input) ? body.input : [String(body.input ?? "")];
@@ -33,11 +33,23 @@ Deno.serve(async (req) => {
     });
   }
   if (path === "/decisions") {
+    const inputTokens = tokens(String(body.input ?? ""));
+    if (body.questions && !Array.isArray(body.questions)) {
+      const answers = Object.fromEntries(
+        Object.entries(body.questions as Record<string, Record<string, unknown>>).map(([name, q]) => [
+          name,
+          q.type === "choice"
+            ? { type: "choice", choice: "none" }
+            : { type: "noul", noul: /^i\d+$/.test(name) ? 0.9 : 0, confidence: 0.9 },
+        ]),
+      );
+      return Response.json({ answers, usage: { total_input_tokens: inputTokens, total_tokens: inputTokens } });
+    }
     const answers = (body.questions ?? []).map((q: Record<string, unknown>) =>
       q.type === "choice"
         ? { type: "choice", name: q.name, choice: "none" }
         : { type: "predicate", name: q.name, probability: /^i\d+$/.test(String(q.name)) ? 0.9 : 0 });
-    return Response.json({ answers, usage: { input_tokens: tokens(String(body.input ?? "")) } });
+    return Response.json({ answers, usage: { input_tokens: inputTokens } });
   }
   return Response.json({ error: `fake-openai has no ${path}` }, { status: 404 });
 });

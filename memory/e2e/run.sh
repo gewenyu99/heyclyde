@@ -206,6 +206,7 @@ sb config push --project-ref "$REF" --workdir "$W" --yes
 # 4. The functions, with the branch's own secrets. Supabase sets SUPABASE_URL, SUPABASE_DB_URL and the keys per project.
 log "setting function secrets"
 sb secrets set --project-ref "$REF" --workdir "$W" "MEMORY_OPENAI_URL=https://$REF.supabase.co/functions/v1/fake-openai" \
+  "MEMORY_GEMINI_URL=https://$REF.supabase.co/functions/v1/fake-openai" \
   "MEMORY_ARMS=${E2E_ARMS:-index,hybrid}"
 log "deploying memory and fake-openai"
 sb functions deploy memory fake-openai --project-ref "$REF" --workdir "$W" --no-verify-jwt --use-api

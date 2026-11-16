@@ -37,3 +37,7 @@ export const setting = (name: string) =>
 export const secret = (name: string) =>
   cached(`vault:${name}`, async () =>
     (await sql`select decrypted_secret as value from vault.decrypted_secrets where name = ${name}`)[0]?.value ?? "");
+
+export const forgetSecret = (name: string) => {
+  cache.delete(`vault:${name}`);
+};

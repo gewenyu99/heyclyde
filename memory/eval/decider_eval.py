@@ -67,11 +67,13 @@ async def score(candidate, cases, concurrency):
 async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--candidates", default="keywords,openai")
+    ap.add_argument("--judge", help="alias for --candidates (e.g. gemini,gemini-criteria)")
     ap.add_argument("--concurrency", type=int, default=4)
     ap.add_argument("--out", help="write per-case results here (contains Wen's words; keep it out of git)")
     a = ap.parse_args()
     cases = load(os.environ["PKG_SEED_DIR"])
-    results = [await score(CANDIDATES[n](), cases, a.concurrency) for n in a.candidates.split(",")]
+    names = (a.judge or a.candidates).split(",")
+    results = [await score(CANDIDATES[n](), cases, a.concurrency) for n in names]
     for r in results:
         print(f"{r['candidate']}: recall {r['recall']:.0%} ({r['positives'] - len(r['misses'])}/{r['positives']}), "
               f"false alarms {r['false_alarm_rate']:.0%} ({len(r['false_alarms'])}/{r['negatives']}), "

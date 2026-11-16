@@ -10,7 +10,7 @@
 import { assertBudget, OverBudget } from "./budget.ts";
 import { sql } from "./db.ts";
 import { sha256 } from "./embed.ts";
-import { JUDGE_VERSION, relevance } from "./judge.ts";
+import { activeJudgeVersion, relevance } from "./judge.ts";
 import { paramSet } from "./params.ts";
 import type { Viewer } from "./provenance.ts";
 import type { AgentScope, EntryFilter } from "./permissions.ts";
@@ -41,29 +41,29 @@ export async function shadowSets(): Promise<string[]> {
   return rows.map((r) => r.param_set as string);
 }
 
-async function cache(querySha: string, items: Judgment[]) {
+async function cache(querySha: string, items: Judgment[], judgeVersion: string) {
   if (!items.length) return;
   const shas = await Promise.all(items.map((i) => sha256(i.text)));
   await sql`insert into memory.judge_cache (query_sha, entry_id, content_sha, judge_version, p)
-    select ${querySha}::text, t.e, t.c, ${JUDGE_VERSION}::text, t.p
+    select ${querySha}::text, t.e, t.c, ${judgeVersion}::text, t.p
     from unnest(${items.map((i) => i.id)}::text[], ${shas}::text[], ${items.map((i) => i.p)}::float8[]) as t(e, c, p)
     on conflict do nothing`;
 }
 
 /** A judge that answers from the cache and asks the shadow judge only about the rest, in one call. `calls` counts the calls. */
-function cachedJudge(querySha: string, stats: { calls: number }): Judge {
+function cachedJudge(querySha: string, stats: { calls: number }, judgeVersion: string): Judge {
   return async (request, items) => {
     const shas = await Promise.all(items.map((i) => sha256(i.text)));
     const key = (id: string, sha: string) => `${id}\0${sha}`;
     const hits = items.length ? await sql`select entry_id, content_sha, p from memory.judge_cache
-      where query_sha = ${querySha} and judge_version = ${JUDGE_VERSION} and entry_id = any(${items.map((i) => i.id)}::text[])` : [];
+      where query_sha = ${querySha} and judge_version = ${judgeVersion} and entry_id = any(${items.map((i) => i.id)}::text[])` : [];
     const known = new Map(hits.map((h) => [key(h.entry_id, h.content_sha), h.p as number]));
     const missing = items.map((it, i) => ({ ...it, sha: shas[i] })).filter((it) => !known.has(key(it.id, it.sha)));
     if (missing.length) {
       stats.calls++;
       const odds = await relevance(request, missing.map((m) => m.text), "shadow");
       missing.forEach((m, i) => known.set(key(m.id, m.sha), odds[i]));
-      await cache(querySha, missing.map((m, i) => ({ id: m.id, text: m.text, p: odds[i] })));
+      await cache(querySha, missing.map((m, i) => ({ id: m.id, text: m.text, p: odds[i] })), judgeVersion);
     }
     return items.map((it, i) => known.get(key(it.id, shas[i]))!);
   };
@@ -75,7 +75,8 @@ export async function runShadows(s: Served) {
   if (!ids.length) return;
   const request = s.task ? `${s.task}\n${s.query}`.trim() : s.query;
   const querySha = await sha256(request);
-  await cache(querySha, s.judgments);
+  const judgeVersion = await activeJudgeVersion();
+  await cache(querySha, s.judgments, judgeVersion);
   let spent = false;
   try {
     await assertBudget("shadow");
@@ -90,7 +91,7 @@ export async function runShadows(s: Served) {
       try {
         const set = await paramSet(sql, id);
         const r = await rankAndPack(sql, set, s.query, s.task, s.scope, true, false, s.viewer, {
-          asOf: s.cNow, judge: cachedJudge(querySha, stats), agentScope: s.agentScope, entryFilter: s.entryFilter,
+          asOf: s.cNow, judge: cachedJudge(querySha, stats, judgeVersion), agentScope: s.agentScope, entryFilter: s.entryFilter,
         });
         if (r.degraded) status = r.degraded.includes(OverBudget.name) ? "skipped:budget" : "skipped:error";
         else {

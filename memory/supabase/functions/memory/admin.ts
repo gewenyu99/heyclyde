@@ -5,7 +5,7 @@ import { allocation, serving, servingArms } from "./allocation.ts";
 import * as store from "./blobs.ts";
 import { budget } from "./budget.ts";
 import { config } from "./config.ts";
-import { type Row, type Sql, sql } from "./db.ts";
+import { forgetSecret, type Row, type Sql, sql } from "./db.ts";
 import { contentSha, entryText, sha256, syncEmbeddings } from "./embed.ts";
 import { forgetParamSet, type Params, ParamError, paramSet, resolveParams } from "./params.ts";
 import { ARMS, forgetGraph, hybridComponents } from "./search.ts";
@@ -900,6 +900,9 @@ async function putSecret(name: string, data: Row) {
     else await tx`select vault.create_secret(${data.value.trim()}, ${name})`;
     await audit(tx, "secret.set", `secret:${name}`, null, { name });
     return { set: name };
+  }).then((res) => {
+    forgetSecret(name);
+    return res;
   });
 }
 
@@ -1637,7 +1640,7 @@ const ROUTES: Route[] = [
   ["DELETE", /^\/devices\/([^/]+)$/, 200, (_r, m) => revokeDevice(id(m[1], "name"))],
   ["PATCH", /^\/devices\/([^/]+)$/, 200, async (r, m) => setDeviceHooks(id(m[1], "name"), await body(r))],
   ["PUT", /^\/secrets\/([a-z_]+)$/, 200, async (r, m) => {
-    if (m[1] !== "openai_key" && !BILLING_SECRETS.includes(m[1])) throw new ApiError(404, `No secret ${m[1]}.`);
+    if (m[1] !== "openai_key" && m[1] !== "gemini_key" && !BILLING_SECRETS.includes(m[1])) throw new ApiError(404, `No secret ${m[1]}.`);
     return putSecret(m[1], await body(r));
   }],
   ["GET", /^\/billing\/plans$/, 200, () => plans()],

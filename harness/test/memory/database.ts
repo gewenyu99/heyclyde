@@ -93,6 +93,7 @@ async function reset() {
   await sql`insert into memory.setting (name, value) values ('research_token_sha256', ${await sha256(env('MEMORY_TEST_RESEARCH_TOKEN'))})`
   await sql`insert into memory.device (name, token_sha256) values ('clyde-test', ${await sha256(env('MEMORY_TEST_TOKEN'))})`
   await putSecret('cron_secret', env('MEMORY_TEST_CRON_SECRET'))
+  await sql`delete from vault.secrets where name in ('gemini_key', 'openai_key')`
 }
 
 try {

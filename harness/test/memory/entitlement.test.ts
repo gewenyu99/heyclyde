@@ -728,6 +728,8 @@ test('admin: plans and entitlements are readable, and a plan is changed by data'
   assert.equal(sql(`select recalls_month from memory.plan where id = 'probe'`)[0].recalls_month, 5000)
   sql(`delete from memory.plan where id = 'probe'`)
   assert.equal((await admin('PUT', '/secrets/polar_api_token', { value: `test-${nonce()}` })).status, 200)
+  assert.equal((await admin('PUT', '/secrets/gemini_key', { value: `test-gemini-${nonce()}` })).status, 200)
   assert.equal((await admin('PUT', '/secrets/not_a_secret', { value: 'x' })).status, 404)
+  sql(`delete from vault.secrets where name = 'gemini_key'`)
   assert.equal(sql(`select count(*)::int as n from memory.admin_audit where action = 'plan.create' and target = 'plan:probe'`)[0].n, 1)
 })

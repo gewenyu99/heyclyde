@@ -124,8 +124,8 @@ Supabase stores every token as SHA-256 only, so a database read never yields one
 Every write is screened before it's stored:
 
 - **Redaction.** API keys, tokens, private keys, password values, credentials inside URLs, card numbers, SSNs and SINs become `[redacted:<kind>]` in hook payloads, entries, blobs, messages, recall queries, console edits and imports.
-- **The judge.** `gpt-6-luna`, through OpenAI's Decisions API, refuses a note or message that holds sensitive personal information, tries to steer the assistants that read it, or carries harmful code, links or commands. If the judge can't answer, nothing is written.
-- **Sensitivity.** `private` entries reach agents and OpenAI by title only. `confidential` entries, for work material, reach your agents in full and OpenAI by title only.
+- **The judge.** `gemini-decision-1` through Gemini's Decisions API (`gemini_key` in Vault, falling back seamlessly to `gpt-6-luna` via OpenAI's Decisions API when `gemini_key` is absent) refuses a note or message that holds sensitive personal information, tries to steer the assistants that read it, or carries harmful code, links or commands. If the judge can't answer, nothing is written.
+- **Sensitivity.** `private` entries reach agents and the judge/embeddings by title only. `confidential` entries, for work material, reach your agents in full and the judge/embeddings by title only.
 
 Every recall's top 12 candidates also go through the judge, and only the ones it calls relevant reach the agent. It costs about $2 per 10,000 recalls.
 
@@ -154,7 +154,7 @@ memory learns from how you react, with no approval step and nothing moving by ca
 | The filter judges it irrelevant more than 5 recalls in a row | ×0.98 per further miss |
 | Below 0.15 | Dormant: recall skips it, nothing deletes it |
 
-The learner ([learn.ts](supabase/functions/memory/learn.ts)) runs every 5 minutes through pg_cron. `gpt-6-luna` reads the prompt you sent after each recall to spot pushback and which item caused it. Recall ranks by score × (0.9 + 0.1 × confidence), tuned on train. Every change lands in `memory.confidence_log`, so any of it can be traced and undone.
+The learner ([learn.ts](supabase/functions/memory/learn.ts)) runs every 5 minutes through pg_cron. `gemini-decision-1` (or `gpt-6-luna` fallback) reads the prompt you sent after each recall to spot pushback and which item caused it. Recall ranks by score × (0.9 + 0.1 × confidence), tuned on train. Every change lands in `memory.confidence_log`, so any of it can be traced and undone.
 
 The daily groom drafts new entries from your own words. It's a Claude Code scheduled task, "Groom memory daily", at 9 pm, following [skills/groom-memory](../skills/groom-memory/SKILL.md) through [groom/groom.py](groom/groom.py). Every draft names the hook event its quote came from, and memory refuses any quote that isn't in that prompt word for word. Scheduled tasks run while the Claude app is open, and a missed one runs at next launch.
 
@@ -265,13 +265,21 @@ Bump the version first when the change is client-visible, as above. Not every mi
 
 Test a change end to end first with `memory/e2e/run.sh`. It brings a throwaway preview branch up to this checkout, runs [the e2e suite](e2e/README.md) against it, and deletes it. In Firebase Studio (`.idx/dev.nix`) or any machine with Docker, `scripts/idx-tier3.sh` boots `supabase/postgres` locally and runs Tier 3, or one file like `scripts/idx-tier3.sh test/memory/entitlement.test.ts`.
 
-## Embeddings
+## Embeddings and the judge
 
 OpenAI's `text-embedding-3-large`, cut to 1024 dimensions. The key sits in Supabase Vault. Set or rotate it with:
 
 ```bash
 memory/hooks/set-openai-key.sh
 ```
+
+The judge (`judge.ts`) uses Gemini's Decisions API (`gemini-decision-1`) when `gemini_key` is in Vault, falling back seamlessly to OpenAI (`gpt-6-luna` via `openai_key`) when `gemini_key` is absent. Store `gemini_key` after ensuring the $5 minimum Prepay balance on billing account WS at `https://aistudio.google.com/billing`:
+
+```bash
+./memory/hooks/set-gemini-key.sh
+```
+
+`set-gemini-key.sh` pre-flights the key against `POST /v1beta/decisions` before writing Vault.
 
 pg_cron calls `/embeddings/sync` every 5 minutes, which embeds any entry whose text changed. A write answers before it's embedded, and keyword search finds it at once.
 
