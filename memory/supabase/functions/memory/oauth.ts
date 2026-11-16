@@ -188,7 +188,7 @@ async function approve(p: Page, id: string, code: string | null, error: string |
   const jwt = session.body.access_token, user = session.body.user;
   if (!session.ok || !jwt) return page(p, "error", "that sign-in link didn't work. Start connecting again from the app.", 400);
   if (!(user?.email && user.email_confirmed_at && (await openSignup() || await allowed(user.email)))) {
-    return page(p, "error", "that account isn't on memory's allowlist.", 403);
+    return page(p, "error", "that account isn't on Clyde's allowlist.", 403);
   }
   const details = await auth(`/oauth/authorizations/${encodeURIComponent(id)}`, { jwt });
   if (!details.ok) return page(p, "error", `Supabase didn't recognize that request (${details.body.msg ?? details.status}).`, 400);
@@ -208,13 +208,13 @@ async function approve(p: Page, id: string, code: string | null, error: string |
     if (action === "deny") {
       console.warn(`memory: oauth_deny for ${name}: redirect_uri ${target}`);
       await sql`update memory.oauth_consent set redirect_url = ${redirect!} where authorization_id = ${id}`;
-      return page(p, "refused", `refused ${name}. Its callback, ${target}, isn't one memory approves (Claude, Antigravity, Grok, the Gemini app or this computer).`, 403,
+      return page(p, "refused", `refused ${name}. Its callback, ${target}, isn't one Clyde approves (Claude, ChatGPT, Antigravity, Grok, the Gemini app, or localhost).`, 403,
         { client: name, callback: target });
     }
   }
   await sql`update memory.oauth_consent set redirect_url = ${redirect!}, client_name = ${name} where authorization_id = ${id}`;
   const full = await freeTierFull(user);
-  return page(p, "connected", `connected ${name}. Go back to the window that asked; it finishes by itself.${full ? ` ${full.line}` : ""}`, 200,
+  return page(p, "connected", `connected ${name}. Go back to the window that asked. It finishes by itself.${full ? ` ${full.line}` : ""}`, 200,
     { client: name, ...(full ? { free_full: true, checkout_url: full.url } : {}) });
 }
 

@@ -950,8 +950,8 @@ async function deleteSecret(name: string) {
 
 // R38: plans and who holds what. Plans are data; a limit set to null is no limit.
 const PLAN_LIMITS = ["price_micro_usd_month", "recalls_month", "remembers_month", "blob_bytes_total", "openai_tokens_month",
-  "connected_agents", "burst_calls", "burst_seconds"];
-const PLAN_FLAGS = ["open", "listed", "artifacts"];
+  "connected_agents", "entries_total", "free_per_paid_n", "pool_spend_cap_micro_usd_month", "burst_calls", "burst_seconds"];
+const PLAN_FLAGS = ["open", "listed", "artifacts", "quests"];
 
 async function plans() {
   return { plans: await sql`select * from memory.plan order by price_micro_usd_month, id` };
@@ -963,6 +963,12 @@ async function putPlan(planId: string, data: Row) {
     if (!(k in data)) continue;
     if (data[k] !== null && !(Number.isInteger(data[k]) && data[k] >= 0)) throw new ApiError(422, `${k} must be a whole number of at least 0, or null.`);
     set[k] = data[k];
+  }
+  if ("free_per_paid_m" in data) {
+    if (data.free_per_paid_m !== null && !(Number.isInteger(data.free_per_paid_m) && data.free_per_paid_m >= 1)) {
+      throw new ApiError(422, "free_per_paid_m must be a whole number of at least 1, or null.");
+    }
+    set.free_per_paid_m = data.free_per_paid_m;
   }
   for (const k of PLAN_FLAGS) {
     if (!(k in data)) continue;

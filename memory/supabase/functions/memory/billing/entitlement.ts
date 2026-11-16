@@ -9,10 +9,11 @@ import { root as sql, setting } from "../db.ts";
 import { isBlocked, REFUSAL } from "./regions.ts";
 
 export type Plan = {
-  id: string; name: string; open: boolean; artifacts: boolean; price_micro_usd_month: number;
+  id: string; name: string; open: boolean; artifacts: boolean; quests: boolean; price_micro_usd_month: number;
   recalls_month: number | null; remembers_month: number | null; blob_bytes_total: number | null;
   openai_tokens_month: number | null; connected_agents: number | null; entries_total: number | null; burst_calls: number | null; burst_seconds: number | null;
   overage: boolean; overage_ceiling_micro_usd_month: number | null;
+  free_per_paid_n: number | null; free_per_paid_m: number | null; pool_spend_cap_micro_usd_month: number | null;
   features: Record<string, unknown>;
 };
 
@@ -31,8 +32,9 @@ export type Verdict = {
 
 /** A plan nobody may use: what an owner gets with no subscription and no free seat. */
 const CLOSED: Plan = {
-  id: "none", name: "No", open: false, overage: false, overage_ceiling_micro_usd_month: null, artifacts: false, price_micro_usd_month: 0, recalls_month: 0, remembers_month: 0,
-  blob_bytes_total: 0, openai_tokens_month: 0, connected_agents: 0, entries_total: 0, burst_calls: 20, burst_seconds: 10, features: {},
+  id: "none", name: "No", open: false, overage: false, overage_ceiling_micro_usd_month: null, artifacts: false, quests: false, price_micro_usd_month: 0, recalls_month: 0, remembers_month: 0,
+  blob_bytes_total: 0, openai_tokens_month: 0, connected_agents: 0, entries_total: 0, burst_calls: 20, burst_seconds: 10,
+  free_per_paid_n: null, free_per_paid_m: null, pool_spend_cap_micro_usd_month: null, features: {},
 };
 
 const cache = new Map<string, { at: number; v: Omit<Verdict, "source" | "ms"> }>();
@@ -61,8 +63,10 @@ export async function entitled(owner: string): Promise<Verdict> {
     from who left join memory.plan p
       on p.id = coalesce(who.allow_plan, case when who.paid then who.paid_plan end, case when who.free_slot then 'free' end)`;
   const plan = row?.plan
-    ? { ...row.plan, price_micro_usd_month: Number(row.plan.price_micro_usd_month), blob_bytes_total: num(row.plan.blob_bytes_total),
-      openai_tokens_month: num(row.plan.openai_tokens_month), overage_ceiling_micro_usd_month: num(row.plan.overage_ceiling_micro_usd_month) } as Plan
+    ? { ...row.plan, quests: row.plan.quests !== false, price_micro_usd_month: Number(row.plan.price_micro_usd_month), blob_bytes_total: num(row.plan.blob_bytes_total),
+      openai_tokens_month: num(row.plan.openai_tokens_month), overage_ceiling_micro_usd_month: num(row.plan.overage_ceiling_micro_usd_month),
+      free_per_paid_n: num(row.plan.free_per_paid_n), free_per_paid_m: num(row.plan.free_per_paid_m),
+      pool_spend_cap_micro_usd_month: num(row.plan.pool_spend_cap_micro_usd_month) } as Plan
     : CLOSED;
   const v = {
     owner, plan, allowlisted: Boolean(row?.allow_plan), state: row?.state ?? null,

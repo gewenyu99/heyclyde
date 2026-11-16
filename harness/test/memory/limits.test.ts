@@ -273,10 +273,15 @@ test('burst: shared across instances, hooks and the runtime token not counted', 
   }
 })
 
-test('free plan: the first 1,000 accounts, its limits give 402 with the checkout link, and no artifacts', { skip: SKIP }, async () => {
+test('free plan: the first 1,000 accounts, its limits give 402 with the checkout link, no artifacts, no quests, and 250k tokens', { skip: SKIP }, async () => {
+  const p = await paid()
+  assert.equal((await tool(p.oauth, 'list_quests', {})).status, 200)
   const u = user()
   assert.equal((await rpc(u.oauth, 'initialize', { protocolVersion: '2025-06-18' })).status, 200)
   assert.equal(sql(`select free_slot from memory.account where owner_id = '${u.id}'`)[0].free_slot, true)
+  const quest = await tool(u.oauth, 'list_quests', {})
+  assert.equal(quest.status, 402, quest.text)
+  assert.match(quest.text, /quest board/)
   seed(u, 'recalls_month', 299)
   assert.equal((await recall(u.oauth)).status, 200)
   const over = await recall(u.oauth)
@@ -286,6 +291,13 @@ test('free plan: the first 1,000 accounts, its limits give 402 with the checkout
   assert.equal(artifact.status, 402, artifact.text)
   assert.match(artifact.text, /artifacts/)
   assert.equal((await remember(u.oauth)).status, 200)
+  const tok = user()
+  assert.equal((await rpc(tok.oauth, 'initialize', { protocolVersion: '2025-06-18' })).status, 200)
+  seed(tok, 'openai_tokens_month', 250_000)
+  const tokWrite = await remember(tok.oauth)
+  assert.equal(tokWrite.status, 402, tokWrite.text)
+  assert.ok(JSON.parse(tokWrite.text).checkout_url.includes(tok.id))
+  assert.equal((await recall(tok.oauth)).status, 200)
   try {
     // Once the seats are taken, a new account gets none, and so no plan.
     sql(`update memory.plan set seats = (select count(*) from memory.account where free_slot) where id = 'free'`)

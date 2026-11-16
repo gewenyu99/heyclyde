@@ -642,6 +642,8 @@ async function card(c: Parameters<typeof cardData>[0]): Promise<{ _meta: Record<
   }
 }
 
+const QUEST_TOOLS = new Set(["post_quest", "list_quests", "claim_quest", "update_quest", "complete_quest", "abandon_quest"]);
+
 async function answer(msg: RpcMessage, session: string | null, minted: { id?: string }, who: Principal) {
   const id = msg.id;
   switch (msg.method) {
@@ -698,6 +700,7 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
         await limits.charge(who.entitlement, "remembers_month");
       }
       if (name === "get_blob" || name === "upload_blob") await limits.assertArtifacts(who.entitlement);
+      if (QUEST_TOOLS.has(name)) await limits.assertQuests(who.entitlement);
       const sid = session ?? `anon-${crypto.randomUUID()}`;
       // Every reply, errors included, ends with a reminder while a recall in this MCP session has no feedback. A call with no
       // session header has no recalls of its own to be reminded of.

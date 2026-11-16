@@ -8,12 +8,13 @@
 // to the provider's usage meter, billed at a 50% gross margin (cost.ts). Only overage_ceiling_micro_usd_month stops it.
 // Principals with no owner (Wen's runtime, admin, backup and cron credentials, and devices from before R38) have no limits.
 import { AsyncLocalStorage } from "node:async_hooks";
-import { sql } from "../db.ts";
+import { root, sql } from "../db.ts";
 import { INVOCATION_MICRO_USD, STORAGE_MICRO_USD_PER_GB_MONTH, TOKEN_MICRO_USD } from "./cost.ts";
 import { checkoutLink, payment, type Plan, type Verdict } from "./entitlement.ts";
 
 export type Metered = "recalls_month" | "remembers_month" | "openai_tokens_month" | "blob_bytes_total";
-const MONTHLY = new Set<string>(["recalls_month", "remembers_month", "openai_tokens_month", "overage_micro_usd_month"]);
+export const FREE_POOL_OWNER = "00000000-0000-0000-0000-00000000f4ee";
+const MONTHLY = new Set<string>(["recalls_month", "remembers_month", "openai_tokens_month", "overage_micro_usd_month", "free_pool_micro_usd_month"]);
 const TOTAL_PERIOD = "1970-01-01";
 
 /** A refusal to hand back as the HTTP answer: 429 for a cap, the overage ceiling or the burst limit, 402 for a free plan. */
@@ -78,6 +79,27 @@ async function overage(v: Verdict, costMicroUsd: number) {
   if (costMicroUsd > 0) await add(v.owner, "overage_micro_usd_month", Math.ceil(costMicroUsd));
 }
 
+/** Stops free accounts once the shared monthly free-tier budget is spent. Reads via `root` to bypass tenant RLS. */
+async function assertPoolSpend(v: Verdict) {
+  if (!free(v)) return;
+  const cap = v.plan.pool_spend_cap_micro_usd_month;
+  if (cap === null) return;
+  const [r] = await root`select amount from memory.usage
+    where owner_id = ${FREE_POOL_OWNER} and kind = 'free_pool_micro_usd_month'
+      and period = date_trunc('month', now() at time zone 'utc')::date`;
+  if (Number(r?.amount ?? 0) >= cap) {
+    throw new Limited(await payment(v.owner, "Clyde's monthly free-tier budget is spent."));
+  }
+}
+
+async function chargeFreePool(v: Verdict, costMicroUsd: number) {
+  if (!free(v) || costMicroUsd <= 0) return;
+  const micro = Math.ceil(costMicroUsd);
+  await root`insert into memory.usage as u (owner_id, period, kind, amount)
+    values (${FREE_POOL_OWNER}, date_trunc('month', now() at time zone 'utc')::date, 'free_pool_micro_usd_month', ${micro})
+    on conflict (owner_id, period, kind) do update set amount = u.amount + excluded.amount`;
+}
+
 /** Count one call of this kind, or throw Limited when the plan's cap is reached. Without overage, the count and the check are
  * one statement, so two instances can't both take the last one. With it, a call past the included limit costs one
  * invocation of overage. */
@@ -90,19 +112,23 @@ export async function charge(v: Verdict | undefined, kind: "recalls_month" | "re
     if (await add(v.owner, kind, 1) > cap) await overage(v, INVOCATION_MICRO_USD);
     return;
   }
+  await assertPoolSpend(v);
   if (cap <= 0) throw await over(v, kind, cap);
   const rows = await sql`insert into memory.usage as u (owner_id, period, kind, amount)
       values (${v.owner}, ${periodOf(kind)}, ${kind}, 1)
     on conflict (owner_id, period, kind) do update set amount = u.amount + 1 where u.amount < ${cap}
     returning amount`;
   if (!rows.length) throw await over(v, kind, cap);
+  await chargeFreePool(v, INVOCATION_MICRO_USD);
 }
 
 /** Throws Limited when this owner may not spend OpenAI tokens: at the cap without overage, at the ceiling with it. */
 export async function assertTokens(v: Verdict | undefined) {
-  if (!v || v.plan.openai_tokens_month === null) return;
+  if (!v) return;
   if (billsOverage(v)) return assertCeiling(v);
+  await assertPoolSpend(v);
   const cap = v.plan.openai_tokens_month;
+  if (cap === null) return;
   if (await used(v.owner, "openai_tokens_month") >= cap) throw await over(v, "openai_tokens_month", cap);
 }
 
@@ -110,7 +136,8 @@ export async function assertTokens(v: Verdict | undefined) {
  * recall at the cap serves keyword ranks, degraded, and spends nothing. */
 export async function ownerTokensSpent(): Promise<string | null> {
   const v = current.getStore()?.v;
-  if (!v || v.plan.openai_tokens_month === null) return null;
+  if (!v) return null;
+  if (v.plan.openai_tokens_month === null && (!free(v) || v.plan.pool_spend_cap_micro_usd_month === null)) return null;
   try {
     await assertTokens(v);
     return null;
@@ -123,7 +150,9 @@ export async function ownerTokensSpent(): Promise<string | null> {
 /** Add tokens to the current owner's counter, and the cost of any past the included limit to their overage. */
 export async function meterOwner(tokens: number) {
   const v = current.getStore()?.v;
-  if (!v || !tokens || v.plan.openai_tokens_month === null) return;
+  if (!v || !tokens) return;
+  await chargeFreePool(v, tokens * TOKEN_MICRO_USD);
+  if (v.plan.openai_tokens_month === null) return;
   const total = await add(v.owner, "openai_tokens_month", tokens);
   if (billsOverage(v)) await overage(v, Math.min(tokens, total - v.plan.openai_tokens_month) * TOKEN_MICRO_USD);
 }
@@ -178,6 +207,11 @@ export async function countBlobs(v: Verdict | undefined, blobs: { size: number }
 /** The artifacts flag, for remember with artifacts, get_blob, upload_blob and GET /blobs. */
 export async function assertArtifacts(v: Verdict | undefined) {
   if (v && !v.plan.artifacts) throw new Limited(await payment(v.owner, `artifacts need the Clyde plan; the ${v.plan.name} plan has none.`));
+}
+
+/** The quests flag, for the quest board MCP tools. */
+export async function assertQuests(v: Verdict | undefined) {
+  if (v && !v.plan.quests) throw new Limited(await payment(v.owner, `the quest board needs the Clyde plan; the ${v.plan.name} plan has none.`));
 }
 
 /** The burst limit: at most burst_calls in burst_seconds per owner. The window slides, and the row lock makes it exact across

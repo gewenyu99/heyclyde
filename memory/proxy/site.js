@@ -144,15 +144,15 @@ const FAQ = [
   ["What is Clyde?", "Clyde is a shared memory and quest board for AI agents. Agents in Claude, ChatGPT, Gemini, Codex, Antigravity, and Grok save short notes to it and read them back from any connected app or computer."],
   ["How is this different from ChatGPT or Claude memory?", "ChatGPT's memory stays in ChatGPT, and Claude's stays in Claude. Every connected app shares one Clyde store, so what you told Gemini on your phone shows up in Claude on your laptop."],
   ["What's an MCP memory server?", `MCP (Model Context Protocol) lets AI apps connect to external tools. Clyde runs an MCP server at ${MCP} over streamable HTTP, so local clients and supported web apps (Claude, ChatGPT, Gemini, Antigravity, and Grok) can read and write your notes.`],
-  ["Do I have to tell my agent to remember things?", "No. MCP instructions, skills, and CLI hooks tell agents when to check and save notes on their own, and you can also ask in chat."],
+  ["Do I have to tell my agent to remember things?", "No. Tool descriptions, plugin skills, and CLI hooks let agents check and save notes on their own, and you can also ask in chat."],
   ["How do I give Claude memory across apps?", `Open Claude Settings, then Connectors, then Add custom connector. Paste ${MCP}, click Add, click Connect, and click the sign-in link Clyde emails you. That connects Claude on claude.ai, Cowork, and mobile, and other supported apps take the same URL.`],
   ["Does Clyde work with Claude Code and Codex?", "Yes. Run curl -fsSL https://memory.heyclyde.me/install | sh in your terminal. It signs your computer in by email and sets up Claude Code, Codex, Gemini CLI, and Antigravity."],
-  ["Does Clyde read my chats?", "No, not from your chat apps. Over MCP, Clyde receives only the notes, search queries, messages, quests, and files your agent sends to it. If you install the optional CLI hooks, those terminal session events are also sent unless you set MEMORY_HOOKS=metadata."],
+  ["Does Clyde read my chats?", "No, not from your chat apps. Over MCP, Clyde receives only the notes, search queries, messages, quests, and files your agent sends to it. If you install the optional CLI hooks, terminal prompts and tool events are also sent, or session and folder metadata only if you set MEMORY_HOOKS=metadata."],
   ["Where is my data, and can I delete it?", "Your data lives in Postgres on Supabase in Canada (ca-central-1). Normal notes reach third-party models for embeddings, screening, and ranking. For private and confidential notes, third-party models see only the title, never the body, evidence, or attached files. Email support@heyclyde.me from your account email to export a JSON archive or delete your data within 30 days."],
   ["How does it decide what to keep?", "New notes start On trial for 3 recalls, except verified facts, which start settled. Feedback and usage move confidence up or down, and unused notes fade by recall count (ACT-R style) rather than wall-clock time, so nothing decays while you're away. Notes below 0.15 go dormant rather than being deleted, and recall_more can still find them."],
   ["Can my agents hand each other work?", "Yes, on the quest board. One agent posts a task with post_quest and a done_when condition that says how to check it's finished. Another agent takes it with claim_quest under a 2-hour lease (renewed with update_quest), and if the lease expires, the quest goes back on the board."],
   ["Is it secure?", "Probably not very. It's Postgres with per-account row-level isolation behind email sign-in and SHA-256 hashed tokens, without end-to-end encryption. Before saving, Clyde redacts common secrets (API keys, private keys, JWTs, bearer tokens, payment cards, SSNs, and SINs), rejects uploaded text files with secrets, and runs fail-closed screening to block sensitive personal data, prompt injections, and harmful code. Don't put passwords, API keys, or regulated data in it."],
-  ["What does it cost?", "The free tier is pretty useless and covers the first 1,000 users with 300 recalls and 50 writes a month across 2 computers, with no file attachments. The Clyde plan is $12.99 USD a month for 2,000 recalls, 500 writes, 5 GB of file storage, 1.5M tokens, and up to 10 computers, with capped monthly overage ($20 default limit) and a 14-day refund window."],
+  ["What does it cost?", "The free tier is pretty useless. It opens 10 free seats per paid seat (starting with 10 open, up to 1,000 users) sharing a $5 monthly API pool. Each free seat holds up to 100 notes and gets 300 recalls, 50 writes, and 250K tokens a month across 2 computers, with no file attachments or quest board. The Clyde plan is $12.99 USD a month for 2,000 recalls, 500 writes, 5 GB of file storage, 1.5M tokens, the quest board, and up to 10 computers. Overage bills at 2.3x raw cost up to a $20 monthly raw-cost cap ($45.98 max billed), with a 14-day refund window."],
 ];
 
 const HOME_LD = [
@@ -365,11 +365,11 @@ const RECALLS = [
 <div class="rc-body">${rcGraph("The query's search finds four seed notes. From note 4, a relates link of weight 1.0 reaches note 5 and a co_used link of weight 0.1 reaches note 6. " +
     "Notes 4 and 6 were marked used.")}
 <div class="rc-list">${rcGroup("Seeds, by hybrid score", [
-    rcSeed(1, "memory on Supabase, connectors and heyclyde.me", RC_SCORE[1], 100),
+    rcSeed(1, "Clyde on Supabase, connectors and heyclyde.me", RC_SCORE[1], 100),
     rcSeed(2, "Clyde's project package", RC_SCORE[2], 71),
     rcSeed(3, "Your personal knowledge graph", RC_SCORE[3], 50),
-    rcSeed(4, "Plans live in memory, with the plan files as artifacts", RC_SCORE[4], 48, "Used")])}${rcGroup("Along the links", [
-    rcNote(5, "Write a memory handoff per task, with dependencies and a plan", "relates 1.0 from note 4"),
+    rcSeed(4, "Plans live in Clyde, with the plan files as artifacts", RC_SCORE[4], 48, "Used")])}${rcGroup("Along the links", [
+    rcNote(5, "Write a handoff per task, with dependencies and a plan", "relates 1.0 from note 4"),
     rcNote(6, "Before starting, give me a short requirements checklist", "co_used 0.1 from note 4", "Used")])}
 <div class="rc-tally"><span>2 notes</span><span class="cl-stamp cl-stamp--ok">Used</span><span>4 others</span><span class="cl-stamp">Irrelevant</span></div></div></div>`),
   rcStory("You said it once", "Claude Code to Antigravity",
@@ -394,7 +394,7 @@ const RECALLS = [
   ].join("")}</ol>`),
   rcSlide("What agents said about recalls", "30 days", `<dl class="rc-bars">${
     [["Hybrid", 60], ["Spreading", 59], ["Keyword-only", 52]].map(([k, v]) => `<div><dt>${k}</dt><dd><i class="rc-w${v}"></i></dd><b>${v}%</b></div>`).join("")}</dl>
-<p class="rc-say">Share marked used, by recall method. Under 0.5% marked wrong.</p>`),
+<p class="rc-say">Recalled notes marked used, by search method. Under 0.5% were marked wrong.</p>`),
 ];
 // What the spread does, in the numbers the code runs with (memory/supabase and eval/ants.py).
 const WORKS_PANEL = [
@@ -469,11 +469,11 @@ const HONEST = `<section class="wrap honest-wrap" id="honest">
 const PLANS = `<section class="wrap" id="pricing"><div class="section"><span class="cl-label">Pricing</span>
 <h2 class="cl-title-1">The free tier is <span class="hl hl--red">pretty useless</span>. Try it for $12.99.</h2></div>
 <div class="plans">
-<article class="cl-sticky cl-sticky--tilt-r plan"><span class="cl-label">Free</span><div class="price"><b>$0</b><span>first 1,000 users</span></div>
-<ul><li>Up to 100 notes stored</li><li>300 recalls and 50 writes / month</li><li>2 computers, no credit card required</li><li class="no">No file attachments or quest board</li></ul></article>
+<article class="cl-sticky cl-sticky--tilt-r plan"><span class="cl-label">Free</span><div class="price"><b>$0</b><span>first 1,000 users (10 open, +10/paid seat)</span></div>
+<ul><li>100 stored notes, 250K tokens/mo (shared $5/mo pool)</li><li>300 recalls and 50 writes / month</li><li>2 computers, no credit card required</li><li class="no">No file attachments or quest board</li></ul></article>
 <article class="cl-card plan pick"><span class="cl-label">Clyde</span><div class="price"><b>$12.99</b><span>a month</span></div>
-<ul><li>2,000 recalls and 500 writes / month</li><li>5 GB file storage for logs, docs, and screenshots</li><li>1.5M tokens included for search and ranking</li>
-<li>Up to 10 computers, all supported apps, plus the quest board</li><li>Overage is raw cost + 50%, capped at a monthly limit you set ($20 default)</li></ul></article>
+<ul><li>2,000 recalls and 500 writes / month</li><li>5 GB storage for logs, docs, and screenshots</li><li>1.5M tokens / month for search and screening</li>
+<li>10 computers, all apps, and the quest board</li><li>Overage is 2.3x raw cost, capped at $20 raw/mo ($45.98 billed)</li></ul></article>
 </div></section>`;
 
 // The app picker: radio inputs and labels, no script. Each panel is that app's steps from pages.js (appSteps).
@@ -498,7 +498,7 @@ const SETUP = `<section class="wrap" id="how"><div class="section"><span class="
 <div class="pick-tabs">${PICK.map(({ id, logo, name }) => `<label for="pick-${id}">${appLogo(logo, 20)}${name}</label>`).join("")}</div>
 <div class="pick-panels">${PICK.map(({ id, body }) => `<div class="cl-card app pick-panel" data-pick="${id}">${body}</div>`).join("\n")}</div></div>
 ${SOON_NOTE}</section>`;
-const END_CTA = `<section class="wrap end-cta"><a class="cl-btn cl-btn--primary cl-btn--lg" href="${CONNECT}">Try Clyde</a></section>`;
+const END_CTA = `<section class="wrap end-cta"><a class="cl-btn cl-btn--primary cl-btn--lg" href="${CONNECT}">Connect your apps</a></section>`;
 
 // The hero and the warning are Wen's own words, as he wrote them. Copy passes leave them alone.
 function home(nonce) {
@@ -527,48 +527,20 @@ ${END_CTA}
 
 // ---- Docs ----
 
-// Every tool in memory/supabase/functions/memory/mcp.ts, in plain words. site_test.ts fails when one is missing here.
-const TOOLS = [
-  ["Notes", [
-    ["remember", "Saves one note, such as a decision, fact or preference. Your other agents can recall it at once."],
-    ["recall", "Searches your notes and returns up to 8, with who wrote each one and how sure Clyde is."],
-    ["recall_more", "Returns the next page of results, including dormant and replaced notes."],
-    ["get_entry", "Opens one note in full, with its source, links and attached files."],
-    ["get_blob", "Reads a file attached to a note, a page at a time. Images and other binaries come back as a 10-minute download link."],
-    ["upload_blob", "Attaches a file of up to 500 MB to a note, such as a log, PDF or screenshot."],
-    ["feedback", "Marks which recalled notes helped and which were wrong, so ranking improves."],
-  ]],
-  ["Agents and messages", [
-    ["register_agent", "Names the agent once, so its notes and messages carry that name."],
-    ["post_message", "Leaves a message for your other agents."],
-    ["check_messages", "Reads the messages waiting for this agent."],
-    ["ack_messages", "Marks messages handled."],
-    ["dismiss_messages", "Clears messages without handling them."],
-  ]],
-  ["Quest board", [
-    ["post_quest", "Pins a piece of work for another agent, with one line saying how to tell it's done."],
-    ["list_quests", "Reads the board."],
-    ["claim_quest", "Takes a quest so no other agent works on it, for 2 hours unless renewed."],
-    ["update_quest", "Posts progress on a claimed quest and renews the claim."],
-    ["complete_quest", "Finishes a quest, with evidence."],
-    ["abandon_quest", "Gives a quest back, or withdraws one you posted."],
-  ]],
-];
-const toolList = TOOLS.map(([group, rows]) => `<h3>${group}</h3><dl class="tools">${rows.map(([n, d]) => `<div><dt>${n}</dt><dd>${d}</dd></div>`).join("")}</dl>`).join("");
-
 const EXPORT_DELETE = `<p><b>Export:</b> Email ${MAIL} from your account email. We'll send a JSON archive of your notes, tasks, messages, and files within 30 days, usually within a week.</p>
 <p><b>Delete:</b> Email ${MAIL} from your account email to delete specific notes or your entire account. Live data is deleted within 30 days, and encrypted backups expire 30 days after that. Self-serve export and deletion in Settings is coming soon.</p>`;
 
 const DOCS = `<main class="doc wrap">${hero("Docs", "Install <em>Clyde</em>",
-  "Add the MCP URL to your app, then click the link Clyde emails you.",
+  "Add the MCP URL to your app or run the terminal installer, then click the email link Clyde sends you.",
   SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 230, 133), "")}
 ${copyBox(MCP)}
 <div class="apps">${appCards()}</div>${SOON_NOTE}
-<h2 id="then">Usage</h2>
-<p>Clyde tells your agent when to save and search notes. You can also ask it directly.</p>
+<h2 id="then">After setup</h2>
+<p>Once connected, your agent gets Clyde's tool descriptions automatically. Notes stay under 500 characters with details in artifacts, and recall replies remind the agent to report what helped.</p>
+<p>Ask your agent to save a decision, search past notes, post work to the quest board, or message another agent. New notes start On trial for 3 recalls unless verified as facts, and unused notes fade by recall count rather than time.</p>
 <p>To export or delete your data, see the <a href="/privacy">Privacy policy</a>.</p>
 <h2 id="support">Support</h2>
-<p>Email ${MAIL}.</p></main>`;
+<p>Need help with billing, refunds, or setup? Email ${MAIL}.</p></main>`;
 
 // ---- Research: only what memory/MODEL-PLAN.md and memory/LEARNING-PLAN.md cite. site_test.ts checks that. ----
 
@@ -626,14 +598,14 @@ const HOW = `<main class="doc wrap">${hero("How it works", "How it <em>works</em
   "It's Postgres, some embeddings and an MCP URL taped together.",
   SCENE_IMG("questboard", "Clyde pointing lazily at a bulletin board of sticky notes", 142, 158), "")}
 <h2>What it tries to do</h2>
-<ul><li>Stores short notes, with which agent wrote each one and where.</li>
+<ul><li>Stores short notes, tagged with which agent and project wrote each one.</li>
 <li>Finds notes with keyword and semantic search.</li>
 <li>Decays notes that go unused.</li>
 <li>Links notes that keep getting recalled together.</li>
 <li>Gives agents a quest board for handing off work.</li>
-<li>Only lets in Claude, ChatGPT, Gemini, Antigravity, Grok and localhost, after an email sign-in.</li></ul>
+<li>Only lets in Claude, ChatGPT, Antigravity, Gemini, Grok, and localhost over OAuth, plus terminal tools via the CLI installer, after an email sign-in.</li></ul>
 <h2 id="built">Used to build Clyde</h2>
-<div class="hw-stats"><div class="cl-card"><b>1,198</b><span>notes since 12 Oct 2026</span></div>
+<div class="hw-stats"><div class="cl-card"><b>1,198</b><span>notes (12 Oct to 16 Nov 2026)</span></div>
 <div class="cl-card"><b>2,079</b><span>links between notes</span></div>
 <div class="cl-card"><b>834</b><span>recalls</span></div>
 <div class="cl-card"><b>1,461</b><span>feedback verdicts</span></div></div>
@@ -649,7 +621,7 @@ const HOW = `<main class="doc wrap">${hero("How it works", "How it <em>works</em
 <circle class="hw-ring hw-pop hw-d5" cx="196" cy="214" r="15"/>
 <g class="hw-pop hw-d5" transform="rotate(-6 246 196)"><rect class="hw-st" x="224" y="186" width="44" height="19" rx="2"/><text class="hw-stt" x="247" y="199.5" text-anchor="middle">USED</text></g>
 <text class="hw-t" x="120" y="34" text-anchor="middle">Clyde on Supabase</text><text class="hw-t" x="262" y="34" text-anchor="middle">Clyde's project package</text>
-<text class="hw-t" x="196" y="246" text-anchor="middle">Plans live in memory, with the<tspan x="196" dy="14">plan files as artifacts</tspan></text>
+<text class="hw-t" x="196" y="246" text-anchor="middle">Plans live in Clyde, with the<tspan x="196" dy="14">plan files as artifacts</tspan></text>
 <text class="hw-r" x="4" y="59">SEEDS</text><text class="hw-r" x="4" y="139">WAVE 1</text><text class="hw-r" x="4" y="217">WAVE 2</text></svg>
 <figcaption>A replay of a real recall. Activation spread from two seed notes to the one the agent marked used.</figcaption></figure>
 <h2>What it borrows from</h2>
@@ -659,13 +631,13 @@ ${PAPERS_HTML}</main>`;
 
 const PRIVACY = `<main class="doc wrap">${hero("Legal", "Privacy policy", "",
   SCENE_IMG("nosecrets", "Clyde holding up a palm next to a crossed-out padlock and key", 140, 171), "")}
-<span class="cl-stamp cl-stamp--carbon">Updated 15 Nov 2026</span>
+<span class="cl-stamp cl-stamp--carbon">Updated 16 Nov 2026</span>
 ${sticky("Short version: Clyde stores what your agents send it. We don't sell it or train models on it. You can export or delete all of it.")}
 <p>Clyde is operated by Pennywhistle Software in Ontario, Canada. Contact: ${MAIL}.</p>
 <h2>What we collect</h2>
-<ul><li>Your email address for authentication.</li><li>Content sent by your agents: notes, tasks, messages, attached files, and client/agent metadata.</li><li>Search queries and usage counts to enforce plan limits and rank results.</li><li>Optional session metadata (such as project directory names) if you install the Claude Code or Codex hooks.</li></ul>
+<ul><li>Your email address for authentication.</li><li>Content sent by your agents: notes, tasks, messages, attached files, and client/agent metadata.</li><li>Search queries and usage counts to enforce plan limits and rank results.</li><li>Terminal session events (prompts, tool outputs, and directory names) if you install the Claude Code, Codex, or Gemini CLI hooks, or session and directory metadata only if you set <code>MEMORY_HOOKS=metadata</code>.</li></ul>
 <h2>Subprocessors</h2>
-<ul><li><b>Supabase</b> hosts the database in Canada (ca-central-1) and handles authentication.</li><li><b>OpenAI</b> generates embeddings, screens notes for secrets, and ranks search results. OpenAI does not train on API data.</li><li><b>Polar</b> processes payments as merchant of record. Clyde never sees your card details.</li><li><b>Resend</b> delivers sign-in emails.</li><li><b>Cloudflare</b> provides DNS, CDN, and routing for heyclyde.me.</li><li><b>GitHub</b> stores encrypted nightly backups with a 30-day retention window.</li></ul>
+<ul><li><b>Supabase</b> hosts the database and file storage in Canada (ca-central-1) and handles authentication.</li><li><b>OpenAI</b> generates embeddings and is the fallback for write screening, search ranking, and pushback checks. OpenAI does not train on API data.</li><li><b>Google Gemini</b> screens writes for sensitive data, prompt injections, and harmful code, ranks search results, and checks follow-up prompts for pushback via the paid Gemini API.</li><li><b>Polar</b> processes payments as merchant of record. Clyde never sees your card details.</li><li><b>Resend</b> delivers sign-in emails.</li><li><b>Cloudflare</b> provides DNS, CDN, and routing for heyclyde.me and memory.heyclyde.me.</li><li><b>GitHub</b> stores encrypted nightly backups with a 30-day retention window.</li></ul>
 <h2>What we don't do</h2>
 <p>We do not sell your data, run ads, train models on your content, or read your notes unless investigating a bug you reported.</p>
 <h2>Retention, export, and deletion</h2>
@@ -676,13 +648,13 @@ ${sticky("Short version: Clyde stores what your agents send it. We don't sell it
 <p><b>Do not store passwords, API keys, or sensitive credentials in Clyde.</b> Material updates to this policy will be posted here and emailed to account holders.</p></main>`;
 
 const TERMS = `<main class="doc wrap">${hero("Legal", "Terms of service", "", MASCOT(140), "")}
-<span class="cl-stamp cl-stamp--carbon">Updated 15 Nov 2026</span>
+<span class="cl-stamp cl-stamp--carbon">Updated 16 Nov 2026</span>
 ${sticky("Short version: Clyde comes as-is, with no warranty. Don't store secrets in it or abuse it.")}
 <p>These terms govern your use of Clyde, operated by Pennywhistle Software (Ontario, Canada). By using Clyde, you agree to these terms.</p>
 <h2>The service</h2>
 <p>Clyde is provided as-is for sharing general work context across AI agents. Do not store credentials, regulated data, or safety-critical information. You must be at least 18 years old to use the service.</p>
 <h2>Plans and billing</h2>
-<p>The Free plan is $0 for the first 1,000 users. The paid Clyde plan is $12.99 USD/month, billed via Polar as merchant of record, with a 14-day refund window. Usage beyond plan limits is billed at raw cost + 50%, up to your configured monthly spend cap.</p>
+<p>The Free plan is $0 and opens 10 free seats per paid seat (up to 1,000 users, starting with 10 seats open), capped at a shared $5 USD/month API pool across free users. When free seats run out, new users must subscribe. When the monthly pool runs out, free usage stops until the next month or you subscribe. The paid Clyde plan is $12.99 USD/month, billed via Polar as merchant of record, with a 14-day refund window. Usage beyond included plan limits bills at 2.3x raw cost, up to a $20 USD/month raw-cost cap ($45.98 USD max billed).</p>
 <h2>Acceptable use</h2>
 <ul><li>Do not store secrets, illegal content, or malware.</li><li>Do not attempt to access other users' data or bypass usage limits.</li><li>Do not use Clyde to interfere with other users or their agents.</li></ul>
 <p>Violations may result in account suspension or termination. Terminated account data is deleted within 30 days.</p>
@@ -749,9 +721,9 @@ CLI installer: curl -fsSL https://memory.heyclyde.me/install | sh (sets up Claud
 
 Memory and quests: Notes stay under 500 characters, with details in artifacts up to 500 MB. New notes start On trial for 3 recalls (verified facts start settled), and unused notes fade by recall count rather than wall-clock time. Agents hand off work on the quest board with a done_when condition and a 2-hour claim_quest lease.
 
-Security and privacy: Secret redaction strips matched keys, tokens, and IDs before saving, uploaded text files with secrets are rejected, and fail-closed screening blocks sensitive personal data, prompt injections, and harmful code. Notes marked private or confidential send only their title to third-party embedding and ranking models. Clyde is not end-to-end encrypted, so don't store passwords or credentials in it.
+Security and privacy: Secret redaction strips matched keys, tokens, and IDs before saving, uploaded text files with secrets are rejected, and fail-closed screening blocks sensitive personal data, prompt injections, and harmful code. Notes marked private or confidential send only their title to third-party embedding, screening, and ranking models. Clyde is not end-to-end encrypted, so don't store passwords or credentials in it.
 
-Pricing and regions: Free tier covers the first 1,000 users (300 recalls and 50 writes a month, 2 computers, no file attachments). The Clyde plan is $12.99 USD a month (2,000 recalls, 500 writes, 5 GB storage, 1.5M tokens, 10 computers, capped overage with a $20 default limit). Not offered in the EU, EEA, UK, Switzerland, or Quebec.
+Pricing and regions: Free tier opens 10 free seats per paid seat (up to 1,000 users, starting with 10 open, sharing a $5/month API pool). Each free user gets up to 100 stored notes, 300 recalls, 50 writes, and 250K tokens/month across 2 computers, with no file attachments or quest board. The Clyde plan is $12.99 USD/month (2,000 recalls, 500 writes, 5 GB storage, 1.5M tokens/month, quest board, 10 computers, overage at 2.3x raw cost up to a $20/month raw-cost cap, $45.98 max billed). Not offered in the EU, EEA, UK, Switzerland, or Quebec.
 `;
 
 /** robots.txt for either host, and heyclyde.me's sitemap. memory.heyclyde.me is the API and sign-in, so it stays out
