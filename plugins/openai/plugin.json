@@ -1,0 +1,50 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "clyde",
+  "version": "1.0.0",
+  "description": "Shared memory for AI agents across Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok, with files and a quest board on paid plans.",
+  "author": {
+    "name": "Pennywhistle Software",
+    "email": "support@heyclyde.me",
+    "url": "https://heyclyde.me"
+  },
+  "homepage": "https://heyclyde.me/docs",
+  "repository": "https://github.com/gewenyu99/heyclyde",
+  "license": "MIT",
+  "keywords": [
+    "memory",
+    "mcp",
+    "agents",
+    "notes",
+    "quests",
+    "productivity"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Clyde",
+        "shortDescription": "Shared memory across ChatGPT, Codex, Claude, and Gemini",
+        "longDescription": "Agents forget everything when a chat ends. Save a decision, preference, or note in Claude, Gemini, or Antigravity, and recall it later in ChatGPT or Codex with its source and confidence. Paid plans add file attachments and a shared quest board for handing off work. Use Clyde for normal work context, never passwords or secrets.",
+        "developerName": "Pennywhistle Software",
+        "category": "Productivity",
+        "capabilities": [
+          "Read",
+          "Write"
+        ],
+        "websiteURL": "https://heyclyde.me",
+        "privacyPolicyURL": "https://heyclyde.me/privacy",
+        "termsOfServiceURL": "https://heyclyde.me/terms",
+        "supportURL": "https://heyclyde.me/docs#support",
+        "defaultPrompt": [
+          "Check Clyde for past decisions and notes on this project",
+          "Check my Clyde inbox and open quests",
+          "Save this decision to Clyde for my other agents"
+        ],
+        "brandColor": "#262825",
+        "brandColorDark": "#f3f1ea",
+        "composerIcon": "./assets/clyde-48.png",
+        "logo": "./assets/clyde-512.png"
+      }
+    }
+  }
+}

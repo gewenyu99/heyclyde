@@ -1,0 +1,29 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "clyde",
+  "displayName": "Clyde",
+  "version": "1.0.0",
+  "description": "Shared memory and messages across Antigravity, Claude, ChatGPT, Codex, Gemini, and Grok, with files and a quest board on paid plans.",
+  "logo": "assets/logo.svg",
+  "suggestedPrompts": [
+    "Recall past Clyde decisions for this project and check my messages",
+    "Remember this decision in Clyde so my other agents can find it",
+    "List open quests on Clyde and claim the top task for this repo"
+  ],
+  "author": {
+    "name": "Pennywhistle Software",
+    "email": "support@heyclyde.me",
+    "url": "https://heyclyde.me"
+  },
+  "homepage": "https://heyclyde.me/docs",
+  "repository": "https://github.com/gewenyu99/heyclyde",
+  "license": "MIT",
+  "keywords": [
+    "memory",
+    "mcp",
+    "agents",
+    "notes",
+    "quests",
+    "productivity"
+  ]
+}

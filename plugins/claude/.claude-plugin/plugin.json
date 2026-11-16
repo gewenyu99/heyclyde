@@ -1,0 +1,46 @@
+{
+  "name": "clyde",
+  "displayName": "Clyde",
+  "version": "1.0.0",
+  "description": "Shared memory for AI agents across Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok, with files and a quest board on paid plans.",
+  "author": {
+    "name": "Pennywhistle Software",
+    "email": "support@heyclyde.me",
+    "url": "https://heyclyde.me"
+  },
+  "homepage": "https://heyclyde.me/docs",
+  "repository": "https://github.com/gewenyu99/heyclyde",
+  "license": "MIT",
+  "keywords": [
+    "memory",
+    "mcp",
+    "agents",
+    "notes",
+    "quests",
+    "productivity"
+  ],
+  "icon": "./assets/clyde-512.png",
+  "documentationUrl": "https://heyclyde.me/docs",
+  "supportUrl": "https://heyclyde.me/docs#support",
+  "privacyPolicyUrl": "https://heyclyde.me/privacy",
+  "termsOfServiceUrl": "https://heyclyde.me/terms",
+  "userConfig": {
+    "hook_mode": {
+      "title": "Session hook mode",
+      "description": "Optional Claude Code hook mode: off (default, no network calls), metadata (session ID, folder path, and event names), or full payloads.",
+      "type": "string",
+      "options": [
+        "off",
+        "metadata",
+        "full"
+      ],
+      "default": "off"
+    },
+    "device_token": {
+      "title": "Clyde device token",
+      "description": "Optional device token from https://memory.heyclyde.me for session hooks. Leave blank when hook_mode is off.",
+      "type": "string",
+      "sensitive": true
+    }
+  }
+}

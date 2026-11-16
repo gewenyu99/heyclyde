@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "clyde": {
+      "type": "http",
+      "url": "https://heyclyde.me/mcp"
+    }
+  }
+}

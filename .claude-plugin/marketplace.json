@@ -1,0 +1,16 @@
+{
+  "name": "heyclyde",
+  "description": "Shared memory for AI agents across apps, with file storage and a quest board on paid plans.",
+  "owner": {
+    "name": "Pennywhistle Software",
+    "url": "https://heyclyde.me"
+  },
+  "plugins": [
+    {
+      "name": "clyde",
+      "description": "Shared memory for AI agents across Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok, with files and a quest board on paid plans.",
+      "version": "1.0.0",
+      "source": "./plugins/claude"
+    }
+  ]
+}

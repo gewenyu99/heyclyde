@@ -1,0 +1,20 @@
+{
+  "name": "heyclyde",
+  "interface": {
+    "displayName": "Clyde"
+  },
+  "plugins": [
+    {
+      "name": "clyde",
+      "source": {
+        "source": "local",
+        "path": "./plugins/openai"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
