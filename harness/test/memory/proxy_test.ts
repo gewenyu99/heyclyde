@@ -256,3 +256,27 @@ Deno.test('R53 errors carry detail', async () => {
     assert.ok(body.error.message.length >= 40 && body.error.message.includes('Clyde'), body.error.message)
   }
 })
+
+Deno.test('R55/oauth: POST /oauth/consent 303 and GET /oauth/provider 302 pass through Worker cleanly', async () => {
+  stub(() => new Response(null, { status: 303, headers: { location: '/oauth/wait?authorization_id=abc12345' } }))
+  const post = await at('https://memory.heyclyde.me/oauth/consent?authorization_id=abc12345', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: 'email=review%40heyclyde.me&password=pw',
+  })
+  assert.equal(post.status, 303)
+  assert.equal(post.headers.get('location'), '/oauth/wait?authorization_id=abc12345')
+
+  stub(() => new Response(null, { status: 302, headers: { location: 'https://wlhlncmgjqyidosunugv.supabase.co/auth/v1/authorize?provider=google' } }))
+  const prov = await at('https://memory.heyclyde.me/oauth/provider?authorization_id=abc12345&provider=google')
+  assert.equal(prov.status, 302)
+  assert.match(String(prov.headers.get('location')), /\/auth\/v1\/authorize\?provider=google/)
+
+  stub(json({ state: 'blocked', message: 'memory: Clyde is not available here.' }, 451))
+  const blocked = await at('https://memory.heyclyde.me/oauth/provider?authorization_id=abc12345&provider=google', {
+    headers: { accept: 'text/html' },
+  })
+  assert.equal(blocked.status, 451)
+  const html = await blocked.text()
+  assert.ok(html.includes('Not available'), html)
+})

@@ -110,7 +110,9 @@ test('R54: store callbacks', { skip: SKIP }, async () => {
     return await request('GET', `${memory.url}/oauth/approve?authorization_id=${auth}&code=code-${auth}`, { timeoutMs: 30_000 })
   }
   for (const uri of ['https://claude.ai/api/mcp/auth_callback', 'http://127.0.0.1:53111/callback',
-    'https://chatgpt.com/connector_platform_oauth_redirect', 'https://antigravity.google/oauth-callback']) {
+    'https://chatgpt.com/connector_platform_oauth_redirect', 'https://chat.openai.com/connector_platform_oauth_redirect',
+    'https://platform.openai.com/oauth/callback', 'https://openai.com/oauth/callback',
+    'https://antigravity.google/oauth-callback', 'https://grok.com/callback', 'https://gemini.google.com/callback']) {
     const r = await approve(uri)
     assert.equal(r.status, 200, `${uri}: ${r.text}`)
     assert.match(r.text, /connected/)
@@ -145,5 +147,48 @@ test('R54: a closed door says so', { skip: SKIP }, async () => {
     }
   } finally {
     setSetting('open_signup', 'on')
+  }
+})
+
+test('R54/R55: /oauth/provider and CSP-safe 303 direct wait redirect', { skip: SKIP }, async () => {
+  const { startSibling } = await import('./server.ts')
+  const sibling = await startSibling(memory, { MEMORY_OAUTH_PROVIDERS: 'google' })
+  try {
+    const authId = `auth-${nonce()}`
+    const ok = await request('GET', `${sibling.url}/oauth/provider?authorization_id=${authId}&provider=google`, {
+      headers: proxied('US'), timeoutMs: 30_000,
+    })
+    assert.equal(ok.status, 302, ok.text)
+    assert.match(String(ok.headers.location), /\/auth\/v1\/authorize\?provider=google&redirect_to=.*direct%3D1/)
+
+    const bad = await request('GET', `${sibling.url}/oauth/provider?authorization_id=${authId}&provider=twitter`, {
+      headers: proxied('US'), timeoutMs: 30_000,
+    })
+    assert.equal(bad.status, 400, bad.text)
+
+    const disabled = await request('GET', `${sibling.url}/oauth/provider?authorization_id=${authId}&provider=github`, {
+      headers: proxied('US'), timeoutMs: 30_000,
+    })
+    assert.equal(disabled.status, 400, disabled.text)
+
+    const blocked = await request('GET', `${sibling.url}/oauth/provider?authorization_id=${authId}&provider=google`, {
+      headers: proxied('DE'), timeoutMs: 30_000,
+    })
+    assert.equal(blocked.status, 451, blocked.text)
+
+    const who = email()
+    memory.auth.signIns[`code-${authId}`] = who
+    memory.auth.authorizations[authId] = { redirect_uri: 'https://platform.openai.com/oauth/callback', client: { id: 'openai-test', name: 'ChatGPT' } }
+    const direct = await request('GET', `${sibling.url}/oauth/approve?authorization_id=${authId}&direct=1&code=code-${authId}`, {
+      headers: { ...proxied('US'), accept: 'application/json' }, timeoutMs: 30_000,
+    })
+    assert.equal(direct.status, 303, direct.text)
+    assert.equal(direct.headers.location, `/oauth/wait?authorization_id=${authId}`)
+
+    const waited = await request('GET', `${sibling.url}/oauth/wait?authorization_id=${authId}`, { timeoutMs: 30_000 })
+    assert.equal(waited.status, 302, waited.text)
+    assert.match(String(waited.headers.location), /^https:\/\/platform\.openai\.com\/oauth\/callback\?code=/)
+  } finally {
+    await sibling.close()
   }
 })

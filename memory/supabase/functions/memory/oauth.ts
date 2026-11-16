@@ -20,7 +20,9 @@ const FRESH = "15 minutes";
 // and its redirect_uri logged to admin_audit as oauth_deny, so a client someone registered for themselves can't collect a
 // code, and an app whose real callback differs shows it on its first try.
 // chatgpt.com: ChatGPT's connector callbacks (R67), https://chatgpt.com/connector_platform_oauth_redirect and /connector/oauth/<id>.
-const CLIENT_HOSTS = new Set(["claude.ai", "claude.com", "chatgpt.com", "antigravity.google", "grok.com", "x.ai", "gemini.google.com"]);
+// chat.openai.com / platform.openai.com / openai.com: OpenAI portal and legacy ChatGPT connector callbacks.
+const CLIENT_HOSTS = new Set(["claude.ai", "claude.com", "chatgpt.com", "chat.openai.com", "platform.openai.com", "openai.com", "antigravity.google", "grok.com", "x.ai", "gemini.google.com"]);
+const PROVIDERS = new Set(["google", "github"]);
 // Google's OAuth redirect service, which the Gemini app's Connected Apps sign in through (R58): /r/<project> and
 // /a/<project> on these three hosts only, since other googleusercontent.com hosts serve anyone's content.
 const GOOGLE_HOSTS = new Set([
@@ -121,17 +123,46 @@ async function sendLink(p: Page, base: string, id: string, email: string, create
   return waiting(p, base, id, "check_email", `sent a sign-in link to ${to}. Open it on any device to connect.`, { email: to });
 }
 
+let providerCache: { at: number; list: string[] } | null = null;
+
+/** Social OAuth providers enabled in Supabase Auth (cached 60s), or overridden via MEMORY_OAUTH_PROVIDERS in tests. */
+async function enabledProviders(): Promise<string[]> {
+  const override = Deno.env.get("MEMORY_OAUTH_PROVIDERS");
+  if (override !== undefined) {
+    return override.split(",").map((s) => s.trim().toLowerCase()).filter((s) => PROVIDERS.has(s));
+  }
+  if (providerCache && Date.now() - providerCache.at < 60_000) return providerCache.list;
+  try {
+    const r = await fetch(`${AUTH()}/settings`, {
+      headers: { apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "" },
+      signal: AbortSignal.timeout(3_000),
+    });
+    const body = r.ok ? await r.json().catch(() => null) : null;
+    const list = ["google", "github"].filter((k) => Boolean(body?.external?.[k]));
+    providerCache = { at: Date.now(), list };
+    return list;
+  } catch {
+    return providerCache?.list ?? [];
+  }
+}
+
 /** With sign-in open (R38), the consent page asks for an email first: state ask_email for the Worker's page, a plain
  * form for a caller straight to the function. The form posts back to the same URL. */
 async function emailForm(p: Page, id: string) {
+  const [key, providers] = await Promise.all([setting("turnstile_site_key"), enabledProviders()]);
   if (p.json) {
-    const key = await setting("turnstile_site_key");
-    return page(p, "ask_email", "enter your email and we'll send a sign-in link.", 200,
-      { post: `/oauth/consent?authorization_id=${encodeURIComponent(id)}`, ...(key ? { turnstile_site_key: key } : {}) });
+    return page(p, "ask_email", "enter your email and we'll send a sign-in link.", 200, {
+      post: `/oauth/consent?authorization_id=${encodeURIComponent(id)}`,
+      ...(key ? { turnstile_site_key: key } : {}),
+      ...(providers.length ? { providers } : {}),
+    });
   }
+  const links = providers.length
+    ? `<p>${providers.map((pr) => `<a href="/oauth/provider?authorization_id=${encodeURIComponent(id)}&provider=${pr}">Continue with ${pr === "google" ? "Google" : "GitHub"}</a>`).join(" | ")}</p>`
+    : "";
   return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sign in to Clyde</title></head><body style="font-family:system-ui,sans-serif;max-width:28rem;margin:4rem auto;padding:0 1rem">
-<h1>Sign in to Clyde</h1><p>We'll email you a sign-in link.</p>
+<h1>Sign in to Clyde</h1>${links}<p>We'll email you a sign-in link.</p>
 <form method="post" action="?authorization_id=${encodeURIComponent(id)}"><label>Your email <input type="email" name="email" required autofocus></label>
 <label>Password, only if your account has one <input type="password" name="password" autocomplete="current-password"></label>
 <button type="submit">Send the link</button></form></body></html>`,
@@ -214,9 +245,8 @@ function clientAllowed(uri: string) {
   }
 }
 
-/** The email link lands here. Sign the owner in with the stored verifier, approve the request, and leave the client's
- * redirect for the waiting window. */
-async function approve(p: Page, id: string, code: string | null, error: string | null) {
+/** The email link or OAuth callback lands here. Sign the user in with the stored verifier and approve the client request. */
+async function approve(p: Page, req: Request, id: string, code: string | null, error: string | null, direct = false) {
   const [row] = await sql`select code_verifier from memory.oauth_consent
     where authorization_id = ${id} and created_at > now() - ${FRESH}::interval`;
   if (!row) return page(p, "expired", "that sign-in expired. Start connecting again from the app.", 410);
@@ -228,11 +258,15 @@ async function approve(p: Page, id: string, code: string | null, error: string |
   // This session only approves. It lapses within the hour, and its refresh token is never kept.
   const jwt = session.body.access_token, user = session.body.user;
   if (!session.ok || !jwt) return page(p, "error", "that sign-in link didn't work. Start connecting again from the app.", 400);
-  return await finish(p, id, jwt, user, false);
+  const proxied = await viaProxy(req);
+  if (direct && user?.email && !(await allowed(user.email)) && geoBlocked(geoOf(req, proxied))) {
+    return page(p, "blocked", REFUSAL, 451);
+  }
+  return await finish(p, id, jwt, user, direct);
 }
 
-/** With a signed-in session: approve the app's request if its callback is one Clyde approves, else deny and log it. The email
- * link leaves the client's redirect for the waiting window; a password sign-in (direct) goes there itself. */
+/** With a signed-in session: approve the app's request if its callback is one Clyde approves, else deny and log it.
+ * Direct browser sign-ins (password or social OAuth) bounce through same-origin /oauth/wait (303) to respect form-action 'self'. */
 async function finish(p: Page, id: string, jwt: string, user: Record<string, any>, direct: boolean): Promise<Response> {
   if (!(user?.email && user.email_confirmed_at && (await openSignup() || await allowed(user.email)))) {
     return page(p, "error", "that account isn't on Clyde's allowlist.", 403);
@@ -255,11 +289,24 @@ async function finish(p: Page, id: string, jwt: string, user: Record<string, any
     if (action === "deny") {
       console.warn(`memory: oauth_deny for ${name}: redirect_uri ${target}`);
       if (!direct) await sql`update memory.oauth_consent set redirect_url = ${redirect!} where authorization_id = ${id}`;
-      return page(p, "refused", `refused ${name}. Its callback, ${target}, isn't one Clyde approves (Claude, ChatGPT, Antigravity, Grok, the Gemini app, or localhost).`, 403,
+      return page(p, "refused", `refused ${name}. Its callback, ${target}, isn't one Clyde approves (Claude, ChatGPT, OpenAI, Antigravity, Grok, the Gemini app, or localhost).`, 403,
         { client: name, callback: target });
     }
   }
-  if (direct) return new Response(null, { status: 302, headers: { location: redirect!, "cache-control": "no-store" } });
+  if (direct && p.json) {
+    await sql`insert into memory.oauth_consent (authorization_id, code_verifier, redirect_url, client_name)
+      values (${id}, '', ${redirect!}, ${name})
+      on conflict (authorization_id) do update
+      set redirect_url = excluded.redirect_url, client_name = excluded.client_name, created_at = now()`;
+    return new Response(null, {
+      status: 303,
+      headers: { location: `/oauth/wait?authorization_id=${encodeURIComponent(id)}`, "cache-control": "no-store" },
+    });
+  }
+  if (direct) {
+    await sql`delete from memory.oauth_consent where authorization_id = ${id}`;
+    return new Response(null, { status: 302, headers: { location: redirect!, "cache-control": "no-store" } });
+  }
   await sql`update memory.oauth_consent set redirect_url = ${redirect!}, client_name = ${name} where authorization_id = ${id}`;
   const full = await freeTierFull(user);
   return page(p, "connected", `connected ${name}. Go back to the window that asked. It finishes by itself.${full ? ` ${full.line}` : ""}`, 200,
@@ -307,12 +354,38 @@ async function wait(p: Page, base: string, id: string) {
   return new Response(null, { status: 302, headers: { location: row.redirect_url, "cache-control": "no-store" } });
 }
 
+/** GET /oauth/provider: start social OAuth (Google or GitHub) with PKCE back to /oauth/approve?direct=1. */
+async function startProvider(p: Page, req: Request, base: string, id: string, rawProvider: string) {
+  const provider = rawProvider.trim().toLowerCase();
+  if (!PROVIDERS.has(provider)) return page(p, "error", "that sign-in provider isn't supported.", 400);
+  if (!(await enabledProviders()).includes(provider)) return page(p, "error", "that sign-in provider isn't enabled yet.", 400);
+  const proxied = await viaProxy(req);
+  if (!proxied) return page(p, "error", `sign in at ${DOMAIN}, not this address.`, 403);
+  if (geoBlocked(geoOf(req, proxied))) return page(p, "blocked", REFUSAL, 451);
+  const client = await clientKey(req);
+  const [{ from }] = await sql`select count(*) filter (where client = ${client})::int as from
+    from memory.signup_attempt where at > now() - interval '1 hour'`;
+  if (from >= MAX_PER_CLIENT) return page(p, "error", "too many sign-ins from your address in the last hour. Try again later.", 429);
+  await sql`delete from memory.signup_attempt where at < now() - interval '1 day'`;
+  await sql`insert into memory.signup_attempt (client, email) values (${client}, ${`oauth:${provider}`})`;
+  const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
+  const challenge = b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
+  await sql`insert into memory.oauth_consent (authorization_id, code_verifier) values (${id}, ${verifier})
+    on conflict (authorization_id) do update set code_verifier = excluded.code_verifier, redirect_url = null, created_at = now()`;
+  const redirect = encodeURIComponent(`${base}/oauth/approve?authorization_id=${encodeURIComponent(id)}&direct=1`);
+  const dest = `${AUTH()}/authorize?provider=${encodeURIComponent(provider)}&redirect_to=${redirect}&code_challenge=${challenge}&code_challenge_method=s256`;
+  return new Response(null, { status: 302, headers: { location: dest, "cache-control": "no-store" } });
+}
+
 /** json: the request came through the Worker (x-memory-proxy) and asked for application/json. */
 export async function handle(req: Request, base: string, path: string, url: URL, json = false): Promise<Response> {
   const p: Page = { json };
   const id = url.searchParams.get("authorization_id") ?? "";
   if (!ID.test(id)) return page(p, "error", "that link is missing its authorization_id. Start connecting again from the app.", 400);
   await sql`delete from memory.oauth_consent where created_at < now() - interval '1 day'`;
+  if (path === "/oauth/provider" && req.method === "GET") {
+    return startProvider(p, req, base, id, url.searchParams.get("provider") ?? "");
+  }
   const form = path === "/oauth/consent" && req.method === "POST" ? await readForm(req) : null;
   if (form?.password) return passwordSignIn(p, req, id, form);
   // With sign-in open (R38), anyone can ask for a link: an email form, then a capped, region-checked send.
@@ -333,7 +406,7 @@ export async function handle(req: Request, base: string, path: string, url: URL,
     return page(p, "closed", "Sign-ups are closed. Clyde isn't taking new accounts right now.", 403);
   }
   if (path === "/oauth/consent") return consent(p, base, id);
-  if (path === "/oauth/approve") return approve(p, id, url.searchParams.get("code"), url.searchParams.get("error_description"));
+  if (path === "/oauth/approve") return approve(p, req, id, url.searchParams.get("code"), url.searchParams.get("error_description"), url.searchParams.get("direct") === "1");
   if (path === "/oauth/wait") return wait(p, base, id);
   return json ? page(p, "error", "no such endpoint.", 404) : text("No such endpoint.", 404);
 }

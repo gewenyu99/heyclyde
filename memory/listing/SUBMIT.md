@@ -15,13 +15,13 @@ Submit in this order from clean portals. Public bundles and release assets live 
 
 | Order | Platform | Portal | What to submit | Status |
 |---|---|---|---|---|
-| 1 | Support mailbox & reviewer seed | Cloudflare Email Routing + `review@heyclyde.me` | Forward `support@heyclyde.me` to Wen's inbox and create/seed `review@heyclyde.me` for reviewer test logins | Pending Wen (`support@heyclyde.me`) and `memory/seed/reviewer.sql` |
-| 2 | ChatGPT Apps / Plugins | [platform.openai.com/apps-manage](https://platform.openai.com/apps-manage) | Upload `clyde-openai-plugin.zip` (`/Users/vincent/.gemini/antigravity/scratch/heyclyde/dist/clyde-openai-plugin.zip` or Release `v1.0.0`), save token in `memory.setting`, verify `https://heyclyde.me/.well-known/openai-apps-challenge` | Ready to submit |
+| 1 | Support mailbox | Cloudflare Email Routing | Forward `support@heyclyde.me` to Wen's inbox | Pending Wen (`support@heyclyde.me`) |
+| 2 | ChatGPT Apps / Plugins | [platform.openai.com/apps-manage](https://platform.openai.com/apps-manage) | Upload `clyde-openai-plugin.zip` (`/Users/vincent/.gemini/antigravity/scratch/heyclyde/dist/clyde-openai-plugin.zip` or Release `v1.0.0`), save challenge token in `memory.setting`, pass `review@heyclyde.me` password | Ready to submit |
 | 3 | Codex plugin directory | [chatgpt.com/codex/plugins/submit](https://chatgpt.com/codex/plugins/submit) | Repo `https://github.com/gewenyu99/heyclyde` (`.agents/plugins/marketplace.json`, `./plugins/openai`) | Ready to submit |
 | 4 | Claude plugin directory | [claude.ai/settings/plugins/submit](https://claude.ai/settings/plugins/submit) | Repo `https://github.com/gewenyu99/heyclyde` (`./plugins/claude`, `.claude-plugin/marketplace.json`) | Ready to submit |
-| 5 | Claude MCP connector directory | [claude.ai/directory/manage](https://claude.ai/directory/manage) | Remote MCP server `https://heyclyde.me/mcp` (see **Claude directory** below) | Ready after steps 1 and 5 |
+| 5 | Claude MCP connector directory | [claude.ai/directory/manage](https://claude.ai/directory/manage) | Remote MCP server `https://heyclyde.me/mcp` (see **Claude directory** below, plus MCP App screenshots and `review@heyclyde.me`) | Ready after step 1 |
 | 6 | Antigravity plugin marketplace | [forms.gle/2EX5RFYPoJe1UgxR9](https://forms.gle/2EX5RFYPoJe1UgxR9) | Repo `https://github.com/gewenyu99/heyclyde`, plugin path `./plugins/antigravity` | Ready to submit |
-| 7 | Google Connected Apps | [connected.google.com/console](https://connected.google.com/console) | Preview application + verification token in `memory.setting` `google_connected_apps_verification` | Ready for Wen steps |
+| 7 | Google Connected Apps | [connected.google.com/console](https://connected.google.com/console) | Preview application + verification token in `memory.setting` `google_connected_apps_verification` + `review@heyclyde.me` | Ready for Wen steps |
 | 8 | Gemini CLI extension gallery | [geminicli.com/extensions](https://geminicli.com/extensions/) | Public repo `gewenyu99/heyclyde` (`gemini-cli-extension` topic, root `gemini-extension.json`, `gemini extensions install https://github.com/gewenyu99/heyclyde`) | Posted |
 | 9 | Grok | [heyclyde.me/docs#grok](https://heyclyde.me/docs#grok) | Custom connector instructions (`https://heyclyde.me/mcp`). xAI has no public third-party connector directory | Documented |
 
@@ -34,8 +34,8 @@ Confirm these prerequisites before opening directory portals:
 | 1 | `support@heyclyde.me` must receive mail. Run the four commands below from `memory/proxy`, click Cloudflare's verification email link, send a test mail, and comment on [#60](https://github.com/gewenyu99/like-vincent/issues/60). | Wen | Pending. `heyclyde.me` needs Cloudflare Email Routing enabled and forwarded to Wen's verified inbox. |
 | 2 | `https://heyclyde.me/mcp` answers MCP, and `/.well-known/oauth-protected-resource` names `https://heyclyde.me/mcp`. | Server | Live. Verified by `listing_check.py`. |
 | 3 | All 18 tools in `TOOLS` carry `title`, `readOnlyHint` (plus `destructiveHint` on writes), and `openWorldHint: false`. Tool descriptions and `instructions` don't name Wen or tell the model when to call tools. | Server | Live on main. |
-| 4 | Public sign-up and R75 free-tier caps (10 free seats per paid account, up to 1,000 total, and a $5 USD/month shared API pool) are implemented on main, gated by `memory.setting` `open_signup`. | Server | On main. |
-| 5 | The reviewer account `review@heyclyde.me` (password sign-in, no MFA, 40 sample notes, reseeded nightly). | Pending `memory/seed/reviewer.sql` | Failing in `listing_check.py` `reviewer account`. Note that `oauth.ts` currently only serves one-time email links. |
+| 4 | Public sign-up (`open_signup = on`), Cloudflare Turnstile protection, platform OAuth callbacks, social OAuth routing (`/oauth/provider`), and R75 free-tier caps are active on main. | Server | Live. Google and GitHub buttons appear on `memory.heyclyde.me` once configured with `memory/oauth_providers_setup.sh`. |
+| 5 | The reviewer account `review@heyclyde.me` (password sign-in, no MFA, 40 sample notes across 4 projects, nightly reseed). | Server + `memory/seed/reviewer.sh` | Live (`~/.config/memory/review-password`), verified by `listing_check.py` `reviewer account`. |
 | 6 | Live pages, brand files, `/.well-known/google-connected-apps`, `/.well-known/openai-apps-challenge`, OAuth discovery, and `gewenyu99/heyclyde` `v1.0.0` bundles. | Live | Passing in `listing_check.py`. |
 
 Step 1 commands (replace `<your inbox>` with Wen's inbox):
@@ -47,11 +47,11 @@ npx wrangler@4 email routing rules create heyclyde.me --name support --match-typ
 npx wrangler@4 email routing rules list heyclyde.me
 ```
 
-In the Cloudflare dashboard instead, open **heyclyde.me > Email > Email Routing > Enable**, add your destination address, then create a custom address for `support` forwarding to it.
+Or in the Cloudflare dashboard, open **heyclyde.me > Email > Email Routing > Enable**, add your destination address, then create a custom address for `support` forwarding to it.
 
 ## Claude directory
 
-At [claude.ai/directory/manage](https://claude.ai/directory/manage), click **Submit new** and select **MCP connector** on Wen's paid Claude account. Submit after steps 1 and 5 above are done.
+At [claude.ai/directory/manage](https://claude.ai/directory/manage), click **Submit new** and select **MCP connector** on Wen's paid Claude account. Submit after step 1 above is done.
 
 ### Connection
 
@@ -79,15 +79,15 @@ Read-only tools (6): `recall`, `recall_more`, `get_entry`, `get_blob`, `check_me
 | Support contact | support@heyclyde.me (page: https://heyclyde.me/docs#support) |
 | Icon | Upload `memory/proxy/public/brand/clyde-512.png` (512 x 512 PNG, 36,782 bytes), also at https://heyclyde.me/brand/clyde-512.png |
 | URL slug (permanent) | `clyde` |
-| Allowed link URIs | Leave empty. Clyde doesn't use `ui/open-link`. |
-| Screenshots | None. Screenshots are for MCP Apps only. |
+| Allowed link URIs | `https://wlhlncmgjqyidosunugv.supabase.co/storage/v1/*` (origin `https://wlhlncmgjqyidosunugv.supabase.co`). The `artifact` card (`ui://clyde/artifact.html`) calls `ui/open-link` from its **Download** button for non-image Storage files. |
+| Screenshots | Upload MCP App screenshots from `claude.ai` showing Clyde's interactive cards (`recall`, `entry`, `remembered`, `artifact`, `quests`, `agent` from `ui://clyde/*.html`). Capture fresh PNGs before submitting, since the repo holds site screenshots only. |
 
 ### Use cases
 
 | Field | Answer |
 |---|---|
 | Primary use cases | Use the three in `claude.use_cases`: remember decisions across apps, pick up where another agent left off, and hand work to another agent through the quest board. |
-| What users need before connecting | A Clyde account, created on first connect by clicking the sign-in link Clyde emails. No paid plan is required to start. |
+| What users need before connecting | A Clyde account, created on first connect via one-time email link (or Google or GitHub when enabled). Free seats open at 10 per paid user (up to 1,000 total) sharing a $5 USD/month API pool, and tools require the $12.99 USD/month Clyde plan once free seats or the pool fill. |
 | Reads, writes, or both | Both. It reads notes, files, messages, and quests, and writes notes, files, messages, and quests. |
 
 ### Company
@@ -103,9 +103,9 @@ Read-only tools (6): `recall`, `recall_more`, `get_entry`, `get_blob`, `check_me
 | Field | Answer |
 |---|---|
 | Authentication requirement | Sign-in required. |
-| Authentication methods | OAuth 2.1, authorization code with PKCE (`S256`), and dynamic client registration. Supabase Auth at `https://wlhlncmgjqyidosunugv.supabase.co/auth/v1` is named by `/.well-known/oauth-protected-resource`. Users sign in with a one-time email link, with no password. |
+| Authentication methods | OAuth 2.1, authorization code with PKCE (`S256`), and dynamic client registration. Supabase Auth at `https://wlhlncmgjqyidosunugv.supabase.co/auth/v1` is named by `/.well-known/oauth-protected-resource`. Users sign in via one-time email link (protected by Turnstile), Google or GitHub when enabled, or password for `review@heyclyde.me`. |
 | Anthropic-held client ID and secret | Leave empty. Clients register via DCR. |
-| Callback | `https://claude.ai/api/mcp/auth_callback`. `oauth.ts` approves `https` callbacks on `claude.ai` and `claude.com`, and Supabase Auth accepts client redirect URIs via DCR. |
+| Callback | `https://claude.ai/api/mcp/auth_callback`. `oauth.ts` approves `https` callbacks on `claude.ai`, `claude.com`, `chatgpt.com`, `chat.openai.com`, `platform.openai.com`, `openai.com`, `antigravity.google`, `grok.com`, `x.ai`, `gemini.google.com`, Google's OAuth redirect hosts, and loopback (`http` or `https`). |
 
 ### Data handling
 
@@ -120,13 +120,24 @@ Read-only tools (6): `recall`, `recall_more`, `get_entry`, `get_blob`, `check_me
 
 1. Connect `https://heyclyde.me/mcp` as a custom connector in claude.ai and run all 18 tools once, or test them with the MCP Inspector (`npx @modelcontextprotocol/inspector`). Save the transcript link for [#61](https://github.com/gewenyu99/like-vincent/issues/61).
 2. Confirm every tool was tested.
-3. For reviewer access, reply to Anthropic's reviewer email from `support@heyclyde.me` with `review@heyclyde.me` and its password once Step 5 is built. Never paste passwords into the portal.
+3. For reviewer access, reply to Anthropic's reviewer email from `support@heyclyde.me` with `review@heyclyde.me` and its password from `~/.config/memory/review-password`. Never paste passwords into the portal.
 
 ### Compliance
 
 Wen reads and accepts the seven acknowledgments himself: directory guidelines, first-party API usage, financial transactions, AI media generation, prompt injection, conversation data collection, and public documentation.
 
 Two criteria to verify before accepting: tools don't query Claude's own memory or chat history (Clyde stores only what tools send), and server text doesn't prompt Claude to call tools unasked.
+
+## Social OAuth login
+
+`oauth.ts` and `pages.js` show **Continue with Google** and **Continue with GitHub** above the email form on `memory.heyclyde.me/oauth/consent` once Supabase Auth enables those providers (cached up to 60 seconds).
+
+1. In Google Cloud Console and GitHub Developer Settings, set the authorized redirect URI / callback URL to `https://wlhlncmgjqyidosunugv.supabase.co/auth/v1/callback`.
+2. Enable one or both providers via `memory/oauth_providers_setup.sh`:
+
+   ```bash
+   GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... GITHUB_CLIENT_ID=... GITHUB_CLIENT_SECRET=... ./memory/oauth_providers_setup.sh
+   ```
 
 ## Google Connected Apps
 
@@ -187,7 +198,7 @@ Once preview access is granted, configure the app at [connected.google.com/conso
 | Sign-in | Authenticate via Pop up (recommended) |
 | Redirect URIs to allowlist | `https://oauth-redirect.googleusercontent.com/r/*`, `https://oauth-redirect-sandbox.googleusercontent.com/r/*`, `https://oauth-redirect-test.googleusercontent.com/r/*`, and the same three with `/a/*`, plus any app-specific URI the console shows. `oauth.ts` already approves `/r/*` and `/a/*` on these three hosts plus `gemini.google.com`. |
 | Consent screen logo (square SVG, ≥ 500 x 500) | https://heyclyde.me/brand/clyde.svg (512 x 512, circle on a square canvas) |
-| Test account | `review@heyclyde.me` (pending `memory/seed/reviewer.sql` in Step 5). Give the password directly to Google's representative once built. |
+| Test account | `review@heyclyde.me`, password stored in `~/.config/memory/review-password` (no MFA, 40 sample notes reseeded nightly). Expand **Have a password?** on the consent page, enter `review@heyclyde.me` and the password, and give the password directly to Google's reviewer through their requested private channel. |
 
 **Sync and availability**
 
@@ -214,7 +225,7 @@ Submit the plugin bundle from [`gewenyu99/heyclyde`](https://github.com/gewenyu9
 
 **ChatGPT Apps and Plugins portal** ([platform.openai.com/apps-manage](https://platform.openai.com/apps-manage)):
 
-1. Upload `/Users/vincent/.gemini/antigravity/scratch/heyclyde/dist/clyde-openai-plugin.zip` (or release asset `https://github.com/gewenyu99/heyclyde/releases/download/v1.0.0/clyde-openai-plugin.zip`). The zip puts `plugin.json` and `mcp.json` at root, `skills/clyde/SKILL.md`, `README.md`, `LICENSE`, and icons in `assets/`, with no `hooks/`.
+1. Upload `/Users/vincent/.gemini/antigravity/scratch/heyclyde/dist/clyde-openai-plugin.zip` (or release asset `https://github.com/gewenyu99/heyclyde/releases/download/v1.0.0/clyde-openai-plugin.zip`). The zip puts `plugin.json`, `mcp.json`, `README.md`, and `LICENSE` at root, `skills/clyde/SKILL.md` in `skills/`, and icons in `assets/`, with no `hooks/`. `plugin.json` sets `capabilities` to `["Interactive", "Read", "Write"]`.
 2. Copy the domain challenge token for `heyclyde.me` and save it into `memory.setting` (takes effect within 60 seconds with no redeploy):
 
    ```sql
@@ -223,7 +234,7 @@ Submit the plugin bundle from [`gewenyu99/heyclyde`](https://github.com/gewenyu9
    on conflict (name) do update set value = excluded.value
    ```
 
-3. Confirm `curl -fsSL https://heyclyde.me/.well-known/openai-apps-challenge` returns the exact token, then click Verify and submit.
+3. Confirm `curl -fsSL https://heyclyde.me/.well-known/openai-apps-challenge` returns the exact token, pass `review@heyclyde.me` and its password from `~/.config/memory/review-password` if OpenAI's reviewer form requests test credentials, then click Verify and submit.
 
 **Codex plugin directory** ([chatgpt.com/codex/plugins/submit](https://chatgpt.com/codex/plugins/submit), docs [developers.openai.com/codex/submit-plugins](https://developers.openai.com/codex/submit-plugins)):
 

@@ -8,7 +8,7 @@ import { homePage, statePage } from "./pages.js";
 import { MOVED, siteFile, sitePage } from "./site.js";
 
 const ORIGIN = "https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory";
-const SIGN_IN = new Set(["/oauth/consent", "/oauth/wait", "/oauth/approve"]);
+const SIGN_IN = new Set(["/oauth/consent", "/oauth/provider", "/oauth/wait", "/oauth/approve"]);
 const ID = /^[A-Za-z0-9_-]{8,100}$/;
 
 async function pass(req, url, env, extra = {}) {
