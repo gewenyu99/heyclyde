@@ -152,7 +152,7 @@ export function shell({ nonce, title, css, body, script = "", noindex = true }) 
     script ? `<script nonce="${nonce}">${script}</script>` : ""}</body></html>`;
 }
 
-const copyBox = (value, label = "Copy") =>
+export const copyBox = (value, label = "Copy") =>
   `<div class="cl-copy"><code>${esc(value)}</code><button class="cl-btn cl-btn--sm" type="button" data-copy="${esc(value)}" aria-label="${esc(label)}">Copy</button></div>`;
 const copyPre = (name, value) =>
   `<div class="cl-file"><div class="cl-file__head"><span>${esc(name)}</span><button class="cl-btn cl-btn--sm" type="button" data-copy="${esc(value)}">Copy</button></div>` +

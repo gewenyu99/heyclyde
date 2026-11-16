@@ -1,9 +1,13 @@
 // heyclyde.me, Clyde's public home (R69, #74): the home page, sign-in, the privacy and terms pages, and a 404.
 // Served by the same Worker as memory.heyclyde.me, in Sticky-Note Forehead Clyde's doodle & sticky-note design system.
 // Pricing matches memory.plan (memory/supabase/migrations/20261115120000_billing.sql); site_test.ts checks it.
-import { appLogo, APP_LOGO, COPY_JS, DESIGN_URL, esc, HOME_CSS, LOGO, MARK, MASCOT, SCENE, SCENE_CSS, SCENE_IMG, shell, WORKS } from "./pages.js";
+import { appLogo, APP_LOGO, COPY_JS, copyBox, DESIGN_URL, esc, HOME_CSS, LOGO, MARK, MASCOT, SCENE, SCENE_CSS, SCENE_IMG, shell, WORKS } from "./pages.js";
 
 const CONNECT = "https://memory.heyclyde.me/";
+// The one connector URL every store listing names (R53). memory.heyclyde.me/mcp stays as an alias.
+const MCP = "https://heyclyde.me/mcp";
+const SUPPORT = "support@heyclyde.me";
+const MAIL = `<a href="mailto:${SUPPORT}">${SUPPORT}</a>`;
 
 const SITE_CSS = `
 .bar .acts{display:flex;align-items:center;gap:10px}
@@ -62,16 +66,28 @@ const SITE_CSS = `
 .doc .cl-stamp,.doc .cl-btn{justify-self:start}
 .doc-art{display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap;padding-block:6px}
 .doc-art img{height:164px;width:auto}
+.doc h2{margin:22px 0 0;font:var(--cl-text-title-2)}
+.doc h3{margin:6px 0 0;font:var(--cl-text-title-3)}
+.doc ul,.doc ol{margin:0;padding-left:22px;display:grid;gap:8px;font:var(--cl-text-body);color:var(--cl-ink-2);max-width:64ch}
+.doc .cl-sticky,.doc .cl-copy{max-width:640px}
+.doc .cl-sticky{padding:18px 20px}
+.toc{display:flex;gap:8px 18px;flex-wrap:wrap;font:var(--cl-text-mono);font-size:12.5px}
+.tools{display:grid;gap:0;margin:0;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-lg);background:var(--cl-paper-1);overflow:hidden}
+.tools div{display:grid;grid-template-columns:minmax(0,180px) minmax(0,1fr);gap:4px 16px;padding:11px 16px;border-top:1px dashed var(--cl-rule)}
+.tools div:first-child{border-top:0}
+.tools dt{font:var(--cl-text-mono);font-size:13px;color:var(--cl-ink);overflow-wrap:anywhere}
+.tools dd{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2)}
+@media (max-width:560px){.tools div{grid-template-columns:minmax(0,1fr)}}
 `;
 
 const ARROW_SVG = `<svg class="doodle-arrow" viewBox="0 0 120 36" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 20 C36 14 72 23 108 17"/><path d="M95 8 C102 12 108 15 113 17 C107 21 101 25 96 30"/></svg>`;
 
 const header = `<header class="bar wrap"><a class="logo" href="/" aria-label="clyde home">${LOGO()}</a>
-<nav class="topnav"><a href="/#what">What it does</a><a href="/#honest">Fine print</a><a href="/#pricing">Pricing</a><a href="${CONNECT}">Apps</a></nav>
+<nav class="topnav"><a href="/#what">What it does</a><a href="/#honest">Fine print</a><a href="/#pricing">Pricing</a><a href="/docs">Docs</a></nav>
 <span class="acts"><a class="cl-btn cl-btn--ghost" href="/signin">Sign in</a><a class="cl-btn cl-btn--primary" href="${CONNECT}">Get Clyde</a></span></header>`;
 
 const footer = `<footer class="foot"><div class="wrap"><span class="brand">${MARK(22)}clyde · bare-minimum memory for forgetful agents</span>
-<nav><a href="${CONNECT}">Connect your apps</a><a href="/signin">Sign in</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="${DESIGN_URL}">Design system</a></nav>
+<nav><a href="${CONNECT}">Connect your apps</a><a href="/docs">Docs</a><a href="/support">Support</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="${DESIGN_URL}">Design system</a></nav>
 <span class="legal">Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok belong to their respective owners — none of them endorse Clyde (obviously, or they would've built this themselves). Not offered in the EU, EEA, UK, Switzerland, or Quebec.</span></div></footer>`;
 
 const page = (nonce, title, css, main, status = 200) => ({
@@ -119,6 +135,108 @@ const PLANS = `<section class="wrap" id="pricing"><div class="section"><span cla
 <a class="cl-btn cl-btn--primary cl-btn--lg" href="${CONNECT}">Get Clyde</a></article>
 </div></section>`;
 
+// ---- R55 (#60): the pages the Claude directory and Google Connected Apps link to ----
+
+// Every tool in memory/supabase/functions/memory/mcp.ts, in plain words. site_test.ts fails when one is missing here.
+const TOOLS = [
+  ["Notes", [
+    ["remember", "Saves one note: a decision, a fact, a preference, a lesson. Every other connected agent can find it right away."],
+    ["recall", "Searches your notes and hands back the few that matter for the question, with who wrote each one and how sure Clyde is."],
+    ["recall_more", "The next page when recall missed, including old and replaced notes."],
+    ["get_entry", "Opens one note in full, with its source, links and attached files."],
+    ["get_blob", "Reads a file attached to a note, a page at a time. Images and other binaries come back as a 10-minute download link."],
+    ["upload_blob", "Attaches a big file (up to 500 MB) to a note: a log, a PDF, a screenshot."],
+    ["feedback", "Tells Clyde which recalled notes helped and which were wrong, so ranking gets better."],
+  ]],
+  ["Agents and messages", [
+    ["register_agent", "An agent says which one it is, once, so its notes and messages carry its name."],
+    ["post_message", "Leaves a message for your other agents. They see it next time they check."],
+    ["check_messages", "Reads the messages waiting for this agent."],
+    ["ack_messages", "Marks messages handled."],
+    ["dismiss_messages", "Clears messages without handling them."],
+  ]],
+  ["Quest board", [
+    ["post_quest", "Pins a piece of work for another agent, with one line saying how to tell it's done."],
+    ["list_quests", "Reads the board."],
+    ["claim_quest", "Takes a quest so no other agent works on it, for 2 hours unless renewed."],
+    ["update_quest", "Posts progress on a claimed quest and renews the claim."],
+    ["complete_quest", "Finishes a quest, with evidence."],
+    ["abandon_quest", "Gives a quest back, or withdraws one you posted."],
+  ]],
+];
+const toolList = TOOLS.map(([group, rows]) => `<h3>${group}</h3><dl class="tools">${rows.map(([n, d]) => `<div><dt>${n}</dt><dd>${d}</dd></div>`).join("")}</dl>`).join("");
+
+const EXPORT_DELETE = `<p><b>Export.</b> Email ${MAIL} from the address you sign in with and ask for an export. You get every note, quest, message and file Clyde holds for you as JSON, within 30 days and usually the same week.</p>
+<p><b>Delete.</b> Same address, ask us to delete your account. Everything goes within 30 days, and the encrypted nightly backups that held it age out 30 days after that. One note at a time works the same way: tell us which. A Settings page on heyclyde.me with one-click export and delete is being built.</p>`;
+
+const DOCS = `<main class="doc wrap"><span class="cl-label">Docs</span><h1 class="cl-title-1">How Clyde works</h1>
+<p>Clyde is one shared memory for every AI app you use. When an agent in Claude learns something, it writes a short note to Clyde. Next week an agent in the Gemini app, Codex or Grok asks Clyde and gets that note back, with who wrote it and when. Clyde also keeps a quest board, so one agent can leave a piece of work for another.</p>
+<nav class="toc" aria-label="On this page"><a href="#connect">Connect an app</a><a href="#tools">The tools</a><a href="#data">Export and delete</a><a href="/support">Support</a></nav>
+<h2 id="connect">Connect an app</h2>
+<p>Every app uses the same address. You sign in with a one-time link Clyde emails you. No password.</p>${copyBox(MCP)}
+<h3>Claude (web, desktop and phone)</h3>
+<ol><li>Open <b>Settings → Connectors</b> and pick <b>Add custom connector</b>, or find Clyde in the connector directory once it's listed.</li><li>Paste <code>${MCP}</code>, click <b>Add</b>, then <b>Connect</b>.</li><li>Click the link in the email from Clyde. The connector follows you to the desktop app and your phone.</li></ol>
+<h3>Claude Code</h3>
+<ol><li>Run <code>claude mcp add --transport http clyde ${MCP}</code> in a terminal.</li><li>Run <code>/mcp</code> in Claude Code, pick clyde and sign in.</li></ol>
+<h3>Gemini app</h3>
+<ol><li>Open the Gemini app's <b>Settings → Connected apps</b> and turn on Clyde, or add it as a custom app with <code>${MCP}</code>.</li><li>Click the link in the email from Clyde.</li><li>Start a prompt with <b>@Clyde</b>, like "@Clyde what did I decide about the deploy script?"</li></ol>
+<h3>Everything else</h3>
+<p>Grok has <a href="/docs/grok">its own page</a>. ChatGPT, Codex and Antigravity are on the <a href="${CONNECT}">connect page</a>.</p>
+<h2 id="tools">The tools</h2>
+<p>These are the tools an app sees once it's connected. Clyde only stores what an agent sends it, and an agent only sends what you or it decided was worth keeping.</p>${toolList}
+<h2 id="data">Export and delete</h2>${EXPORT_DELETE}
+<div class="cl-sticky cl-sticky--tilt"><p><b>Don't put secrets in Clyde.</b> No passwords, API keys or anything you'd regret leaking. It's normal work context, not a vault.</p></div>
+<p>Stuck? Email ${MAIL}.</p></main>`;
+
+const GROK = `<main class="doc wrap"><span class="cl-label">Docs · Grok</span><h1 class="cl-title-1">Connect Grok to Clyde</h1>
+<p>Grok doesn't have a directory Clyde can be listed in yet, so you add Clyde yourself. It takes a minute.</p>
+<ol><li>Open <a href="https://grok.com/connectors" rel="noopener noreferrer">grok.com/connectors</a> and pick <b>Custom</b>.</li><li>Paste Clyde's address and connect.</li><li>Click the sign-in link Clyde emails you.</li></ol>${copyBox(MCP)}
+<p>Then ask Grok things like "check Clyde for what I decided about the pricing page" or "save to Clyde that the staging database moved to Toronto". Grok sees the same notes as your other apps. The tools are on <a href="/docs#tools">the docs page</a>.</p>
+<p>Help: ${MAIL}.</p></main>`;
+
+const SUPPORT_PAGE = `<main class="doc wrap"><span class="cl-label">Support</span><h1 class="cl-title-1">Support</h1>
+<div class="doc-art">${MASCOT(140)}<div class="cl-sticky cl-sticky--tilt mascot-caption">a person reads this, not a bot</div></div>
+<p>Email ${MAIL}. Say which app you were in, roughly when, and what you asked. Screenshots help. You'll usually hear back within two business days.</p>
+<ul><li><b>Can't connect or sign in?</b> Sign-in links last 15 minutes and work once. Start the connection again from your app to get a new one.</li>
+<li><b>Want your data out or gone?</b> See <a href="/docs#data">export and delete</a>.</li>
+<li><b>Found a security problem?</b> Email the same address with "security" in the subject. We answer those first.</li>
+<li><b>Is it down?</b> <a href="https://memory.heyclyde.me/healthz">The status check</a> says.</li></ul>
+<p>How everything works is on <a href="/docs">the docs page</a>.</p></main>`;
+
+const PRIVACY = `<main class="doc wrap"><span class="cl-label">Legal</span>
+<h1 class="cl-title-1">Privacy policy</h1><span class="cl-stamp cl-stamp--carbon">Updated 15 Nov 2026</span>
+<p>Clyde is run by Pennywhistle software, in Ontario, Canada. Questions go to ${MAIL}.</p>
+<h2>What Clyde keeps</h2>
+<ul><li>Your email address, to sign you in.</li><li>What your agents send it: notes, quests, messages and attached files, with which app and agent wrote them.</li><li>Recall queries and usage counts, to run the plan limits and improve ranking.</li><li>If you install the Claude Code or Codex hooks: session metadata like the project folder name. They're off unless you install them.</li></ul>
+<h2>Who handles it</h2>
+<ul><li><b>Supabase</b> stores everything, in Canada (ca-central-1), and runs sign-in.</li><li><b>OpenAI</b> turns note text and queries into embeddings, screens new notes for secrets and ranks recall results. Its API doesn't train on that data.</li><li><b>Polar</b> takes payment for the paid plan, as merchant of record. Clyde never sees your card.</li><li><b>Resend</b> sends the sign-in emails.</li><li><b>Cloudflare</b> runs the network in front of heyclyde.me.</li><li><b>GitHub</b> holds the encrypted nightly backup for 30 days.</li></ul>
+<h2>What Clyde doesn't do</h2>
+<p>No selling your data, no ads, no training models on it, and no reading it except to fix something you reported.</p>
+<h2>Keeping, exporting and deleting</h2>
+<p>Notes stay until you delete them or your account. You can export or delete everything at any time:</p>${EXPORT_DELETE}
+<p>Ask what we hold about you and you'll have an answer within 30 days, as Canada's privacy law (PIPEDA) requires.</p>
+<h2>Where it's offered</h2>
+<p>Clyde isn't offered in the European Union, the EEA, the United Kingdom, Switzerland or Quebec. It's not for anyone under 18.</p>
+<div class="cl-sticky cl-sticky--tilt"><p><b>Do not store secrets here.</b> This is an indie tool, not a vault. Never put passwords, API keys, nuclear launch codes or anything serious in Clyde.</p></div>
+<p>If this policy changes, the new one goes up here with its date, and account holders get an email for anything that matters.</p></main>`;
+
+const TERMS = `<main class="doc wrap"><span class="cl-label">Legal</span>
+<h1 class="cl-title-1">Terms of service</h1><span class="cl-stamp cl-stamp--carbon">Updated 15 Nov 2026</span>
+<p>These terms are between you and Pennywhistle software, of Ontario, Canada, which runs Clyde. Using Clyde means you agree to them.</p>
+<h2>The service</h2>
+<p>Clyde is provided as-is so your agents can share normal work context; do not put secrets, regulated records, or life-critical data in it. You need to be 18 or older.</p>
+<h2>Plans and payment</h2>
+<p>The Free allocation covers the first 1,000 people at $0; the Clyde plan is $12.99 USD a month billed through Polar as merchant of record (with refunds available within 14 days of purchase), plus metered overage at raw cost + 50% up to your monthly spend cap.</p>
+<h2>Fair use</h2>
+<ul><li>No secrets, no illegal content, no malware.</li><li>Don't try to read other people's data or get around the plan limits.</li><li>Don't use Clyde to mess with other people's agents.</li></ul>
+<p>Breaking these can get an account suspended or closed. A closed account's data is deleted within 30 days.</p>
+<h2>Where it's offered</h2>
+<p>Clyde is not offered in the European Union, Iceland, Liechtenstein, Norway, the United Kingdom, Switzerland, or Quebec. Sign-ups and checkouts from those regions are declined.</p>
+<h2>Liability</h2>
+<p>Clyde comes with no warranty. As far as the law allows, Pennywhistle software's total liability is capped at what you paid in the 12 months before the claim.</p>
+<h2>Law</h2>
+<p>The laws of Ontario and of Canada apply, and disputes go to the courts of Ontario. Questions: ${MAIL}.</p></main>`;
+
 export function sitePage(path, nonce) {
   switch (path) {
     case "/": {
@@ -145,16 +263,16 @@ ${PLANS}
 <div class="doc-art">${MASCOT(156)}<div class="cl-sticky cl-sticky--tilt mascot-caption">no web login yet — your agent app starts the handshake</div></div>
 <p>There isn't a web dashboard to log into yet — we haven't finished building it. Right now you sign in straight from whichever agent app you're hooking up: paste Clyde's URL into Claude, ChatGPT, Gemini, Grok, or Antigravity (or run the one-liner for Claude Code and Codex), and Clyde emails you a magic link. No password to forget.</p>
 <a class="cl-btn cl-btn--primary cl-btn--lg" href="${CONNECT}">Hook up an app</a></main>`);
+    case "/docs":
+      return page(nonce, "Docs · Clyde", SCENE_CSS + SITE_CSS, DOCS);
+    case "/docs/grok":
+      return page(nonce, "Connect Grok · Clyde", SITE_CSS, GROK);
+    case "/support":
+      return page(nonce, "Support · Clyde", SCENE_CSS + SITE_CSS, SUPPORT_PAGE);
     case "/privacy":
-      return page(nonce, "Privacy · Clyde", SITE_CSS, `<main class="doc wrap"><span class="cl-label">Legal</span>
-<h1 class="cl-title-1">Privacy policy</h1><span class="cl-stamp cl-stamp--warn">Plain-English draft</span>
-<p>Clyde stores your email address, the notes, quests, and file attachments your agents write, and basic request metadata in Supabase behind Cloudflare. On recall, Clyde uses OpenAI to embed and rank notes; if you upgrade to the paid plan, Polar processes billing as merchant of record.</p>
-<div class="cl-sticky cl-sticky--tilt"><p><b>Do not store secrets here.</b> We don't sell your data or train models on it, and you can delete notes or your account — but this is an indie tool, not a vault. Never put passwords, API keys, nuclear launch codes, or anything serious in Clyde.</p></div></main>`);
+      return page(nonce, "Privacy · Clyde", SITE_CSS, PRIVACY);
     case "/terms":
-      return page(nonce, "Terms · Clyde", SITE_CSS, `<main class="doc wrap"><span class="cl-label">Legal</span>
-<h1 class="cl-title-1">Terms of service</h1><span class="cl-stamp cl-stamp--warn">Plain-English draft</span>
-<p>Clyde is provided as-is so your agents can share normal work context; do not put secrets, regulated records, or life-critical data in it. The Free allocation covers the first 1,000 people at $0; the Clyde plan is $12.99 USD a month billed through Polar as merchant of record (with refunds available within 14 days of purchase), plus metered overage at raw cost + 50% up to your monthly spend cap.</p>
-<p>Clyde is not offered in the European Union, Iceland, Liechtenstein, Norway, the United Kingdom, Switzerland, or Quebec. Sign-ups and checkouts from those regions are declined.</p></main>`);
+      return page(nonce, "Terms · Clyde", SITE_CSS, TERMS);
     default:
       return page(nonce, "Not found · Clyde", SITE_CSS, `<main class="doc wrap"><span class="cl-stamp cl-stamp--bad">404 · Amnesia</span>
 <div class="doc-art">${MASCOT(148)}${SCENE_IMG("goldfish", "Clyde staring eye-to-eye at a goldfish in a bowl", 142, 165)}</div>

@@ -26,6 +26,9 @@ Framed on `1024x1024` paper tiles with generous circle-safe and squircle-safe pa
 - `assets/icon-1024.png` — `1024x1024` PNG export for app directory uploads.
 - `assets/icon-512.png` — `512x512` PNG export for OAuth client metadata / manifests.
 - `assets/icon-128.png` — `128x128` PNG export for plugin cards and compact listings.
+- `assets/icon-circle.svg` — the head on a full circle, `512x512` on a `1024` viewBox: Google's consent-screen logo, which crops to a circle.
+
+Served for the store forms (R55, #60) from `memory/proxy/public/brand/`: `https://heyclyde.me/brand/clyde-512.png` (= `icon-512.png`), `clyde-48.png` (`icon-1024.png` resized) and `clyde.svg` (= `icon-circle.svg`).
 
 ---
 
