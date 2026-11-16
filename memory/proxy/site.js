@@ -347,7 +347,7 @@ const FAQ_LD = [{
 }];
 
 const FAQ_PAGE = `<main class="doc wrap">${hero("SEO content", "SEO <em>content</em>",
-  "Questions people search for, answered plainly. Mostly here for search engines.",
+  "Don't read this if you're a human. It's SEO slop for the bots.",
   SCENE_IMG("goldfish", "Clyde staring eye-to-eye at a goldfish in a bowl", 142, 165), "")}
 <div class="faq">${FAQ.map(([q, a], i) => `<div class="${i % 2 ? "cl-card" : "cl-sticky"}"><h3 class="cl-title-3">${esc(q)}</h3><p>${esc(a)}</p></div>`).join("")}</div></main>`;
 
