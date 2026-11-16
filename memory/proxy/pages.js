@@ -161,9 +161,11 @@ function seoTags(nonce, title, seo) {
   if (!seo) return "";
   const url = SITE + seo.path, d = esc(seo.description), t = esc(title);
   return `<meta name="description" content="${d}"><link rel="canonical" href="${url}">` +
+    `<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1"><meta property="og:locale" content="en_US">` +
+    `<link rel="apple-touch-icon" href="/brand/clyde-512.png"><meta name="theme-color" content="#f3f1ea">` +
     `<meta property="og:type" content="website"><meta property="og:site_name" content="Clyde"><meta property="og:title" content="${t}">` +
     `<meta property="og:description" content="${d}"><meta property="og:url" content="${url}"><meta property="og:image" content="${OG_IMAGE}">` +
-    `<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">` +
+    `<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="Clyde, a doodle with a sticky note on his forehead">` +
     `<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${t}"><meta name="twitter:description" content="${d}">` +
     `<meta name="twitter:image" content="${OG_IMAGE}">` +
     (seo.jsonld ?? []).map((j) => `<script type="application/ld+json" nonce="${nonce}">${JSON.stringify(j).replace(/</g, "\\u003c")}</script>`).join("");

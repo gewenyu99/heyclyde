@@ -102,13 +102,13 @@ const DOC_CSS = `
 const FAQ_CSS = `
 .faq{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-bottom:84px}
 @media (max-width:760px){.faq{grid-template-columns:minmax(0,1fr)}}
-.faq div{padding:18px 20px}.faq h3{margin:0 0 6px}.faq p{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2)}
+.faq div{padding:18px 20px}.faq h2,.faq h3{margin:0 0 6px}.faq p{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2)}
 `;
 
 const ARROW_SVG = `<svg class="doodle-arrow" viewBox="0 0 120 36" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 20 C36 14 72 23 108 17"/><path d="M95 8 C102 12 108 15 113 17 C107 21 101 25 96 30"/></svg>`;
 
 const header = `<header class="bar wrap"><a class="logo" href="/" aria-label="clyde home">${LOGO()}</a>
-<nav class="topnav"><a href="/docs">Docs</a><a href="/how-it-works">How it works</a></nav>
+<nav class="topnav"><a href="/docs">Docs</a><a href="/how-it-works">How it works</a><a href="/faq">FAQ</a></nav>
 <span class="acts"><a class="cl-btn cl-btn--primary" href="${CONNECT}">Get Clyde</a></span></header>`;
 
 const footer = `<footer class="foot"><div class="wrap"><span class="brand">${MARK(22)}clyde · shared memory for agents</span>
@@ -116,11 +116,23 @@ const footer = `<footer class="foot"><div class="wrap"><span class="brand">${MAR
 <span class="legal">${LEGAL}</span></div></footer>`;
 
 /** One page. A page with a description is indexed, gets its search tags, and is in the sitemap. */
+/** When the site's copy last changed, for the sitemap. */
+const UPDATED = "2026-11-16";
+/** IndexNow's key. It's public by design: search engines fetch it from /<key>.txt to check a ping came from this site. */
+export const INDEXNOW_KEY = "70151fb588ed671b459bec17f31444a0";
+const ORG_LD = { "@context": "https://schema.org", "@type": "Organization", name: "Pennywhistle software", url: SITE,
+  logo: `${SITE}/brand/clyde-512.png`, email: SUPPORT, brand: { "@type": "Brand", name: "Clyde" } };
+const SITE_LD = { "@context": "https://schema.org", "@type": "WebSite", name: "Clyde", alternateName: "heyclyde.me", url: SITE };
+const NAMES = { "/docs": "Docs", "/how-it-works": "How it works", "/faq": "FAQ", "/privacy": "Privacy", "/terms": "Terms" };
+const crumbs = (path) => ({ "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: [
+  { "@type": "ListItem", position: 1, name: "Clyde", item: SITE }, { "@type": "ListItem", position: 2, name: NAMES[path], item: SITE + path }] });
+const ld = (path, extra = []) => [...(path === "/" ? [SITE_LD, ORG_LD] : [crumbs(path)]), ...extra];
+
 const page = (nonce, { title, description, path, css = "", main, status = 200, jsonld }) => ({
   status,
   html: shell({
     nonce, title, css: BASE_CSS + css, body: `${header}${main}${footer}`, script: COPY_JS, noindex: !description,
-    seo: description ? { description, path, jsonld } : null,
+    seo: description ? { description, path, jsonld: ld(path, jsonld) } : null,
   }),
 });
 
@@ -136,6 +148,10 @@ const FAQ = [
   ["How is this different from ChatGPT or Claude memory?", "Their memory stays inside their own app. Clyde is one memory every app can read, so what you told Gemini on your phone shows up in Claude on your laptop."],
   ["What's an MCP memory server?", `MCP is the standard way AI apps plug into outside tools. Clyde is an MCP server at ${MCP}, so any app that supports MCP can use it.`],
   ["Do I have to tell my agent to remember things?", "No. The instructions come with the MCP, so your agent saves notes and checks them on its own. You can still tell it to."],
+  ["How do I give Claude memory across apps?", `Add Clyde as a custom connector. Paste ${MCP} into Claude's Settings, Connectors, then click the email link. Add the same URL to your other apps and they share one memory.`],
+  ["Does Clyde work with Claude Code and Codex?", "Yes. One terminal command installs it for both, and they share the same notes as your chat apps."],
+  ["Does Clyde read my chats?", "No. It keeps only what your agent decides to save."],
+  ["Where is my data, and can I delete it?", "In Postgres on Supabase, in Canada. Email support@heyclyde.me to export or delete all of it."],
   ["How does it decide what to keep?", "New notes get a few chances to be useful. Notes your agents use stick around, and notes nobody uses fade out."],
   ["Can my agents hand each other work?", "Yes, on the quest board. One agent posts a sticky note with a line saying when it's done, and another agent picks it up."],
   ["Is it secure?", "It's probably not very secure. It's Postgres behind an email sign-in, so use it with caution."],
@@ -198,7 +214,7 @@ const PLANS = `<section class="wrap" id="pricing"><div class="section"><span cla
 function home(nonce) {
   const works = WORKS.map(([slug, name]) => `<li>${APP_LOGO[slug] ? appLogo(slug, 20) : ""}${name}</li>`).join("");
   return page(nonce, {
-    title: "Clyde · Your agents have the memory of a goldfish", path: "/",
+    title: "Clyde · Shared memory for your goldfish-brained AI agents", path: "/",
     description: "Your AI agents have the memory of a goldfish. Clyde is a boring shared memory for Claude, ChatGPT, Gemini, Codex and Grok, so they stop forgetting.",
     css: HERO_CSS + SCENE_CSS + SITE_HOME_CSS, jsonld: HOME_LD, main: `<main>
 <section class="hero site-hero wrap"><div class="hero-text">
@@ -346,18 +362,19 @@ const FAQ_LD = [{
   mainEntity: FAQ.map(([q, a]) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: a } })),
 }];
 
-const FAQ_PAGE = `<main class="doc wrap">${hero("SEO content", "SEO <em>content</em>",
+const FAQ_PAGE = `<main class="doc wrap">${hero("SEO content", "Clyde FAQ: shared memory for AI <em>agents</em>",
   "Don't read this if you're a human. It's SEO slop for the bots.",
   SCENE_IMG("goldfish", "Clyde staring eye-to-eye at a goldfish in a bowl", 142, 165), "")}
-<div class="faq">${FAQ.map(([q, a], i) => `<div class="${i % 2 ? "cl-card" : "cl-sticky"}"><h3 class="cl-title-3">${esc(q)}</h3><p>${esc(a)}</p></div>`).join("")}</div></main>`;
+<div class="faq">${FAQ.map(([q, a], i) => `<div class="${i % 2 ? "cl-card" : "cl-sticky"}"><h2 class="cl-title-3">${esc(q)}</h2><p>${esc(a)}</p></div>`).join("")}</div>
+<p>Install steps are on <a href="/docs">the docs page</a>, and the mechanics are on <a href="/how-it-works">how it works</a>.</p></main>`;
 
 // ---- The routes ----
 
 const PAGES = {
   "/": home,
-  "/docs": (n) => page(n, { title: "Install Clyde · Docs", path: "/docs", css: DOC_CSS + CONNECT_CSS, main: DOCS,
+  "/docs": (n) => page(n, { title: "Install Clyde in Claude, ChatGPT, Gemini, Codex and Grok", path: "/docs", css: DOC_CSS + CONNECT_CSS, main: DOCS,
     description: "Connect Clyde to Claude, Claude Code, Codex, Gemini, Antigravity, or Grok using https://heyclyde.me/mcp." }),
-  "/how-it-works": (n) => page(n, { title: "How it works · Clyde", path: "/how-it-works", css: DOC_CSS, main: HOW,
+  "/how-it-works": (n) => page(n, { title: "How Clyde works · Shared memory for AI agents", path: "/how-it-works", css: DOC_CSS, main: HOW,
     description: "How Clyde stores, ranks, and decays shared agent notes, and the research behind it." }),
   "/faq": (n) => page(n, { title: "Clyde FAQ · shared memory for AI agents", path: "/faq", css: DOC_CSS + FAQ_CSS, main: FAQ_PAGE, jsonld: FAQ_LD,
     description: "What Clyde is, how it differs from ChatGPT and Claude memory, what an MCP memory server is, how it decides what to keep, and what it costs." }),
@@ -381,15 +398,31 @@ export function sitePage(path, nonce) {
 ${sticky("")}<a class="cl-btn" href="/">Back home</a></main>` });
 }
 
+const LLMS_TXT = `# Clyde
+
+> Shared memory for AI agents. Your agents in Claude, ChatGPT, Gemini, Codex, Antigravity and Grok write short notes to Clyde and read them back later, in any app, on any computer. It's Postgres, some embeddings and an MCP URL taped together.
+
+MCP server: ${MCP}
+
+- [Install](${SITE}/docs): paste the MCP URL into your app and click the email link
+- [How it works](${SITE}/how-it-works): what it tries to do and the papers it borrows from
+- [FAQ](${SITE}/faq): common questions
+- [Privacy](${SITE}/privacy) and [Terms](${SITE}/terms)
+
+Pricing: free for the first 1,000 people, $12.99 a month for the Clyde plan. Not offered in the EU, EEA, UK, Switzerland or Quebec.
+`;
+
 /** robots.txt for either host, and heyclyde.me's sitemap. memory.heyclyde.me is the API and sign-in, so it stays out
  * of search. Returns null for any other path. */
 export function siteFile(host, path) {
   if (path === "/robots.txt") {
     return { type: "text/plain; charset=utf-8", body: host === "heyclyde.me" ? `User-agent: *\nAllow: /\n\nSitemap: ${SITE}/sitemap.xml\n` : "User-agent: *\nDisallow: /\n" };
   }
+  if (path === `/${INDEXNOW_KEY}.txt` && host === "heyclyde.me") return { type: "text/plain; charset=utf-8", body: INDEXNOW_KEY };
+  if (path === "/llms.txt" && host === "heyclyde.me") return { type: "text/markdown; charset=utf-8", body: LLMS_TXT };
   if (path === "/sitemap.xml" && host === "heyclyde.me") {
     return { type: "application/xml; charset=utf-8", body: `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
-      INDEXED.map((p) => `<url><loc>${SITE}${p}</loc></url>`).join("\n") + "\n</urlset>\n" };
+      INDEXED.map((p) => `<url><loc>${SITE}${p}</loc><lastmod>${UPDATED}</lastmod></url>`).join("\n") + "\n</urlset>\n" };
   }
   return null;
 }
