@@ -343,23 +343,23 @@ t.addEventListener('scroll',function(){clearTimeout(tm);tm=setTimeout(function()
 // Clyde does about it. Then two made-up ones in the same spirit. listing_check.py "complaint sources" checks every src.
 const COMPLAINTS = [
   { q: "Explaining the same thing across a thousand conversations.", src: "https://www.reddit.com/r/ClaudeAI/comments/1kpdoia/megathread_for_claude_performance_discussion/", site: "reddit.com/r/ClaudeAI",
-    a: "Say it once. Your agent pulls the note up when a chat starts." },
+    a: "Your agent recalls the note when a chat starts, so you say it once." },
   { q: "Claude keeps making the mistake I already corrected.", src: "https://claudelab.net/en/articles/claude-ai/claude-keeps-making-same-mistake-fix", site: "claudelab.net",
-    a: "The correction is a note. It comes up the next time the mistake would." },
-  { q: "ChatGPT says it saved my preference. Next chat, it's gone.", src: "https://community.openai.com/t/fails-to-update-memory-even-though-it-says-it-has/987812", site: "community.openai.com",
-    a: "Clyde gives back the note's ID. You can go look." },
-  { q: "We moved to pnpm. Claude Code still runs npm, because an old note says so.", src: "https://www.besthub.dev/articles/why-claude-code-still-runs-npm-after-you-switched-to-pnpm-the-memory-invalidation-problem-e9a0e83509b7", site: "besthub.dev",
-    a: "The new note replaces the old one, and the old one stops coming up." },
+    a: "The correction is saved as a note, and recall returns it when that work comes up again." },
+  { q: "ChatGPT says it saved my preference, but the next chat doesn't have it.", src: "https://community.openai.com/t/fails-to-update-memory-even-though-it-says-it-has/987812", site: "community.openai.com",
+    a: "Remember returns the note's ID, so you can check it was saved." },
+  { q: "We moved to pnpm, and Claude Code still runs npm from an old note.", src: "https://www.besthub.dev/articles/why-claude-code-still-runs-npm-after-you-switched-to-pnpm-the-memory-invalidation-problem-e9a0e83509b7", site: "besthub.dev",
+    a: "The new note replaces the old one, so the old one stops coming up." },
   { q: "ChatGPT and Claude have no idea what the other one said.", src: "https://dev.to/doremi/the-pain-of-switching-ai-platforms-and-how-i-fixed-it-for-myself-44h2", site: "dev.to",
-    a: "They read the same notes." },
+    a: "Both apps read the same notes." },
   { q: "“Cursor with Claude has memory of a goldfish.”", src: "https://forum.cursor.com/t/cursor-with-claude-has-memory-of-a-goldfish/118276", site: "forum.cursor.com",
-    a: "Somebody wrote our headline before we did." },
+    a: "Your notes stay in Clyde between chats." },
   { q: "My rules get lost in a long CLAUDE.md.", src: "https://dev.to/docat0209/5-patterns-that-make-claude-code-actually-follow-your-rules-44dh", site: "dev.to",
-    a: "Clyde hands back the few notes that match what you're doing." },
+    a: "Recall returns only the few notes that match what you're doing." },
 ];
 const MADE_UP = [
   ["For the 50th time, reports go in Times New Roman.", "Reports use Times New Roman, 12 pt."],
-  ["It's Kat. With a K.", "Kat spells it with a K."],
+  ["It's Kat with a K.", "Kat spells it with a K."],
 ];
 const WALL_CSS = `
 .cm-wall{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:20px;margin-bottom:76px}
@@ -373,7 +373,7 @@ const WALL_CSS = `
 const says = (a) => `<div class="clyde-says cl-card"><b>Clyde</b>${esc(a)}</div>`;
 const WALL = `<section class="wrap" id="complaints"><div class="section"><span class="cl-label">Real complaints</span><h2 class="cl-title-1">Things people keep telling their agents.</h2></div>
 <div class="cm-wall">${COMPLAINTS.map((c) => `<article class="complaint"><div class="cl-sticky cm-q"><p>${esc(c.q)}</p><a href="${c.src}" rel="nofollow noopener noreferrer">${c.site}</a></div>${says(c.a)}</article>`).join("")}
-${MADE_UP.map(([q, a]) => `<article class="complaint-made"><div class="cl-sticky cm-q"><p>${esc(q)}</p><span class="cm-made">made up, but you've said it</span></div>${says(a)}</article>`).join("")}</div></section>`;
+${MADE_UP.map(([q, a]) => `<article class="complaint-made"><div class="cl-sticky cm-q"><p>${esc(q)}</p><span class="cm-made">made up</span></div>${says(a)}</article>`).join("")}</div></section>`;
 
 const HONEST = `<section class="wrap honest-wrap" id="honest">
 <div class="cl-sticky cl-sticky--tilt honest">
