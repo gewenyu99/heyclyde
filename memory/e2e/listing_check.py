@@ -174,6 +174,68 @@ def submission_answers(errs):
             errs.append(f"SUBMIT.md: matches secret pattern {pat}")
 
 
+# R53 (#58) and R58 (#63): what the MCP clients and Google's review read from the server, on both hosts. These fetch
+# absolute URLs and never follow a redirect, since Google wants each file at its own address with 200.
+ISSUER = "https://wlhlncmgjqyidosunugv.supabase.co/auth/v1"
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+def get_exact(url):
+    opener = urllib.request.build_opener(_NoRedirect)
+    try:
+        with opener.open(urllib.request.Request(url, headers={"user-agent": "clyde-listing-check/1"}), timeout=20) as r:
+            return r.status, r.headers.get("content-type", ""), r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        return e.code, e.headers.get("content-type", ""), e.read().decode("utf-8", "replace")
+
+
+def resource_metadata(errs):
+    status, _, body = get_exact(f"{ISSUER}/.well-known/oauth-authorization-server")
+    if status != 200:
+        errs.append(f"auth metadata: status {status}")
+        return
+    issuer = json.loads(body)["issuer"]
+    for host in ("heyclyde.me", "memory.heyclyde.me"):
+        status, _, body = get_exact(f"https://{host}/.well-known/oauth-protected-resource")
+        if status != 200:
+            errs.append(f"{host}: status {status}")
+            continue
+        meta = json.loads(body)
+        if meta.get("resource") != f"https://{host}/mcp":
+            errs.append(f"{host}: resource {meta.get('resource')!r}")
+        if meta.get("resource_name") != "Clyde":
+            errs.append(f"{host}: resource_name {meta.get('resource_name')!r}")
+        if (meta.get("authorization_servers") or [None])[0] != issuer:
+            errs.append(f"{host}: authorization_servers {meta.get('authorization_servers')!r}, issuer {issuer!r}")
+
+
+def google_discovery(errs):
+    for path in ("/.well-known/oauth-authorization-server", "/.well-known/openid-configuration"):
+        status, _, body = get_exact(ISSUER + path)
+        if status != 200:
+            errs.append(f"{path}: status {status}")
+            continue
+        meta = json.loads(body)
+        for key in ("authorization_endpoint", "token_endpoint", "registration_endpoint"):
+            if not str(meta.get(key, "")).startswith("https://"):
+                errs.append(f"{path}: {key} {meta.get(key)!r}")
+        if "code" not in meta.get("response_types_supported", []):
+            errs.append(f"{path}: response_types_supported {meta.get('response_types_supported')!r}")
+        if "S256" not in meta.get("code_challenge_methods_supported", []):
+            errs.append(f"{path}: code_challenge_methods_supported {meta.get('code_challenge_methods_supported')!r}")
+
+
+def google_verification_file(errs):
+    for host in ("heyclyde.me", "memory.heyclyde.me"):
+        status, ctype, _ = get_exact(f"https://{host}/.well-known/google-connected-apps")
+        if status != 200 or not ctype.startswith("text/plain"):
+            errs.append(f"{host}: status {status}, content-type {ctype!r}")
+
+
 SECTIONS = {
     "legal pages": legal_pages,
     "docs pages": docs_pages,
@@ -181,6 +243,9 @@ SECTIONS = {
     "reviewer account": reviewer_account,
     "listing copy": listing_copy,
     "submission answers": submission_answers,
+    "resource metadata per host": resource_metadata,
+    "google discovery": google_discovery,
+    "google verification file": google_verification_file,
 }
 
 

@@ -192,3 +192,57 @@ Deno.test('a browser on /billing/thanks gets a page, and other callers reach the
   assert.equal(sent.length, 1)
   assert.equal(await plain.text(), 'memory: thanks.')
 })
+
+// R53 (#58): listings use https://heyclyde.me/mcp. heyclyde.me hands the function /mcp and the discovery files, tells it
+// which host was used, and keeps every other path, sign-in included, to the site.
+const ORIGIN = 'https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory'
+const at = (url: string, init: RequestInit = {}) => worker.fetch(new Request(url, init), ENV)
+
+Deno.test('R53 heyclyde.me serves /mcp and nothing else of the function', async () => {
+  const rpc = { jsonrpc: '2.0', id: 1, method: 'ping' }
+  for (const [path, init] of [
+    ['/mcp', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer x' }, body: JSON.stringify(rpc) }],
+    ['/.well-known/oauth-protected-resource', {}],
+    ['/.well-known/oauth-protected-resource/mcp', {}],
+    ['/.well-known/google-connected-apps', {}],
+  ] as [string, RequestInit][]) {
+    stub(json({ ok: true }))
+    const r = await at(`https://heyclyde.me${path}`, init)
+    assert.equal(r.status, 200, path)
+    assert.equal(sent.length, 1, path)
+    assert.equal(sent[0].url, ORIGIN + path)
+    assert.equal(sent[0].headers.get('x-memory-host'), 'heyclyde.me', path)
+  }
+  for (const path of ['/', '/oauth/consent?authorization_id=abc12345', '/install']) {
+    stub(json({ ok: true }))
+    await at(`https://heyclyde.me${path}`, { headers: { accept: 'text/html' } })
+    assert.equal(sent.length, 0, path)
+  }
+})
+
+Deno.test('R53 a caller can\'t pick the host', async () => {
+  stub(json({ ok: true }))
+  await at('https://memory.heyclyde.me/mcp', { method: 'POST', headers: { 'x-memory-host': 'heyclyde.me', authorization: 'Bearer x' }, body: '{}' })
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].headers.get('x-memory-host'), null)
+})
+
+Deno.test('R53 errors carry detail', async () => {
+  const replies: (() => Response)[] = [
+    () => new Response('Internal Server Error', { status: 500, headers: { 'content-type': 'text/plain' } }),
+    () => { throw new TypeError('network connection lost') },
+  ]
+  for (const reply of replies) {
+    stub(reply)
+    const r = await at('https://memory.heyclyde.me/mcp', {
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer x' }, body: JSON.stringify({ jsonrpc: '2.0', id: 7, method: 'tools/list' }),
+    })
+    assert.equal(r.status, 502)
+    assert.match(String(r.headers.get('content-type')), /^application\/json/)
+    const raw = await r.text()
+    assert.ok(!raw.includes('Internal Server Error'), raw)
+    const body = JSON.parse(raw)
+    assert.equal(body.jsonrpc, '2.0')
+    assert.ok(body.error.message.length >= 40 && body.error.message.includes('Clyde'), body.error.message)
+  }
+})

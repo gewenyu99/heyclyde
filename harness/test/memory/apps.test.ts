@@ -245,3 +245,15 @@ test('R58 Google\'s OAuth redirects are allowed', { skip: SKIP }, async () => {
     assert.equal(r.status, want === 'approve' ? 200 : 403, `${name}: ${r.text}`)
   }
 })
+
+// Google Connected Apps verifies the domain by fetching this file (R58, #63). Its content is the setting
+// google_connected_apps_verification, so Wen's token goes live with an update, not a deploy.
+test('R58 the Google Connected Apps verification file serves the setting', { skip: SKIP }, async () => {
+  const token = `google-verify-${nonce()}`
+  sql(`insert into memory.setting (name, value) values ('google_connected_apps_verification', '${token}')
+    on conflict (name) do update set value = excluded.value`)
+  const r = await bed.call('GET', '/.well-known/google-connected-apps')
+  assert.equal(r.status, 200, r.text)
+  assert.match(String(r.headers['content-type']), /^text\/plain/)
+  assert.equal(r.text, token)
+})

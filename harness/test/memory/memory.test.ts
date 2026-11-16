@@ -1150,3 +1150,46 @@ test('queue: the migration moves legacy messages into deliveries and the contrac
   assert.match(job[0].command, /memory\.purge_messages\(\)/)
   sql(`select cron.unschedule('memory-message-purge')`)
 })
+
+// R53 (#58): what the Claude directory and Google Connected Apps reviews read. Every tool carries a title and explicit
+// hints, and the server's text says what each tool does without telling the model what to call or when.
+async function surfaceOf() {
+  const init = await call('POST', '/mcp', bearer(memory.token),
+    { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', clientInfo: { name: 'r53-reader' } } })
+  const session = String(init.headers['mcp-session-id'])
+  const list = await call('POST', '/mcp', { ...bearer(memory.token), 'mcp-session-id': session }, { jsonrpc: '2.0', id: 2, method: 'tools/list' })
+  return { init: JSON.parse(init.text).result, tools: JSON.parse(list.text).result.tools as any[] }
+}
+
+const READ_ONLY = ['check_messages', 'get_blob', 'get_entry', 'list_quests', 'recall', 'recall_more']
+const DESTRUCTIVE = ['abandon_quest', 'ack_messages', 'dismiss_messages', 'register_agent', 'remember']
+
+test('R53 every tool is annotated', { skip: SKIP }, async () => {
+  const { tools } = await surfaceOf()
+  for (const t of tools) {
+    assert.ok(typeof t.title === 'string' && t.title.length > 0, `${t.name} has a title`)
+    assert.ok(typeof t.annotations?.title === 'string' && t.annotations.title.length > 0, `${t.name} has annotations.title`)
+    assert.equal(t.annotations.openWorldHint, false, `${t.name} openWorldHint`)
+    assert.equal(typeof t.annotations.readOnlyHint, 'boolean', `${t.name} readOnlyHint`)
+    if (!t.annotations.readOnlyHint) assert.equal(typeof t.annotations.destructiveHint, 'boolean', `${t.name} destructiveHint`)
+  }
+  assert.deepEqual(tools.filter((t) => t.annotations.readOnlyHint === true).map((t) => t.name).sort(), READ_ONLY)
+  assert.deepEqual(tools.filter((t) => t.annotations.destructiveHint === true).map((t) => t.name).sort(), DESTRUCTIVE)
+})
+
+/** Every description string anywhere under a value: a tool's own and its inputSchema's. */
+function descriptions(v: unknown): string[] {
+  if (Array.isArray(v)) return v.flatMap(descriptions)
+  if (!v || typeof v !== 'object') return []
+  return Object.entries(v).flatMap(([k, x]) => (k === 'description' && typeof x === 'string' ? [x] : descriptions(x)))
+}
+
+test('R53 tool text is neutral and says Clyde', { skip: SKIP }, async () => {
+  const { init, tools } = await surfaceOf()
+  assert.equal(init.serverInfo.name, 'clyde')
+  const texts = [init.instructions as string, ...descriptions(tools)]
+  for (const re of [/\bmemory\b/i, /\bWen\b/, /\balways\b/i, /\bbefore\b/i, /\bcall(s|ed|ing)?\b/i]) {
+    const hits = texts.filter((s) => re.test(s))
+    assert.equal(hits.length, 0, `${re} in: ${hits.map((s) => s.slice(0, 120)).join(' | ')}`)
+  }
+})
