@@ -294,6 +294,7 @@ async function graph(db: Sql): Promise<Graph> {
     links: [...links], at: Date.now(), edges: new Map(), nodes,
     superseded: new Set(links.filter((l) => l.type === "supersedes").map((l) => l.dst as string)),
   };
+  for (const [k, old] of graphCaches) if (Date.now() - old.at >= 60_000) graphCaches.delete(k);
   graphCaches.set(ownerKey, fresh);
   return fresh;
 }

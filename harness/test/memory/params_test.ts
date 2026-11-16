@@ -126,7 +126,7 @@ function fakeDb(slots: Slot[], stored: Record<string, unknown> | null) {
   const db: any = (strings: TemplateStringsArray, ...values: unknown[]) => {
     const q = strings.join('?')
     if (q.includes('from memory.allocation')) return Promise.resolve(slots)
-    if (q.includes('from memory.setting')) return Promise.resolve([{ value: SALT }])
+    if (q.includes('memory.allocation_salt()')) return Promise.resolve([{ value: SALT }])
     if (q.includes('from memory.mcp_session')) return Promise.resolve(stored ? [stored] : [])
     if (q.includes('from memory.param_set')) return Promise.resolve([{ id: values[0], arm: String(values[0]).split('.')[0], params: V1 }])
     if (q.includes('insert into memory.mcp_session')) {

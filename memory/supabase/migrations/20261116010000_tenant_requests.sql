@@ -43,6 +43,11 @@ begin
   end loop;
 end $$;
 
+-- The salt allocation.ts hashes units with. A tenant reads it through this function and nothing else of the settings.
+create or replace function memory.allocation_salt() returns text language sql stable security definer set search_path = memory, pg_temp as $$
+  select value from memory.setting where name = 'allocation_salt'
+$$;
+
 -- ---------------------------------------------------------------- vectors
 -- An exact scan of one owner's rows needs no HNSW index, and one global index would rank every owner's vectors together.
 drop index if exists memory.entry_embedding_hnsw;

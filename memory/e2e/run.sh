@@ -5,6 +5,7 @@
 #
 #   memory/e2e/run.sh                     # create a branch, test, delete it
 #   E2E_BRANCH=e2e-dev memory/e2e/run.sh  # test on an existing branch, and leave it for its owner to delete
+#   E2E_SCRIPT=load_recall.py E2E_ARMS=hybrid memory/e2e/run.sh  # R49's recall load test in place of suite.py
 #
 # Production is only ever the branch's parent: this script creates and deletes a branch of it, and nothing else. Every
 # other command targets the branch's own ref, from a scratch copy of memory/supabase that is linked to nothing, and the
@@ -247,5 +248,5 @@ done
 log "running the suite against $URL"
 # A pipe's status is its last command's, so suite.py leaves its own in a file.
 E2E_URL=$URL E2E_REF=$REF E2E_WORKDIR=$W E2E_SECRETS=$TMP/secrets.env E2E_RC=$TMP/suite.rc \
-  python3 -u "$HERE/suite.py" 2>&1 | mask
+  python3 -u "$HERE/${E2E_SCRIPT:-suite.py}" 2>&1 | mask
 exit "$(cat "$TMP/suite.rc" 2>/dev/null || echo 1)"
