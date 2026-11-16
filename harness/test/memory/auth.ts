@@ -6,6 +6,7 @@
  * /auth/v1/oauth/authorizations/<id> describes the request in `authorizations`, whose /consent answers with a redirect to
  * its redirect_uri carrying a code (approve) or error=access_denied (deny).
  */
+import { createHash } from 'node:crypto'
 import http from 'node:http'
 
 export type FakeAuth = {
@@ -67,7 +68,10 @@ export async function startFakeAuth(extra?: (req: http.IncomingMessage, res: htt
       if (req.method === 'POST' && path === '/auth/v1/token') {
         const email = signIns[body?.auth_code]
         if (!email || !body?.code_verifier) return reply(400, { msg: 'invalid flow state' })
-        return reply(200, { access_token: jwt({ sub: 'fake-user', email }), user: { email, email_confirmed_at: '2026-11-01T00:00:00Z' } })
+        // A stable uuid per email, as Supabase Auth gives each user one.
+        const h = createHash('sha256').update(email).digest('hex')
+        const id = `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`
+        return reply(200, { access_token: jwt({ sub: id, email }), user: { id, email, email_confirmed_at: '2026-11-01T00:00:00Z' } })
       }
       const oauth = /^\/auth\/v1\/oauth\/authorizations\/([^/]+)(\/consent)?$/.exec(path)
       if (oauth) {
