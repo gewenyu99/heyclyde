@@ -3,7 +3,7 @@
 // session, since newer protocol versions drop those. The same unit always lands on the same set, and every recall logs the
 // set and its propensity (its share), so an off-policy estimate can weight it later.
 import { config } from "./config.ts";
-import type { Sql } from "./db.ts";
+import { root, type Sql } from "./db.ts";
 import { sha256 } from "./embed.ts";
 import { type ParamSet, paramSet } from "./params.ts";
 
@@ -45,7 +45,7 @@ export async function assign(salt: string, unit: string, slots: Slot[]) {
 export async function allocation(db: Sql) {
   const [rows, salt] = await Promise.all([
     db`select param_set, role, weight from memory.allocation order by param_set`,
-    db`select value from memory.setting where name = 'allocation_salt'`,
+    root`select value from memory.setting where name = 'allocation_salt'`,
   ]);
   const slots = rows as unknown as Slot[];
   const explicit = serving(slots).length > 0;

@@ -11,7 +11,7 @@
 //     when those differ. A recall on the clock that shows one end without the pair co-used counts a miss, and every 200 misses
 //     take 0.05 off the link, which goes at 0
 // An entry under 0.15 goes dormant: recall skips it, nothing deletes it. Every change lands in memory.confidence_log.
-import { type Row, type Sql, sql } from "./db.ts";
+import { asTenant, currentOwner, root, type Row, type Sql, sql } from "./db.ts";
 import { reaction } from "./judge.ts";
 import { paramSet } from "./params.ts";
 import { CO_USE_SESSIONS, forgetGraph } from "./search.ts";
@@ -184,12 +184,27 @@ async function coUse(db: Sql, r: Row, shown: string[], used: string[]): Promise<
 
 const SAYS: Record<string, Outcome> = { helpful: "used", used: "used", irrelevant: "irrelevant", wrong: "wrong" };
 
-/** Learn from up to `limit` recalls. Returns what it did, for the cron log and the console. */
-export async function learn(limit = 40) {
+type Done = { learned: number; pushback: number; helpful: number; no_reaction: number; waiting: number; failed: number };
+
+/** Learn from up to `limit` recalls of each owner. Cron calls it as postgres, and each owner's recalls are learned inside
+ * that owner's tenant (R49), so nothing it reads or writes crosses owners. Returns what it did, for the cron log and the
+ * console. */
+export async function learn(limit = 40): Promise<Done> {
+  if (currentOwner()) return await learnOwner(limit);
+  const owners = await root`select distinct owner_id from memory.retrieval where learned_at is null`;
+  const done: Done = { learned: 0, pushback: 0, helpful: 0, no_reaction: 0, waiting: 0, failed: 0 };
+  for (const { owner_id } of owners) {
+    const one = await asTenant(owner_id, () => learnOwner(limit));
+    for (const k of Object.keys(done) as (keyof Done)[]) done[k] += one[k];
+  }
+  return done;
+}
+
+async function learnOwner(limit: number): Promise<Done> {
   const pending = await sql`select r.id, r.delivered, r.rejected, r.on_trial, r.param_set, r.created_at, r.mcp_session, r.seq, s.claude_session_id
-    from memory.retrieval r left join memory.mcp_session s on s.id = r.mcp_session
+    from memory.retrieval r left join memory.mcp_session s on s.owner_id = r.owner_id and s.id = r.mcp_session
     where r.learned_at is null order by r.created_at limit ${limit}`;
-  const done = { learned: 0, pushback: 0, helpful: 0, no_reaction: 0, waiting: 0, failed: 0 };
+  const done: Done = { learned: 0, pushback: 0, helpful: 0, no_reaction: 0, waiting: 0, failed: 0 };
   let linked = false;
   for (const r of pending) {
     const delivered: string[] = r.delivered ?? [], rejected: string[] = r.rejected ?? [], onTrial: string[] = r.on_trial ?? [];
@@ -266,6 +281,6 @@ export async function learn(limit = 40) {
     else done.helpful++;
   }
   // This isolate ranks with the new co_used links at once. Others pick them up when their minute's cache runs out.
-  if (linked) forgetGraph();
+  if (linked) forgetGraph(currentOwner());
   return done;
 }

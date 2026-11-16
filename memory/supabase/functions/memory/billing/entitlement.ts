@@ -4,7 +4,7 @@
 // per owner for config.entitlementTtlMs (60 s), so a revoke, a refund or an allowlist removal reaches every instance
 // within a minute, and a burst of calls costs one lookup.
 import { config } from "../config.ts";
-import { setting, sql } from "../db.ts";
+import { root as sql, setting } from "../db.ts";
 import { isBlocked, REFUSAL } from "./regions.ts";
 
 export type Plan = {

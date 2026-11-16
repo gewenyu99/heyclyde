@@ -1,5 +1,5 @@
 // Shadow variants (R34). Up to MAX_SHADOWS parameter sets with role 'shadow' rank every real recall after its response is out,
-// inside EdgeRuntime.waitUntil, as of the recall's own clock reading. Each logs one memory.shadow_retrieval row: its top
+// in db.ts's later(), as of the recall's own clock reading. Each logs one memory.shadow_retrieval row: its top
 // SHADOW_RANKING ids and scores and what it would have delivered, or why it didn't rank. A shadow never ticks the clock,
 // never writes a retrieval and never changes what was served, so the learner never hears of it.
 //
@@ -18,14 +18,6 @@ import { type Judge, rankAndPack } from "./service.ts";
 
 export const MAX_SHADOWS = 2;
 export const SHADOW_RANKING = 12;
-
-declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
-
-/** Run work after the response, on the Supabase runtime's waitUntil. A failure is logged, never thrown at the caller. */
-export function background(work: Promise<unknown>) {
-  const run = work.catch((e) => console.error("background:", e));
-  if (typeof EdgeRuntime !== "undefined" && EdgeRuntime) EdgeRuntime.waitUntil(run);
-}
 
 export type Judgment = { id: string; text: string; p: number };
 

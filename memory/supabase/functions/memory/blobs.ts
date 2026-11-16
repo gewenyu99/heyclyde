@@ -4,7 +4,7 @@
 // cites it moves it into place once its size and hash check out. Without Storage (the CI tier), everything stays in
 // Postgres under the old 4 MiB limit. This is the only file that talks to Storage.
 import { createHash } from "node:crypto";
-import { type Row, type Sql, sql } from "./db.ts";
+import { currentOwner, root, type Row, type Sql, sql, wen } from "./db.ts";
 import { sha256 } from "./embed.ts";
 
 const num = (name: string, fallback: number) => {
@@ -85,17 +85,26 @@ async function call(path: string, init: RequestInit = {}) {
   }
 }
 
-/** Put a blob's bytes at <sha256>. */
-export async function put(sha: string, mediaType: string, bytes: Uint8Array) {
-  const r = await call(`/object/${BUCKET}/${sha}`, {
+/** Where a blob lives in Storage (R49). Wen's objects keep the flat keys they had before tenancy, <sha256> and
+ * incoming/<sha256>. Every other owner's live under its id, <owner>/<sha256> and incoming/<owner>/<sha256>, so one owner's
+ * delete never touches another's file, and holding a file reveals nothing about who else does. owner is the running
+ * request's unless named. */
+export async function keyOf(sha: string, where: "final" | "incoming" = "final", owner: string | null = currentOwner()) {
+  const prefix = owner && owner !== await wen() ? `${owner}/` : "";
+  return where === "final" ? `${prefix}${sha}` : `incoming/${prefix}${sha}`;
+}
+
+/** Put a blob's bytes at its key. */
+export async function put(sha: string, mediaType: string, bytes: Uint8Array, owner = currentOwner()) {
+  const r = await call(`/object/${BUCKET}/${await keyOf(sha, "final", owner)}`, {
     method: "POST", body: bytes as BodyInit, headers: { "content-type": mediaType, "x-upsert": "true" },
   });
   if (!r.ok) throw new Error(`Storage refused blob ${sha}: ${r.status} ${(await r.text()).slice(0, 200)}`);
 }
 
 /** The bytes at <sha256>. null when the object isn't there (a restore leaves some out). */
-export async function get(sha: string): Promise<Uint8Array | null> {
-  const r = await call(`/object/${BUCKET}/${sha}`);
+export async function get(sha: string, owner = currentOwner()): Promise<Uint8Array | null> {
+  const r = await call(`/object/${BUCKET}/${await keyOf(sha, "final", owner)}`);
   if (r.status === 400 || r.status === 404) {
     await r.body?.cancel();
     return null;
@@ -121,7 +130,7 @@ async function size(name: string): Promise<number | null> {
 /** A link that downloads the blob for the next `seconds`. Throws NotStored when the object isn't in Storage. */
 export class NotStored extends Error {}
 export async function signDownload(sha: string, seconds = LINK_SECONDS) {
-  const r = await call(`/object/sign/${BUCKET}/${sha}`, {
+  const r = await call(`/object/sign/${BUCKET}/${await keyOf(sha)}`, {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expiresIn: seconds }),
   });
   if (r.status === 400 || r.status === 404) {
@@ -134,7 +143,7 @@ export async function signDownload(sha: string, seconds = LINK_SECONDS) {
 
 /** A URL that takes one PUT of the file, for two hours, at incoming/<sha256>. */
 export async function signUpload(sha: string) {
-  const r = await call(`/object/upload/sign/${BUCKET}/incoming/${sha}`, { method: "POST", headers: { "x-upsert": "true" } });
+  const r = await call(`/object/upload/sign/${BUCKET}/${await keyOf(sha, "incoming")}`, { method: "POST", headers: { "x-upsert": "true" } });
   if (!r.ok) throw new Error(`Storage couldn't make an upload URL (${r.status}).`);
   const url: string = (await r.json()).url;
   return url.startsWith("http") ? url : `${BASE()}${url}`;
@@ -142,7 +151,7 @@ export async function signUpload(sha: string) {
 
 /** Delete the objects at <sha256> and incoming/<sha256>. */
 export async function remove(sha: string, ...which: ("final" | "incoming")[]) {
-  const prefixes = (which.length ? which : ["final", "incoming"]).map((w) => w === "final" ? sha : `incoming/${sha}`);
+  const prefixes = await Promise.all((which.length ? which : ["final", "incoming"] as const).map((w) => keyOf(sha, w)));
   await call(`/object/${BUCKET}`, {
     method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ prefixes }),
   });
@@ -155,7 +164,8 @@ export type Checked = { sha256: string; media_type: string; size: number; text: 
  * long to scan) deletes the upload and throws BlobError. The size comes from the object's info, so a wrong size is refused
  * before a byte is read. */
 export async function inspectUpload(sha: string, declared: { size: number; media_type: string }): Promise<Checked | null> {
-  const found = await size(`incoming/${sha}`);
+  const incoming = await keyOf(sha, "incoming");
+  const found = await size(incoming);
   if (found === null) return null;
   const refuse = async (message: string): Promise<never> => {
     await remove(sha, "incoming");
@@ -169,7 +179,7 @@ export async function inspectUpload(sha: string, declared: { size: number; media
   if (texty && found > SCAN_MAX) {
     await refuse(`The upload for ${sha} is ${found} bytes of text, which is too much text to scan for secrets. Zip it first.`);
   }
-  const r = await call(`/object/${BUCKET}/incoming/${sha}`);
+  const r = await call(`/object/${BUCKET}/${incoming}`);
   if (r.status === 400 || r.status === 404) {
     await r.body?.cancel();
     return null;
@@ -194,26 +204,31 @@ export async function inspectUpload(sha: string, declared: { size: number; media
 export async function claim(sha: string) {
   const r = await call(`/object/move`, {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ bucketId: BUCKET, sourceKey: `incoming/${sha}`, destinationKey: sha }),
+    body: JSON.stringify({ bucketId: BUCKET, sourceKey: await keyOf(sha, "incoming"), destinationKey: await keyOf(sha) }),
   });
   if (!r.ok) {
     const body = await r.text();
     if (r.status !== 400 && r.status !== 404 && r.status !== 409) throw new Error(`Storage couldn't move the upload for ${sha} (${r.status}).`);
-    if (r.status !== 409 && !(await size(sha))) throw new Error(`Storage lost the upload for ${sha}: ${body.slice(0, 100)}`);
+    if (r.status !== 409 && !(await size(await keyOf(sha)))) throw new Error(`Storage lost the upload for ${sha}: ${body.slice(0, 100)}`);
   }
 }
 
-/** Delete every upload under incoming/ older than UPLOAD_TTL_SECONDS. Returns how many. */
-export async function sweepIncoming(): Promise<number> {
+/** Delete every upload under incoming/ older than UPLOAD_TTL_SECONDS, Wen's and every owner's folder under it. Returns how
+ * many. */
+export async function sweepIncoming(prefix = "incoming"): Promise<number> {
   let deleted = 0;
   for (let offset = 0;; offset += 100) {
     const r = await call(`/object/list/${BUCKET}`, {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ prefix: "incoming", limit: 100, offset }),
+      body: JSON.stringify({ prefix, limit: 100, offset }),
     });
-    if (!r.ok) throw new Error(`Storage couldn't list incoming/ (${r.status}).`);
+    if (!r.ok) throw new Error(`Storage couldn't list ${prefix}/ (${r.status}).`);
     const items: Row[] = await r.json();
-    const old = items.filter((o) => o.name && Date.now() - Date.parse(o.created_at) > UPLOAD_TTL_SECONDS * 1000).map((o) => `incoming/${o.name}`);
+    // A folder (an owner's) has no id. Its uploads are swept on their own.
+    if (prefix === "incoming") {
+      for (const f of items.filter((o) => o.name && !o.id && !SHA_RE.test(o.name))) deleted += await sweepIncoming(`incoming/${f.name}`);
+    }
+    const old = items.filter((o) => o.name && Date.now() - Date.parse(o.created_at) > UPLOAD_TTL_SECONDS * 1000).map((o) => `${prefix}/${o.name}`);
     if (old.length) {
       await call(`/object/${BUCKET}`, {
         method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ prefixes: old }),
@@ -226,8 +241,9 @@ export async function sweepIncoming(): Promise<number> {
 
 /** The cap on every blob together. A setting that isn't a whole number of 0 or more is the default. Read fresh, since the
  * cap must follow the setting the moment it changes. */
-export async function quotaCap(db: Sql = sql): Promise<number> {
-  const [row] = await db`select value from memory.setting where name = 'blob_quota_bytes'`;
+export async function quotaCap(_db: Sql = sql): Promise<number> {
+  // Settings are postgres's to read (R49), whatever connection the caller holds.
+  const [row] = await root`select value from memory.setting where name = 'blob_quota_bytes'`;
   const v = String(row?.value ?? "").trim();
   return /^\d+$/.test(v) ? Number(v) : DEFAULT_QUOTA;
 }

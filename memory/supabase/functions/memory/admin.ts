@@ -5,7 +5,7 @@ import { allocation, serving, servingArms } from "./allocation.ts";
 import * as store from "./blobs.ts";
 import { budget } from "./budget.ts";
 import { config } from "./config.ts";
-import { forgetSecret, type Row, type Sql, sql } from "./db.ts";
+import { asTenant, currentOwner, forgetSecret, later, root, type Row, type Sql, sql } from "./db.ts";
 import { contentSha, entryText, sha256, syncEmbeddings } from "./embed.ts";
 import { forgetParamSet, type Params, ParamError, paramSet, resolveParams } from "./params.ts";
 import { ARMS, forgetGraph, hybridComponents } from "./search.ts";
@@ -791,23 +791,27 @@ async function recallPreview(data: Row) {
  * that died mid-run never blocks the next. */
 export async function runEmbeddingSync(trigger: string): Promise<Row | null> {
   const started = new Date().toISOString();
-  const lease = await sql`insert into memory.setting (name, value) values ('embed_sync_lease', (now() + interval '5 minutes')::text)
+  const lease = await root`insert into memory.setting (name, value) values ('embed_sync_lease', (now() + interval '5 minutes')::text)
     on conflict (name) do update set value = excluded.value where memory.setting.value::timestamptz < now() returning name`;
   if (!lease.length) return null;
-  const status = (s: Row) => sql`insert into memory.setting (name, value) values ('embed_sync_status', ${JSON.stringify(s)})
+  const status = (s: Row) => root`insert into memory.setting (name, value) values ('embed_sync_status', ${JSON.stringify(s)})
     on conflict (name) do update set value = excluded.value`;
   const base = { running: true, trigger, started_at: started, finished_at: null, embedded: null, error: null };
   await status(base);
   let result: Row;
   try {
-    result = { embedded: await syncEmbeddings() };
+    // Inside a request (the console) it embeds that owner's entries. From cron, each owner's inside its own tenant (R49).
+    let embedded = 0;
+    if (currentOwner()) embedded = await syncEmbeddings();
+    else for (const { owner_id } of await root`select distinct owner_id from memory.entry`) embedded += await asTenant(owner_id, () => syncEmbeddings());
+    result = { embedded };
   } catch (e) {
     console.warn("embedding sync failed, hybrid serves keyword ranks until one succeeds:", e);
     result = { error: `${(e as Error).name}: ${(e as Error).message}`.slice(0, 300) };
   }
   const done = { ...base, running: false, finished_at: new Date().toISOString(), ...result };
   await status(done);
-  await sql`update memory.setting set value = now()::text where name = 'embed_sync_lease'`;
+  await root`update memory.setting set value = now()::text where name = 'embed_sync_lease'`;
   if (trigger === "console") await audit(sql, "embeddings.sync", "embeddings", null, result);
   return done;
 }
@@ -1029,7 +1033,7 @@ async function placeImportedBlob(r: Row) {
   r.stored = r.stored === "storage" ? "storage" : "db";
   if (r.content instanceof Uint8Array) {
     if (r.stored === "storage" && store.storageOn()) {
-      await store.put(r.sha256, r.media_type, r.content);
+      await store.put(r.sha256, r.media_type, r.content, r.owner_id ?? null);
       r.content = null;
     } else r.stored = "db";
   } else {
@@ -1709,7 +1713,7 @@ export async function handle(req: Request, path: string, actor: Actor = "admin")
   if (req.method === "POST" && sub === "/embeddings/sync") {
     const [lease] = await sql`select value from memory.setting where name = 'embed_sync_lease'`;
     if (lease && new Date(lease.value) > new Date()) return Response.json({ error: "An embedding sync is already running." }, { status: 409 });
-    EdgeRuntime.waitUntil(runEmbeddingSync("console"));
+    later(() => runEmbeddingSync("console"));
     return Response.json({ started: true }, { status: 202 });
   }
   const matches = ROUTES.filter(([, pattern]) => pattern.test(sub));

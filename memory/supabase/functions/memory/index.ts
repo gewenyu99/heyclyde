@@ -7,7 +7,7 @@ import { allowed, authenticate, baseOf, type Principal, viaProxy } from "./auth.
 import * as billing from "./billing/index.ts";
 import * as limits from "./billing/limits.ts";
 import { config } from "./config.ts";
-import { setting, sql } from "./db.ts";
+import { asTenant, setting, sql, wen } from "./db.ts";
 import { learn } from "./learn.ts";
 import * as mcp from "./mcp.ts";
 import * as oauth from "./oauth.ts";
@@ -145,10 +145,10 @@ const BLOB_PAGE_BYTES = 16 * 1024 * 1024;
  * order so each page can tell without remembering the last. Any other Storage blob goes out with content null, and so does one
  * whose object is missing, and x-missing-blobs counts them. */
 async function exportBlobs(offset: number) {
-  const head = await sql`select sha256, media_type, size, stored, created_at,
+  const head = await sql`select owner_id, sha256, media_type, size, stored, created_at,
       case when stored = 'storage' and size <= ${store.EXPORT_BLOB_MAX}
-        then sum(size) filter (where stored = 'storage' and size <= ${store.EXPORT_BLOB_MAX}) over (order by sha256) end as running
-    from memory.blob order by sha256 limit ${PAGE("blob")} offset ${offset}`;
+        then sum(size) filter (where stored = 'storage' and size <= ${store.EXPORT_BLOB_MAX}) over (order by owner_id, sha256) end as running
+    from memory.blob order by owner_id, sha256 limit ${PAGE("blob")} offset ${offset}`;
   const page: Record<string, any>[] = [];
   let bytes = 0, truncated = false;
   for (const r of head) {
@@ -161,16 +161,16 @@ async function exportBlobs(offset: number) {
     bytes += cost;
     page.push(r);
   }
-  const inDb = new Map((await sql`select sha256, content from memory.blob where stored = 'db' and sha256 = any(${page.map((r) => r.sha256)}::text[])`)
-    .map((r) => [r.sha256 as string, r.content as Uint8Array]));
+  const inDb = new Map((await sql`select owner_id, sha256, content from memory.blob where stored = 'db' and sha256 = any(${page.map((r) => r.sha256)}::text[])`)
+    .map((r) => [`${r.owner_id}/${r.sha256}`, r.content as Uint8Array]));
   let missing = 0;
   const lines: string[] = [];
   for (const r of page) {
     const { running, ...row } = r;
     let content: Uint8Array | null = null;
-    if (r.stored === "db") content = inDb.get(r.sha256) ?? null;
+    if (r.stored === "db") content = inDb.get(`${r.owner_id}/${r.sha256}`) ?? null;
     else {
-      if (running !== null && running <= store.EXPORT_STORED_TOTAL && store.storageOn()) content = await store.get(r.sha256);
+      if (running !== null && running <= store.EXPORT_STORED_TOTAL && store.storageOn()) content = await store.get(r.sha256, r.owner_id);
       if (!content) missing++;
     }
     lines.push(JSON.stringify({ table: "blob", row: { ...row, content: content ? { base64: encodeBase64(new Uint8Array(content)) } : null } }) + "\n");
@@ -249,13 +249,39 @@ async function install(req: Request, path: string, url: URL) {
   return json({ error: "No such endpoint." }, 404);
 }
 
+// The console's routes that stay postgres (R49): billing sees every owner, secrets live in Vault, and a restore loads every
+// owner's rows. The rest of the console runs as memory_console, held to Wen's rows.
+const CONSOLE_AS_POSTGRES = /^\/api\/v1\/(billing\/|secrets\/|import$)/;
+
+/** Whose tenant a request runs in (R49), or null to stay postgres. A device, an OAuth client or a sign-in runs as its owner.
+ * The runtime token, and a sign-in whose user id isn't a uuid (only a closed, allowlisted sign-in has one), run as Wen. The
+ * console runs as Wen too. Cron, the backup, the open routes and the webhooks stay postgres. */
+async function tenantOf(who: Principal, path: string): Promise<{ owner: string; console: boolean } | null> {
+  const isConsole = who.role === "admin" || who.role === "research";
+  if (isConsole && CONSOLE_AS_POSTGRES.test(path)) return null;
+  if (!isConsole && !["device", "owner", "runtime"].includes(who.role)) return null;
+  const owner = (isConsole || who.role === "runtime" ? null : who.owner) ?? await wen();
+  if (!owner) throw new admin.ApiError(503, "Clyde has no owner set (setting owner_id), so it can't tell whose memory this is.");
+  return { owner, console: isConsole };
+}
+
 async function route(req: Request, time: (entry: string) => void): Promise<Response> {
   const url = new URL(req.url), path = routeOf(url);
   const who = await authenticate(req, path);
   if (who instanceof Response) return who;
   if (who.timing) time(who.timing);
-  // Every OpenAI token this request spends counts against its owner's plan (R38).
-  return limits.within(who.entitlement, () => serve(req, url, path, who));
+  const timings: string[] = [];
+  try {
+    // Every OpenAI token this request spends counts against its owner's plan (R38).
+    return await limits.within(who.entitlement, async () => {
+      const tenant = await tenantOf(who, path);
+      return tenant
+        ? await asTenant(tenant.owner, () => serve(req, url, path, who), { console: tenant.console, timings })
+        : await serve(req, url, path, who);
+    });
+  } finally {
+    for (const t of timings) time(t);
+  }
 }
 
 async function serve(req: Request, url: URL, path: string, who: Principal): Promise<Response> {
@@ -351,9 +377,9 @@ const CORS = {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
   let res: Response;
-  let timing: string | undefined;
+  const timing: string[] = [];
   try {
-    res = await route(req, (t) => timing = t);
+    res = await route(req, (t) => timing.push(t));
   } catch (e) {
     if (e instanceof limits.Limited) res = e.response;
     else if (e instanceof admin.ApiError) res = json({ error: e.error }, e.status);
@@ -369,7 +395,7 @@ Deno.serve(async (req) => {
     }
   }
   for (const [k, v] of Object.entries(CORS)) res.headers.set(k, v);
-  if (timing && !res.headers.has("server-timing")) res.headers.set("server-timing", timing);
+  if (timing.length && !res.headers.has("server-timing")) res.headers.set("server-timing", timing.join(", "));
   // Every answer carries the server's version and the newest client version, the one a hook updates itself to. A client
   // that sent its own also hears where it stands (R31).
   res.headers.set("x-memory-version", SERVER_VERSION);

@@ -56,7 +56,7 @@ export function toPgvector(vec: number[]) {
 /** Embed every entry whose text changed since its last embedding. Returns the count embedded. */
 export async function syncEmbeddings(db: Sql = sql, batch = 64): Promise<number> {
   const rows = await db`select e.id, e.title, e.body, e.evidence, e.search_text, e.sensitivity, x.content_sha256 from memory.entry e
-    left join memory.entry_embedding x on x.entry_id = e.id`;
+    left join memory.entry_embedding x on x.owner_id = e.owner_id and x.entry_id = e.id`;
   const stale: [Row, string, string][] = [];
   for (const r of rows) {
     const text = entryText(r), sha = await contentSha(text);
@@ -67,7 +67,7 @@ export async function syncEmbeddings(db: Sql = sql, batch = 64): Promise<number>
     const vecs = await embed(chunk.map(([, t]) => t.slice(0, 8000)));
     for (const [[r, , sha], v] of chunk.map((c, j) => [c, vecs[j]] as const)) {
       await db`insert into memory.entry_embedding (entry_id, model, content_sha256, embedding)
-        values (${r.id}, ${config.embedModel}, ${sha}, ${toPgvector(v)}::extensions.vector)
+        values (${r.id}, ${config.embedModel}, ${sha}, ${toPgvector(v)}::extensions.halfvec)
         on conflict (owner_id, entry_id) do update set model = excluded.model, content_sha256 = excluded.content_sha256,
           embedding = excluded.embedding, updated_at = now()`;
     }

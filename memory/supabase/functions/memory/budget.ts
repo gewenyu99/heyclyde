@@ -3,7 +3,7 @@
 // recall serves keyword ranks and degraded, and remember still screens.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { meterOwner, ownerTokensSpent } from "./billing/limits.ts";
-import { setting, sql } from "./db.ts";
+import { root, setting, sql } from "./db.ts";
 
 export type Kind = "embed" | "judge_write" | "judge_recall" | "shadow" | "research";
 export const KINDS: Kind[] = ["embed", "judge_write", "judge_recall", "shadow", "research"];
@@ -43,7 +43,7 @@ async function caps(kind: Kind): Promise<Caps> {
   };
   // Read fresh, not from the minute's settings cache, so lowering it stops the next shadow.
   if (kind === "shadow" || kind === "research") {
-    out.research = Number((await sql`select value from memory.setting where name = 'research_budget_tokens'`)[0]?.value) || undefined;
+    out.research = Number((await root`select value from memory.setting where name = 'research_budget_tokens'`)[0]?.value) || undefined;
   }
   return out;
 }

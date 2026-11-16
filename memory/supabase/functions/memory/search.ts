@@ -1,6 +1,6 @@
 // Retrieval arms. Every arm reads the same store and returns the same packet shape; only ranking differs.
 import { config } from "./config.ts";
-import { type Row, type Sql } from "./db.ts";
+import { type Row, type Sql, timing } from "./db.ts";
 import { embed, toPgvector } from "./embed.ts";
 import { type Params, SPREAD, spreadKnobs } from "./params.ts";
 import {
@@ -186,15 +186,18 @@ async function vectorRanks(db: Sql, query: string, limit: number, agentScope: Ag
   } catch (e) { // OpenAI down, no key or over budget: keyword ranks still answer.
     return [[], `embed-failed: ${(e as Error).name}`];
   }
-  // The HNSW scan stops at hnsw.ef_search (40) candidates, and the superseded filter runs after it. When superseded
-  // entries crowd those 40, few or none survive. An iterative scan keeps going until the limit is met. pgvector 0.8+.
-  const run = async (tx: Sql) => {
-    await tx`set local hnsw.iterative_scan = strict_order`;
-    return await tx`select x.entry_id as id from memory.entry_embedding x join memory.entry_current e on e.owner_id = x.owner_id and e.id = x.entry_id
-      ${entryWhereStartSql(tx, "e", agentScope, filter)}
-      order by x.embedding <=> ${toPgvector(vec)}::extensions.vector limit ${limit}`;
-  };
-  const rows = "begin" in db ? await (db as any).begin(run) : await run(db);
+  // R49: an exact scan of the owner's own vectors, halfvec(1024) stored inline, found through entry_embedding's
+  // (owner_id, entry_id) key; row-level security keeps it to the owner. The nearest 4 x limit are ranked on the vectors
+  // alone, then only those few meet their entries: replaced ones and any the agent's scope excludes leave. Server-Timing's
+  // vector entry says how long it took.
+  const started = performance.now();
+  const rows = await db`with near as (
+      select x.owner_id, x.entry_id as id, x.embedding <=> ${toPgvector(vec)}::extensions.halfvec as d from memory.entry_embedding x
+      order by d limit ${limit * 4})
+    select n.id from near n join memory.entry_current e on e.owner_id = n.owner_id and e.id = n.id
+      ${entryWhereStartSql(db, "e", agentScope, filter)}
+    order by n.d limit ${limit}`;
+  timing(`vector;dur=${(performance.now() - started).toFixed(2)}`);
   return [rows.map((r: Row) => r.id), null];
 }
 

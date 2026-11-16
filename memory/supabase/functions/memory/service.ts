@@ -1,10 +1,10 @@
 // What the MCP tools and hook endpoints do, independent of transport, so tests can call it directly.
 import { sessionSet, unitOf } from "./allocation.ts";
 import { tallied } from "./budget.ts";
-import { type Row, type Sql, sql } from "./db.ts";
+import { later, type Row, type Sql, sql } from "./db.ts";
 import { sha256 } from "./embed.ts";
 import { type Clocked, clocked, features, finalScore, relevanceOf } from "./features.ts";
-import { background, runShadows } from "./shadow.ts";
+import { runShadows } from "./shadow.ts";
 import { type Params, type ParamSet, paramSet } from "./params.ts";
 import { ARMS, fetchEntries, type Frontier, pack, type Ranked, redact as redactPrivate, renderEntry } from "./search.ts";
 import { closingLine, deepPool, DEPTHS, nextPage, PAGE_HEAD } from "./deep.ts";
@@ -265,7 +265,7 @@ async function recallOnce(spent: { tokens: number }, session: string, query: str
   });
   // Shadow sets (R34) rank the same request after the response is out, as of the same clock reading. They never tick the
   // clock and never change this packet.
-  background(runShadows({ retrieval: rid, query, task, scope, cNow, set: set.id, judgments, judgeVersion, viewer, agentScope, entryFilter }));
+  later(() => runShadows({ retrieval: rid, query, task, scope, cNow, set: set.id, judgments, judgeVersion, viewer, agentScope, entryFilter }));
   return `retrieval ${rid}\n\n${text}`;
 }
 

@@ -4,7 +4,7 @@
 // stored, so a database read never yields a token.
 import { entitled, geoOf, refusal, type Verdict } from "./billing/entitlement.ts";
 import { isWebhook } from "./billing/index.ts";
-import { secret, setting, sql } from "./db.ts";
+import { root as sql, secret, setting } from "./db.ts";
 import { sha256 } from "./embed.ts";
 import { resourceMetadataUrl } from "./oauth.ts";
 import { reportable } from "./version.ts";
