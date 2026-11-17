@@ -1,0 +1,12 @@
+{
+  "name": "clyde-memory-tests",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.ts",
+    "test:memory": "node --test --test-concurrency=1 test/memory/*.test.ts"
+  }
+}

@@ -7,7 +7,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { INSTRUCTIONS } from '../../../memory/supabase/functions/memory/mcp.ts'
 
-const SKILLS = join(import.meta.dirname!, '../../../plugins/memory/skills')
+const SKILLS = join(import.meta.dirname!, '../../../plugins/claude/skills')
 
 Deno.test('R53 recall-first lives in the plugin', () => {
   const skills = existsSync(SKILLS) ? readdirSync(SKILLS).map((d) => join(SKILLS, d, 'SKILL.md')).filter(existsSync) : []

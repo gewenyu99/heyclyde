@@ -1,2 +1,4 @@
 .DS_Store
 dist/
+.wrangler/
+harness/node_modules/

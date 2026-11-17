@@ -104,7 +104,7 @@ if [ "$DB_ONLY" -eq 1 ]; then
   exit 0
 fi
 
-if [ ! -d "$ROOT/harness/node_modules" ]; then
+if [ -f "$ROOT/harness/package-lock.json" ] && [ ! -d "$ROOT/harness/node_modules" ]; then
   npm --prefix "$ROOT/harness" ci --ignore-scripts
 fi
 

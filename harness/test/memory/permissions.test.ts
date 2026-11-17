@@ -93,11 +93,31 @@ async function registerAgent(args: Record<string, unknown>, token = memory.token
 }
 
 async function serve(paramSetId: string) {
-  if (paramSetId === 'spreading.v5' && !sql(`select 1 from memory.param_set where id = 'spreading.v2'`).length) {
-    await admin('POST', '/param-sets', { id: 'spreading.v2', parent: 'spreading.v1', params: { otherRunFactor: 0.9 }, note: 'tier 3 stand-in' })
-    apply('20261103020000_trials_feedback.sql')
-    apply('20261103030000_artifacts_storage.sql')
-    apply('20261103040000_spreading_bestfirst.sql')
+  if (paramSetId === 'spreading.v5' && !sql(`select 1 from memory.param_set where id = 'spreading.v5'`).length) {
+    if (!sql(`select 1 from memory.param_set where id = 'spreading.v2'`).length) {
+      const r2 = await admin('POST', '/param-sets', { id: 'spreading.v2', parent: 'spreading.v1', params: { otherRunFactor: 0.9 }, note: 'tier 3 stand-in' })
+      assert.equal(r2.status, 201, r2.text)
+    }
+    if (!sql(`select 1 from memory.param_set where id = 'spreading.v3'`).length) {
+      const r3 = await admin('POST', '/param-sets', {
+        id: 'spreading.v3',
+        parent: 'spreading.v2',
+        params: { trialItems: 3, trialFloor: 0.5, trialStep: 0.12, settledStep: 0.02 },
+        note: 'tier 3 stand-in',
+      })
+      assert.equal(r3.status, 201, r3.text)
+    }
+    if (!sql(`select 1 from memory.param_set where id = 'spreading.v4'`).length) {
+      const r4 = await admin('POST', '/param-sets', { id: 'spreading.v4', parent: 'spreading.v3', params: { itemChars: 500 }, note: 'tier 3 stand-in' })
+      assert.equal(r4.status, 201, r4.text)
+    }
+    const r5 = await admin('POST', '/param-sets', {
+      id: 'spreading.v5',
+      parent: 'spreading.v4',
+      params: { spreadMode: 'bestfirst', maxHops: 3, minPath: 0.05, wPath: 1 },
+      note: 'tier 3 stand-in',
+    })
+    assert.equal(r5.status, 201, r5.text)
   }
   const rows = sql('select id from memory.param_set').map((r) => r.id as string)
     .map((param_set) => param_set === paramSetId ? { param_set, role: 'default', weight: 1000 } : { param_set, role: 'off', weight: 0 })

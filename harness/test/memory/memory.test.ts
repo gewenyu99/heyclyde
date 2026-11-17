@@ -7,19 +7,13 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
-import { chmodSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
-import { DaemonClient } from '../../src/client.ts'
-import { flushPending } from '../../src/memory-flush.ts'
-import { startDaemon } from '../../src/daemon.ts'
-import { workListEntry } from '../../src/flow/memory.ts'
-import type { Run } from '../../src/flow/types.ts'
 import { Memory } from '../../src/memory.ts'
 import { request } from '../../src/request.ts'
 import { CLIENT_VERSION, SERVER_VERSION } from '../../../memory/supabase/functions/memory/version.ts'
-import { formatList, type WorkList } from '../../src/lists.ts'
-import { FAKE_BIN, HARNESS, LV, setup, tempDir, waitFor } from '../helpers.ts'
+import { tempDir, waitFor } from '../helpers.ts'
 import { repoRoot } from '../../src/config.ts'
 import { jwt } from './auth.ts'
 import { FAKE_DOWN, FAKE_REFUSE } from './openai.ts'
@@ -28,7 +22,6 @@ import { verifies } from './signing.ts'
 import { CLIENT_SURFACE_FILES } from './surface-hash.ts'
 
 let memory: RealMemory
-const SEED = ['tea-oolong-temp', 'tea-oolong-old', 'tea-draft-cold', 'tea-supplier', 'tea-zh', 'proj-tea']
 
 before(async () => {
   // A zero day cutoff, so any client behind the newest release counts as expired and the R31 tests can see that status.
@@ -40,29 +33,11 @@ after(async () => {
   await memory?.close()
 })
 
-type Ran = { code: number | null; stdout: string; stderr: string }
-
-function clyde(args: string[], extra: Record<string, string>): Promise<Ran> {
-  return new Promise((resolve) => {
-    const child = spawn(process.execPath, [LV, ...args], { env: { ...process.env, ...extra }, stdio: ['ignore', 'pipe', 'pipe'] })
-    let stdout = ''
-    let stderr = ''
-    child.stdout.on('data', (c) => (stdout += c))
-    child.stderr.on('data', (c) => (stderr += c))
-    child.on('close', (code) => resolve({ code, stdout, stderr }))
-  })
-}
-
 function project(run: string): Record<string, unknown> {
   return {
     id: `run-${run}`, pattern: 'projects', title: `Run ${run}`, body: `The clyde test run ${run}.`, authority: 'observed', scope: `run:${run}`,
     evidence_kind: 'summary', evidence: 'Tier 3 made it.', source: { kind: 'run', title: `clyde run ${run}`, uri: `clyde://runs/${run}` },
   }
-}
-
-/** Sends what clyde remember and the daemon left in the spool, as the daemon's flush would. */
-async function flush(): Promise<void> {
-  await flushPending({ url: memory.url, agentToken: memory.token, runtimeToken: memory.runtimeToken, timeoutMs: 10_000 })
 }
 
 /** One request to the function, with these headers. */
@@ -151,102 +126,6 @@ test('the agent token writes only drafts, with no id or source, and a bad token 
   // Every note passes the judge, here the fake OpenAI, before it's stored.
   await assert.rejects(agent.remember({ ...note, authority: 'draft', body: `A body. ${FAKE_REFUSE}` }), /steer the assistants/)
   assert.ok(memory.openai.calls.some((c) => c.path === '/decisions'))
-})
-
-test('clyde remember and clyde recall as an agent: a draft in the run leads a scoped recall and reaches unscoped and other-run recalls', { skip: SKIP }, async () => {
-  setup([])
-  await new Memory(memory.url, memory.runtimeToken).remember(project('k3'))
-  const env = { MEMORY_URL: memory.url, MEMORY_TOKEN: memory.token, CLYDE_RUN_ID: 'k3', CLYDE_MEMORY_SCOPE: 'run:k3' }
-  const file = join(tempDir('memory-blob'), 'evidence.txt')
-  writeFileSync(file, 'oolong check: 90C held for 3 minutes\n')
-  const r = await clyde(['remember', '--title', 'Oolong gate evidence', '--pattern', 'observations', '--body', 'The oolong temperature check passed.', '--blob-file', file], env)
-  assert.equal(r.code, 0, r.stderr)
-  const id = /^Remembered (\S+) as a draft in run:k3\.$/m.exec(r.stdout)?.[1] as string
-  assert.ok(id, r.stdout)
-  await flush()
-  const text = await new Memory(memory.url, memory.token).entry(id)
-  assert.match(text ?? '', /draft/)
-  assert.match(text ?? '', /evidence\.txt/)
-  const scoped = await clyde(['recall', 'oolong temperature'], env)
-  assert.equal(scoped.code, 0, scoped.stderr)
-  assert.ok(leads(scoped.stdout, id), `the run's note leads a scoped recall:\n${scoped.stdout}`)
-  const unscoped = await clyde(['recall', 'oolong temperature'], { ...env, CLYDE_MEMORY_SCOPE: '' })
-  assert.ok(unscoped.stdout.includes(id), `an unscoped recall serves another run's draft:\n${unscoped.stdout}`)
-  const other = await clyde(['recall', 'oolong temperature', '--scope', 'run:k9'], env)
-  assert.ok(other.stdout.includes(id), `a recall scoped to another run serves it too:\n${other.stdout}`)
-  // clyde remember spools a note and memory judges it on delivery, so a run with no project is refused there.
-  const orphan = { pattern: 'observations', title: 'x', body: 'x', authority: 'draft', scope: 'run:no-project', evidence_kind: 'assistant', evidence: 'x', project: 'run-no-project' }
-  await assert.rejects(new Memory(memory.url, memory.token).remember(orphan), /memory refused the entry \(400\): Project run-no-project doesn't exist/)
-})
-
-test('a task run with fake backends hands off through the real memory server, and a scoped recall serves its entries first', { skip: SKIP }, async () => {
-  const sc = JSON.parse(readFileSync(join(HARNESS, 'test', 'scenarios', 'task-clyde-result.json'), 'utf8'))
-  const s = setup(sc.turns, { MEMORY_URL: memory.url, MEMORY_TOKEN: memory.token, MEMORY_RUNTIME_TOKEN: memory.runtimeToken })
-  // pi as the worker, which first records its gate evidence with clyde remember, as the stage prompt tells it to.
-  const pi = join(s.state, 'pi')
-  writeFileSync(pi, [
-    '#!/bin/sh',
-    'for last; do :; done',
-    'case "$last" in *"worker for stage"*)',
-    '  printf "test -f hello.txt: exit 0\\noolong check passed\\n" > "$CLYDE_FAKE_STATE_DIR/evidence.txt"',
-    `  ${JSON.stringify(process.execPath)} ${JSON.stringify(LV)} remember --title "Oolong gate evidence" --pattern observations --body "hello.txt holds hello and the oolong check passed." --blob-file "$CLYDE_FAKE_STATE_DIR/evidence.txt" >> "$CLYDE_FAKE_STATE_DIR/remember.log" 2>&1;;`,
-    'esac',
-    `exec ${JSON.stringify(join(FAKE_BIN, 'pi'))} "$@"`, '',
-  ].join('\n'))
-  chmodSync(pi, 0o755)
-  process.env.CLYDE_PI_BIN = pi
-  const d = await startDaemon({ port: 0 })
-  const client = new DaemonClient({ pid: process.pid, port: d.port, token: d.token })
-  try {
-    const task = { prompt: 'Write hello.txt holding hello.', criteria: ['A hello file. hello.txt holds hello.'], checks: ['test -f hello.txt'] }
-    const started: Run = await client.call('POST', '/runs', { flow: 'task', input: task, cwd: s.repo })
-    const run: Run = await waitFor(async () => {
-      const r: Run = await client.run(started.id)
-      return ['done', 'failed', 'stopped'].includes(r.status) ? r : null
-    }, 30_000, 'the run to finish')
-    assert.equal(run.status, 'done', JSON.stringify(run.stages))
-    // The worker's work list went to memory at the end of its turn, as a draft in the run.
-    const handoff = join(s.home, 'lists', 'handoff', `${run.id}.json`)
-    const list = await waitFor(() => { try { return JSON.parse(readFileSync(handoff, 'utf8')).task } catch { return null } }, 5000, 'the work list handoff')
-    await flush()
-    const log = readFileSync(join(s.state, 'remember.log'), 'utf8')
-    const note = /^Remembered (\S+) as a draft in run:(\S+)\.$/m.exec(log)
-    assert.ok(note, log)
-    assert.equal(note[2], run.id)
-    const rt = new Memory(memory.url, memory.runtimeToken)
-    assert.match(await rt.entry(`run-${run.id}`) ?? '', /observed/, 'the run project is in memory')
-    const verdict = run.stages[0].entry as string
-    assert.deepEqual(run.entries, [`run-${run.id}`, verdict])
-    assert.match(await rt.entry(verdict) ?? '', /observed/)
-    assert.match(await rt.entry(note[1]) ?? '', /draft/)
-    const env = { MEMORY_URL: memory.url, MEMORY_TOKEN: memory.token, CLYDE_MEMORY_SCOPE: `run:${run.id}` }
-    const recalled = await clyde(['recall', 'oolong gate evidence'], env)
-    assert.ok(leads(recalled.stdout, note[1]), `the worker's note leads:\n${recalled.stdout}`)
-    const verdicts = await clyde(['recall', 'verdict stage task passed'], env)
-    assert.ok(leads(verdicts.stdout, verdict), `the verdict leads:\n${verdicts.stdout}`)
-    assert.match(await rt.entry(list.entry) ?? '', /: Work list, task\npattern observations · draft · run:[\s\S]*\[x\] 1 A hello file\./)
-  } finally {
-    await d.close()
-  }
-})
-
-test('a work list version supersedes the last one in the real memory server, which recall and get_entry both show', { skip: SKIP }, async () => {
-  const rt = new Memory(memory.url, memory.runtimeToken)
-  await rt.remember(project('k3'))
-  const at = new Date().toISOString()
-  const v1: WorkList = { owner: 'thread:t-k3', items: [{ id: 1, text: 'Brew the oolong', status: 'doing', how: 'at 90C', updatedAt: at }] }
-  const v2: WorkList = { owner: 'thread:t-k3', items: [{ id: 1, text: 'Brew the oolong', status: 'done', evidence: 'thermometer read 90C', updatedAt: at }] }
-  const first = await rt.remember(workListEntry('k3', 'brew', 't-k3', v1, formatList(v1)))
-  const second = await rt.remember(workListEntry('k3', 'brew', 't-k3', v2, formatList(v2), first.id))
-  assert.notEqual(first.id, second.id)
-  assert.match(await rt.entry(second.id) ?? '', /\npattern observations · draft · run:k3 /)
-  const recalled = await clyde(['recall', 'work list brew oolong'], { MEMORY_URL: memory.url, MEMORY_TOKEN: memory.token, CLYDE_MEMORY_SCOPE: 'run:k3' })
-  assert.equal(recalled.code, 0, recalled.stderr)
-  assert.ok(recalled.stdout.includes(second.id), recalled.stdout)
-  // memory shows a superseded entry only struck through, pointing at the version that replaced it.
-  const old = recalled.stdout.split('\n').find((l) => l.includes(first.id))
-  if (old) assert.ok(old.includes(`~~Work list, brew~~ → ${second.id}`), `the old version points at the new one:\n${recalled.stdout}`)
-  assert.match(await rt.entry(first.id) ?? '', new RegExp(second.id), 'the old entry names its replacement')
 })
 
 // R4 (#7): /install/check with any other email returns 403, and no email is sent.

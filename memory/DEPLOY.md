@@ -47,13 +47,11 @@ Every app reaches the same server, `https://memory.heyclyde.me/mcp`, and what me
 
 ### Claude Code, with the plugin
 
-The plugin brings the MCP server (signed in through OAuth) and the hooks.
+The plugin adds the `clyde` MCP server (`https://heyclyde.me/mcp`, signed in through OAuth) and the `clyde` skill, with zero local hooks.
 
-1. In Claude Code, run `/plugin marketplace add gewenyu99/like-vincent`, then `/plugin install memory@like-vincent`.
-2. Run `/memory:connect`. It asks for your email if this computer has no token yet, and runs the installer with `MEMORY_CLAUDE=plugin`, so the installer gives the hooks a token and `memory-hook` and leaves Claude Code to the plugin. If the installer set up Claude Code here before, its `memory` MCP server and its hooks in `~/.claude/settings.json` come out, so nothing is there twice. Codex, Gemini CLI and Antigravity are set up too when they're here.
-3. Start a new session. The first time it uses memory's tools, Claude Code opens the OAuth sign-in. Click the link in your email.
-
-Until `/memory:connect` has run, the plugin's hooks print one line at the start of each session saying to run it, and do nothing else. A computer whose `settings.json` still has the installer's own hooks forwards through those, and the plugin's stay quiet.
+1. In Claude Code, run `/plugin marketplace add gewenyu99/heyclyde`, then `/plugin install clyde@heyclyde`.
+2. Start a new session. On the first tool call, Claude Code opens OAuth sign-in in your browser. Click the link in your email.
+3. Optional: to add CLI session hooks, install `~/.config/memory/clyde-hook.sh` and merge the Claude Code `hooks` block into `~/.claude/settings.json` from `https://heyclyde.me/docs#hook-configs`. If you also want a local device token for inbox forwarding and pushback tracking, run `curl -fsSL https://memory.heyclyde.me/install | sh` (set `MEMORY_CLAUDE=plugin` so the installer doesn't add a second MCP server or `memory-hook` alongside the plugin).
 
 ### Claude Code, with the installer
 
@@ -69,7 +67,7 @@ A custom connector. See [Connect Claude chats, Cowork and the phone](#connect-cl
 
 ### Gemini CLI
 
-1. Run the installer, or `/memory:connect` in Claude Code. It sets Gemini CLI up when `gemini` is on PATH or `~/.gemini` exists.
+1. Run the installer (`curl -fsSL https://memory.heyclyde.me/install | sh`). It sets Gemini CLI up when `gemini` is on PATH or `~/.gemini` exists.
 2. It writes the extension `~/.gemini/extensions/memory`: `gemini-extension.json` with `mcpServers.memory.httpUrl` and no token, and `hooks/hooks.json`, which runs `~/.config/memory/gemini-hook` on SessionStart, BeforeAgent, AfterTool (memory's tools) and AfterAgent.
 3. Start Gemini CLI. It finds memory's OAuth server by discovery and opens the sign-in. If it doesn't, run `/mcp auth memory`. Click the link in your email.
 4. Check with `/mcp`, which lists memory's tools, and `/extensions`, which lists `memory`. If memory's hooks don't run, update Gemini CLI to a version with hooks.
@@ -78,7 +76,7 @@ A custom connector. See [Connect Claude chats, Cowork and the phone](#connect-cl
 
 ### Antigravity
 
-1. Run the installer, or `/memory:connect` in Claude Code. It sets Antigravity up when `~/.gemini/config` exists or an `antigravity` or `agy` binary is on PATH.
+1. Run the installer (`curl -fsSL https://memory.heyclyde.me/install | sh`). It sets Antigravity up when `~/.gemini/config` exists or an `antigravity` or `agy` binary is on PATH.
 2. It merges one entry into `~/.gemini/config/mcp_config.json`, beside your other servers, which stay as they are:
 
    ```json
@@ -124,7 +122,7 @@ Supabase stores every token as SHA-256 only, so a database read never yields one
 Every write is screened before it's stored:
 
 - **Redaction.** API keys, tokens, private keys, password values, credentials inside URLs, card numbers, SSNs and SINs become `[redacted:<kind>]` in hook payloads, entries, blobs, messages, recall queries, console edits and imports.
-- **The judge.** `gemini-decision-1` through Gemini's Decisions API (`gemini_key` in Vault, falling back seamlessly to `gpt-6-luna` via OpenAI's Decisions API when `gemini_key` is absent) refuses a note or message that holds sensitive personal information, tries to steer the assistants that read it, or carries harmful code, links or commands. If the judge can't answer, nothing is written.
+- **The judge.** `gemini-decision-1` through Gemini's Decisions API (`gemini_key` in Vault, or `gpt-6-luna` via OpenAI's Decisions API when `gemini_key` is absent) refuses a note or message that holds sensitive personal information, tries to steer the assistants that read it, or carries harmful code, links or commands. If the judge can't answer, nothing is written.
 - **Sensitivity.** `private` entries reach agents and the judge/embeddings by title only. `confidential` entries, for work material, reach your agents in full and the judge/embeddings by title only.
 
 Every recall's top 12 candidates also go through the judge, and only the ones it calls relevant reach the agent. It costs about $2 per 10,000 recalls.
@@ -275,7 +273,7 @@ OpenAI's `text-embedding-3-large`, cut to 1024 dimensions. The key sits in Supab
 memory/hooks/set-openai-key.sh
 ```
 
-The judge (`judge.ts`) uses Gemini's Decisions API (`gemini-decision-1`) when `gemini_key` is in Vault, falling back seamlessly to OpenAI (`gpt-6-luna` via `openai_key`) when `gemini_key` is absent. Store `gemini_key` after ensuring the $5 minimum Prepay balance on billing account WS at `https://aistudio.google.com/billing`:
+The judge (`judge.ts`) uses Gemini's Decisions API (`gemini-decision-1`) when `gemini_key` is in Vault, or OpenAI's Decisions API (`gpt-6-luna` via `openai_key`) when `gemini_key` is absent. Store `gemini_key` after ensuring the $5 minimum Prepay balance on billing account WS at `https://aistudio.google.com/billing`:
 
 ```bash
 ./memory/hooks/set-gemini-key.sh
