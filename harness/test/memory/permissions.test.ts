@@ -388,16 +388,7 @@ test('R70 project, computer and spreading-graph boundaries stay isolated', { ski
   const idBeyond = idOf(beyondForbidden.text)
   sql(`insert into memory.link (src, dst, type, weight) values ('${idPenny}', '${idMini}', 'relates', 3.0), ('${idPenny}', '${idBeyond}', 'relates', 3.0) on conflict (owner_id, src, dst, type) do nothing`)
 
-  // Writing bridged and allowedTarget via remember(..., links) invalidates cached graphs after the SQL link inserts above.
-  const bridged = await aClyde.send('remember', note(`${m} bridge`, {
-    body: `${m} bridge entry.`,
-    transferability: 'project',
-    project_slug: 'clyde',
-    links: [{ type: 'relates', to: idPenny }],
-  }))
-  assert.equal(bridged.error, false, bridged.text)
-  const idBridged = idOf(bridged.text)
-
+  // Create allowedTarget first and strengthen its permitted edge like idBeyond's, then write bridged so forgetGraph() reloads both.
   const allowedTarget = await aClyde.send('remember', note('Allowed direct graph neighbor', {
     body: 'Reachable directly from clydeNote via permitted spreading edge without query tokens.',
     transferability: 'project',
@@ -406,6 +397,17 @@ test('R70 project, computer and spreading-graph boundaries stay isolated', { ski
   }))
   assert.equal(allowedTarget.error, false, allowedTarget.text)
   const idAllowed = idOf(allowedTarget.text)
+  sql(`update memory.link set weight = 3.0 where src = '${idAllowed}' and dst = '${idClyde}'`)
+
+  // Writing bridged via remember(..., links) invalidates cached graphs after the SQL link updates above.
+  const bridged = await aClyde.send('remember', note(`${m} bridge`, {
+    body: `${m} bridge entry.`,
+    transferability: 'project',
+    project_slug: 'clyde',
+    links: [{ type: 'relates', to: idPenny }],
+  }))
+  assert.equal(bridged.error, false, bridged.text)
+  const idBridged = idOf(bridged.text)
 
   // get_entry on bridged must strip forbidden linked entry idPenny and its title.
   const bridgedEntry = await aClyde.send('get_entry', { id: idBridged })

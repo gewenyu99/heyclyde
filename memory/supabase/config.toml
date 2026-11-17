@@ -1,4 +1,4 @@
-# The Supabase CLI's view of memory. Only the function's settings matter here: the project lives in the cloud.
+# The Supabase CLI's view of Clyde. Only the function's settings matter here: the project lives in the cloud.
 project_id = "memory"
 
 [functions.memory]
@@ -8,7 +8,7 @@ verify_jwt = false
 
 # The installer signs a new computer in through Supabase's default sign-in email. The link lands on the function's
 # /install/approve, and the installer finishes the PKCE exchange itself, so the link alone signs nobody in. The function
-# mints a device token only for an email in memory.allowed_email. Sign-ups are off: memory is allowlist only, and the
+# mints a device token only for an email in memory.allowed_email. Sign-ups are off: Clyde is allowlist only, and the
 # accounts that exist were added on purpose.
 [auth]
 enable_signup = false
@@ -21,17 +21,21 @@ additional_redirect_urls = [
 ]
 
 # claude.ai and other MCP clients sign in through Supabase Auth's OAuth 2.1 server. Clients register themselves, so
-# adding memory as a connector takes only its URL. Supabase sends the owner to site_url + /oauth/consent, where the
+# adding Clyde as a connector takes only its URL. Supabase sends the owner to site_url + /oauth/consent, where the
 # function emails the sign-in link and approves only clients whose callback is Claude's or on this computer (oauth.ts).
 [auth.oauth_server]
 enabled = true
 authorization_url_path = "/oauth/consent"
 allow_dynamic_registration = true
 
-# Pro lets the sign-in email say what it's for. Both the installer and the connector sign-in send it.
+# R76 (#81): Carbon copy templates hosted with brand assets on heyclyde.me and verify links on memory.heyclyde.me.
 [auth.email.template.magic_link]
-subject = "memory: approve a new connection?"
+subject = "Your Clyde sign-in link"
 content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.confirmation]
+subject = "Confirm your email for Clyde"
+content_path = "./supabase/templates/confirmation.html"
 
 # Pro: Storage files up to 500 MB, for memory-blobs (R20).
 [storage]

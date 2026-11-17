@@ -8,6 +8,7 @@ import { homePage, statePage } from "./pages.js";
 import { MOVED, siteFile, sitePage } from "./site.js";
 
 const ORIGIN = "https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory";
+const AUTH_VERIFY = "https://wlhlncmgjqyidosunugv.supabase.co/auth/v1/verify";
 const SIGN_IN = new Set(["/oauth/consent", "/oauth/provider", "/oauth/wait", "/oauth/approve"]);
 const ID = /^[A-Za-z0-9_-]{8,100}$/;
 
@@ -125,6 +126,18 @@ export default {
       return new Response(page.html, { status: page.status, headers: locked(n, { "cache-control": "public, max-age=300" }) });
     }
     const read = req.method === "GET" || req.method === "HEAD";
+    // R76 (#81): sign-in email links live on Clyde's host; forward GET /auth/v1/verify to Supabase Auth unchanged.
+    if (url.pathname === "/auth/v1/verify") {
+      if (req.method !== "GET") return new Response("Method not allowed", { status: 405, headers: { allow: "GET" } });
+      const headers = new Headers(req.headers);
+      headers.delete("host");
+      headers.delete("x-memory-proxy");
+      try {
+        return await fetch(AUTH_VERIFY + url.search, { method: "GET", headers, redirect: "manual" });
+      } catch (e) {
+        return failed(url, `Clyde's sign-in server couldn't be reached (${e?.message ?? e}). Try again in a minute.`);
+      }
+    }
     if (read && url.pathname === "/" && wantsPage(req)) {
       return html(homePage, 200, { "cache-control": "public, max-age=300" });
     }

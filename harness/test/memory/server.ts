@@ -173,9 +173,12 @@ export async function startRealMemory(extraEnv: Record<string, string> = {}, opt
 
 /** A second function process on the same database and fakes as `memory`, as another Edge Function instance would be. It
  * shares nothing in memory with the first. close() stops only it. */
-export async function startSibling(memory: RealMemory): Promise<{ url: string; close: () => Promise<void>; log: () => string }> {
+export async function startSibling(memory: RealMemory, extraEnv: Record<string, string> = {}): Promise<{ url: string; close: () => Promise<void>; log: () => string }> {
   const port = await freePort()
-  const child = spawn(DENO, ['run', '-A', NO_NODE_MODULES, FUNCTION], { env: { ...memory.env, DENO_SERVE_ADDRESS: `tcp:127.0.0.1:${port}` }, stdio: ['ignore', 'pipe', 'pipe'] })
+  const child = spawn(DENO, ['run', '-A', NO_NODE_MODULES, FUNCTION], {
+    env: { ...memory.env, ...extraEnv, DENO_SERVE_ADDRESS: `tcp:127.0.0.1:${port}` },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
   let output = ''
   child.stdout?.on('data', (c) => (output += c))
   child.stderr?.on('data', (c) => (output += c))

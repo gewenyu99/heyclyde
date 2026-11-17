@@ -280,3 +280,19 @@ Deno.test('R55/oauth: POST /oauth/consent 303 and GET /oauth/provider 302 pass t
   const html = await blocked.text()
   assert.ok(html.includes('Not available'), html)
 })
+
+Deno.test('verify passes through, GET only', async () => {
+  stub(() => new Response(null, { status: 303, headers: { location: 'https://memory.heyclyde.me/oauth/approve?authorization_id=abc12345&code=pkce_1' } }))
+  const ok = await at('https://memory.heyclyde.me/auth/v1/verify?token=x&type=magiclink&redirect_to=https://evil.example')
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].url, 'https://wlhlncmgjqyidosunugv.supabase.co/auth/v1/verify?token=x&type=magiclink&redirect_to=https://evil.example')
+  assert.equal(sent[0].headers.get('x-memory-proxy'), null, 'must not leak PROXY_SECRET to /auth/v1/verify')
+  assert.equal(ok.status, 303)
+  assert.equal(ok.headers.get('location'), 'https://memory.heyclyde.me/oauth/approve?authorization_id=abc12345&code=pkce_1')
+
+  sent = []
+  const post = await at('https://memory.heyclyde.me/auth/v1/verify?token=x&type=magiclink', { method: 'POST', body: 'x=1' })
+  assert.equal(post.status, 405)
+  assert.equal(post.headers.get('allow'), 'GET')
+  assert.equal(sent.length, 0)
+})

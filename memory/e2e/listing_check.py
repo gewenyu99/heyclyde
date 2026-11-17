@@ -549,10 +549,21 @@ def complaint_sources(errs):
             errs.append(f"quote over 14 words: {q}")
 
 
+def email_images(errs):
+    """R76 (#81): email brand PNGs under https://heyclyde.me/brand/email/ answer 200 with image/png."""
+    for name in ("clyde-lockup-light@2x.png", "clyde-lockup-dark@2x.png", "clyde-mark@2x.png"):
+        status, ctype, body = fetch(f"/brand/email/{name}", "image/png")
+        if status != 200 or not ctype.startswith("image/png"):
+            errs.append(f"{name}: status {status}, content-type {ctype!r}")
+        elif png_size(body) is None:
+            errs.append(f"{name}: not a valid PNG")
+
+
 SECTIONS = {
     "legal pages": legal_pages,
     "docs pages": docs_pages,
     "icons": icons,
+    "email_images": email_images,
     "reviewer account": reviewer_account,
     "listing copy": listing_copy,
     "submission answers": submission_answers,

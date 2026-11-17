@@ -106,7 +106,7 @@ jobs:
             echo "::error::Pending migrations must be applied before deploying the function: $pending" >&2
             exit 1
           fi
-          supabase functions deploy memory --project-ref wlhlncmgjqyidosunugv --no-verify-jwt --use-api
+          supabase functions deploy memory --project-ref wlhlncmgjqyidosunugv --no-verify-jwt --use-api --yes
           expected=$(python3 -c 'import re, pathlib; print(re.search(r"SERVER_VERSION = \"(\d{8}\.\d+)\"", pathlib.Path("supabase/functions/memory/version.ts").read_text()).group(1))')
           live=$(curl -fsS https://memory.heyclyde.me/healthz | python3 -c 'import json, sys; print(json.load(sys.stdin).get("version", ""))')
           echo "Deployed SERVER_VERSION=$expected (live healthz=$live)"

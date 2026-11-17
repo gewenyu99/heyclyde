@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<meta name="x-apple-disable-message-reformatting">
+<title>Confirm your email for Clyde</title>
+<!-- Clyde's sign-in email (Supabase Auth confirmation template: a new account's first sign-in). Carbon copy look: desk-paper ground, one white sheet,
+     the ink button with its blue carbon copy, and the warning on a sticky note. Inline styles carry the light look for
+     every client; the <style> block adds dark mode and phone widths where the client reads it (Apple Mail, iOS, Outlook.com). -->
+<style>
+  :root { color-scheme: light dark; supported-color-schemes: light dark; }
+  a { text-decoration: none; }
+  .logo-dark { display: none; mso-hide: all; }
+  @media (prefers-color-scheme: dark) {
+    .cl-ground { background: #121311 !important; }
+    .cl-sheet { background: #1b1c1a !important; border-color: #2d2f2b !important; }
+    .cl-ink { color: #ecece6 !important; }
+    .cl-ink-2 { color: #bdbfb8 !important; }
+    .cl-ink-3 { color: #959891 !important; }
+    .cl-carbon { color: #86a6f5 !important; border-color: #86a6f5 !important; }
+    .cl-btn { background: #ecece6 !important; border-color: #ecece6 !important; color: #121311 !important; box-shadow: 3px 3px 0 0 #34508f !important; }
+    .cl-sticky { background: #282416 !important; border-color: #6b6036 !important; }
+    .cl-strip { background: #332d1a !important; }
+    .cl-tear { border-color: #3d403b !important; }
+    .logo-light { display: none !important; }
+    .logo-dark { display: block !important; }
+  }
+  [data-ogsc] .cl-ink { color: #ecece6 !important; }
+  [data-ogsc] .cl-ink-2 { color: #bdbfb8 !important; }
+  @media (max-width: 600px) {
+    .cl-pad { padding: 24px 20px !important; }
+    .cl-h1 { font-size: 25px !important; }
+    .cl-btn { display: block !important; text-align: center !important; }
+  }
+</style>
+</head>
+<body class="cl-ground" style="margin:0;padding:0;background:#f4f4f1;-webkit-text-size-adjust:100%;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">One click and you're in. Didn't sign up? Ignore it.&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>
+<table role="presentation" class="cl-ground" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f1;">
+<tr><td align="center" style="padding:36px 16px 40px;">
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:540px;">
+  <!-- Lockup -->
+  <tr><td style="padding:0 4px 18px;">
+    <a href="https://heyclyde.me" style="display:inline-block;">
+      <img class="logo-light" src="https://heyclyde.me/brand/email/clyde-lockup-light@2x.png" width="108" height="30" alt="clyde" style="display:block;border:0;height:30px;width:auto;">
+      <!--[if !mso]><!--><img class="logo-dark" src="https://heyclyde.me/brand/email/clyde-lockup-dark@2x.png" width="108" height="30" alt="clyde" style="border:0;height:30px;width:auto;"><!--<![endif]-->
+    </a>
+  </td></tr>
+
+  <!-- The sheet -->
+  <tr><td class="cl-sheet" style="background:#ffffff;border:1px solid #e1e2dc;border-radius:14px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td class="cl-pad" style="padding:32px 36px 30px;">
+
+      <span class="cl-carbon" style="display:inline-block;padding:4px 9px 3px;border:2px solid #2f5fd0;border-radius:3px;color:#2f5fd0;font:700 11px/1.2 'Geist Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;letter-spacing:0.12em;text-transform:uppercase;transform:rotate(-3deg);">New account</span>
+
+      <h1 class="cl-ink cl-h1" style="margin:20px 0 12px;color:#20211f;font:800 28px/1.15 'Bricolage Grotesque','Geist',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;letter-spacing:-0.02em;">Confirm it's&nbsp;you.</h1>
+
+      <p class="cl-ink-2" style="margin:0 0 26px;color:#4c4f49;font:400 16px/1.55 'Geist',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">Someone just signed up for Clyde with this address. If that was you, confirm it and you're in. Your agents can stop being goldfish now.</p>
+
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td>
+        <a class="cl-btn" href="https://memory.heyclyde.me/auth/v1/verify?token={{ .TokenHash }}&type=signup&redirect_to={{ urlquery .RedirectTo }}" style="display:inline-block;padding:14px 22px;background:#20211f;border:1px solid #20211f;border-radius:7px;box-shadow:3px 3px 0 0 #b4c7f4;color:#ffffff;font:600 15px/1 'Geist',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;letter-spacing:-0.005em;">Confirm and sign in</a>
+      </td></tr></table>
+
+      <p class="cl-ink-3" style="margin:14px 0 28px;color:#686b65;font:500 12px/1.5 'Geist Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;">Works once &middot; 15 minutes &middot; for {{ .Email }}</p>
+
+      <!-- The sticky note -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="cl-sticky" style="background:#fdf4c4;border:1px solid #cab965;border-radius:2px 2px 7px 3px;transform:rotate(-0.6deg);">
+      <tr><td class="cl-strip" height="9" style="height:9px;line-height:9px;font-size:0;background:#f4e593;border-radius:2px 2px 0 0;">&nbsp;</td></tr>
+      <tr><td style="padding:12px 16px 14px;">
+        <p class="cl-ink" style="margin:0;color:#20211f;font:400 14.5px/1.5 'Geist',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;"><strong>Didn't sign up?</strong> Ignore this email. Without the click, nobody can sign in as you.</p>
+      </td></tr>
+      </table>
+
+      <!-- Tear line, then the link spelled out -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:28px;"><tr><td class="cl-tear" style="border-top:1px dashed #c9cbc4;font-size:0;line-height:0;">&nbsp;</td></tr></table>
+      <p class="cl-ink-3" style="margin:16px 0 6px;color:#686b65;font:400 13px/1.5 'Geist',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">Button doing nothing? Paste this into your browser:</p>
+      <p style="margin:0;font:400 12px/1.5 'Geist Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;word-break:break-all;"><a class="cl-carbon" href="https://memory.heyclyde.me/auth/v1/verify?token={{ .TokenHash }}&type=signup&redirect_to={{ urlquery .RedirectTo }}" style="color:#2f5fd0;">https://memory.heyclyde.me/auth/v1/verify?token={{ .TokenHash }}&amp;type=signup&amp;redirect_to={{ urlquery .RedirectTo }}</a></p>
+
+    </td></tr>
+    </table>
+  </td></tr>
+
+  <!-- Footer -->
+  <tr><td style="padding:22px 4px 0;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td valign="top" style="padding-right:12px;"><img src="https://heyclyde.me/brand/email/clyde-mark@2x.png" width="28" height="28" alt="" style="display:block;border:0;"></td>
+      <td valign="top">
+        <p class="cl-ink-3" style="margin:0;color:#686b65;font:400 12px/1.6 'Geist',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">Sent to {{ .Email }} because someone signed up for Clyde with it.</p>
+        <p class="cl-ink-3" style="margin:4px 0 0;color:#686b65;font:500 12px/1.6 'Geist Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;"><a class="cl-ink-3" href="https://heyclyde.me" style="color:#686b65;">heyclyde.me</a> &middot; <a class="cl-ink-3" href="mailto:support@heyclyde.me" style="color:#686b65;">support@heyclyde.me</a></p>
+      </td>
+    </tr></table>
+  </td></tr>
+  </table>
+
+</td></tr>
+</table>
+</body>
+</html>

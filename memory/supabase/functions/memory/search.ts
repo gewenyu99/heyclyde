@@ -155,18 +155,19 @@ export async function indexSearch(
 ): Promise<ArmResult> {
   const q = tokens(query);
   const raw = tokens(rawQuery ?? query);
+  const hasTask = rawQuery !== undefined && rawQuery !== query && raw.size > 0;
   const hits: Ranked[] = [], scoped = new Set<string>(), info = new Map<string, Scoped>();
   for (const l of await indexLines(db, agentScope, filter)) {
     const words = tokens(l.line + " " + l.id.replaceAll("-", " "));
     let hit = 0;
-    for (const t of q) if (words.has(t)) hit++;
+    for (const t of q) if (words.has(t)) hit += hasTask && raw.has(t) ? 2 : 1;
     if (hit) {
       let titleHit = 0;
       if (l.authority === "draft" && raw.size >= 2) {
         const tw = tokens(l.title);
         for (const t of raw) if (tw.has(t)) titleHit++;
       }
-      const factor = l.authority === "draft" && !(raw.size >= 2 && titleHit >= 2) ? p.indexDraftFactor : 1;
+      const factor = l.authority === "draft" && !(!l.superseded && raw.size >= 2 && titleHit >= 2) ? p.indexDraftFactor : 1;
       hits.push([l.id, hit * factor, l.shown]);
       info.set(l.id, { scope: l.scope, authority: l.authority });
       if (scope && l.scope === scope && !l.superseded) scoped.add(l.id);

@@ -31,3 +31,8 @@ Deno.test('indexLines and deep hidden include non-seed non-notes runtime project
   assert.ok(!/e\.pattern\s*<>\s*'projects'/.test(DEEP_SRC), 'deep.ts must not blindly exclude pattern = projects')
   assert.ok(SEARCH_SRC.includes("not like 'notes-%'") && SEARCH_SRC.includes("'seed'"), 'search.ts keeps notes-* and seed containers hidden')
 })
+
+Deno.test('indexSearch weights rawQuery words above task-only words and keeps superseded drafts discounted', () => {
+  assert.ok(SEARCH_SRC.includes('hasTask && raw.has(t) ? 2 : 1'), 'rawQuery hits must outrank incidental task-only hits')
+  assert.ok(SEARCH_SRC.includes('!l.superseded && raw.size >= 2 && titleHit >= 2'), 'superseded drafts stay at indexDraftFactor')
+})

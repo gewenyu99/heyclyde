@@ -684,8 +684,8 @@ test('R28: feedback names only what the recall showed, so a verdict on another e
 test('Quest #11: immediate recall of 2+ title words finds a fresh unembedded project note across index, hybrid and spreading', { skip: SKIP }, async () => {
   await serveV3()
   const w = word()
-  // Seed >12 settled approved entries matching one query word so filterK=12 fills with 1-word matches on index.v1.
-  for (let i = 0; i < 15; i++) seed(`${w}-noise-${i}`, { title: `${w} unrelated background ${i}`, kind: 'fact', confidence: 0.9, chances: 0 })
+  // Seed >12 settled approved entries matching one query word so filterK=12 fills without 2-word title priority.
+  for (let i = 0; i < 13; i++) seed(`${w}-noise-${i}`, { title: `${w} unrelated background ${i}`, kind: 'fact', confidence: 0.9, chances: 0 })
   const s = await mcp()
   const oldReply = await s.tool('remember', {
     pattern: 'projects', title: `${w} Legacy Handoff Plan`, body: `Earlier ${w} handoff notes.`, evidence: 'session log',
