@@ -1,5 +1,5 @@
 # Auto-deployed on pushes to gewenyu99/heyclyde main (memory/proxy/*, memory/design/*) via Cloudflare Workers Builds; manual deploy:
-# npx wrangler@4 deploy (from memory/proxy). Secret: npx wrangler@4 secret put PROXY_SECRET (proxy_secret_sha256).
+# npx wrangler@4 deploy (from memory/proxy), or run deploy-proxy.yml. Secret: npx wrangler@4 secret put PROXY_SECRET (proxy_secret_sha256).
 name = "memory-proxy"
 main = "worker.js"
 compatibility_date = "2026-10-01"
