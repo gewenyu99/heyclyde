@@ -54,6 +54,7 @@ setTimeout(() => {
       buttons: [...doc.querySelectorAll('button')].map((b) => b.textContent.trim()),
       overflow: doc.documentElement.scrollWidth > doc.documentElement.clientWidth,
       background: getComputedStyle(doc.querySelector('.clyde') ?? doc.body).backgroundColor,
+      memoryPadding: (() => { const m = doc.querySelector('.cl-memory'); return m ? getComputedStyle(m).padding : null; })(),
     };
   }
   document.getElementById('report').textContent = 'REPORT' + JSON.stringify({ frames: out, xss: window.__xss, ...log }) + 'END';

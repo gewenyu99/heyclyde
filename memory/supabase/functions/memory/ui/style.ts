@@ -14,7 +14,7 @@ overflow:hidden;max-width:100%}
 .c-what{flex:1;min-width:0;color:var(--cl-ink-3);font:var(--cl-text-small);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .c-head .cl-agent{flex:none;max-width:46%}
 .c-desk{display:grid;gap:var(--cl-space-2);padding:var(--cl-space-3);background:var(--cl-paper-0)}
-.c-desk>.cl-card{padding:0}
+.c-desk>.cl-card:not(.cl-memory){padding:0}
 .c-foot{display:flex;flex-wrap:wrap;align-items:center;gap:var(--cl-space-2);padding:10px var(--cl-space-3);border-top:1px solid var(--cl-rule)}
 .c-foot .c-note{flex:1;min-width:150px;color:var(--cl-ink-3);font:var(--cl-text-small)}
 .c-say{margin:0;padding:0 var(--cl-space-3) 10px;font:var(--cl-text-small)}

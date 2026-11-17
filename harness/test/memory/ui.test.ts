@@ -97,6 +97,10 @@ test('R67 cards render and escape everything from memory', { skip: NO_CHROME }, 
     assert.ok(f.text.includes('<b class="injected">'), `${id} shows the markup as text`)
   }
   assert.match(report.frames.remembered.text, /\bSaved\b/i, 'remembered card stamps Saved')
+  for (const id of ['recall', 'entry', 'remembered'] as const) {
+    assert.equal(report.frames[id].memoryPadding, '14px 16px 12px', `${id} keeps .cl-memory padding`)
+  }
+  assert.equal(report.frames.agent.memoryPadding, null, 'agent card has no .cl-memory wrapper')
   assert.equal(report.xss, 0)
 })
 
