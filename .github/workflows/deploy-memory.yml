@@ -76,7 +76,7 @@ jobs:
           PY
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.122.0
       - name: Deploy memory Edge Function
         working-directory: memory
         env:
