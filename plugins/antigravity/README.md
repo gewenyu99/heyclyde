@@ -12,4 +12,4 @@ Notes saved here stay searchable in Claude, Claude Code, Codex, ChatGPT, Gemini,
 4. **Hooks & rules.** This plugin bundles `hooks.json`, `scripts/clyde-hook.sh`, and `rules/clyde.md` (`trigger: model_decision`). For global or workspace setup outside the plugin, install `~/.config/memory/clyde-hook.sh` and copy `~/.gemini/config/hooks.json` plus `.agents/rules/clyde.md` from [heyclyde.me/docs#hook-configs](https://heyclyde.me/docs#hook-configs), removing any hard per-step `PreInvocation` hook.
 5. **Restart.** Restart Antigravity (or check **Customizations → Hooks** and **Rules**) so task-shift hooks take over.
 
-Don't store passwords, API keys, or secrets in Clyde. Support: `support@heyclyde.me`. Agent setup: [heyclyde.me/docs#agent-setup](https://heyclyde.me/docs#agent-setup). Privacy: [heyclyde.me/privacy](https://heyclyde.me/privacy).
+Don't store passwords, API keys, or secrets in Clyde. Support: `support@heyclyde.me`. Docs: [heyclyde.me/docs](https://heyclyde.me/docs). Privacy: [heyclyde.me/privacy](https://heyclyde.me/privacy).

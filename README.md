@@ -15,7 +15,7 @@ Agents save short notes and message each other across sessions. Paid plans add f
 
 ## Full setup (`MCP -> Login -> Confirm -> Hooks -> Restart`)
 
-Point your local coding agent at [heyclyde.me/docs#agent-setup](https://heyclyde.me/docs#agent-setup) to guide you through all five steps:
+Copy the **Let your agent set it up** card on [heyclyde.me/docs](https://heyclyde.me/docs) (or point your coding agent there) to walk through all five steps:
 
 1. **MCP.** Add `https://heyclyde.me/mcp` across your installed apps (`~/.gemini/config/mcp_config.json`, `~/.claude.json`, `~/.codex/config.toml`, `~/.gemini/extensions/memory`) or install a plugin bundle above.
 2. **Login.** Run `curl -fsSL https://memory.heyclyde.me/install | sh` (or browser OAuth) and click the one-time sign-in link in your email.
