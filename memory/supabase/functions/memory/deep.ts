@@ -5,7 +5,18 @@
 import type { Row, Sql } from "./db.ts";
 import type { Params } from "./params.ts";
 import { type AgentScope, canReadEntry, type EntryFilter, entryWhereSql } from "./permissions.ts";
-import { artifactsLine, bigrams, clip, estimateTokens, fetchEntries, type Frontier, MORE, redact, spreadMore } from "./search.ts";
+import {
+  artifactsLine,
+  bigrams,
+  clip,
+  estimateTokens,
+  fetchEntries,
+  type Frontier,
+  MORE,
+  redact,
+  searchableProjectSql,
+  spreadMore,
+} from "./search.ts";
 
 export const DEPTHS = ["packet", "deep"];
 export const NOTHING_MORE = "Nothing more in memory matches.";
@@ -36,7 +47,7 @@ export function renderDeepItem(n: number, row: Row, p: Params) {
 async function hidden(db: Sql, request: string, p: Params, agentScope: AgentScope = null, filter?: EntryFilter): Promise<string[]> {
   const rows = await db`select e.id from memory.entry e
     cross join (select nullif(replace(plainto_tsquery('english', ${request})::text, ' & ', ' | '), '')::tsquery as q) t
-    where t.q is not null and e.tsv_en @@ t.q and e.pattern <> 'projects'
+    where t.q is not null and e.tsv_en @@ t.q and ${searchableProjectSql(db, "e")}
       and (e.confidence < ${p.dormant} or exists (select 1 from memory.link l where l.owner_id = e.owner_id and l.dst = e.id and l.type = 'supersedes'))
       ${entryWhereSql(db, "e", agentScope, filter)}
     order by ts_rank_cd(e.tsv_en, t.q) desc, e.id limit ${p.candidates}`;
@@ -44,7 +55,7 @@ async function hidden(db: Sql, request: string, p: Params, agentScope: AgentScop
   const terms = [...new Set(bigrams(request))];
   if (terms.length) {
     const zh = await db`select e.id from memory.entry e where e.search_text like any(${terms.map((t) => `%${t}%`)}::text[])
-        and e.pattern <> 'projects'
+        and ${searchableProjectSql(db, "e")}
         and (e.confidence < ${p.dormant} or exists (select 1 from memory.link l where l.owner_id = e.owner_id and l.dst = e.id and l.type = 'supersedes'))
         ${entryWhereSql(db, "e", agentScope, filter)}
       order by e.id limit ${p.candidates}`;

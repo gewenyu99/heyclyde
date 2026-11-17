@@ -680,3 +680,36 @@ test('R28: feedback names only what the recall showed, so a verdict on another e
   await learnNow()
   assert.ok(Math.abs(entry(`${w}-out`).confidence - 0.7) < 0.0001)
 })
+
+test('Quest #11: immediate recall of 2+ title words finds a fresh unembedded project note across index, hybrid and spreading', { skip: SKIP }, async () => {
+  await serveV3()
+  const w = word()
+  // Seed >12 settled approved entries matching one query word so filterK=12 fills with 1-word matches on index.v1.
+  for (let i = 0; i < 15; i++) seed(`${w}-noise-${i}`, { title: `${w} unrelated background ${i}`, kind: 'fact', confidence: 0.9, chances: 0 })
+  const s = await mcp()
+  const oldReply = await s.tool('remember', {
+    pattern: 'projects', title: `${w} Legacy Handoff Plan`, body: `Earlier ${w} handoff notes.`, evidence: 'session log',
+  })
+  const oldId = /^Remembered (\S+?)\./.exec(oldReply)![1]
+  const freshReply = await s.tool('remember', {
+    pattern: 'projects',
+    title: `Sticky-Note ${w} Fresh Handoff`,
+    body: `Actionable ${w} handoff work left to ship.`,
+    supersedes: [oldId],
+    evidence: 'session handoff',
+  })
+  const freshId = /^Remembered (\S+?)\./.exec(freshReply)![1]
+
+  for (const [i, set] of (['hybrid.v3', 'spreading.v3', 'index.v1'] as const).entries()) {
+    await allocate(set)
+    const client = await mcp(memory.token, `q11-${i}`)
+    // Query uses 2 non-adjacent words from the title plus an unrelated task sentence, with no prior syncEmbeddings().
+    const packet = await client.tool('recall', { query: `${w} Handoff`, task: 'Investigating unrelated build step' })
+    assert.ok(packet.includes(freshId), `${set} missed fresh project note ${freshId}:\n${packet}`)
+    if (set === 'index.v1') {
+      const deeper = await client.tool('recall_more', { retrieval_id: rid(packet) })
+      assert.ok(deeper.includes(oldId), `recall_more missed superseded project note ${oldId}:\n${deeper}`)
+    }
+  }
+  await allocate('hybrid.v3')
+})

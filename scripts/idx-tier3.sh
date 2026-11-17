@@ -109,7 +109,7 @@ if [ ! -d "$ROOT/harness/node_modules" ]; then
 fi
 
 if [ "$#" -eq 0 ]; then
-  deno test --allow-env --allow-read --node-modules-dir=none "$ROOT"/harness/test/memory/*_test.ts
+  deno test --allow-env --allow-read --allow-write --allow-run --allow-net=127.0.0.1 --node-modules-dir=none "$ROOT"/harness/test/memory/*_test.ts
   (cd "$ROOT" && python3 -m unittest memory/eval/test_retrieval_eval.py memory/research/test_research.py)
   exec npm --prefix "$ROOT/harness" run test:memory
 fi
@@ -131,11 +131,11 @@ for arg in "$@"; do
 done
 
 if [ "${#deno_files[@]}" -gt 0 ] && [ "${#node_args[@]}" -eq 0 ]; then
-  exec deno test --allow-env --allow-read --node-modules-dir=none "${deno_files[@]}"
+  exec deno test --allow-env --allow-read --allow-write --allow-run --allow-net=127.0.0.1 --node-modules-dir=none "${deno_files[@]}"
 fi
 
 if [ "${#deno_files[@]}" -gt 0 ]; then
-  deno test --allow-env --allow-read --node-modules-dir=none "${deno_files[@]}"
+  deno test --allow-env --allow-read --allow-write --allow-run --allow-net=127.0.0.1 --node-modules-dir=none "${deno_files[@]}"
 fi
 
 cd "$ROOT/harness"

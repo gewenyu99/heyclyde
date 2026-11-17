@@ -84,6 +84,32 @@ export function discount(scores: Ranked[], info: Map<string, Scoped>, scope: str
   }).sort(byScore);
 }
 
+/** Runtime project entries (`remember({ pattern: "projects", ... })`) are searchable notes; seed containers (`origin = 'seed'`,
+ * like golden's `proj-tea`) and auto-generated `notes-<agent>` hubs stay hidden from index and deep scans. */
+export function searchableProjectSql(db: Sql, alias = "e") {
+  const col = (name: string) => db.unsafe(alias ? `${alias}.${name}` : name);
+  return db`(${col("pattern")} <> 'projects' or (${col("origin")} <> 'seed' and ${col("id")} not like 'notes-%'))`;
+}
+
+const escRe = (s: string) => s.replace(/[.+*?^${}()|[\]\\-]/g, "\\$&");
+
+/** Distinct non-stopword ASCII terms (splitting hyphens and punctuation) and CJK bigrams in `query` for 2+ word title checks. */
+export function titlePatterns(query: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const w of query.toLowerCase().match(/[a-z0-9]+/g) ?? []) {
+    if (STOP.has(w) || (w.length < 2 && !/^\d+$/.test(w)) || seen.has(w)) continue;
+    seen.add(w);
+    out.push(`(^|[^a-z0-9])${w}([^a-z0-9]|$)`);
+  }
+  for (const b of bigrams(query)) {
+    if (seen.has(b)) continue;
+    seen.add(b);
+    out.push(escRe(b));
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------- index: grep the index map
 /** The INDEX.md map, one line per entry, superseded entries struck through, as build.py writes it. */
 export async function indexLines(db: Sql, agentScope: AgentScope = null, filter?: EntryFilter) {
@@ -94,7 +120,7 @@ export async function indexLines(db: Sql, agentScope: AgentScope = null, filter?
         from memory.link l join memory.entry s2 on s2.owner_id = l.owner_id and s2.id = l.src
         where l.owner_id = e.owner_id and l.dst = e.id and l.type = 'supersedes' ${entryWhereSql(db, "s2", agentScope)}) as superseded_by
     from memory.entry e left join memory.entry p on p.owner_id = e.owner_id and p.id = e.project
-    where e.pattern <> 'projects' ${entryWhereSql(db, "e", agentScope, filter)}
+    where ${searchableProjectSql(db, "e")} ${entryWhereSql(db, "e", agentScope, filter)}
     order by e.project, e.pattern, e.id`;
   return rows.filter((r) => canReadEntry(agentScope, r, filter)).map((r) => {
     const title = r.superseded_by ? `~~${r.title}~~ → ${r.superseded_by}` : r.title;
@@ -103,6 +129,7 @@ export async function indexLines(db: Sql, agentScope: AgentScope = null, filter?
     const line = `- \`${r.id}\` ${title} [${r.authority}, ${r.scope}]${lock} (${r.project_title})`;
     return {
       id: r.id as string,
+      title: r.title as string,
       line,
       shown: `- \`${r.id}\` ${title} [${kindLabel(r, ", ")}, ${r.authority}${r.authority === "draft" ? ", unreviewed" : ""}, ${r.scope}]${lock} (${r.project_title})`,
       authority: r.authority as string,
@@ -112,7 +139,8 @@ export async function indexLines(db: Sql, agentScope: AgentScope = null, filter?
   });
 }
 
-/** grep over the index map. Drafts rank at half weight, so a confirmed decision beats a suggestion on a tie.
+/** grep over the index map. Drafts rank at half weight, so a confirmed decision beats a suggestion on a tie, unless 2+
+ * non-stopword query words match the draft's own title.
  *
  * A superseded line stays, struck through, but gets no scope boost. Its line names its replacement, so it matches
  * every word the replacement does and would otherwise outrank it. */
@@ -123,15 +151,23 @@ export async function indexSearch(
   p: Params,
   agentScope: AgentScope = null,
   filter?: EntryFilter,
+  rawQuery?: string,
 ): Promise<ArmResult> {
   const q = tokens(query);
+  const raw = tokens(rawQuery ?? query);
   const hits: Ranked[] = [], scoped = new Set<string>(), info = new Map<string, Scoped>();
   for (const l of await indexLines(db, agentScope, filter)) {
     const words = tokens(l.line + " " + l.id.replaceAll("-", " "));
     let hit = 0;
     for (const t of q) if (words.has(t)) hit++;
     if (hit) {
-      hits.push([l.id, hit * (l.authority === "draft" ? p.indexDraftFactor : 1), l.shown]);
+      let titleHit = 0;
+      if (l.authority === "draft" && raw.size >= 2) {
+        const tw = tokens(l.title);
+        for (const t of raw) if (tw.has(t)) titleHit++;
+      }
+      const factor = l.authority === "draft" && !(raw.size >= 2 && titleHit >= 2) ? p.indexDraftFactor : 1;
+      hits.push([l.id, hit * factor, l.shown]);
       info.set(l.id, { scope: l.scope, authority: l.authority });
       if (scope && l.scope === scope && !l.superseded) scoped.add(l.id);
     }
@@ -226,6 +262,33 @@ export async function hybridComponents(db: Sql, query: string, p: Params, agentS
   return { parts: { en, zh, keyword, vec }, degraded };
 }
 
+/** Entries whose title matches 2+ distinct non-stopword query terms or CJK bigrams, newest/unembedded first. */
+async function titleMatches(
+  db: Sql,
+  query: string,
+  limit: number,
+  agentScope: AgentScope = null,
+  filter?: EntryFilter,
+): Promise<{ id: string; unembedded: boolean }[]> {
+  const patterns = titlePatterns(query).slice(0, limit);
+  if (patterns.length < 2) return [];
+  const rows = await db`with pats as (select p from unnest(${patterns}::text[]) as p),
+    hits as (
+      select e.id, e.owner_id, e.chances_left, e.created_at, count(*)::int as n,
+        not exists (select 1 from memory.entry_embedding x where x.owner_id = e.owner_id and x.entry_id = e.id) as unembedded
+      from memory.entry_current e
+      join pats on e.title ~* pats.p
+      where ${searchableProjectSql(db, "e")}
+        ${entryWhereSql(db, "e", agentScope, filter)}
+      group by e.id, e.owner_id, e.chances_left, e.created_at
+      having count(*) >= 2
+    )
+    select h.id, h.unembedded from hits h
+    order by h.n desc, (h.n = ${patterns.length}) desc, h.unembedded desc, (h.chances_left > 0) desc, h.created_at desc, h.id
+    limit ${limit}`;
+  return rows.map((r) => ({ id: r.id as string, unembedded: Boolean(r.unembedded) }));
+}
+
 export async function hybridSearch(
   db: Sql,
   query: string,
@@ -233,9 +296,14 @@ export async function hybridSearch(
   p: Params,
   agentScope: AgentScope = null,
   filter?: EntryFilter,
+  rawQuery?: string,
 ): Promise<ArmResult> {
   const { parts, degraded } = await hybridComponents(db, query, p, agentScope, filter);
-  let fused = rrf([parts.keyword, parts.vec], [1, p.vecWeight], p.rrfK).map(([id, s]): Ranked => [id, s, null]);
+  const titleHits = await titleMatches(db, rawQuery ?? query, p.candidates, agentScope, filter);
+  const eligibleTitle = titleHits.filter((r) => (p.trialItems ?? 0) > 0 || r.unembedded).map((r) => r.id);
+  const lists = eligibleTitle.length ? [parts.keyword, parts.vec, eligibleTitle] : [parts.keyword, parts.vec];
+  const weights = eligibleTitle.length ? [1, p.vecWeight, 1 + p.vecWeight] : [1, p.vecWeight];
+  let fused = rrf(lists, weights, p.rrfK).map(([id, s]): Ranked => [id, s, null]);
   if (scope && fused.length) {
     const rows = await db`select id from memory.entry where id = any(${fused.map(([id]) => id)}::text[]) and scope = ${scope}`;
     fused = boost(fused, new Set(rows.map((r) => r.id)), p.scopeBoost);
@@ -245,7 +313,13 @@ export async function hybridSearch(
     fused = discount(fused, new Map(rows.map((r) => [r.id as string, { scope: r.scope as string, authority: r.authority as string }])), scope, p);
   }
   const ranked = fused.slice(0, p.candidates);
-  return [ranked, degraded, { hybrid: scored(ranked), keyword: unscored(parts.keyword), vec: unscored(parts.vec) }];
+  const trace: Trace = {
+    hybrid: scored(ranked),
+    keyword: unscored(parts.keyword),
+    vec: unscored(parts.vec),
+    ...(eligibleTitle.length ? { title: unscored(eligibleTitle) } : {}),
+  };
+  return [ranked, degraded, trace];
 }
 
 // ---------------------------------------------------------------- spreading: Wen's design
@@ -389,8 +463,9 @@ async function spreadSeeds(
   p: Params,
   agentScope: AgentScope = null,
   filter?: EntryFilter,
+  rawQuery?: string,
 ): Promise<ArmResult> {
-  const [ranked, degraded, trace] = await hybridSearch(db, query, scope, p, agentScope, filter);
+  const [ranked, degraded, trace] = await hybridSearch(db, query, scope, p, agentScope, filter, rawQuery);
   if (spreadKnobs(p).mode !== "bestfirst") return [ranked, degraded, trace];
   const hits = await phraseHits(db, query, p, agentScope, filter);
   if (!hits.length) return [ranked, degraded, trace];
@@ -521,8 +596,9 @@ export async function spreadingSearch(
   p: Params,
   agentScope: AgentScope = null,
   filter?: EntryFilter,
+  rawQuery?: string,
 ): Promise<ArmResult> {
-  const [seedsRanked, degraded, seedTrace] = await spreadSeeds(db, query, scope, p, agentScope, filter);
+  const [seedsRanked, degraded, seedTrace] = await spreadSeeds(db, query, scope, p, agentScope, filter, rawQuery);
   const g = await graph(db);
   const out = permittedEdges(edgesUnder(g, p.linkTypeWeights), g, agentScope, filter);
   if (spreadKnobs(p).mode === "bestfirst") {
@@ -544,6 +620,7 @@ export const ARMS: Record<string, (
   p: Params,
   agentScope?: AgentScope,
   filter?: EntryFilter,
+  rawQuery?: string,
 ) => Promise<ArmResult>> = {
   index: indexSearch,
   hybrid: hybridSearch,

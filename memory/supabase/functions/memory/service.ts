@@ -100,7 +100,7 @@ export async function rankAndPack(
   const agentScope = opts.agentScope ?? null;
   const entryFilter = opts.entryFilter;
   const request = task ? `${task}\n${query}`.trim() : query;
-  const [armRanked, armDegraded, trace, frontier] = await ARMS[set.arm](db, request, scope || null, p, agentScope, entryFilter);
+  const [armRanked, armDegraded, trace, frontier] = await ARMS[set.arm](db, request, scope || null, p, agentScope, entryFilter, query);
   const { tilted: ranked, conf: confidence, chances, relevance: rel, clock, cNow, failed } = await tilt(db, armRanked, p, opts.asOf ?? null);
   const split = lane && (p.trialItems ?? 0) > 0 && set.arm !== "index";
   const onTrial = ([id]: Ranked) => split && (chances.get(id) ?? 0) > 0;

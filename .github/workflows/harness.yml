@@ -69,7 +69,7 @@ jobs:
         run: deno cache --node-modules-dir=none harness/test/memory/edge.ts harness/test/memory/database.ts
       - name: The function's unit tests
         if: inputs.only == ''
-        run: deno test --allow-env --allow-read --node-modules-dir=none harness/test/memory/*_test.ts
+        run: deno test --allow-env --allow-read --allow-write --allow-run --allow-net=127.0.0.1 --node-modules-dir=none harness/test/memory/*_test.ts
       - name: The eval and research scripts' unit tests
         if: inputs.only == ''
         run: python3 -m unittest memory/eval/test_retrieval_eval.py memory/research/test_research.py
