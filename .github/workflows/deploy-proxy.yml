@@ -1,17 +1,9 @@
-# Deploy the memory-proxy Cloudflare Worker (heyclyde.me and memory.heyclyde.me) when memory/proxy or memory/design
-# changes on main, after the site and design checks pass. Requires two repository secrets: CLOUDFLARE_API_TOKEN (a
-# Workers Scripts:Edit token scoped to the account) and CLOUDFLARE_ACCOUNT_ID.
+# Manual fallback deploy for the memory-proxy Cloudflare Worker (heyclyde.me and memory.heyclyde.me).
+# Pushes to main touching memory/proxy/* or memory/design/* auto-deploy via Cloudflare Workers Builds.
+# Manual runs require repository secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
 name: deploy-proxy
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'memory/proxy/**'
-      - 'memory/design/**'
-      - 'harness/test/memory/site_test.ts'
-      - 'harness/test/memory/design_test.ts'
-      - '.github/workflows/deploy-proxy.yml'
   workflow_dispatch:
 
 permissions:
