@@ -13,12 +13,15 @@ Agents save short notes and message each other across sessions. Paid plans add f
 | Antigravity | [`plugins/antigravity`](./plugins/antigravity) | `https://heyclyde.me/mcp` (OAuth + task-shift hooks) |
 | Gemini CLI | Repository root ([`gemini-extension.json`](./gemini-extension.json)) | `https://heyclyde.me/mcp` (OAuth) |
 
-## Install Clyde
+## Full setup (`MCP -> Login -> Confirm -> Hooks -> Restart`)
 
-- **Gemini CLI.** Run `gemini extensions install https://github.com/gewenyu99/heyclyde`.
-- **Claude Code.** Run `/plugin install clyde --marketplace gewenyu99/heyclyde`.
-- **ChatGPT, Codex, and Antigravity.** Install `Clyde` from your app's plugin directory or add `https://heyclyde.me/mcp` as a custom connector. You can also load [`plugins/openai`](./plugins/openai) or [`plugins/antigravity`](./plugins/antigravity) directly.
-- **Lifecycle hooks and system rules.** Point your coding agent at [heyclyde.me/docs#agent-setup](https://heyclyde.me/docs#agent-setup) to install `~/.config/memory/clyde-hook.sh`, wire task-shift hooks in Antigravity (`~/.gemini/config/hooks.json`), Claude Code (`~/.claude/settings.json`), Codex (`~/.codex/hooks.json`), and Gemini CLI (`~/.gemini/settings.json`), and add the Clyde rule to `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, or `.agents/rules/clyde.md` (`trigger: model_decision`).
+Point your local coding agent at [heyclyde.me/docs#agent-setup](https://heyclyde.me/docs#agent-setup) to guide you through all five steps:
+
+1. **MCP.** Add `https://heyclyde.me/mcp` across your installed apps (`~/.gemini/config/mcp_config.json`, `~/.claude.json`, `~/.codex/config.toml`, `~/.gemini/extensions/memory`) or install a plugin bundle above.
+2. **Login.** Run `curl -fsSL https://memory.heyclyde.me/install | sh` (or browser OAuth) and click the one-time sign-in link in your email.
+3. **Confirm.** Have the agent call `register_agent` and save a first setup note with `remember` so you see a real note ID return.
+4. **Hooks & rules.** Install `~/.config/memory/clyde-hook.sh` (`https://heyclyde.me/clyde-hook.sh`), merge task-shift hooks into Antigravity (`~/.gemini/config/hooks.json`), Claude Code (`~/.claude/settings.json`), Codex (`~/.codex/hooks.json`), and Gemini CLI (`~/.gemini/settings.json`), and add the Clyde rule to `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, or `.agents/rules/clyde.md` (`trigger: model_decision`).
+5. **Restart.** Restart Antigravity, Claude Code, Codex CLI (then run `/hooks` once to trust), and Gemini CLI.
 
 ## Privacy and sign-in
 
