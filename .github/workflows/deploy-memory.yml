@@ -1,0 +1,112 @@
+# Auto-deploy the memory Supabase Edge Function (project wlhlncmgjqyidosunugv) on main.
+# The offline RSA-3072 signing key never enters CI: this workflow verifies that client/files.ts already carries a valid
+# signature under client/signing-pub.pem for CLIENT_VERSION (baked locally via `memory/deploy.sh --bake` whenever client
+# files change), runs the version surface guard, checks migrations, and deploys the function when SUPABASE_ACCESS_TOKEN is set.
+name: deploy-memory
+
+on:
+  push:
+    branches: [main]
+    paths: ['memory/supabase/functions/memory/**', '.github/workflows/deploy-memory.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-memory
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Verify and deploy memory function
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Version surface guard
+        env:
+          MEMORY_REQUIRE_DENO: '1'
+        run: node --test harness/test/memory/version.test.ts
+      - name: Verify offline-signed client bundle
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, re, subprocess, sys, tempfile
+          from pathlib import Path
+
+          fn = Path("memory/supabase/functions/memory")
+          client = fn / "client"
+          version = re.search(r'CLIENT_VERSION = "(\d{8}\.\d+)"', (fn / "version.ts").read_text()).group(1)
+          src = (client / "files.ts").read_text()
+          files = json.loads(src.split("= ", 1)[1].rsplit(";", 1)[0])
+          names = [
+              "memory-hook", "claude-settings.json", "codex-hooks.json", "install.sh", "signing-pub.pem",
+              "gemini-hook", "gemini-hooks.json", "gemini-extension.json", "antigravity-mcp.json",
+          ]
+          expected = f"version={version}\n" + "".join(
+              f"{n} {hashlib.sha256(((client / n).read_text().replace('VERSION=@MEMORY_VERSION@', f'VERSION={version}') if n == 'memory-hook' else (client / n).read_text()).encode()).hexdigest()}\n"
+              for n in names
+          )
+          if files.get("manifest") != expected:
+              sys.exit("client/files.ts manifest does not match CLIENT_VERSION; run `memory/deploy.sh --bake` locally and commit files.ts.")
+          for n in names:
+              want = (client / n).read_text()
+              if n == "memory-hook":
+                  want = want.replace("VERSION=@MEMORY_VERSION@", f"VERSION={version}")
+              if files.get(n) != want:
+                  sys.exit(f"client/files.ts[{n}] is out of date; run `memory/deploy.sh --bake` locally.")
+          with tempfile.TemporaryDirectory() as tmp:
+              body, sig = Path(tmp, "manifest"), Path(tmp, "sig")
+              body.write_text(files["manifest"])
+              sig.write_bytes(base64.b64decode(files["manifest.sig"]))
+              ok = subprocess.run(
+                  ["openssl", "dgst", "-sha256", "-verify", str(client / "signing-pub.pem"), "-signature", str(sig), str(body)],
+                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+              ).returncode == 0
+              if not ok:
+                  sys.exit("client/files.ts manifest.sig failed verification under signing-pub.pem.")
+          PY
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Deploy memory Edge Function
+        working-directory: memory
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            msg="Set SUPABASE_ACCESS_TOKEN in GitHub repository secrets to auto-deploy the memory Edge Function."
+            if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+              echo "::error::$msg" >&2
+              exit 1
+            fi
+            echo "::warning::$msg Skipping deploy until secret is set."
+            exit 0
+          fi
+          supabase link --project-ref wlhlncmgjqyidosunugv
+          listing=$(supabase migration list --linked --output-format json)
+          pending=$(printf '%s' "$listing" | python3 -c '
+          import json, sys
+          entries = json.load(sys.stdin)["migrations"]
+          for e in entries:
+              if isinstance(e, dict) and e.get("local") and not e.get("remote"):
+                  print(e["local"])
+          ')
+          if [ -n "$pending" ]; then
+            echo "::error::Pending migrations must be applied before deploying the function: $pending" >&2
+            exit 1
+          fi
+          supabase functions deploy memory --project-ref wlhlncmgjqyidosunugv --no-verify-jwt --use-api
+          expected=$(python3 -c 'import re, pathlib; print(re.search(r"SERVER_VERSION = \"(\d{8}\.\d+)\"", pathlib.Path("supabase/functions/memory/version.ts").read_text()).group(1))')
+          live=$(curl -fsS https://memory.heyclyde.me/healthz | python3 -c 'import json, sys; print(json.load(sys.stdin).get("version", ""))')
+          echo "Deployed SERVER_VERSION=$expected (live healthz=$live)"

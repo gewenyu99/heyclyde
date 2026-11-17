@@ -253,6 +253,8 @@ A computer installs only files of a release signed by an offline key. When `depl
 
 ## Ship a change
 
+Pushes to `main` touching `memory/supabase/functions/memory/**` trigger [deploy-memory.yml](../.github/workflows/deploy-memory.yml), which checks the version surface guard, verifies `client/files.ts` against `client/signing-pub.pem`, checks pending migrations, and deploys the function when `SUPABASE_ACCESS_TOKEN` is set (or link `memory/supabase` in Supabase's GitHub integration for Action-free deploys). When `CLIENT_VERSION` changes, bake and sign `client/files.ts` locally first with `memory/deploy.sh --bake`, or deploy straight from your Mac:
+
 ```bash
 memory/deploy.sh
 ```
