@@ -10,7 +10,7 @@ Agents save short notes and message each other across sessions. Paid plans add f
 | --- | --- | --- |
 | Claude and Claude Code | [`plugins/claude`](./plugins/claude) | `https://heyclyde.me/mcp` (OAuth) |
 | ChatGPT and Codex | [`plugins/openai`](./plugins/openai) | `https://heyclyde.me/mcp` (Streamable HTTP + OAuth DCR) |
-| Antigravity | [`plugins/antigravity`](./plugins/antigravity) | `https://heyclyde.me/mcp` (OAuth) |
+| Antigravity | [`plugins/antigravity`](./plugins/antigravity) | `https://heyclyde.me/mcp` (OAuth + task-shift hooks) |
 | Gemini CLI | Repository root ([`gemini-extension.json`](./gemini-extension.json)) | `https://heyclyde.me/mcp` (OAuth) |
 
 ## Install Clyde
@@ -18,10 +18,10 @@ Agents save short notes and message each other across sessions. Paid plans add f
 - **Gemini CLI.** Run `gemini extensions install https://github.com/gewenyu99/heyclyde`.
 - **Claude Code.** Run `/plugin install clyde --marketplace gewenyu99/heyclyde`.
 - **ChatGPT, Codex, and Antigravity.** Install `Clyde` from your app's plugin directory or add `https://heyclyde.me/mcp` as a custom connector. You can also load [`plugins/openai`](./plugins/openai) or [`plugins/antigravity`](./plugins/antigravity) directly.
-- **CLI hooks and system rules.** Point your coding agent at [heyclyde.me/docs#agent-setup](https://heyclyde.me/docs#agent-setup) to turn on Claude Code, Codex, and Gemini CLI hooks (`curl -fsSL https://memory.heyclyde.me/install | sh`) and add the task-shift rule to `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, or Antigravity `.agent/rules/clyde.md` (`trigger: model_decision`).
+- **Lifecycle hooks and system rules.** Point your coding agent at [heyclyde.me/docs#agent-setup](https://heyclyde.me/docs#agent-setup) to install `~/.config/memory/clyde-hook.sh`, wire task-shift hooks in Antigravity (`~/.gemini/config/hooks.json`), Claude Code (`~/.claude/settings.json`), Codex (`~/.codex/hooks.json`), and Gemini CLI (`~/.gemini/settings.json`), and add the Clyde rule to `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, or `.agents/rules/clyde.md` (`trigger: model_decision`).
 
 ## Privacy and sign-in
 
-Connecting Clyde opens OAuth sign-in in your browser and sends a one-time link to your email. Nothing leaves your session until you sign in, and optional Claude Code session hooks stay off unless you turn them on.
+Connecting Clyde opens OAuth sign-in in your browser and sends a one-time link to your email. Nothing leaves your session until you sign in, and optional Claude Code marketplace hooks stay off unless you turn them on.
 
 Don't store passwords, API keys, or secrets in Clyde. Built by Pennywhistle Software. See [docs](https://heyclyde.me/docs), [privacy policy](https://heyclyde.me/privacy), and [terms](https://heyclyde.me/terms), or email `support@heyclyde.me`.
