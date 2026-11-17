@@ -23,24 +23,5 @@
   "documentationUrl": "https://heyclyde.me/docs",
   "supportUrl": "https://heyclyde.me/docs#support",
   "privacyPolicyUrl": "https://heyclyde.me/privacy",
-  "termsOfServiceUrl": "https://heyclyde.me/terms",
-  "userConfig": {
-    "hook_mode": {
-      "title": "Session hook mode",
-      "description": "Optional Claude Code hook mode: off (default, no network calls), metadata (session ID, folder path, and event names), or full payloads.",
-      "type": "string",
-      "options": [
-        "off",
-        "metadata",
-        "full"
-      ],
-      "default": "off"
-    },
-    "device_token": {
-      "title": "Clyde device token",
-      "description": "Optional device token from https://memory.heyclyde.me for session hooks. Leave blank when hook_mode is off.",
-      "type": "string",
-      "sensitive": true
-    }
-  }
+  "termsOfServiceUrl": "https://heyclyde.me/terms"
 }

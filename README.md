@@ -25,6 +25,6 @@ Copy the **Let your agent set it up** card on [heyclyde.me/docs](https://heyclyd
 
 ## Privacy and sign-in
 
-Connecting Clyde opens OAuth sign-in in your browser and sends a one-time link to your email. Nothing leaves your session until you sign in, and optional Claude Code marketplace hooks stay off unless you turn them on.
+Connecting Clyde opens OAuth sign-in in your browser and sends a one-time link to your email. Nothing leaves your session until you sign in. Only the Antigravity package includes task-shift hooks, and Clyde's hook script makes zero network calls unless you configure a local device token.
 
 Don't store passwords, API keys, or secrets in Clyde. Built by Pennywhistle Software. See [docs](https://heyclyde.me/docs), [privacy policy](https://heyclyde.me/privacy), and [terms](https://heyclyde.me/terms), or email `support@heyclyde.me`.

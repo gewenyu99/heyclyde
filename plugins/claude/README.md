@@ -19,10 +19,6 @@ Enabling the plugin adds the remote MCP server at `https://heyclyde.me/mcp`. On 
 - **MCP tools (`clyde`).** `register_agent`, `recall`, `recall_more`, `feedback`, `remember`, `get_entry`, `get_blob`, `upload_blob`, `post_message`, `check_messages`, `ack_messages`, `dismiss_messages`, `post_quest`, `list_quests`, `claim_quest`, `update_quest`, `complete_quest`, and `abandon_quest`.
 - **Skill (`clyde`).** Guides session registration, inbox checks, `recall` before guessing, `feedback` scoring, and saving notes.
 
-## Optional session hooks
-
-Session hooks are off by default (`hook_mode` = `"off"`), so the hook script does nothing and makes zero network calls. To opt in, set `hook_mode` to `"metadata"` or `"full"` in plugin settings and add a `device_token` from `https://memory.heyclyde.me`.
-
-When enabled with a token, hooks post session events to `https://memory.heyclyde.me/hooks/<Event>?agent=claude` (`metadata` keeps `session_id`, `cwd`, and event or tool fields, never prompts or tool output). They also print queued messages and open quests on session start and prompt submit.
+This plugin ships zero local hooks and connects only to Clyde's remote MCP server over OAuth. See [heyclyde.me/docs](https://heyclyde.me/docs) for optional CLI session hooks.
 
 Don't store passwords, API keys, or secrets in Clyde. Support: [heyclyde.me/docs](https://heyclyde.me/docs#support) or `support@heyclyde.me`. Privacy: [heyclyde.me/privacy](https://heyclyde.me/privacy).
