@@ -1,0 +1,8 @@
+{
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/gemini-hook SessionStart", "timeout": 10000 }] }],
+    "BeforeAgent": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/gemini-hook BeforeAgent", "timeout": 10000 }] }],
+    "AfterTool": [{ "matcher": "mcp_memory_.*|memory__.*", "hooks": [{ "type": "command", "command": "~/.config/memory/gemini-hook AfterTool", "timeout": 10000 }] }],
+    "AfterAgent": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/gemini-hook AfterAgent", "timeout": 10000 }] }]
+  }
+}

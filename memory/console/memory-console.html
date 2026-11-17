@@ -1,0 +1,455 @@
+<title>Memory Console</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a header with live counts, tabs, then one working panel. Ids in mono, titles in sans, bindings as typed chips. */
+:root {
+  --bg: #f6f7f8; --panel: #ffffff; --fg: #1d2329; --muted: #5d6873; --line: #dde2e7;
+  --accent: #23656b; --accent-soft: #e2f0f0; --warn: #9a5b00; --bad: #a32d2d;
+  --sans: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --s1: #23656b; --s2: #8a4b14; --s3: #3e5c8a; --s4: #6b3e8a; --s5: #2d6b3c; --s6: #a3365c; --s7: #7a6a1d; --other: #9aa5b0;
+  --t-supersedes: #8a4b14; --t-relates: #3e5c8a; --t-supports: #2d6b3c; --t-contradicts: #a32d2d; --t-other: #5d6873;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --s1: #6fbcc2; --s2: #e3a568; --s3: #8fb0e3; --s4: #c1a0e8; --s5: #8ccf98; --s6: #ec9ab8; --s7: #d8c46e; --other: #5d6873;
+  --bg: #15191d; --panel: #1d2227; --fg: #e4e8ec; --muted: #9aa5b0; --line: #2f363d;
+  --accent: #6fbcc2; --accent-soft: #1f3335; --warn: #e0a54a; --bad: #f09595;
+  --t-supersedes: #e3a568; --t-relates: #8fb0e3; --t-supports: #8ccf98; --t-contradicts: #f09595; --t-other: #9aa5b0; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --s1: #6fbcc2; --s2: #e3a568; --s3: #8fb0e3; --s4: #c1a0e8; --s5: #8ccf98; --s6: #ec9ab8; --s7: #d8c46e; --other: #5d6873;
+  --bg: #15191d; --panel: #1d2227; --fg: #e4e8ec; --muted: #9aa5b0; --line: #2f363d;
+  --accent: #6fbcc2; --accent-soft: #1f3335; --warn: #e0a54a; --bad: #f09595;
+  --t-supersedes: #e3a568; --t-relates: #8fb0e3; --t-supports: #8ccf98; --t-contradicts: #f09595; --t-other: #9aa5b0; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--sans); }
+.wrap { max-width: 1100px; margin: 0 auto; padding-block: 20px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+h1 { font-size: 22px; margin: 0; text-wrap: balance; }
+h1 small { font: 400 12px var(--mono); color: var(--muted); margin-left: 8px; }
+.status { font-size: 13px; color: var(--muted); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.stat b { display: block; font: 600 20px var(--mono); font-variant-numeric: tabular-nums; }
+.stat span { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+nav { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+nav button { font: inherit; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); padding: 8px 12px; cursor: pointer; }
+nav button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); font-weight: 700; }
+nav button:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; }
+input, select { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; min-width: 0; }
+input[type="search"] { flex: 1 1 220px; }
+.btn { font: inherit; background: var(--accent); color: var(--panel); border: 0; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 700; position: sticky; top: 0; background: var(--panel); }
+tr.click { cursor: pointer; } tr.click:hover td { background: var(--accent-soft); }
+.id { font: 12px var(--mono); color: var(--muted); word-break: break-all; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+.chip { display: inline-block; font: 600 11px var(--mono); padding: 1px 6px; border-radius: 4px; border: 1px solid currentColor; white-space: nowrap; }
+.t-supersedes { color: var(--t-supersedes); } .t-relates { color: var(--t-relates); } .t-supports { color: var(--t-supports); }
+.t-contradicts { color: var(--t-contradicts); } .t-other { color: var(--t-other); }
+.auth-approved { color: var(--accent); } .auth-observed { color: var(--t-relates); } .auth-draft { color: var(--warn); }
+.detail { display: grid; gap: 12px; padding: 16px; }
+.detail h2 { margin: 0; font-size: 18px; text-wrap: balance; }
+.detail p { margin: 0; max-width: 70ch; white-space: pre-wrap; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 13px; color: var(--muted); }
+.links { display: grid; gap: 6px; }
+.link { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.link a { color: var(--fg); cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); }
+.empty, .msg { padding: 24px 16px; color: var(--muted); }
+.msg.err { color: var(--bad); }
+.chart { padding: 16px; }
+.chart svg { width: 100%; height: auto; display: block; }
+.back { font: inherit; background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; justify-self: start; }
+.map { position: relative; height: min(72vh, 720px); min-height: 420px; }
+.map svg { width: 100%; height: 100%; display: block; cursor: grab; }
+.map .edge { stroke: var(--line); stroke-width: 1; }
+.map .edge.typed { stroke-width: 1.4; }
+.map .label { font: 600 11px var(--sans); fill: var(--fg); paint-order: stroke; stroke: var(--panel); stroke-width: 3px; pointer-events: none; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 13px; max-width: 280px; box-shadow: 0 2px 8px rgb(0 0 0 / .12); }
+@media (prefers-reduced-motion: no-preference) { tr.click td { transition: background .12s; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Memory Console <small>supabase · memory</small></h1>
+    <div class="status" id="status">Loading your memory…</div>
+  </header>
+  <div class="stats" id="stats" aria-live="polite"></div>
+  <nav role="tablist" id="tabs">
+    <button role="tab" data-tab="entries" aria-selected="true">Entries</button>
+    <button role="tab" data-tab="map" aria-selected="false">Map</button>
+    <button role="tab" data-tab="bindings" aria-selected="false">Bindings</button>
+    <button role="tab" data-tab="recalls" aria-selected="false">Recalls</button>
+    <button role="tab" data-tab="sessions" aria-selected="false">Sessions</button>
+    <button role="tab" data-tab="events" aria-selected="false">Events</button>
+    <button role="tab" data-tab="messages" aria-selected="false">Messages</button>
+    <button role="tab" data-tab="activity" aria-selected="false">Activity</button>
+  </nav>
+  <div id="view"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script>
+const PROJECT = "wlhlncmgjqyidosunugv";
+const SERVER = "Supabase";
+const $ = (s) => document.querySelector(s);
+const esc = (v) => String(v ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const lit = (v) => "'" + String(v).replace(/'/g, "''") + "'";
+
+// Everything the views show. Filled from the snapshot in this page's database first, then from Supabase live when the
+// Supabase connector answers.
+const data = { stats: null, entries: [], links: [], recalls: [], activity: [], sessions: [], events: [], messages: [],
+  source: "none", snapshotAt: null };
+let mcp = null;
+
+const FIX = {
+  server_not_connected: "Add the Supabase connector in claude.ai Settings → Connectors for live data.",
+  needs_reauth: "Reconnect Supabase in claude.ai Settings → Connectors for live data.",
+  selection_required: "Pick which Supabase connector this page uses when claude.ai asks.",
+  not_in_manifest: "Live data is off: allow Supabase in this page's Permissions menu.",
+  blocked_by_policy: "Your organization's policy blocks the Supabase tool.",
+  approval_required: "Allow this page to use Supabase for live data.",
+};
+
+async function sql(text, retried = false) {
+  try {
+    const res = await mcp.callTool(SERVER, "execute_sql", { project_id: PROJECT, query: text });
+    const p = res.payload;
+    const raw = typeof p === "string" ? p : (p && typeof p.result === "string" ? p.result : JSON.stringify(p));
+    const m = raw.match(/<untrusted-data-[^>]*>\s*([\s\S]*?)\s*<\/untrusted-data-/);
+    return JSON.parse(m ? m[1] : raw);
+  } catch (e) {
+    if (e && e.retryable && !retried) {
+      await new Promise((r) => setTimeout(r, (e.retryAfterMs || 800) + Math.random() * 400));
+      return sql(text, true);
+    }
+    throw e;
+  }
+}
+
+async function loadSnapshot() {
+  const db = await claude.use("db");
+  if (!db) return false;
+  const stats = await db.doc("snapshot/stats").get();
+  const s = stats && (stats.data ? (typeof stats.data === "function" ? stats.data() : stats.data) : stats);
+  if (!s || s.entries == null) return false;
+  const read = async (id) => { const d = await db.doc("snapshot/" + id).get(); const v = d && (d.data ? (typeof d.data === "function" ? d.data() : d.data) : d); return (v && v.rows) || []; };
+  const [entries, links, recalls, activity] = await Promise.all([
+    Promise.all(Array.from({ length: s.entry_docs }, (_, i) => read("entries_" + i))).then((a) => a.flat()),
+    Promise.all(Array.from({ length: s.link_docs }, (_, i) => read("links_" + i))).then((a) => a.flat()),
+    read("recalls"), read("activity")]);
+  // Snapshots from before the agents' logs name no documents for them, and those views stay empty.
+  const [sessions, events, messages] = await Promise.all(["session_doc", "event_doc", "message_doc"].map((k) => s[k] ? read(s[k]) : []));
+  Object.assign(data, { stats: s, entries, links, recalls, activity, sessions, events, messages, source: "snapshot", snapshotAt: s.taken_at });
+  return true;
+}
+
+async function loadLive() {
+  const [stats] = await sql(`select (select count(*) from memory.entry_current) entries, (select count(*) from memory.link) links,
+    (select count(*) from memory.retrieval) recalls, (select count(*) from memory.event) events,
+    (select count(*) from memory.device where revoked_at is null) computers, (select count(*) from memory.entry_embedding) embedded,
+    (select coalesce(sum(tokens),0) from memory.openai_usage where month = date_trunc('month', now())::date) tokens,
+    (select max(received_at) from memory.event where event <> 'get_entry') last_hook, (select max(created_at) from memory.retrieval) last_recall`);
+  const [entries, links, recalls, activity] = await Promise.all([
+    sql(`select id, title, pattern, authority, scope, sensitivity, valid_from::text, project, body, links, times_delivered, replaced_by,
+         confidence, origin from memory.entries_overview order by times_delivered desc, links desc, id`),
+    sql(`select src, src_title, type, dst, dst_title from memory.links_readable`),
+    sql(`select created_at, arm, client, query, latency_ms, degraded, delivered from memory.recalls_recent limit 100`),
+    sql(`select d::date::text as day, (select count(*) from memory.event where received_at::date = d::date and event <> 'get_entry') as hooks,
+         (select count(*) from memory.retrieval where created_at::date = d::date) as recalls
+         from generate_series(current_date - 29, current_date, interval '1 day') d order by 1`)]);
+  Object.assign(data, { stats, entries, links, recalls, activity, source: "live" });
+  // The agents' logs come second, so a refusal here keeps the rest live and these on the snapshot.
+  try {
+    const [sessions, events, messages] = await Promise.all([
+      sql(`select s.id, s.arm, s.client, s.claude_session_id, s.created_at, count(r.id) as recalls,
+           coalesce(json_agg(r.created_at) filter (where r.id is not null), '[]') as recall_times
+           from memory.mcp_session s left join memory.retrieval r on r.mcp_session = s.id
+           group by s.id order by s.created_at desc limit 200`),
+      sql(`select received_at, agent, event, session_id, summary, cwd from memory.events_recent limit 300`),
+      sql(`select m.id, m.created_at, m.sender, m.recipient, m.body, array(select d.recipient from memory.message_delivery d where d.message_id = m.id and d.acked_at is not null) as read_by from memory.message m order by m.id desc limit 200`)]);
+    Object.assign(data, { sessions, events, messages });
+  } catch (e) { console.warn("logs", e); }
+}
+
+function problem(e) {
+  const code = e && e.code;
+  if (FIX[code]) return FIX[code];
+  if (code === "tool_error") return "Supabase refused the query: " + (e.message || "no reason given");
+  if (code === "server_unavailable") return "Supabase didn't answer.";
+  return "Live data unavailable" + (code ? " (" + code + ")" : "") + ".";
+}
+
+const ago = (t) => { if (!t) return "never"; const m = Math.round((Date.now() - Date.parse(t)) / 60000);
+  return m < 60 ? m + " min ago" : m < 2880 ? Math.round(m / 60) + " h ago" : Math.round(m / 1440) + " d ago"; };
+
+function renderStats(note = "") {
+  const s = data.stats;
+  if (!s) return;
+  const tiles = [["Entries", s.entries], ["Bindings", s.links], ["Recalls", s.recalls], ["Hook events", s.events],
+    ["Computers", s.computers], ["Embedded", s.embedded], ["Embed spend", "$" + (s.tokens * 0.13 / 1e6).toFixed(2)]];
+  $("#stats").innerHTML = tiles.map(([k, v]) => `<div class="stat"><b>${esc(v)}</b><span>${k}</span></div>`).join("");
+  const src = data.source === "live" ? "Live from Supabase" : `Snapshot${data.snapshotAt ? " from " + ago(data.snapshotAt) : ""}`;
+  $("#status").innerHTML = `${src} · last hook ${ago(s.last_hook)} · last recall ${ago(s.last_recall)}${note ? `<br>${esc(note)}` : ""}`;
+}
+
+const chip = (type) => `<span class="chip t-${["supersedes", "relates", "supports", "contradicts"].includes(type) ? type : "other"}">${esc(type)}</span>`;
+const auth = (a) => `<span class="chip auth-${esc(a)}">${esc(a)}</span>`;
+// Confidence as a number, dimmed when the entry has gone dormant (under 0.15) and recall no longer serves it.
+const conf = (r) => r.confidence == null ? "" : `<span title="${r.confidence < 0.15 ? "Dormant: recall skips it" : "Confidence"}" style="${r.confidence < 0.15 ? "color:var(--muted)" : ""}">${Number(r.confidence).toFixed(2)}${r.origin === "groomer" ? " ·g" : ""}</span>`;
+const has = (hay, needle) => String(hay ?? "").toLowerCase().includes(needle);
+
+// ---------------------------------------------------------------- entries
+let entryFilter = { text: "", pattern: "" };
+function entries() {
+  const v = $("#view");
+  v.innerHTML = `<div class="tools"><input type="search" id="eq" placeholder="Search titles and bodies" value="${esc(entryFilter.text)}">
+    <select id="ep"><option value="">All patterns</option>${["decisions", "preferences", "observations", "projects", "recommendations", "references", "reactions"]
+      .map((p) => `<option ${p === entryFilter.pattern ? "selected" : ""}>${p}</option>`).join("")}</select></div>
+    <div class="panel" id="elist"></div>`;
+  const run = () => {
+    entryFilter = { text: $("#eq").value.trim().toLowerCase(), pattern: $("#ep").value };
+    const rows = data.entries.filter((r) => (!entryFilter.pattern || r.pattern === entryFilter.pattern) &&
+      (!entryFilter.text || has(r.title, entryFilter.text) || has(r.body, entryFilter.text) || has(r.id, entryFilter.text))).slice(0, 300);
+    $("#elist").innerHTML = rows.length ? `<table><thead><tr><th>Entry</th><th>Pattern</th><th>Authority</th><th>Project</th>
+      <th class="num">Confidence</th><th class="num">Bindings</th><th class="num">Served</th></tr></thead><tbody>${rows.map((r) => `<tr class="click" data-id="${esc(r.id)}">
+      <td>${r.replaced_by ? "<s>" + esc(r.title) + "</s>" : esc(r.title)}<div class="id">${esc(r.id)}</div></td><td>${esc(r.pattern)}</td>
+      <td>${auth(r.authority)}</td><td>${esc(r.project)}</td><td class="num">${conf(r)}</td><td class="num">${r.links}</td><td class="num">${r.times_delivered}</td></tr>`).join("")}</tbody></table>`
+      : `<div class="empty">${data.entries.length ? "No entries match." : "No entries loaded yet."}</div>`;
+    $("#elist").querySelectorAll("tr.click").forEach((tr) => tr.onclick = () => entry(tr.dataset.id));
+  };
+  $("#eq").oninput = run; $("#ep").onchange = run;
+  run();
+}
+
+async function entry(id) {
+  const v = $("#view");
+  const e = data.entries.find((r) => r.id === id);
+  if (!e) { v.innerHTML = `<div class="panel"><div class="empty">No entry ${esc(id)}.</div></div>`; return; }
+  const links = [...data.links.filter((l) => l.src === id).map((l) => ({ dir: "out", type: l.type, other: l.dst, title: l.dst_title })),
+    ...data.links.filter((l) => l.dst === id).map((l) => ({ dir: "in", type: l.type, other: l.src, title: l.src_title }))];
+  const group = (dir, label) => { const ls = links.filter((l) => l.dir === dir);
+    return `<div class="links"><b>${label}</b>${ls.length ? ls.map((l) => `<div class="link">${chip(l.type)} <a data-id="${esc(l.other)}">${esc(l.title)}</a> <span class="id">${esc(l.other)}</span></div>`).join("") : `<span class="status">None</span>`}</div>`; };
+  v.innerHTML = `<div class="panel detail"><button class="back" id="back">← All entries</button>
+    <h2>${esc(e.title)}</h2>
+    <div class="meta">${auth(e.authority)}${e.confidence != null ? `<span>confidence ${Number(e.confidence).toFixed(2)}${e.confidence < 0.15 ? " (dormant)" : ""}</span>` : ""}<span>${esc(e.pattern)}</span><span>${esc(e.scope)}</span><span>valid from ${esc(e.valid_from)}</span>
+      <span>project ${esc(e.project)}</span>${e.sensitivity === "private" ? "<span>🔒 private</span>" : ""}<span class="id">${esc(e.id)}</span></div>
+    <p>${esc(e.body)}</p>${e.evidence ? `<div class="links"><b>Evidence (${esc(e.evidence_kind)})</b><p>${esc(e.evidence)}</p></div>` : ""}
+    ${group("out", "Binds to")}${group("in", "Bound from")}</div>`;
+  $("#back").onclick = entries;
+  v.querySelectorAll("a[data-id]").forEach((a) => a.onclick = () => entry(a.dataset.id));
+}
+
+
+// ---------------------------------------------------------------- map
+// The old console's graph: every entry a node colored by its project, projects larger and labeled, replaced entries
+// hollow, part_of links short and loose, other bindings typed and tighter. Drag to pan, scroll to zoom, click to open.
+let mapProject = "", mapSuperseded = false;
+function map() {
+  const v = $("#view");
+  if (!window.d3) { v.innerHTML = `<div class="panel"><div class="empty">The map's drawing library didn't load. Reload the page.</div></div>`; return; }
+  const projectOf = (e) => e.pattern === "projects" ? e.title : (e.project || "");
+  const sizes = new Map();
+  data.entries.forEach((e) => { const p = projectOf(e); if (p) sizes.set(p, (sizes.get(p) || 0) + 1); });
+  const top = [...sizes].sort((a, b) => b[1] - a[1]).slice(0, 7).map(([p]) => p);
+  const color = (p) => top.includes(p) ? `var(--s${top.indexOf(p) + 1})` : "var(--other)";
+  v.innerHTML = `<div class="tools"><select id="mp"><option value="">All projects</option>${[...sizes].sort((a, b) => b[1] - a[1])
+      .map(([p, n]) => `<option value="${esc(p)}" ${p === mapProject ? "selected" : ""}>${esc(p)} (${n})</option>`).join("")}</select>
+    <label class="status" style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" id="ms" ${mapSuperseded ? "checked" : ""}> Show replaced entries</label></div>
+    <div class="legend">${top.map((p) => `<span><i style="background:${color(p)}"></i>${esc(p)}</span>`).join("")}<span><i style="background:var(--other)"></i>Other</span>
+      <span><i style="border:2px solid var(--muted)"></i>Replaced</span></div>
+    <div class="panel map" id="map"><div class="tip" id="tip" hidden></div></div>`;
+  $("#mp").onchange = () => { mapProject = $("#mp").value; map(); };
+  $("#ms").onchange = () => { mapSuperseded = $("#ms").checked; map(); };
+  const shown = data.entries.filter((e) => (mapSuperseded || !e.replaced_by) && (!mapProject || projectOf(e) === mapProject));
+  const ids = new Set(shown.map((e) => e.id));
+  const nodes = shown.map((e) => ({ ...e, proj: projectOf(e) }));
+  const links = data.links.filter((l) => ids.has(l.src) && ids.has(l.dst)).map((l) => ({ source: l.src, target: l.dst, type: l.type }));
+  const el = $("#map"), W = el.clientWidth || 900, H = el.clientHeight || 600;
+  const svg = d3.select(el).append("svg").attr("viewBox", [0, 0, W, H]).attr("role", "img").attr("aria-label", `Map of ${nodes.length} entries and ${links.length} bindings`);
+  const g = svg.append("g");
+  svg.call(d3.zoom().scaleExtent([0.2, 6]).on("zoom", (ev) => g.attr("transform", ev.transform)));
+  const typeColor = { supersedes: "var(--t-supersedes)", relates: "var(--t-relates)", supports: "var(--t-supports)", contradicts: "var(--t-contradicts)" };
+  const edge = g.append("g").selectAll("line").data(links).join("line")
+    .attr("class", (l) => "edge" + (l.type === "part_of" ? "" : " typed")).style("stroke", (l) => typeColor[l.type] || null);
+  const radius = (n) => n.pattern === "projects" ? 9 : 4 + Math.min(4, Math.sqrt(n.times_delivered || 0));
+  const node = g.append("g").selectAll("circle").data(nodes).join("circle")
+    .attr("r", radius).style("cursor", "pointer")
+    .style("fill", (n) => n.replaced_by ? "var(--panel)" : color(n.proj)).style("stroke", (n) => n.replaced_by ? color(n.proj) : "var(--panel)")
+    .style("stroke-width", (n) => n.replaced_by ? 2 : 1)
+    .on("click", (_, n) => { select("entries", false); entry(n.id); });
+  const label = g.append("g").selectAll("text").data(nodes.filter((n) => n.pattern === "projects")).join("text")
+    .attr("class", "label").attr("dx", 12).attr("dy", 4).text((n) => n.title);
+  const tip = $("#tip");
+  node.on("mouseenter", (ev, n) => { tip.hidden = false; tip.innerHTML = `<b>${esc(n.title)}</b><div class="id">${esc(n.id)}</div><div class="status">${esc(n.pattern)} · ${esc(n.authority)}${n.replaced_by ? " · replaced" : ""} · served ${n.times_delivered}×</div>`; })
+    .on("mousemove", (ev) => { const r = el.getBoundingClientRect(); tip.style.left = Math.min(ev.clientX - r.left + 12, r.width - 290) + "px"; tip.style.top = (ev.clientY - r.top + 12) + "px"; })
+    .on("mouseleave", () => { tip.hidden = true; });
+  node.call(d3.drag().on("start", (ev, n) => { if (!ev.active) sim.alphaTarget(0.3).restart(); n.fx = n.x; n.fy = n.y; })
+    .on("drag", (ev, n) => { n.fx = ev.x; n.fy = ev.y; }).on("end", (ev, n) => { if (!ev.active) sim.alphaTarget(0); n.fx = null; n.fy = null; }));
+  const sim = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(links).id((n) => n.id).distance((l) => l.type === "part_of" ? 36 : 60).strength((l) => l.type === "part_of" ? 0.25 : 0.6))
+    .force("charge", d3.forceManyBody().strength(-45).distanceMax(400))
+    .force("collide", d3.forceCollide((n) => radius(n) + 3))
+    .force("x", d3.forceX(W / 2).strength(0.04)).force("y", d3.forceY(H / 2).strength(0.04))
+    .on("tick", () => {
+      edge.attr("x1", (l) => l.source.x).attr("y1", (l) => l.source.y).attr("x2", (l) => l.target.x).attr("y2", (l) => l.target.y);
+      node.attr("cx", (n) => n.x).attr("cy", (n) => n.y);
+      label.attr("x", (n) => n.x).attr("y", (n) => n.y);
+    });
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { sim.stop(); for (let i = 0; i < 300; i++) sim.tick(); sim.on("tick")(); }
+}
+
+// ---------------------------------------------------------------- bindings
+function bindings() {
+  const v = $("#view");
+  v.innerHTML = `<div class="tools"><input type="search" id="bq" placeholder="Search either end">
+    <select id="bt"><option value="">All types except part_of</option><option>supersedes</option><option>relates</option><option>supports</option>
+    <option>contradicts</option><option>derived_from</option><option>corrects</option><option>part_of</option></select></div>
+    <div class="panel" id="blist"></div>`;
+  const run = () => {
+    const text = $("#bq").value.trim().toLowerCase(), type = $("#bt").value;
+    const rows = data.links.filter((r) => (type ? r.type === type : r.type !== "part_of") && (!text || has(r.src_title, text) || has(r.dst_title, text)))
+      .sort((a, b) => a.type.localeCompare(b.type) || String(a.src_title).localeCompare(String(b.src_title))).slice(0, 400);
+    $("#blist").innerHTML = rows.length ? `<table><thead><tr><th>From</th><th>Binding</th><th>To</th></tr></thead><tbody>${rows.map((r) =>
+      `<tr><td><a data-id="${esc(r.src)}" class="go">${esc(r.src_title)}</a></td><td>${chip(r.type)}</td><td><a data-id="${esc(r.dst)}" class="go">${esc(r.dst_title)}</a></td></tr>`).join("")}</tbody></table>`
+      : `<div class="empty">No bindings match.</div>`;
+    $("#blist").querySelectorAll("a.go").forEach((a) => { a.style.cursor = "pointer"; a.onclick = () => { select("entries", false); entry(a.dataset.id); }; });
+  };
+  $("#bq").oninput = run; $("#bt").onchange = run;
+  run();
+}
+
+// ---------------------------------------------------------------- recalls
+function recalls() {
+  const rows = data.recalls;
+  $("#view").innerHTML = `<div class="panel">${rows.length ? `<table><thead><tr><th>When</th><th>Query</th><th>Arm</th><th>Delivered</th><th class="num">ms</th></tr></thead><tbody>${rows.map((r) =>
+    `<tr><td class="id">${esc(new Date(r.created_at).toLocaleString())}</td><td>${esc(r.query)}<div class="id">${esc(r.client || "")}</div></td>
+    <td>${esc(r.arm)}${r.degraded ? `<div class="id" style="color:var(--warn)">${esc(r.degraded)}</div>` : ""}</td>
+    <td>${typeof r.delivered === "number" ? r.delivered + " items" : esc(String(r.delivered || "nothing").split(" | ").slice(0, 4).join(" · "))}</td><td class="num">${r.latency_ms ?? ""}</td></tr>`).join("")}</tbody></table>`
+    : `<div class="empty">No recalls yet.</div>`}</div>`;
+}
+
+// ---------------------------------------------------------------- activity
+function activity() {
+  const rows = data.activity;
+  if (!rows.length) { $("#view").innerHTML = `<div class="panel"><div class="empty">No activity loaded yet.</div></div>`; return; }
+  const W = 720, H = 220, L = 40, B = 28, max = Math.max(1, ...rows.map((r) => r.hooks));
+  const ticks = [0, Math.round(max / 2), max], bw = (W - L - 8) / rows.length;
+  const y = (n) => H - B - (n / max) * (H - B - 12);
+  const last = rows.length - 1, mid = Math.floor(last / 2);
+  $("#view").innerHTML = `<div class="panel chart"><b>Hook events per day, last ${rows.length} days</b><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Hook events and recalls per day">
+    ${ticks.map((t) => `<line x1="${L}" x2="${W - 8}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)"/><text x="${L - 6}" y="${y(t) + 4}" text-anchor="end" font-size="11" fill="var(--muted)" font-family="var(--mono)">${t}</text>`).join("")}
+    ${rows.map((r, i) => `<rect x="${L + i * bw + 1}" y="${y(r.hooks)}" width="${Math.max(1, bw - 2)}" height="${H - B - y(r.hooks)}" fill="var(--accent)" opacity=".85"><title>${r.day}: ${r.hooks} hooks, ${r.recalls} recalls</title></rect>
+      ${r.recalls ? `<circle cx="${L + i * bw + bw / 2}" cy="${Math.max(8, y(r.hooks) - 6)}" r="3" fill="var(--warn)"><title>${r.recalls} recalls</title></circle>` : ""}`).join("")}
+    ${[0, mid, last].map((i) => `<text x="${L + i * bw + bw / 2}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--muted)" font-family="var(--mono)">${String(rows[i].day).slice(5)}</text>`).join("")}
+  </svg><div class="status">Bars are hook events. Dots mark days with recalls.</div></div>`;
+}
+
+// ---------------------------------------------------------------- sessions
+// A session keeps the times of its recalls. The same instant can come back as 2026-11-01 09:00:00.5+00 or
+// 2026-11-01T09:00:00.500Z, so both sides are written one way before they're compared.
+const instant = (t) => {
+  const m = String(t ?? "").match(/^(\d{4}-\d\d-\d\d)[T ](\d\d:\d\d:\d\d)(?:\.(\d+))?\s*(Z|[+-]\d\d(?::?\d\d)?)?$/);
+  if (!m) return String(t ?? "");
+  const z = !m[4] || m[4] === "Z" ? "Z" : m[4].replace(/^([+-]\d\d):?(\d\d)?$/, (_, h, mm) => h + ":" + (mm || "00"));
+  return `${m[1]}T${m[2]}.${(m[3] || "").padEnd(6, "0").slice(0, 6)}${z === "+00:00" || z === "-00:00" ? "Z" : z}`;
+};
+const when = (t) => t ? esc(new Date(t).toLocaleString()) : "";
+const list = (v) => Array.isArray(v) ? v : typeof v === "string" && v.trim().startsWith("[") ? JSON.parse(v)
+  : typeof v === "string" ? v.replace(/^\{|\}$/g, "").split(",").filter(Boolean) : [];
+
+function sessions() {
+  const rows = data.sessions;
+  $("#view").innerHTML = `<div class="panel">${rows.length ? `<table><thead><tr><th>Client</th><th>Arm</th><th>Started</th><th class="num">Recalls</th></tr></thead><tbody>${rows.map((r, i) =>
+    `<tr class="click" data-i="${i}"><td>${r.client ? esc(r.client) : `<span class="status">unknown</span>`}<div class="id">${esc(r.claude_session_id || r.id)}</div></td>
+    <td>${esc(r.arm)}</td><td class="id">${when(r.created_at)}</td><td class="num">${Number(r.recalls) || 0}</td></tr>`).join("")}</tbody></table>`
+    : `<div class="empty">No MCP sessions yet. The first recall starts one.</div>`}</div>`;
+  $("#view").querySelectorAll("tr.click").forEach((tr) => tr.onclick = () => session(rows[tr.dataset.i]));
+}
+
+function session(s) {
+  const times = new Set(list(s.recall_times).map(instant));
+  const rows = data.recalls.filter((r) => times.has(instant(r.created_at)));
+  const total = Number(s.recalls) || 0;
+  $("#view").innerHTML = `<div class="panel detail"><button class="back" id="back">← All sessions</button>
+    <h2>${s.client ? esc(s.client) : "Unknown client"} session</h2>
+    <div class="meta"><span>${esc(s.arm)}</span><span>started ${when(s.created_at)}</span><span>${total} recall${total === 1 ? "" : "s"}</span>
+      <span class="id">${esc(s.id)}</span>${s.claude_session_id ? `<span class="id">client session ${esc(s.claude_session_id)}</span>` : ""}</div>
+    ${rows.length < total ? `<span class="status">${rows.length ? `Showing ${rows.length} of them.` : "None of them are here."} The page loads the newest 100 recalls.</span>` : ""}</div>
+    ${rows.length ? `<div class="panel"><table><thead><tr><th>When</th><th>Query</th><th>Delivered</th><th class="num">ms</th></tr></thead><tbody>${rows.map((r) =>
+      `<tr><td class="id">${when(r.created_at)}</td><td>${esc(r.query)}${r.degraded ? `<div class="id" style="color:var(--warn)">${esc(r.degraded)}</div>` : ""}</td>
+      <td>${typeof r.delivered === "number" ? r.delivered + " items" : esc(String(r.delivered || "nothing").split(" | ").slice(0, 4).join(" · "))}</td><td class="num">${r.latency_ms ?? ""}</td></tr>`).join("")}</tbody></table></div>`
+      : total ? "" : `<div class="panel"><div class="empty">No recalls in this session.</div></div>`}`;
+  $("#back").onclick = sessions;
+}
+
+// ---------------------------------------------------------------- events
+let eventFilter = "";
+function events() {
+  const v = $("#view");
+  v.innerHTML = `<div class="tools"><input type="search" id="vq" placeholder="Filter by event type or summary" value="${esc(eventFilter)}"></div>
+    <div class="panel" id="vlist"></div>`;
+  const run = () => {
+    eventFilter = $("#vq").value;
+    const text = eventFilter.trim().toLowerCase();
+    const rows = data.events.filter((r) => !text || has(r.event, text) || has(r.summary, text));
+    $("#vlist").innerHTML = rows.length ? `<table><thead><tr><th>Received</th><th>Event</th><th>Agent</th><th>Summary</th><th>Session</th><th>Directory</th></tr></thead><tbody>${rows.map((r) =>
+      `<tr><td class="id">${when(r.received_at)}</td><td><span class="chip t-other">${esc(r.event)}</span></td><td>${esc(r.agent)}</td>
+      <td>${esc(r.summary)}</td><td class="id">${r.session_id ? esc(r.session_id) : "none"}</td>
+      <td class="id" title="${esc(r.cwd)}">${esc(String(r.cwd || "").split("/").filter(Boolean).pop() || r.cwd)}</td></tr>`).join("")}</tbody></table>`
+      : `<div class="empty">${data.events.length ? "No events match." : "No hook events yet. memory-hook sends them from Claude Code and Codex."}</div>`;
+  };
+  $("#vq").oninput = run;
+  run();
+}
+
+// ---------------------------------------------------------------- messages
+// The board as it stands. Reading it here marks nothing read, so the agents still get their mail.
+function messages() {
+  const rows = data.messages;
+  $("#view").innerHTML = `<div class="panel">${rows.length ? `<table><thead><tr><th>From → to</th><th>When</th><th>Message</th><th>Read by</th></tr></thead><tbody>${rows.map((m) => {
+    const read = list(m.read_by);
+    return `<tr><td style="white-space:nowrap"><b>${esc(m.sender)}</b> → <b>${esc(m.recipient)}</b><div class="id">#${esc(m.id)}</div></td>
+    <td class="id">${when(m.created_at)}</td><td style="white-space:pre-wrap;max-width:60ch">${esc(m.body)}</td>
+    <td>${read.length ? read.map((n) => `<span class="chip t-relates">${esc(n)}</span>`).join(" ") : `<span class="status">Unread</span>`}</td></tr>`; }).join("")}</tbody></table>`
+    : `<div class="empty">No messages yet.</div>`}</div>`;
+}
+
+const VIEWS = { entries, map, bindings, recalls, activity, sessions, events, messages };
+let current = "entries";
+function select(tab, render = true) {
+  current = tab;
+  document.querySelectorAll("#tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
+  if (render) VIEWS[tab]();
+}
+document.querySelectorAll("#tabs button").forEach((b) => b.onclick = () => select(b.dataset.tab));
+
+async function boot() {
+  const start = location.hash.slice(1);
+  current = VIEWS[start] ? start : "entries";
+  select(current);
+  try { if (await loadSnapshot()) { renderStats(); select(current); } } catch (e) { console.warn("snapshot", e); }
+  mcp = await claude.use("mcp");
+  if (!mcp) { if (data.source === "none") $("#status").textContent = "Open this page in Claude to load your memory."; return; }
+  try {
+    await loadLive();
+    renderStats();
+    select(current);
+  } catch (e) {
+    renderStats(problem(e));
+    if (data.source === "none") $("#status").textContent = problem(e);
+    if (e && e.code === "approval_required") {
+      $("#status").insertAdjacentHTML("beforeend", ` <button class="btn" id="allow">Allow live data</button>`);
+      $("#allow").onclick = boot;
+    }
+  }
+}
+boot();
+</script>

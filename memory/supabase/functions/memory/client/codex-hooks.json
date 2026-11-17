@@ -1,0 +1,6 @@
+{
+  "hooks": {
+    "SessionStart": [{ "matcher": "startup|resume", "hooks": [{ "type": "command", "command": "MEMORY_AGENT=codex ~/.config/memory/memory-hook SessionStart" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "MEMORY_AGENT=codex ~/.config/memory/memory-hook UserPromptSubmit" }] }]
+  }
+}

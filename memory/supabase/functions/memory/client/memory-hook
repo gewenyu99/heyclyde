@@ -1,0 +1,156 @@
+#!/bin/sh
+# memory-hook <event>: forward a Claude Code or Codex hook payload (stdin) to Wen's memory server. Gemini CLI's hooks reach
+# it through gemini-hook, which maps their events and output (R45).
+# On SessionStart and UserPromptSubmit it also prints unread messages from Wen's other agents, which both clients add
+# to the agent's context. MEMORY_AGENT names the agent (claude by default, codex for Codex) for its events and its inbox.
+# The URL and token come from MEMORY_URL and MEMORY_TOKEN, else from ~/.config/memory.
+# It never blocks the agent: no config, a slow server or an error all exit 0 and print nothing.
+# It is a forwarder. For SessionStart, UserPromptSubmit and Stop it also prints what the server answers the event with,
+# only when the answer is a 2xx and at most 8 KB of it: Claude Code adds a SessionStart or UserPromptSubmit answer to the
+# agent's context, and acts on a Stop answer that is a JSON decision like {"decision":"block",...}. An answer that is JSON
+# prints alone, so nothing after it breaks it.
+#
+# Self-update (R31). Every call sends VERSION, and the server answers with the newest client version. When that is newer,
+# an installed hook starts `memory-hook --update` in the background, but only when the server that answered is the one in
+# ~/.config/memory/url, which is also the only server the update reads, and only if that is https. MEMORY_URL, which a
+# project's settings could set, has no say. The update fetches a manifest (a version and the sha256 of every client file)
+# and its signature, checks the signature against the public key saved at install (~/.config/memory/signing-pub.pem),
+# fetches the files and checks each against its line, and requires the manifest's version to be memory-hook's own and newer
+# than this one. Only then does install.sh --update put them in place with the same token. A missing or bad signature, a
+# file that doesn't match, or any other failure leaves this client as it was, writes ~/.config/memory/update-failed, and
+# isn't tried again for 10 minutes. The update counts as done when the installed memory-hook carries the new VERSION.
+# While update-failed exists every call says so with x-memory-update-failed: 1, and an expired client is told to rerun the
+# installer. It is cleared once this hook is at the newest version. The server stamps VERSION when it bakes this file. A
+# checkout's copy carries a placeholder, which counts as dev.
+VERSION=@MEMORY_VERSION@
+dir=$HOME/.config/memory
+url=${MEMORY_URL:-$(cat "$dir/url" 2>/dev/null)}
+token=${MEMORY_TOKEN:-$(cat "$dir/token" 2>/dev/null)}
+[ -n "$1" ] && [ -n "$url" ] && [ -n "$token" ] || exit 0
+
+# True for YYYYMMDD.N and nothing else.
+isver() {
+  case $1 in
+    ''|*[!0-9.]*|.*|*.|*.*.*) return 1 ;;
+    *.*) return 0 ;;
+  esac
+  return 1
+}
+
+# True when version $1 is newer than $2. Both must pass isver.
+newer() {
+  [ "${1%%.*}" -gt "${2%%.*}" ] || { [ "${1%%.*}" -eq "${2%%.*}" ] && [ "${1#*.}" -gt "${2#*.}" ]; }
+}
+
+# Fetch $1 into $2 over https only, redirects included. Fails on an error status or an empty file.
+fetch() {
+  curl -fsS -m 15 --proto '=https' --proto-redir '=https' "$1" -o "$2" 2>/dev/null && [ -s "$2" ]
+}
+
+# Returns 0 when this client is now at the manifest's version, 2 when there was nothing to do (another update is running, or
+# the release isn't newer than this one), and 1 for anything that went wrong.
+update() {
+  # The server is the one in ~/.config/memory/url, and only over https. The environment has no say.
+  src=$(cat "$dir/url" 2>/dev/null)
+  case $src in https://?*) ;; *) return 1 ;; esac
+  pub=$dir/signing-pub.pem
+  [ -s "$pub" ] || return 1
+  # One update at a time. mkdir is atomic, and a lock older than 10 minutes belongs to a run that died.
+  find "$dir/update.lock" -maxdepth 0 -mmin +10 -exec rmdir {} \; 2>/dev/null
+  mkdir "$dir/update.lock" 2>/dev/null || return 2
+  tmp=$(mktemp -d "$dir/update.XXXXXX") || { rmdir "$dir/update.lock"; return 1; }
+  trap 'rm -rf "$tmp"; rmdir "$dir/update.lock" 2>/dev/null' EXIT
+  # The manifest, signed once for the release. openssl dgst is the one signing command LibreSSL and OpenSSL share.
+  fetch "$src/install/files/manifest" "$tmp/manifest" && fetch "$src/install/files/manifest.sig" "$tmp/manifest.b64" || return 1
+  openssl base64 -d -A -in "$tmp/manifest.b64" -out "$tmp/manifest.sig" 2>/dev/null &&
+    openssl dgst -sha256 -verify "$pub" -signature "$tmp/manifest.sig" "$tmp/manifest" >/dev/null 2>&1 || return 1
+  release=$(sed -n 's/^version=//p' "$tmp/manifest")
+  isver "$release" || return 1
+  newer "$release" "$VERSION" || return 2
+  # Every file must be the one its own name has in the manifest, so files of different releases can't be mixed.
+  for f in memory-hook claude-settings.json codex-hooks.json install.sh signing-pub.pem gemini-hook gemini-hooks.json gemini-extension.json antigravity-mcp.json; do
+    fetch "$src/install/files/$f" "$tmp/$f" || return 1
+    [ "$(awk -v n="$f" '$1 == n' "$tmp/manifest" | wc -l)" -eq 1 ] || return 1
+    want=$(awk -v n="$f" '$1 == n { print $2 }' "$tmp/manifest")
+    [ -n "$want" ] && [ "$(openssl dgst -sha256 "$tmp/$f" 2>/dev/null | awk '{ print $NF }')" = "$want" ] || return 1
+  done
+  # Only what looks whole goes in: scripts that parse, with a shebang, JSON that loads, a key that loads, and a stamp that
+  # is the release's version.
+  for f in memory-hook install.sh gemini-hook; do
+    [ "$(head -c 2 "$tmp/$f")" = '#!' ] && sh -n "$tmp/$f" 2>/dev/null || return 1
+  done
+  for f in claude-settings.json codex-hooks.json gemini-hooks.json gemini-extension.json antigravity-mcp.json; do
+    python3 -c 'import json, sys; json.load(open(sys.argv[1]))' "$tmp/$f" 2>/dev/null || return 1
+  done
+  openssl pkey -pubin -in "$tmp/signing-pub.pem" -noout 2>/dev/null || return 1
+  [ "$(sed -n 's/^VERSION=//p' "$tmp/memory-hook" | head -1)" = "$release" ] || return 1
+  sh "$tmp/install.sh" --update >/dev/null 2>&1
+  # Done is the installed hook carrying the new version, whatever one client's config did on the way.
+  [ "$(sed -n 's/^VERSION=//p' "$dir/memory-hook" | head -1)" = "$release" ]
+}
+
+if [ "$1" = --update ]; then
+  update
+  case $? in
+    0) rm -f "$dir/update-failed" ;;
+    2) ;;
+    *) : > "$dir/update-failed" ;;
+  esac
+  exit 0
+fi
+
+isver "$VERSION" && sent=$VERSION || sent=dev
+# While the last update has failed, say so. Curl drops a header given with no value.
+failed='x-memory-update-failed:'
+[ -e "$dir/update-failed" ] && failed='x-memory-update-failed: 1'
+# The answer's status, headers and body each go their own way. -f stays off: it would let a 3xx body through.
+body=$(mktemp 2>/dev/null) || body=/dev/null
+heads=$(mktemp 2>/dev/null) || heads=/dev/null
+code=$(curl -sS -m 3 -D "$heads" -o "$body" -w '%{http_code}' -X POST "$url/hooks/$1?agent=${MEMORY_AGENT:-claude}" \
+  -H "Authorization: Bearer $token" -H "Content-Type: application/json" \
+  -H "x-memory-client-version: $sent" -H "$failed" \
+  --data-binary @- 2>/dev/null) || code=000
+header() { tr 'A-Z' 'a-z' < "$heads" | tr -d '\r' | sed -n "/^$1:/{s/^[^:]*: *//p;q;}"; }
+
+# Only an installed hook updates itself, and only on the word of the server in ~/.config/memory/url. A checkout's, or a cloud
+# session's, has no ~/.config/memory to replace, and a MEMORY_URL that names another server is not to be believed.
+server=$(header x-memory-client-latest)
+status=$(header x-memory-client-status)
+[ "$heads" = /dev/null ] || rm -f "$heads"
+pinned=$(cat "$dir/url" 2>/dev/null)
+if [ "$url" = "$pinned" ] && isver "$server" && isver "$VERSION"; then
+  if newer "$server" "$VERSION"; then
+    if [ "$0" = "$dir/memory-hook" ] && [ -z "$(find "$dir/update-failed" -mmin -10 2>/dev/null)" ]; then
+      nohup "$0" --update </dev/null >/dev/null 2>&1 &
+    fi
+  else
+    rm -f "$dir/update-failed"
+  fi
+fi
+
+# What the server answered, for the three events that reach the agent, when it is a 2xx. A body that starts with { is JSON.
+json=
+case $1 in
+  SessionStart|UserPromptSubmit|Stop)
+    case $code in
+      2??)
+        if [ -s "$body" ]; then
+          head -c 8192 "$body"
+          [ "$(head -c 8192 "$body" | tr -d ' \t\r\n' | head -c 1)" = '{' ] && json=1
+        fi ;;
+    esac ;;
+esac
+[ "$body" = /dev/null ] || rm -f "$body"
+# Anything printed after JSON would break it, so JSON goes out alone and the inbox is left unread.
+[ -z "$json" ] && case $1 in
+  SessionStart|UserPromptSubmit)
+    # Codex trusts hooks by their content, so an update that changed its hooks.json leaves them untrusted until /hooks.
+    [ "${MEMORY_AGENT:-claude}" = codex ] && rm "$dir/codex-retrust" 2>/dev/null &&
+      echo "Codex: run /hooks to trust memory's updated hooks."
+    # An expired client only hears it has to rerun the installer once its own update has failed.
+    [ "$status" = expired ] && [ -e "$dir/update-failed" ] && [ -n "$pinned" ] &&
+      echo "memory: this computer's client is out of date. Rerun \`curl -fsSL $pinned/install | sh\`, which needs no new sign-in."
+    curl -fsS -m 3 -H "Authorization: Bearer $token" -H "x-memory-client-version: $sent" -H "$failed" \
+      "$url/messages/${MEMORY_AGENT:-claude}" 2>/dev/null ;;
+esac
+exit 0

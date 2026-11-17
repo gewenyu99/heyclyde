@@ -1,0 +1,199 @@
+/** Tier 3 support: the memory Edge Function under deno, on schema memory rebuilt from the migrations and the made-up tea vault. */
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { appendFileSync } from 'node:fs'
+import http from 'node:http'
+import { randomBytes } from 'node:crypto'
+import net from 'node:net'
+import { join } from 'node:path'
+import { request } from '../../src/request.ts'
+import { type FakeAuth, startFakeAuth } from './auth.ts'
+import { type FakeOpenAI, type FakeOptions, startFakeOpenAI } from './openai.ts'
+import { FakeStorage } from './storage.ts'
+
+export const DATABASE_URL = process.env.MEMORY_TEST_DATABASE_URL ?? ''
+export const SKIP = DATABASE_URL ? false : 'set MEMORY_TEST_DATABASE_URL to the postgres database of a supabase/postgres container to run the memory tests'
+
+const DENO = process.env.MEMORY_TEST_DENO || 'deno'
+// index.ts behind a stand-in for the Supabase runtime's EdgeRuntime global.
+const FUNCTION = join(import.meta.dirname, 'edge.ts')
+const DATABASE = join(import.meta.dirname, 'database.ts')
+// Without it, the harness's package.json puts deno in manual mode, where npm: imports have to be in harness/node_modules.
+const NO_NODE_MODULES = '--node-modules-dir=none'
+
+export type RealMemory = {
+  storage?: FakeStorage; serviceKey?: string; log?: () => string
+  url: string; token: string; runtimeToken: string; adminToken: string; researchToken: string; cronSecret: string; openai: FakeOpenAI; auth: FakeAuth
+  /** The fake Turnstile siteverify, with every token it was asked about. */
+  turnstile: FakeTurnstile
+  close: () => Promise<void>
+  /** The function's environment, so a second instance on the same database can start (startSibling). */
+  env?: Record<string, string | undefined>
+}
+
+function database(args: string[], tokens: Record<string, string> = {}): string {
+  const r = spawnSync(DENO, ['run', '-A', NO_NODE_MODULES, DATABASE, ...args], {
+    encoding: 'utf8', timeout: 120_000, env: { ...process.env, SUPABASE_DB_URL: DATABASE_URL, ...tokens },
+  })
+  if (r.status !== 0) throw new Error(`database.ts ${args[0]} failed (${r.status}): ${r.stderr || r.stdout || r.error?.message}`)
+  return r.stdout
+}
+
+/** The rows of one SQL statement on the test database, for what no route shows: hashes, absences, seeded rows. */
+export function sql(statement: string): Record<string, any>[] {
+  return JSON.parse(database(['sql', statement]))
+}
+
+/** Runs one migration file from memory/supabase/migrations on the test database again. */
+export function apply(file: string): void {
+  database(['apply', file])
+}
+
+/** Schema memory rebuilt from every migration (all of them, or those before `until`), with the tea vault seeded only when
+ * all of them ran. */
+export function resetDatabase(until?: string): void {
+  database(until ? ['until', until] : ['reset'])
+}
+
+/** Several statements in one round trip, as postgres. */
+export function exec(statements: string): void {
+  database(['exec', statements])
+}
+
+/** One statement as role memory_tenant with memory.owner = owner ('' leaves it unset): its rows, or {error, code}. */
+export function asTenant(owner: string, statement: string): Record<string, any>[] | { error: string; code: string | null } {
+  return JSON.parse(database(['tenant', owner, statement]))
+}
+
+/** Runs memory.purge_messages() and reports how long the database took, in ms. */
+export function purge(): { ms: number; result: unknown } {
+  return JSON.parse(database(['purge']))
+}
+
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const s = net.createServer()
+    s.once('error', reject)
+    s.listen(0, '127.0.0.1', () => {
+      const port = (s.address() as net.AddressInfo).port
+      s.close(() => resolve(port))
+    })
+  })
+}
+
+async function waitHealthy(url: string, child: ChildProcess, log: () => string): Promise<void> {
+  // The first start downloads the function's npm and jsr imports.
+  const deadline = Date.now() + 120_000
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) throw new Error(`memory exited ${child.exitCode}:\n${log()}`)
+    try {
+      if ((await request('GET', `${url}/healthz`, { timeoutMs: 2000 })).status === 200) return
+    } catch {
+      // Not listening yet.
+    }
+    await new Promise((r) => setTimeout(r, 200))
+  }
+  throw new Error(`memory never answered /healthz:\n${log()}`)
+}
+
+export type FakeTurnstile = { url: string; calls: { response: string | null; secret: string | null }[]; close: () => Promise<void> }
+export const TURNSTILE_SECRET = 'turnstile-test-secret'
+
+/** A stand-in for Cloudflare's siteverify: success only for the token "pass" with TURNSTILE_SECRET. */
+async function startFakeTurnstile(): Promise<FakeTurnstile> {
+  const calls: FakeTurnstile['calls'] = []
+  const server = http.createServer((req, res) => {
+    const chunks: Buffer[] = []
+    req.on('data', (c) => chunks.push(c))
+    req.on('end', () => {
+      const form = new URLSearchParams(Buffer.concat(chunks).toString('utf8'))
+      calls.push({ response: form.get('response'), secret: form.get('secret') })
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ success: form.get('response') === 'pass' && form.get('secret') === TURNSTILE_SECRET }))
+    })
+  })
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()))
+  return { url: `http://127.0.0.1:${(server.address() as net.AddressInfo).port}/siteverify`, calls, close: () => new Promise((r) => server.close(() => r())) }
+}
+
+/** A fresh schema memory and the function on it, with a device token, the runtime, admin and research tokens, and the cron secret.
+ * close() stops the function and drops the schema. extraEnv is added to the function's environment. */
+export async function startRealMemory(extraEnv: Record<string, string> = {}, options: { storage?: boolean; openai?: FakeOptions } = {}): Promise<RealMemory> {
+  const token = `device-${randomBytes(8).toString('hex')}`
+  const runtimeToken = `runtime-${randomBytes(8).toString('hex')}`
+  const adminToken = `admin-${randomBytes(8).toString('hex')}`
+  const researchToken = `research-${randomBytes(8).toString('hex')}`
+  const cronSecret = `cron-${randomBytes(8).toString('hex')}`
+  database(['reset'], {
+    MEMORY_TEST_TOKEN: token, MEMORY_TEST_RUNTIME_TOKEN: runtimeToken, MEMORY_TEST_ADMIN_TOKEN: adminToken, MEMORY_TEST_RESEARCH_TOKEN: researchToken, MEMORY_TEST_CRON_SECRET: cronSecret,
+  })
+  // Embeddings, the write judge and the recall filter all go to the fake OpenAI, and sign-ins to the fake Supabase Auth,
+  // so nothing leaves the machine.
+  const openai = await startFakeOpenAI(options.openai)
+  // With storage, a fake Supabase Storage answers under /storage/v1 on the same origin as SUPABASE_URL, and the function is
+  // given a service role key, which is what switches its Storage on.
+  const serviceKey = options.storage ? randomBytes(20).toString('hex') : undefined
+  const storage = serviceKey ? new FakeStorage(serviceKey) : undefined
+  const auth = await startFakeAuth(storage?.handle)
+  // Cloudflare Turnstile's siteverify (R54): the token "pass" with the test secret (database.ts puts it in Vault) is a person.
+  const turnstile = await startFakeTurnstile()
+  // The function's port is picked once the fakes hold theirs. Picked before, a fake listening on port 0 could be handed
+  // the same one, and the function would die with AddrInUse.
+  const port = await freePort()
+  const env = {
+    ...process.env, SUPABASE_DB_URL: DATABASE_URL, DENO_SERVE_ADDRESS: `tcp:127.0.0.1:${port}`, MEMORY_OPENAI_URL: openai.url, MEMORY_GEMINI_URL: openai.geminiUrl,
+    SUPABASE_URL: auth.url, SUPABASE_ANON_KEY: 'fake-anon-key', MEMORY_TURNSTILE_URL: turnstile.url, NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost',
+    ...(serviceKey ? { SUPABASE_SERVICE_ROLE_KEY: serviceKey, MEMORY_STORAGE_TIMEOUT_MS: '2000' } : {}), ...extraEnv,
+  }
+  const child = spawn(DENO, ['run', '-A', NO_NODE_MODULES, FUNCTION], { env, stdio: ['ignore', 'pipe', 'pipe'] })
+  let output = ''
+  // MEMORY_TEST_FUNCTION_LOG names a file that gets the function's output too, for a run whose failure shows only a 500.
+  const keep = (c: Buffer) => { output += c; if (process.env.MEMORY_TEST_FUNCTION_LOG) appendFileSync(process.env.MEMORY_TEST_FUNCTION_LOG, c) }
+  child.stdout?.on('data', keep)
+  child.stderr?.on('data', keep)
+  // The deployed function's path, so routes read the way MEMORY_URL makes them.
+  const url = `http://127.0.0.1:${port}/functions/v1/memory`
+  const close = async () => {
+    if (child.exitCode === null) {
+      child.kill('SIGTERM')
+      await new Promise((r) => child.once('exit', r))
+    }
+    await openai.close()
+    await auth.close()
+    await turnstile.close()
+    database(['drop'])
+  }
+  try {
+    await waitHealthy(url, child, () => output)
+  } catch (err) {
+    await close()
+    throw err
+  }
+  return { url, token, runtimeToken, adminToken, researchToken, cronSecret, openai, auth, turnstile, close, storage, serviceKey, log: () => output, env }
+}
+
+/** A second function process on the same database and fakes as `memory`, as another Edge Function instance would be. It
+ * shares nothing in memory with the first. close() stops only it. */
+export async function startSibling(memory: RealMemory): Promise<{ url: string; close: () => Promise<void>; log: () => string }> {
+  const port = await freePort()
+  const child = spawn(DENO, ['run', '-A', NO_NODE_MODULES, FUNCTION], { env: { ...memory.env, DENO_SERVE_ADDRESS: `tcp:127.0.0.1:${port}` }, stdio: ['ignore', 'pipe', 'pipe'] })
+  let output = ''
+  child.stdout?.on('data', (c) => (output += c))
+  child.stderr?.on('data', (c) => (output += c))
+  const url = `http://127.0.0.1:${port}/functions/v1/memory`
+  const close = async () => {
+    if (child.exitCode === null) {
+      child.kill('SIGTERM')
+      await new Promise((r) => child.once('exit', r))
+    }
+  }
+  try {
+    await waitHealthy(url, child, () => output)
+  } catch (err) {
+    await close()
+    throw err
+  }
+  return { url, close, log: () => output }
+}
+
+/** startRealMemory with a fake Supabase Storage (storage.ts) and a service role key, so the function's Storage is on. */
+export const startStorageBed = (extraEnv: Record<string, string> = {}) => startRealMemory(extraEnv, { storage: true })

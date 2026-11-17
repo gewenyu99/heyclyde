@@ -1,0 +1,559 @@
+[
+  {
+    "id": "p-1",
+    "query": "Apple seller identity studio brand enrollment options",
+    "task": "Advise on App Store enrollment toward the stated publishing identity",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-app",
+      "kind": "publishing"
+    },
+    "must": [
+      "rx-app-useless",
+      "app-brand-name-goal"
+    ],
+    "must_not": [],
+    "why": "Advise on App Store enrollment toward the stated publishing identity requires rx-app-useless, app-brand-name-goal to preserve the recorded constraint."
+  },
+  {
+    "id": "p-2",
+    "query": "Conflicting character reference advice reliability",
+    "task": "Synthesize conflicting Seedance character-reference recommendations",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-video",
+      "kind": "research"
+    },
+    "must": [
+      "rx-conflicting-advice",
+      "vid-draft-character-refs",
+      "pref-version-scoped-sources"
+    ],
+    "must_not": [],
+    "why": "Synthesize conflicting Seedance character-reference recommendations requires rx-conflicting-advice, vid-draft-character-refs, pref-version-scoped-sources to preserve the recorded constraint."
+  },
+  {
+    "id": "p-3",
+    "query": "Memory architecture context window capacity pinned file versus retrieval",
+    "task": "Design life-wide memory access",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-pkg",
+      "kind": "design"
+    },
+    "must": [
+      "rx-context-limited",
+      "pkg-retrieval-carries-memory",
+      "pkg-scope-life"
+    ],
+    "must_not": [],
+    "why": "Design life-wide memory access requires rx-context-limited, pkg-retrieval-carries-memory, pkg-scope-life to preserve the recorded constraint."
+  },
+  {
+    "id": "p-4",
+    "query": "Required mechanisms in the personal memory experiment",
+    "task": "Revise the spreading arm without dropping its core mechanisms",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-pkg",
+      "kind": "design"
+    },
+    "must": [
+      "rx-core-design",
+      "pkg-core-mechanisms"
+    ],
+    "must_not": [
+      "pkg-draft-cut-ant-colony"
+    ],
+    "why": "Revise the spreading arm without dropping its core mechanisms requires rx-core-design, pkg-core-mechanisms to preserve the recorded constraint while keeping the excluded guidance out of this context."
+  },
+  {
+    "id": "p-5",
+    "query": "Seedance 2.5 character consistency source version filter",
+    "task": "Research reference-image guidance for Seedance 2.5",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-video",
+      "kind": "research"
+    },
+    "must": [
+      "rx-filter-2-0",
+      "pref-version-scoped-sources"
+    ],
+    "must_not": [],
+    "why": "Research reference-image guidance for Seedance 2.5 requires rx-filter-2-0, pref-version-scoped-sources to preserve the recorded constraint."
+  },
+  {
+    "id": "p-6",
+    "query": "Seedance access through Krea",
+    "task": "Recommend mobile Seedance access",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-video",
+      "kind": "research"
+    },
+    "must": [
+      "rx-krea-removed",
+      "vid-krea-removed-seedance",
+      "vid-t288-mobile-options-exclude-dreamina-and-krea"
+    ],
+    "must_not": [
+      "vid-draft-krea-mobile",
+      "vid-t212-krea-works-incredibly-well-for-seedance"
+    ],
+    "why": "Recommend mobile Seedance access requires rx-krea-removed, vid-krea-removed-seedance, vid-t288-mobile-options-exclude-dreamina-and-krea to preserve the recorded constraint while keeping the excluded guidance out of this context."
+  },
+  {
+    "id": "p-7",
+    "query": "Seedance access through Krea",
+    "task": "Assess Wen’s historical desktop Seedance experience",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-video",
+      "kind": "research"
+    },
+    "must": [
+      "vid-t212-krea-works-incredibly-well-for-seedance",
+      "vid-t216-generated-hundreds-of-seedance-2-5-clips"
+    ],
+    "must_not": [
+      "vid-draft-krea-mobile"
+    ],
+    "why": "Assess Wen’s historical desktop Seedance experience requires vid-t212-krea-works-incredibly-well-for-seedance, vid-t216-generated-hundreds-of-seedance-2-5-clips to preserve the recorded constraint while keeping the excluded guidance out of this context."
+  },
+  {
+    "id": "p-8",
+    "query": "How to handle objections to the proposed memory design",
+    "task": "Prepare a revised plan with unresolved disagreements",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-pkg",
+      "kind": "design"
+    },
+    "must": [
+      "rx-listed-pushback",
+      "pref-ask-dont-assert",
+      "pref-plans-are-inspiration"
+    ],
+    "must_not": [],
+    "why": "Prepare a revised plan with unresolved disagreements requires rx-listed-pushback, pref-ask-dont-assert, pref-plans-are-inspiration to preserve the recorded constraint."
+  },
+  {
+    "id": "p-9",
+    "query": "Coffee water reporting units hardness notation",
+    "task": "Report mineral values for a water comparison",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-coffee",
+      "kind": "other"
+    },
+    "must": [
+      "rx-mgl",
+      "cof-pref-ppm"
+    ],
+    "must_not": [],
+    "why": "Report mineral values for a water comparison requires rx-mgl, cof-pref-ppm to preserve the recorded constraint."
+  },
+  {
+    "id": "p-10",
+    "query": "Who evaluates memory retrieval success",
+    "task": "Choose evaluation signals for the memory experiment",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-pkg",
+      "kind": "design"
+    },
+    "must": [
+      "rx-no-llm-judge",
+      "pkg-judging-agent-and-wen"
+    ],
+    "must_not": [
+      "pkg-draft-llm-jury"
+    ],
+    "why": "Choose evaluation signals for the memory experiment requires rx-no-llm-judge, pkg-judging-agent-and-wen to preserve the recorded constraint while keeping the excluded guidance out of this context."
+  },
+  {
+    "id": "p-11",
+    "query": "Negative training signal when delivered memory is unused",
+    "task": "Implement retrieval weight updates",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-pkg",
+      "kind": "execution"
+    },
+    "must": [
+      "rx-react-to-failures",
+      "pkg-negative-signal-wen-reaction"
+    ],
+    "must_not": [
+      "pkg-draft-unused-penalty"
+    ],
+    "why": "Implement retrieval weight updates requires rx-react-to-failures, pkg-negative-signal-wen-reaction to preserve the recorded constraint while keeping the excluded guidance out of this context."
+  },
+  {
+    "id": "p-12",
+    "query": "Eska water magnesium drops existing base recipe",
+    "task": "Adjust magnesium drops in Wen’s existing water",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-coffee",
+      "kind": "other"
+    },
+    "must": [
+      "rx-recipe-from-scratch",
+      "cof-water-recipe",
+      "cof-pref-ppm"
+    ],
+    "must_not": [],
+    "why": "Adjust magnesium drops in Wen’s existing water requires rx-recipe-from-scratch, cof-water-recipe, cof-pref-ppm to preserve the recorded constraint."
+  },
+  {
+    "id": "p-13",
+    "query": "Agent documentation standards demonstrated adoption outcomes",
+    "task": "Compare emerging document specifications with proven practices",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-agent-docs",
+      "kind": "research"
+    },
+    "must": [
+      "rx-too-new",
+      "pref-evidence-over-hype"
+    ],
+    "must_not": [],
+    "why": "Compare emerging document specifications with proven practices requires rx-too-new, pref-evidence-over-hype to preserve the recorded constraint."
+  },
+  {
+    "id": "p-14",
+    "query": "Agent documentation packaging evidence of usefulness",
+    "task": "Evaluate announcement-only documentation formats",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-agent-docs",
+      "kind": "research"
+    },
+    "must": [
+      "rx-unproven",
+      "pref-evidence-over-hype"
+    ],
+    "must_not": [],
+    "why": "Evaluate announcement-only documentation formats requires rx-unproven, pref-evidence-over-hype to preserve the recorded constraint."
+  },
+  {
+    "id": "p-15",
+    "query": "Wan 3.0 provider availability latest direct endpoint",
+    "task": "Check whether Wan 3.0 is callable",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-video",
+      "kind": "research"
+    },
+    "must": [
+      "rx-wan-ga",
+      "vid-wan3-callable",
+      "pref-live-pages"
+    ],
+    "must_not": [
+      "vid-draft-wan-ga-unannounced"
+    ],
+    "why": "Check whether Wan 3.0 is callable requires rx-wan-ga, vid-wan3-callable, pref-live-pages to preserve the recorded constraint while keeping the excluded guidance out of this context."
+  },
+  {
+    "id": "p-16",
+    "query": "Memory edge decay elapsed time versus retrieval failure",
+    "task": "Implement adaptive memory weights",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-pkg",
+      "kind": "execution"
+    },
+    "must": [
+      "rx-why-days",
+      "pkg-fade-on-failed-retrieval"
+    ],
+    "must_not": [
+      "pkg-draft-day-decay"
+    ],
+    "why": "Implement adaptive memory weights requires rx-why-days, pkg-fade-on-failed-retrieval to preserve the recorded constraint while keeping the excluded guidance out of this context."
+  },
+  {
+    "id": "p-17",
+    "query": "Experiment arm identifiers config and reporting",
+    "task": "Write KB_ARMS configuration and experiment report",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-pkg",
+      "kind": "execution"
+    },
+    "must": [
+      "pref-arm-names"
+    ],
+    "must_not": [],
+    "why": "Write KB_ARMS configuration and experiment report requires pref-arm-names to preserve the recorded constraint."
+  },
+  {
+    "id": "p-18",
+    "query": "How to handle objections to the proposed memory design",
+    "task": "Challenge Wen’s experimental plan while keeping his arm",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-pkg",
+      "kind": "design"
+    },
+    "must": [
+      "pref-plans-are-inspiration",
+      "pref-ask-dont-assert",
+      "pkg-core-mechanisms"
+    ],
+    "must_not": [
+      "pkg-draft-cut-ant-colony"
+    ],
+    "why": "Challenge Wen’s experimental plan while keeping his arm requires pref-plans-are-inspiration, pref-ask-dont-assert, pkg-core-mechanisms to preserve the recorded constraint while keeping the excluded guidance out of this context."
+  },
+  {
+    "id": "p-19",
+    "query": "How to handle objections to the proposed memory design",
+    "task": "Discuss disagreement about an app publishing plan",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-app",
+      "kind": "design"
+    },
+    "must": [
+      "pref-ask-dont-assert"
+    ],
+    "must_not": [
+      "pref-plans-are-inspiration"
+    ],
+    "why": "Discuss disagreement about an app publishing plan requires pref-ask-dont-assert to preserve the recorded constraint while keeping the excluded guidance out of this context."
+  },
+  {
+    "id": "p-20",
+    "query": "Evidence quality for new agent tools",
+    "task": "Recommend documentation tools based on demonstrated results",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-agent-docs",
+      "kind": "research"
+    },
+    "must": [
+      "pref-evidence-over-hype"
+    ],
+    "must_not": [],
+    "why": "Recommend documentation tools based on demonstrated results requires pref-evidence-over-hype to preserve the recorded constraint."
+  },
+  {
+    "id": "p-21",
+    "query": "Model pricing and availability source reliability",
+    "task": "Verify a model offer using the live model and pricing pages",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-video",
+      "kind": "research"
+    },
+    "must": [
+      "pref-live-pages",
+      "pref-version-scoped-sources"
+    ],
+    "must_not": [],
+    "why": "Verify a model offer using the live model and pricing pages requires pref-live-pages, pref-version-scoped-sources to preserve the recorded constraint."
+  },
+  {
+    "id": "p-22",
+    "query": "Billing preference for hosted generation services",
+    "task": "Compare recurring plans against non-expiring usage credits",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-pkg",
+      "kind": "money"
+    },
+    "must": [
+      "pref-payg"
+    ],
+    "must_not": [],
+    "why": "Compare recurring plans against non-expiring usage credits requires pref-payg to preserve the recorded constraint."
+  },
+  {
+    "id": "p-23",
+    "query": "Billing preference for hosted generation services",
+    "task": "Use the existing Ollama subscription for the memory auditor",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-pkg",
+      "kind": "money"
+    },
+    "must": [
+      "pref-payg",
+      "pkg-ollama-sub",
+      "pkg-auditor-agent"
+    ],
+    "must_not": [],
+    "why": "Use the existing Ollama subscription for the memory auditor requires pref-payg, pkg-ollama-sub, pkg-auditor-agent to preserve the recorded constraint."
+  },
+  {
+    "id": "p-24",
+    "query": "Response style numerical technical comparison",
+    "task": "Summarize measured retrieval results concisely",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-pkg",
+      "kind": "other"
+    },
+    "must": [
+      "pref-terse-precise",
+      "pkg-phase0-retrieval-results"
+    ],
+    "must_not": [],
+    "why": "Summarize measured retrieval results concisely requires pref-terse-precise, pkg-phase0-retrieval-results to preserve the recorded constraint."
+  },
+  {
+    "id": "p-25",
+    "query": "Exact model version scope in research sources",
+    "task": "Research Seedance 2.5 without importing 2.0 claims",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-video",
+      "kind": "research"
+    },
+    "must": [
+      "pref-version-scoped-sources",
+      "rx-filter-2-0"
+    ],
+    "must_not": [],
+    "why": "Research Seedance 2.5 without importing 2.0 claims requires pref-version-scoped-sources, rx-filter-2-0 to preserve the recorded constraint."
+  },
+  {
+    "id": "p-26",
+    "query": "Coffee grinder comparison expert particle distribution evidence",
+    "task": "Compare grinders using experts and PSD measurements",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-coffee",
+      "kind": "research"
+    },
+    "must": [
+      "cof-pref-expert-sources",
+      "pref-evidence-over-hype"
+    ],
+    "must_not": [],
+    "why": "Compare grinders using experts and PSD measurements requires cof-pref-expert-sources, pref-evidence-over-hype to preserve the recorded constraint."
+  },
+  {
+    "id": "p-27",
+    "query": "Water analysis output units and hardness",
+    "task": "Format the accepted coffee-water recipe",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-coffee",
+      "kind": "other"
+    },
+    "must": [
+      "cof-pref-ppm",
+      "cof-water-recipe"
+    ],
+    "must_not": [],
+    "why": "Format the accepted coffee-water recipe requires cof-pref-ppm, cof-water-recipe to preserve the recorded constraint."
+  },
+  {
+    "id": "p-28",
+    "query": "Video service prices currency resolution per second",
+    "task": "Compare verified generation costs at 480p in CAD",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-video",
+      "kind": "money"
+    },
+    "must": [
+      "vid-t200-prices-in-cad-per-second-at-480p-verifie",
+      "pref-live-pages",
+      "pref-payg"
+    ],
+    "must_not": [],
+    "why": "Compare verified generation costs at 480p in CAD requires vid-t200-prices-in-cad-per-second-at-480p-verifie, pref-live-pages, pref-payg to preserve the recorded constraint."
+  },
+  {
+    "id": "p-29",
+    "query": "Research missing provider facts independently",
+    "task": "Find current video provider availability without asking Wen to supply facts",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-video",
+      "kind": "research"
+    },
+    "must": [
+      "vid-t282-do-the-searches-instead-of-asking-him",
+      "pref-live-pages"
+    ],
+    "must_not": [],
+    "why": "Find current video provider availability without asking Wen to supply facts requires vid-t282-do-the-searches-instead-of-asking-him, pref-live-pages to preserve the recorded constraint."
+  },
+  {
+    "id": "p-30",
+    "query": "Image model for consistent faces costume detail",
+    "task": "Select an image model for character reference sheets",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-video",
+      "kind": "research"
+    },
+    "must": [
+      "vid-t250-image-model-criteria-faces-fine-detail-n",
+      "vid-gpt-image2-character-sheets",
+      "vid-t254-gpt-image-2-is-the-best-image-model-for"
+    ],
+    "must_not": [
+      "vid-draft-seedream-asian"
+    ],
+    "why": "Select an image model for character reference sheets requires vid-t250-image-model-criteria-faces-fine-detail-n, vid-gpt-image2-character-sheets, vid-t254-gpt-image-2-is-the-best-image-model-for to preserve the recorded constraint while keeping the excluded guidance out of this context."
+  },
+  {
+    "id": "p-31",
+    "query": "Mobile video generation platform options",
+    "task": "Find iOS access to the production models",
+    "context": {
+      "client": "any",
+      "repo": "any",
+      "project": "proj-video",
+      "kind": "research"
+    },
+    "must": [
+      "vid-t248-wants-mobile-ios-access-to-wan-3-0-seeda",
+      "vid-t288-mobile-options-exclude-dreamina-and-krea",
+      "pref-payg"
+    ],
+    "must_not": [
+      "vid-draft-krea-mobile"
+    ],
+    "why": "Find iOS access to the production models requires vid-t248-wants-mobile-ios-access-to-wan-3-0-seeda, vid-t288-mobile-options-exclude-dreamina-and-krea, pref-payg to preserve the recorded constraint while keeping the excluded guidance out of this context."
+  }
+]

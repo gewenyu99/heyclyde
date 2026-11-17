@@ -1,0 +1,158 @@
+/* Clyde tokens. The one source for every Clyde surface: memory.heyclyde.me's pages, heyclyde.me, and the chat cards.
+   Direction "Carbon copy": grey desk paper, black ink, and one ballpoint blue that marks what Clyde copied to your agents.
+   Light is the default. Dark follows the system unless a page sets data-theme="light" or "dark" on <html>.
+   Names: --cl-<role>. Never hard-code a color in a component; add a token here instead.
+   See memory/design/BRAND.md for when to use each one. */
+
+:root {
+  color-scheme: light;
+
+  /* Paper. The desk, the sheet on it, the well under a field, and the sticky note slapped on top. */
+  --cl-paper-0: #f4f4f1;   /* page ground (clyde-v2 page) */
+  --cl-paper-1: #ffffff;   /* cards, sheets, inputs */
+  --cl-paper-2: #ebece7;   /* wells: code, notes, hover rows, empty slots */
+  --cl-sticky: #fdf4c4;    /* sticky-note yellow sheet (4.8:1+ for all ink and pens) */
+  --cl-sticky-strip: #f4e593; /* adhesive glue strip along the top edge; never text */
+  --cl-sticky-edge: #cab965;  /* sticky-note border */
+  --cl-rule: #e1e2dc;      /* hairlines between things */
+  --cl-rule-strong: #c9cbc3; /* card edges that must show on paper-0 */
+  --cl-edge: #8a8d86;      /* control borders: inputs, secondary buttons (3:1 on paper-1 and sticky) */
+
+  /* Ink. Three strengths, all text-safe on paper-0, paper-1 and paper-2. */
+  --cl-ink: #20211f;       /* headings, body, primary fills */
+  --cl-ink-2: #4c4f49;     /* secondary text, bodies of cards */
+  --cl-ink-3: #686b65;     /* meta, provenance, placeholders */
+  --cl-on-ink: #ffffff;    /* text on an ink fill */
+
+  /* Carbon: the one accent. Links, focus, selection, and the offset copy behind a chosen sheet. */
+  --cl-carbon: #2f5fd0;
+  --cl-carbon-ink: #234ea9;   /* accent text on carbon-wash */
+  --cl-carbon-wash: #eaf0fd;  /* selected rows, accent chips */
+  --cl-carbon-copy: #b4c7f4;  /* the offset copy behind a lifted sheet; never text */
+  --cl-on-carbon: #ffffff;
+
+  /* The mark. clyde-v2's square never changes color with the theme. */
+  --cl-mark: #262825;
+  --cl-on-mark: #ffffff;
+
+  /* States. Each always travels with a word or a glyph, never color alone. */
+  --cl-ok: #1d7a42;   --cl-ok-wash: #e5f3e9;
+  --cl-warn: #9c5208; --cl-warn-wash: #fcefdf;
+  --cl-bad: #b3261e;  --cl-bad-wash: #fbe8e6;
+
+  /* Pens. Each agent signs in its own pen: badge, provenance name, graph node. Text-safe on paper in both themes. */
+  --cl-pen-blue: #2f5fd0;
+  --cl-pen-red: #b8382c;
+  --cl-pen-green: #1d7a42;
+  --cl-pen-violet: #6a44c4;
+  --cl-pen-amber: #915200;
+  --cl-pen-teal: #0d7266;
+  --cl-pen-graphite: #4c4f49;
+
+  /* Shadows. Soft lift for sheets; sticky peel shadow; the hard carbon offset for the one chosen thing. */
+  --cl-shadow-1: 0 1px 0 rgb(32 33 31 / 0.04), 0 1px 2px rgb(32 33 31 / 0.06);
+  --cl-shadow-2: 0 1px 2px rgb(32 33 31 / 0.06), 0 14px 32px -18px rgb(32 33 31 / 0.30);
+  --cl-sticky-shadow: 0 2px 0 rgb(32 33 31 / 0.05), 2px 6px 14px -6px rgb(32 33 31 / 0.18);
+  --cl-copy-1: 2px 2px 0 0 var(--cl-carbon-copy);
+  --cl-copy-2: 4px 4px 0 0 var(--cl-carbon-copy);
+  --cl-focus: 0 0 0 2px var(--cl-paper-1), 0 0 0 4px var(--cl-carbon);
+
+  /* Type. Bricolage Grotesque for display and the wordmark (ink-trap grotesque with optical sizes: it gets
+     tighter and blacker as it grows), Geist for reading and UI, Geist Mono for labels, provenance and numbers.
+     All three are OFL. Load them with memory/design/fonts.css (self-hosted) or Google Fonts; the system stack
+     behind each keeps a page readable before they arrive and inside hosts that block fonts. */
+  --cl-font-display: "Bricolage Grotesque", "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --cl-font-sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --cl-font-mono: "Geist Mono", ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
+
+  /* Type scale: weight size / line height family. Display sizes tighten, labels open up. */
+  --cl-text-display: 760 clamp(44px, 8vw, 84px) / 0.94 var(--cl-font-display);
+  --cl-text-title-1: 720 36px / 40px var(--cl-font-display);
+  --cl-text-title-2: 700 26px / 32px var(--cl-font-display);
+  --cl-text-title-3: 600 17px / 24px var(--cl-font-sans);
+  --cl-text-body-l: 400 17px / 27px var(--cl-font-sans);
+  --cl-text-body: 400 14.5px / 22px var(--cl-font-sans);
+  --cl-text-small: 400 13px / 19px var(--cl-font-sans);
+  --cl-text-label: 500 10.5px / 14px var(--cl-font-mono);
+  --cl-text-mono: 400 12px / 18px var(--cl-font-mono);
+  --cl-track-display: -0.04em;
+  --cl-track-title: -0.025em;
+  --cl-track-label: 0.1em;
+
+  /* Space: a 4 px grid. */
+  --cl-space-1: 4px;
+  --cl-space-2: 8px;
+  --cl-space-3: 12px;
+  --cl-space-4: 16px;
+  --cl-space-5: 20px;
+  --cl-space-6: 24px;
+  --cl-space-8: 32px;
+  --cl-space-10: 40px;
+  --cl-space-14: 56px;
+  --cl-space-20: 80px;
+
+  /* Radii. Paper has small corners; only the mark is soft. */
+  --cl-radius-xs: 3px;   /* stamps, kbd, pen squares */
+  --cl-radius-sm: 5px;   /* chips, inputs */
+  --cl-radius-md: 7px;   /* buttons, nav rows */
+  --cl-radius-lg: 10px;  /* cards */
+  --cl-radius-xl: 14px;  /* sheets, dialogs */
+  --cl-radius-pill: 999px;
+
+  /* Motion. Short, out-eased, and one overshoot reserved for the stamp. */
+  --cl-dur-1: 90ms;    /* press */
+  --cl-dur-2: 160ms;   /* hover, toggle */
+  --cl-dur-3: 240ms;   /* enter, toast */
+  --cl-dur-4: 420ms;   /* stamp */
+  --cl-ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --cl-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --cl-ease-stamp: cubic-bezier(0.3, 1.6, 0.55, 1);
+
+  /* The logo's height; set it on any parent to size a .cl-logo inside. */
+  --cl-logo-h: 26px;
+
+  /* Layout */
+  --cl-measure: 64ch;
+  --cl-page-max: 1120px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --cl-paper-0: #121311; --cl-paper-1: #1b1c1a; --cl-paper-2: #242522;
+    --cl-sticky: #282416; --cl-sticky-strip: #332d1a; --cl-sticky-edge: #6b6036;
+    --cl-rule: #2d2f2b; --cl-rule-strong: #3d403b; --cl-edge: #6f736b;
+    --cl-ink: #ecece6; --cl-ink-2: #bdbfb8; --cl-ink-3: #959891; --cl-on-ink: #121311;
+    --cl-carbon: #86a6f5; --cl-carbon-ink: #b8caf8; --cl-carbon-wash: #1c2740; --cl-carbon-copy: #34508f; --cl-on-carbon: #0e1524;
+    --cl-mark: #262825; --cl-on-mark: #ffffff;
+    --cl-ok: #6cc690; --cl-ok-wash: #15301f;
+    --cl-warn: #e3a45f; --cl-warn-wash: #33240f;
+    --cl-bad: #f2897e; --cl-bad-wash: #3a1a17;
+    --cl-pen-blue: #86a6f5; --cl-pen-red: #f08c80; --cl-pen-green: #6cc690; --cl-pen-violet: #b69ff3;
+    --cl-pen-amber: #e0aa5c; --cl-pen-teal: #5fc4b4; --cl-pen-graphite: #bdbfb8;
+    --cl-shadow-1: 0 1px 0 rgb(0 0 0 / 0.30), 0 1px 2px rgb(0 0 0 / 0.40);
+    --cl-shadow-2: 0 1px 2px rgb(0 0 0 / 0.40), 0 16px 36px -18px rgb(0 0 0 / 0.80);
+    --cl-sticky-shadow: 0 2px 0 rgb(0 0 0 / 0.35), 2px 8px 18px -6px rgb(0 0 0 / 0.65);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --cl-paper-0: #121311; --cl-paper-1: #1b1c1a; --cl-paper-2: #242522;
+  --cl-sticky: #282416; --cl-sticky-strip: #332d1a; --cl-sticky-edge: #6b6036;
+  --cl-rule: #2d2f2b; --cl-rule-strong: #3d403b; --cl-edge: #6f736b;
+  --cl-ink: #ecece6; --cl-ink-2: #bdbfb8; --cl-ink-3: #959891; --cl-on-ink: #121311;
+  --cl-carbon: #86a6f5; --cl-carbon-ink: #b8caf8; --cl-carbon-wash: #1c2740; --cl-carbon-copy: #34508f; --cl-on-carbon: #0e1524;
+  --cl-mark: #262825; --cl-on-mark: #ffffff;
+  --cl-ok: #6cc690; --cl-ok-wash: #15301f;
+  --cl-warn: #e3a45f; --cl-warn-wash: #33240f;
+  --cl-bad: #f2897e; --cl-bad-wash: #3a1a17;
+  --cl-pen-blue: #86a6f5; --cl-pen-red: #f08c80; --cl-pen-green: #6cc690; --cl-pen-violet: #b69ff3;
+  --cl-pen-amber: #e0aa5c; --cl-pen-teal: #5fc4b4; --cl-pen-graphite: #bdbfb8;
+  --cl-shadow-1: 0 1px 0 rgb(0 0 0 / 0.30), 0 1px 2px rgb(0 0 0 / 0.40);
+  --cl-shadow-2: 0 1px 2px rgb(0 0 0 / 0.40), 0 16px 36px -18px rgb(0 0 0 / 0.80);
+  --cl-sticky-shadow: 0 2px 0 rgb(0 0 0 / 0.35), 2px 8px 18px -6px rgb(0 0 0 / 0.65);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --cl-dur-1: 0ms; --cl-dur-2: 0ms; --cl-dur-3: 0ms; --cl-dur-4: 0ms; }
+}

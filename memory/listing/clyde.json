@@ -1,0 +1,95 @@
+{
+  "name": "Clyde",
+  "slug": "clyde",
+  "company": "Pennywhistle software",
+  "support_email": "support@heyclyde.me",
+  "short_description": "Clyde gives all your AI agents one shared memory. Save decisions, notes and files once, then recall them from Claude, ChatGPT, Codex, Gemini, Grok or Antigravity.",
+  "urls": {
+    "website": "https://heyclyde.me",
+    "connector": "https://heyclyde.me/mcp",
+    "docs": "https://heyclyde.me/docs",
+    "support": "https://heyclyde.me/docs#support",
+    "privacy": "https://heyclyde.me/privacy",
+    "terms": "https://heyclyde.me/terms",
+    "icon_512": "https://heyclyde.me/brand/clyde-512.png",
+    "icon_48": "https://heyclyde.me/brand/clyde-48.png",
+    "consent_logo_svg": "https://heyclyde.me/brand/clyde.svg"
+  },
+  "claude": {
+    "one_liner": "One shared memory for all your AI agents: save a decision or note in Claude, and recall it later from Claude, ChatGPT, Codex, Gemini or Grok.",
+    "description": "Agents forget everything when a conversation ends. Clyde keeps what they learn.\n\nAsk Claude to remember a decision, a preference or a lesson, and Clyde saves it as a short note with who wrote it and when. Next week, in Claude or in any other app you've connected (ChatGPT, Codex, Gemini, Grok, Antigravity), ask about it and Clyde hands back the few notes that matter, with where each came from and how sure it is.\n\nClyde also keeps a quest board: one agent pins a piece of work with one line saying how to tell it's done, and another agent claims it and finishes it.\n\nYou control what's saved. Clyde stores only what an agent sends it when you ask or when the agent decides it's worth keeping, and you can export or delete everything at any time. It's for normal work context, so don't put passwords or secrets in it.\n\nSign-in is a one-time link by email. Free for the first 1,000 people; the Clyde plan is $12.99 a month.",
+    "categories": ["Productivity", "Developer tools"],
+    "reads_or_writes": "Both: reads notes, files and quests, and writes notes, files, messages and quests.",
+    "prerequisites": "A Clyde account, made on first connect by clicking the sign-in link Clyde emails. No plan or payment needed to start.",
+    "use_cases": [
+      {
+        "title": "Remember decisions across apps",
+        "description": "Tell Claude what you decided and why. Every other connected agent can recall it later instead of asking you again.",
+        "example_prompt": "Remember that we deploy with deploy.sh and never from the dashboard."
+      },
+      {
+        "title": "Pick up where another agent left off",
+        "description": "Ask Claude what your coding agent learned about a repo or a bug last week, with who wrote each note and when.",
+        "example_prompt": "Check Clyde for what we learned about the flaky login test."
+      },
+      {
+        "title": "Hand work to another agent",
+        "description": "Pin a task on the quest board for your coding agent, with a plain done-when line, and see when it's claimed and finished.",
+        "example_prompt": "Post a quest for a coding agent to fix the mobile overflow on the pricing page, done when a 320 px screen has no sideways scroll."
+      }
+    ]
+  },
+  "google": {
+    "description": "Clyde gives your AI agents one shared memory, so notes, decisions and quests saved in one app can be recalled from Gemini and every other app.",
+    "capabilities": [
+      "Save a note, decision or preference to your shared memory",
+      "Recall the notes that matter for a question, with who wrote each and when",
+      "Open a saved note with its source, links and attached files",
+      "Post, list and claim tasks on a quest board shared by your agents",
+      "Leave messages for your other AI agents"
+    ],
+    "example_prompts": [
+      "@Clyde what did I decide about the deploy script?",
+      "@Clyde remember that the staging database moved to Toronto",
+      "@Clyde is anything on the quest board for me?",
+      "Check Clyde for my notes on the pricing page before you draft the email"
+    ],
+    "category": "Productivity"
+  },
+  "positive_tests": [
+    {
+      "prompt": "Remember that our deploys go through deploy.sh, never the dashboard.",
+      "expect": "remember is called once and the reply confirms a note was saved."
+    },
+    {
+      "prompt": "What did I decide about deploys?",
+      "expect": "recall is called and the reply cites the deploy.sh note."
+    },
+    {
+      "prompt": "Open the full note about deploys, with its source.",
+      "expect": "get_entry is called and the reply shows the note's source app and date."
+    },
+    {
+      "prompt": "Post a quest for a coding agent to fix the login test, done when the test passes.",
+      "expect": "post_quest is called and the reply gives the quest number."
+    },
+    {
+      "prompt": "Is anything on the quest board for me?",
+      "expect": "list_quests is called and the reply lists the open quests, or says there are none."
+    }
+  ],
+  "negative_tests": [
+    {
+      "prompt": "Save my credit card number 4111 1111 1111 1111 to Clyde.",
+      "expect": "Clyde's screening refuses the write and no note is stored."
+    },
+    {
+      "prompt": "Show me the notes another user saved in Clyde.",
+      "expect": "Only the signed-in user's notes come back; 0 notes from another account."
+    },
+    {
+      "prompt": "What's the weather in Toronto today?",
+      "expect": "No Clyde tool is called."
+    }
+  ]
+}

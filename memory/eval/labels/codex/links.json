@@ -1,0 +1,198 @@
+[
+  {
+    "src": "pkg-core-mechanisms",
+    "dst": "rx-core-design",
+    "type": "derived_from",
+    "confidence": 0.95,
+    "why": "The decision or observation directly captures this correction."
+  },
+  {
+    "src": "pkg-judging-agent-and-wen",
+    "dst": "rx-no-llm-judge",
+    "type": "derived_from",
+    "confidence": 0.95,
+    "why": "The decision or observation directly captures this correction."
+  },
+  {
+    "src": "pkg-negative-signal-wen-reaction",
+    "dst": "rx-react-to-failures",
+    "type": "derived_from",
+    "confidence": 0.95,
+    "why": "The decision or observation directly captures this correction."
+  },
+  {
+    "src": "pkg-fade-on-failed-retrieval",
+    "dst": "rx-why-days",
+    "type": "derived_from",
+    "confidence": 0.95,
+    "why": "The decision or observation directly captures this correction."
+  },
+  {
+    "src": "vid-krea-removed-seedance",
+    "dst": "rx-krea-removed",
+    "type": "derived_from",
+    "confidence": 0.95,
+    "why": "The decision or observation directly captures this correction."
+  },
+  {
+    "src": "rx-recipe-from-scratch",
+    "dst": "cof-water-recipe",
+    "type": "supports",
+    "confidence": 0.95,
+    "why": "The specific experience supplies evidence for the broader rule or conclusion."
+  },
+  {
+    "src": "vid-t016-rejected-runcomfy-pro-subscription-29-99",
+    "dst": "pref-payg",
+    "type": "supports",
+    "confidence": 0.95,
+    "why": "The specific experience supplies evidence for the broader rule or conclusion."
+  },
+  {
+    "src": "vid-t196-skeptical-of-unsourced-benchmark-claims",
+    "dst": "pref-evidence-over-hype",
+    "type": "supports",
+    "confidence": 0.95,
+    "why": "The specific experience supplies evidence for the broader rule or conclusion."
+  },
+  {
+    "src": "vid-t216-research-flawed-krea-claimed-not-to-run",
+    "dst": "pref-live-pages",
+    "type": "supports",
+    "confidence": 0.95,
+    "why": "The specific experience supplies evidence for the broader rule or conclusion."
+  },
+  {
+    "src": "vid-t274-corrected-claude-segmind-does-have-wan-3",
+    "dst": "pref-live-pages",
+    "type": "supports",
+    "confidence": 0.95,
+    "why": "The specific experience supplies evidence for the broader rule or conclusion."
+  },
+  {
+    "src": "vid-t280-told-claude-to-stop-surfacing-old-news",
+    "dst": "pref-live-pages",
+    "type": "supports",
+    "confidence": 0.95,
+    "why": "The specific experience supplies evidence for the broader rule or conclusion."
+  },
+  {
+    "src": "vid-t200-called-pricing-research-garbage",
+    "dst": "pref-live-pages",
+    "type": "supports",
+    "confidence": 0.95,
+    "why": "The specific experience supplies evidence for the broader rule or conclusion."
+  },
+  {
+    "src": "vid-t060-character-consistency-across-videos-is-a",
+    "dst": "vid-needs",
+    "type": "supports",
+    "confidence": 0.95,
+    "why": "The specific experience supplies evidence for the broader rule or conclusion."
+  },
+  {
+    "src": "vid-t294-models-don-t-grasp-small-asian-frames",
+    "dst": "vid-needs",
+    "type": "supports",
+    "confidence": 0.95,
+    "why": "The specific experience supplies evidence for the broader rule or conclusion."
+  },
+  {
+    "src": "vid-t168-h3-breaks-when-demo-prompt-is-slightly-a",
+    "dst": "vid-minimax-dropped",
+    "type": "supports",
+    "confidence": 0.95,
+    "why": "The specific experience supplies evidence for the broader rule or conclusion."
+  },
+  {
+    "src": "vid-t152-h3-via-wavespeed-hosted-api-also-very-ba",
+    "dst": "vid-minimax-dropped",
+    "type": "supports",
+    "confidence": 0.95,
+    "why": "The specific experience supplies evidence for the broader rule or conclusion."
+  },
+  {
+    "src": "vid-t200-prices-in-cad-per-second-at-480p-verifie",
+    "dst": "pref-live-pages",
+    "type": "refines",
+    "confidence": 0.95,
+    "why": "The narrower preference specifies how the general rule applies in this domain."
+  },
+  {
+    "src": "vid-t090-wants-concise-sourced-model-specific-adv",
+    "dst": "pref-terse-precise",
+    "type": "refines",
+    "confidence": 0.95,
+    "why": "The narrower preference specifies how the general rule applies in this domain."
+  },
+  {
+    "src": "vid-t090-wants-concise-sourced-model-specific-adv",
+    "dst": "pref-version-scoped-sources",
+    "type": "refines",
+    "confidence": 0.95,
+    "why": "The narrower preference specifies how the general rule applies in this domain."
+  },
+  {
+    "src": "vid-t192-uses-wavespeed-for-wan-3-0",
+    "dst": "vid-wan3-via-wavespeed",
+    "type": "supports",
+    "confidence": 0.95,
+    "why": "The source-turn observation grounds the summarized entry."
+  },
+  {
+    "src": "vid-t134-deployed-runpod-a6000-at-0-56-hr",
+    "dst": "vid-runpod-a6000",
+    "type": "supports",
+    "confidence": 0.95,
+    "why": "The source-turn observation grounds the summarized entry."
+  },
+  {
+    "src": "vid-t172-kling-3-0-is-bad",
+    "dst": "vid-kling3-poor",
+    "type": "supports",
+    "confidence": 0.95,
+    "why": "The source-turn observation grounds the summarized entry."
+  },
+  {
+    "src": "vid-t156-seedance-handles-text-prompted-fight-sce",
+    "dst": "vid-seedance-fight-choreo",
+    "type": "supports",
+    "confidence": 0.95,
+    "why": "The source-turn observation grounds the summarized entry."
+  },
+  {
+    "src": "vid-t254-gpt-image-2-is-the-best-image-model-for",
+    "dst": "vid-gpt-image2-character-sheets",
+    "type": "supports",
+    "confidence": 0.95,
+    "why": "The source-turn observation grounds the summarized entry."
+  },
+  {
+    "src": "vid-t180-slow-wan-3-0-run-was-30s-at-480p",
+    "dst": "vid-wan3-slow",
+    "type": "supports",
+    "confidence": 0.95,
+    "why": "The source-turn observation grounds the summarized entry."
+  },
+  {
+    "src": "vid-t300-exploring-long-novel-writing-workflow-wi",
+    "dst": "vid-t302-clarified-novels-are-text-only",
+    "type": "relates",
+    "confidence": 0.95,
+    "why": "The correction establishes that this workflow concerns text novels."
+  },
+  {
+    "src": "pkg-hooks-lifecycle",
+    "dst": "pkg-audit-on-idle",
+    "type": "supports",
+    "confidence": 0.95,
+    "why": "Stop and SessionEnd hooks supply the trigger for idle auditing."
+  },
+  {
+    "src": "pkg-filter-prune",
+    "dst": "pkg-fade-on-failed-retrieval",
+    "type": "refines",
+    "confidence": 0.8,
+    "why": "Pre-delivery filter rejections add a negative path signal beyond delivered items that cause bad reactions."
+  }
+]

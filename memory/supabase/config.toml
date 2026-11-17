@@ -1,0 +1,38 @@
+# The Supabase CLI's view of memory. Only the function's settings matter here: the project lives in the cloud.
+project_id = "memory"
+
+[functions.memory]
+# The function checks its own bearer tokens (auth.ts), so Supabase's JWT gate stays off.
+verify_jwt = false
+
+
+# The installer signs a new computer in through Supabase's default sign-in email. The link lands on the function's
+# /install/approve, and the installer finishes the PKCE exchange itself, so the link alone signs nobody in. The function
+# mints a device token only for an email in memory.allowed_email. Sign-ups are off: memory is allowlist only, and the
+# accounts that exist were added on purpose.
+[auth]
+enable_signup = false
+site_url = "https://memory.heyclyde.me"
+additional_redirect_urls = [
+  "https://memory.heyclyde.me/install/approve**",
+  "https://memory.heyclyde.me/oauth/approve**",
+  "https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory/install/approve**",
+  "https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory/oauth/approve**",
+]
+
+# claude.ai and other MCP clients sign in through Supabase Auth's OAuth 2.1 server. Clients register themselves, so
+# adding memory as a connector takes only its URL. Supabase sends the owner to site_url + /oauth/consent, where the
+# function emails the sign-in link and approves only clients whose callback is Claude's or on this computer (oauth.ts).
+[auth.oauth_server]
+enabled = true
+authorization_url_path = "/oauth/consent"
+allow_dynamic_registration = true
+
+# Pro lets the sign-in email say what it's for. Both the installer and the connector sign-in send it.
+[auth.email.template.magic_link]
+subject = "memory: approve a new connection?"
+content_path = "./supabase/templates/magic_link.html"
+
+# Pro: Storage files up to 500 MB, for memory-blobs (R20).
+[storage]
+file_size_limit = "500MiB"

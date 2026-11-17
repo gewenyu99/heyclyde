@@ -1,0 +1,318 @@
+<title>Clyde Design System</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=Geist:wght@300..800&family=Geist+Mono:wght@400..700&display=swap">
+<style>
+<!-- @inline tokens.css -->
+<!-- @inline components.css -->
+/* Layout: a brand & asset book on desk paper. One centered column at 1120px with a sticky index on the left from 1100px up;
+   every section opens with a mono caption and a Bricolage headline, and shows the thing itself, live, in both themes. */
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--cl-paper-0);color:var(--cl-ink);font:var(--cl-text-body);-webkit-font-smoothing:antialiased;
+ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .045 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E")}
+a{color:var(--cl-carbon)}
+:focus-visible{outline:2px solid var(--cl-carbon);outline-offset:2px}
+.page{max-width:1240px;margin:0 auto;padding-block:0 96px;padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px));display:grid;grid-template-columns:200px minmax(0,1fr);gap:56px}
+@media (max-width:1100px){.page{grid-template-columns:minmax(0,1fr);gap:0}}
+.index{position:sticky;top:calc(28px + env(safe-area-inset-top,0px));align-self:start;padding-top:132px;display:grid;gap:2px}
+@media (max-width:1100px){.index{display:none}}
+.index a{font:var(--cl-text-mono);font-size:12px;color:var(--cl-ink-3);text-decoration:none;padding:5px 0}
+.index a:hover{color:var(--cl-ink)}
+.index b{font:var(--cl-text-label);letter-spacing:var(--cl-track-label);text-transform:uppercase;color:var(--cl-ink-3);margin:14px 0 4px}
+main{min-width:0}
+.top{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-block:28px 0}
+.top .cl-logo{--cl-logo-h:30px}
+.top nav{display:flex;gap:18px;font:var(--cl-text-small)}
+.top nav a{color:var(--cl-ink-2);text-decoration:none}
+.top nav a:hover{color:var(--cl-ink)}
+@media (max-width:640px){.top nav{display:none}}
+
+/* Hero */
+.hero{padding-block:64px 56px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:32px;align-items:center;position:relative}
+@media (max-width:760px){.hero{grid-template-columns:minmax(0,1fr)}}
+.hero-copy{display:grid;gap:20px}
+.hero h1{font:var(--cl-text-display);font-size:clamp(44px,7vw,84px);letter-spacing:var(--cl-track-display);margin:0;max-width:13ch;text-wrap:balance}
+.hero h1 em{font-style:normal;color:var(--cl-carbon);position:relative}
+.hero .cl-lead{font-size:18px;line-height:28px;max-width:56ch}
+.hero-art{display:grid;justify-items:center;gap:10px}
+.hero-art img{height:230px;width:auto}
+.meta-row{display:flex;flex-wrap:wrap;gap:8px 20px;font:var(--cl-text-mono);color:var(--cl-ink-3)}
+.meta-row b{color:var(--cl-ink);font-weight:500}
+
+/* Sections */
+section.s{padding-block:56px;border-top:1px solid var(--cl-rule);scroll-margin-top:12px}
+.s-head{display:grid;gap:10px;margin-bottom:28px;max-width:720px}
+.s-head h2{font:var(--cl-text-title-1);letter-spacing:var(--cl-track-title);margin:0;text-wrap:balance}
+.s-head p{margin:0;color:var(--cl-ink-2);font:var(--cl-text-body-l);max-width:62ch}
+h3.sub{font:var(--cl-text-label);letter-spacing:var(--cl-track-label);text-transform:uppercase;color:var(--cl-ink-3);margin:36px 0 14px}
+
+/* Theme tiles: render any block in light or dark regardless of the page's theme */
+.tile-light{--cl-paper-0:#f4f4f1;--cl-paper-1:#ffffff;--cl-paper-2:#ebece7;--cl-sticky:#fdf4c4;--cl-sticky-strip:#f4e593;--cl-sticky-edge:#cab965;--cl-sticky-shadow:0 1px 0 #cab96555,0 8px 18px -12px #20211f24;--cl-rule:#e1e2dc;--cl-rule-strong:#c9cbc3;--cl-edge:#8a8d86;--cl-ink:#20211f;--cl-ink-2:#4c4f49;--cl-ink-3:#686b65;--cl-on-ink:#ffffff;--cl-carbon:#2f5fd0;--cl-carbon-ink:#234ea9;--cl-carbon-wash:#eaf0fd;--cl-carbon-copy:#b4c7f4;--cl-ok:#1d7a42;--cl-ok-wash:#e5f3e9;--cl-warn:#9c5208;--cl-warn-wash:#fcefdf;--cl-bad:#b3261e;--cl-bad-wash:#fbe8e6;--cl-pen-blue:#2f5fd0;--cl-pen-red:#b8382c;--cl-pen-green:#1d7a42;--cl-pen-violet:#6a44c4;--cl-pen-amber:#915200;--cl-pen-teal:#0d7266;--cl-pen-graphite:#4c4f49;color-scheme:light}
+.tile-dark{--cl-paper-0:#121311;--cl-paper-1:#1b1c1a;--cl-paper-2:#242522;--cl-sticky:#282416;--cl-sticky-strip:#332d1a;--cl-sticky-edge:#6b6036;--cl-sticky-shadow:0 1px 0 #00000080,0 10px 22px -12px #00000090;--cl-rule:#2d2f2b;--cl-rule-strong:#3d403b;--cl-edge:#6f736b;--cl-ink:#ecece6;--cl-ink-2:#bdbfb8;--cl-ink-3:#959891;--cl-on-ink:#121311;--cl-carbon:#86a6f5;--cl-carbon-ink:#b8caf8;--cl-carbon-wash:#1c2740;--cl-carbon-copy:#34508f;--cl-ok:#6cc690;--cl-ok-wash:#15301f;--cl-warn:#e3a45f;--cl-warn-wash:#33240f;--cl-bad:#f2897e;--cl-bad-wash:#3a1a17;--cl-pen-blue:#86a6f5;--cl-pen-red:#f08c80;--cl-pen-green:#6cc690;--cl-pen-violet:#b69ff3;--cl-pen-amber:#e0aa5c;--cl-pen-teal:#5fc4b4;--cl-pen-graphite:#bdbfb8;color-scheme:dark}
+.tile-light,.tile-dark{background:var(--cl-paper-0);color:var(--cl-ink)}
+.pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-xl);overflow:hidden}
+@media (max-width:760px){.pair{grid-template-columns:minmax(0,1fr)}}
+.pair>div{padding:28px;min-width:0;display:grid;gap:18px;align-content:start}
+.pair .tag{font:var(--cl-text-label);letter-spacing:var(--cl-track-label);text-transform:uppercase;color:var(--cl-ink-3)}
+
+/* Logo */
+.logo-hero{display:flex;flex-wrap:wrap;gap:32px;align-items:center;justify-content:center;padding:44px 20px !important;min-height:260px}
+.logo-hero .cl-logo{--cl-logo-h:clamp(46px,7vw,76px)}
+.logo-hero img{height:164px;width:auto}
+.sizes{display:flex;flex-wrap:wrap;gap:26px;align-items:flex-end}
+.sizes figure{margin:0;display:grid;justify-items:center;gap:8px;font:var(--cl-text-mono);font-size:11px;color:var(--cl-ink-3)}
+.rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:14px}
+.rules .cl-card{display:grid;gap:10px}
+.clear{position:relative;display:inline-grid;padding:22px;border:1.5px dashed var(--cl-carbon);border-radius:var(--cl-radius-md);justify-self:start}
+.clear .cl-logo{--cl-logo-h:34px}
+.misuse{display:flex;gap:16px;flex-wrap:wrap;align-items:center}
+.misuse span{position:relative;display:grid;place-items:center;width:64px;height:64px;border-radius:var(--cl-radius-md);background:var(--cl-paper-2)}
+.misuse span::after{content:"";position:absolute;inset:6px;background:linear-gradient(45deg,transparent 47%,var(--cl-bad) 47% 53%,transparent 53%)}
+.misuse .cl-logo{--cl-logo-h:38px}
+
+/* Color */
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,144px),1fr));gap:10px}
+.sw{border:1px solid var(--cl-rule);border-radius:var(--cl-radius-lg);overflow:hidden;background:var(--cl-paper-1)}
+.sw i{display:block;height:58px;border-bottom:1px solid var(--cl-rule)}
+.sw div{padding:9px 10px;display:grid;gap:2px;font:var(--cl-text-mono);font-size:11px;color:var(--cl-ink-3)}
+.sw b{font:600 12.5px/1.3 var(--cl-font-sans);color:var(--cl-ink)}
+
+/* Type */
+.specimen{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:28px;align-items:end;padding:28px 0;border-bottom:1px dashed var(--cl-rule-strong)}
+@media (max-width:760px){.specimen{grid-template-columns:minmax(0,1fr)}}
+.specimen .big{font-size:clamp(56px,10vw,120px);line-height:.92;letter-spacing:-.045em;overflow-wrap:anywhere}
+.specimen .about{display:grid;gap:6px;font:var(--cl-text-small);color:var(--cl-ink-2)}
+.specimen .about b{font:var(--cl-text-label);letter-spacing:var(--cl-track-label);text-transform:uppercase;color:var(--cl-ink-3)}
+.scale{display:grid;gap:0}
+.scale>div{display:grid;grid-template-columns:120px minmax(0,1fr);gap:16px;align-items:baseline;padding:14px 0;border-bottom:1px solid var(--cl-rule)}
+.scale span{font:var(--cl-text-mono);font-size:11px;color:var(--cl-ink-3)}
+.scale p{margin:0;min-width:0;overflow-wrap:anywhere}
+
+/* Space, radius, shadow, motion */
+.bars{display:grid;gap:8px}
+.bars div{display:grid;grid-template-columns:110px minmax(0,1fr);gap:12px;align-items:center;font:var(--cl-text-mono);font-size:11.5px;color:var(--cl-ink-3)}
+.bars i{display:block;height:12px;background:var(--cl-carbon-copy);border-radius:2px}
+.radii{display:flex;gap:14px;flex-wrap:wrap}
+.radii div{width:84px;height:84px;border:1.5px solid var(--cl-ink);display:grid;place-items:end start;padding:8px;font:var(--cl-text-mono);font-size:11px;color:var(--cl-ink-3);background:var(--cl-paper-1)}
+.lift-demo{display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+
+/* Components grid */
+.comp{display:grid;gap:16px}
+.comp-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.duo{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px;align-items:start}
+
+/* Shared Assets showcase */
+.scene-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,176px),1fr));gap:14px}
+.scene-card{padding:14px;border:1px dashed var(--cl-rule-strong);border-radius:var(--cl-radius-lg);display:grid;gap:8px;justify-items:center;text-align:center}
+.scene-card img{max-height:156px;max-width:100%;width:auto;height:auto;display:block}
+.scene-card code{font:var(--cl-text-mono);font-size:11px;color:var(--cl-ink-3)}
+.doodle-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:12px}
+.doodle-card{padding:12px;background:var(--cl-paper-1);border:1px solid var(--cl-rule);border-radius:var(--cl-radius-md);display:grid;gap:8px;justify-items:center;text-align:center}
+.doodle-card img{max-height:76px;max-width:100%;width:auto;height:auto;display:block}
+.doodle-card code{font:var(--cl-text-mono);font-size:11px;color:var(--cl-ink-3)}
+.icon-showcase{display:flex;flex-wrap:wrap;gap:20px;align-items:center}
+.icon-showcase figure{margin:0;display:grid;gap:6px;justify-items:center;font:var(--cl-text-mono);font-size:11px;color:var(--cl-ink-3)}
+
+/* In use: a chat card mockup */
+.chat{border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-xl);background:var(--cl-paper-1);overflow:hidden;max-width:520px;box-shadow:var(--cl-shadow-2)}
+.chat-top{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--cl-rule);font:var(--cl-text-mono);font-size:11.5px;color:var(--cl-ink-3)}
+.chat-top i{width:9px;height:9px;border-radius:50%;background:var(--cl-paper-2);border:1px solid var(--cl-rule-strong)}
+.chat-body{padding:16px;display:grid;gap:12px;background:var(--cl-paper-0)}
+.bubble{justify-self:end;max-width:80%;background:var(--cl-ink);color:var(--cl-on-ink);padding:9px 13px;border-radius:14px 14px 4px 14px;font:var(--cl-text-small)}
+.reply{display:grid;gap:10px;font:var(--cl-text-small);color:var(--cl-ink-2)}
+.via{display:flex;align-items:center;gap:6px;font:var(--cl-text-label);letter-spacing:.06em;text-transform:uppercase;color:var(--cl-ink-3)}
+.via .cl-logo{--cl-logo-h:14px}
+
+/* Voice */
+.voice{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:760px){.voice{grid-template-columns:minmax(0,1fr)}}
+.voice .cl-card{display:grid;gap:8px}
+.voice q{quotes:none;font:500 15.5px/23px var(--cl-font-sans);color:var(--cl-ink)}
+.foot{border-top:1px dashed var(--cl-rule-strong);margin-top:24px;padding-top:20px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font:var(--cl-text-mono);font-size:12px;color:var(--cl-ink-3)}
+.foot .cl-logo{--cl-logo-h:22px}
+</style>
+
+<div class="page cl-root">
+<nav class="index" aria-label="Sections">
+ <b>Brand</b><a href="#logo">Mascot &amp; Logo</a><a href="#voice">Voice</a>
+ <b>Foundations</b><a href="#color">Color &amp; Sticky</a><a href="#type">Type</a><a href="#space">Space &amp; motion</a>
+ <b>Build</b><a href="#components">Components</a><a href="#assets">Shared assets</a><a href="#in-use">In use</a><a href="#files">Files</a>
+</nav>
+<main>
+<header class="top"><a class="cl-wordmark" href="#" aria-label="Clyde"><!-- @logo lockup --></a>
+<nav><a href="#logo">Logo</a><a href="#color">Color</a><a href="#components">Components</a><a href="#assets">Assets</a><a href="https://memory.heyclyde.me/">Connect ↗</a></nav></header>
+
+<section class="hero">
+ <div class="hero-copy">
+  <span class="cl-label">Clyde design system · Sticky-Note &amp; Doodle edition</span>
+  <h1>Sticky notes &amp; <em class="cl-scribble">doodles.</em></h1>
+  <p class="cl-lead">Clyde gives your agents one shared memory and a sticky-note quest board so they stop waking up like goldfish. The visual language is desk paper, scratchy black ink, warm sticky notes, and ballpoint-blue doodles — built around Sticky-Note Forehead Clyde.</p>
+  <div class="meta-row"><span>Display <b>Bricolage Grotesque</b></span><span>Text <b>Geist</b></span><span>Data <b>Geist Mono</b></span><span>Sticky <b>#fdf4c4</b></span><span>Ballpoint <b>#2f5fd0</b></span></div>
+ </div>
+ <div class="hero-art">
+  <picture class="cl-mascot"><source srcset="brand/clyde-mascot-dark.svg" media="(prefers-color-scheme: dark)"><img src="brand/clyde-mascot-light.svg" alt="Sticky-Note Forehead Clyde"></picture>
+  <div class="cl-sticky cl-sticky--tilt" style="padding:10px 14px;max-width:220px;font:var(--cl-text-mono);font-size:11.5px">actual portrait of your agent trying to remember Tuesday</div>
+ </div>
+</section>
+
+<section class="s" id="logo">
+ <div class="s-head"><span class="cl-label">01 · Mascot &amp; Logo</span><h2>Sticky-Note Forehead Clyde.</h2><p>A slouching, deadpan hand-doodled little guy with hands in pockets, tired dot eyes, and a crooked blue-outlined sticky note slapped straight onto his forehead. In headers and chat cards, his head mark pairs with lowercase "clyde" in Bricolage Grotesque ExtraBold.</p></div>
+ <div class="pair">
+  <div class="tile-light logo-hero"><img src="brand/clyde-mascot-light.svg" alt="Clyde mascot (light)"><!-- @logo lockup --></div>
+  <div class="tile-dark logo-hero"><img src="brand/clyde-mascot-dark.svg" alt="Clyde mascot (dark)"><!-- @logo lockup --></div>
+ </div>
+ <h3 class="sub">Sizes: 16 px favicon up to 128 px hero mark</h3>
+ <div class="pair">
+  <div class="tile-light"><span class="tag">Light</span><div class="sizes"><figure><span style="--cl-logo-h:16px"><!-- @logo mark --></span>16 · favicon</figure><figure><span style="--cl-logo-h:28px"><!-- @logo lockup --></span>28 · navbar</figure><figure><span style="--cl-logo-h:64px"><!-- @logo mark --></span>64 · app icon</figure><figure><span style="--cl-logo-h:112px"><!-- @logo mark --></span>112 · hero</figure></div></div>
+  <div class="tile-dark"><span class="tag">Dark</span><div class="sizes"><figure><span style="--cl-logo-h:16px"><!-- @logo mark --></span>16 · favicon</figure><figure><span style="--cl-logo-h:28px"><!-- @logo lockup --></span>28 · navbar</figure><figure><span style="--cl-logo-h:64px"><!-- @logo mark --></span>64 · app icon</figure><figure><span style="--cl-logo-h:112px"><!-- @logo mark --></span>112 · hero</figure></div></div>
+ </div>
+ <h3 class="sub">Rules</h3>
+ <div class="rules">
+  <div class="cl-card"><b>Clear space</b><div class="clear"><!-- @logo lockup --></div><p class="cl-hint">Leave at least one-sixth of the mark's height clear on every side so the crooked sticky note breathes.</p></div>
+  <div class="cl-card"><b>Minimum size</b><p class="cl-hint">Head mark alone down to 16 px; full lockup from 20 px tall (`<= 4.5 KB` inline in `brand.js`).</p><div class="comp-row"><span style="--cl-logo-h:16px;display:inline-block"><!-- @logo mark --></span><span style="--cl-logo-h:22px;display:inline-block"><!-- @logo lockup --></span></div></div>
+  <div class="cl-card"><b>Never</b><div class="misuse"><span style="transform:rotate(-20deg)"><!-- @logo mark --></span><span style="filter:hue-rotate(140deg)"><!-- @logo mark --></span><span style="transform:scaleX(1.4)"><!-- @logo mark --></span></div><p class="cl-hint">Don't stretch, neon-tint, or replace the hand-drawn ink strokes with geometric circles. Paper, sticky, ink, and carbon flip cleanly via tokens.</p></div>
+ </div>
+</section>
+
+<section class="s" id="voice">
+ <div class="s-head"><span class="cl-label">02 · Voice</span><h2>Blunt, candid, and allergic to AI hype.</h2><p>Talk like a normal human who taped Postgres, embeddings, and an MCP URL together because AI labs somehow forgot agents need to remember Tuesday. Keep provenance, counts, and error steps exact — without SaaS buzzwords or solemn roleplay.</p></div>
+ <div class="voice">
+  <div class="cl-card"><span class="cl-chip cl-chip--ok" style="justify-self:start">Write</span><q>You told Claude Code three weeks ago: Deploys go through deploy.sh, never the dashboard.</q><q>This is not advanced space-age technology, and it's probably not even very secure — don't put passwords in it.</q><q>That link's dead — they only last 15 minutes and work once. Kick off sign-in again from your app.</q></div>
+  <div class="cl-card"><span class="cl-chip cl-chip--bad" style="justify-self:start">Don't write</span><q>Supercharge your agentic workflow with an AI-powered second brain! 🚀</q><q>Oops! Something went wrong 😅</q><q>Enterprise-grade neural vault for mission-critical secrets.</q></div>
+ </div>
+</section>
+
+<section class="s" id="color">
+ <div class="s-head"><span class="cl-label">03 · Color &amp; Sticky Notes</span><h2>Paper, warm sticky yellow, black ink, and ballpoint blue.</h2><p>Every foreground — ink, muted ink, carbon blue, status colors, and all seven agent pens — passes 4.5:1 WCAG contrast on paper-0, paper-1, paper-2, AND sticky in both light and dark (`design_test.ts`).</p></div>
+ <div class="pair">
+  <div class="tile-light"><span class="tag">Light</span><div class="swatches">
+   <div class="sw"><i style="background:#f4f4f1"></i><div><b>paper-0</b>#f4f4f1 desk</div></div><div class="sw"><i style="background:#ffffff"></i><div><b>paper-1</b>#ffffff sheet</div></div><div class="sw"><i style="background:#fdf4c4"></i><div><b>sticky</b>#fdf4c4 note</div></div>
+   <div class="sw"><i style="background:#f4e593"></i><div><b>sticky-strip</b>#f4e593 glue</div></div><div class="sw"><i style="background:#20211f"></i><div><b>ink</b>#20211f 14.9:1</div></div><div class="sw"><i style="background:#686b65"></i><div><b>ink-3</b>#686b65 4.8:1</div></div>
+   <div class="sw"><i style="background:#2f5fd0"></i><div><b>carbon</b>#2f5fd0 5.1:1</div></div><div class="sw"><i style="background:#1d7a42"></i><div><b>ok</b>#1d7a42</div></div><div class="sw"><i style="background:#b3261e"></i><div><b>bad</b>#b3261e</div></div>
+  </div></div>
+  <div class="tile-dark"><span class="tag">Dark</span><div class="swatches">
+   <div class="sw"><i style="background:#121311"></i><div><b>paper-0</b>#121311 desk</div></div><div class="sw"><i style="background:#1b1c1a"></i><div><b>paper-1</b>#1b1c1a sheet</div></div><div class="sw"><i style="background:#282416"></i><div><b>sticky</b>#282416 note</div></div>
+   <div class="sw"><i style="background:#332d1a"></i><div><b>sticky-strip</b>#332d1a glue</div></div><div class="sw"><i style="background:#ecece6"></i><div><b>ink</b>#ecece6 13.7:1</div></div><div class="sw"><i style="background:#959891"></i><div><b>ink-3</b>#959891 5.3:1</div></div>
+   <div class="sw"><i style="background:#86a6f5"></i><div><b>carbon</b>#86a6f5 6.5:1</div></div><div class="sw"><i style="background:#6cc690"></i><div><b>ok</b>#6cc690</div></div><div class="sw"><i style="background:#f2897e"></i><div><b>bad</b>#f2897e</div></div>
+  </div></div>
+ </div>
+ <h3 class="sub">Pens: one per agent (contrast-checked on paper &amp; sticky)</h3>
+ <div class="pair"><div class="tile-light"><div class="comp-row">
+  <span class="cl-agent cl-pen-blue"><span class="cl-agent__sq">at</span><span class="cl-agent__name">atlas</span></span><span class="cl-agent cl-pen-violet"><span class="cl-agent__sq">qu</span><span class="cl-agent__name">quill</span></span><span class="cl-agent cl-pen-teal"><span class="cl-agent__sq">sc</span><span class="cl-agent__name">scout</span></span><span class="cl-agent cl-pen-amber"><span class="cl-agent__sq">ju</span><span class="cl-agent__name">juniper</span></span><span class="cl-agent cl-pen-red"><span class="cl-agent__sq">pa</span><span class="cl-agent__name">patch</span></span><span class="cl-agent cl-pen-green"><span class="cl-agent__sq">fe</span><span class="cl-agent__name">fern</span></span><span class="cl-agent cl-pen-graphite"><span class="cl-agent__sq">em</span><span class="cl-agent__name">ember</span></span>
+ </div></div><div class="tile-dark"><div class="comp-row">
+  <span class="cl-agent cl-pen-blue"><span class="cl-agent__sq">at</span><span class="cl-agent__name">atlas</span></span><span class="cl-agent cl-pen-violet"><span class="cl-agent__sq">qu</span><span class="cl-agent__name">quill</span></span><span class="cl-agent cl-pen-teal"><span class="cl-agent__sq">sc</span><span class="cl-agent__name">scout</span></span><span class="cl-agent cl-pen-amber"><span class="cl-agent__sq">ju</span><span class="cl-agent__name">juniper</span></span><span class="cl-agent cl-pen-red"><span class="cl-agent__sq">pa</span><span class="cl-agent__name">patch</span></span><span class="cl-agent cl-pen-green"><span class="cl-agent__sq">fe</span><span class="cl-agent__name">fern</span></span><span class="cl-agent cl-pen-graphite"><span class="cl-agent__sq">em</span><span class="cl-agent__name">ember</span></span>
+ </div></div></div>
+</section>
+
+<section class="s" id="type">
+ <div class="s-head"><span class="cl-label">04 · Type</span><h2>A grotesque with ink traps, a clean sans, a mono for the receipt.</h2><p>Bricolage Grotesque gives headlines punchy ink-trap personality, Geist keeps dense UI crisp, and Geist Mono handles labels, provenance, and numbers. All OFL and self-hosted on memory.heyclyde.me.</p></div>
+ <div class="specimen"><div class="big" style="font-family:var(--cl-font-display);font-weight:780"><span class="cl-scribble">So we did.</span></div><div class="about"><b>Display + .cl-scribble</b>Bricolage Grotesque 600–800 with `.cl-scribble` hand-doodled ballpoint underline for punchlines.</div></div>
+ <div class="specimen"><div class="big" style="font-family:var(--cl-font-sans);font-weight:500;letter-spacing:-.035em">Every agent.</div><div class="about"><b>Text</b>Geist, 400 to 600. Body, UI, card titles.</div></div>
+ <div class="specimen"><div class="big" style="font-family:var(--cl-font-mono);font-weight:500;font-size:clamp(40px,7vw,88px);letter-spacing:-.04em">Nº&nbsp;38</div><div class="about"><b>Data</b>Geist Mono, 400 to 500. Labels, provenance, ids, pricing, counts.</div></div>
+</section>
+
+<section class="s" id="space">
+ <div class="s-head"><span class="cl-label">05 · Space, corners, lift &amp; tilt</span><h2>Crisp sheets, crooked sticky notes, hard carbon lift.</h2><p>Regular cards sit square on a 4 px grid; sticky notes (`.cl-sticky--tilt`) and rubber stamps (`.cl-stamp`) carry the slight human tilt so the page feels like a real desk without turning messy.</p></div>
+ <div class="duo">
+  <div class="cl-card"><span class="cl-label">Space</span><div class="bars" style="margin-top:12px"><div>space-1 · 4<i style="width:4px"></i></div><div>space-2 · 8<i style="width:8px"></i></div><div>space-3 · 12<i style="width:12px"></i></div><div>space-4 · 16<i style="width:16px"></i></div><div>space-6 · 24<i style="width:24px"></i></div><div>space-8 · 32<i style="width:32px"></i></div><div>space-14 · 56<i style="width:56px"></i></div></div></div>
+  <div class="cl-card"><span class="cl-label">Lift &amp; stamp · hover these</span><div class="lift-demo" style="margin-top:14px"><button class="cl-btn cl-btn--primary" type="button">Get Clyde</button><button class="cl-btn" type="button">Read the fine print</button><span class="cl-stamp cl-stamp--warn">Read this</span></div><p class="cl-hint" style="margin-top:12px">90 ms press · 160 ms hover · reduced-motion safe.</p></div>
+ </div>
+</section>
+
+<section class="s" id="components">
+ <div class="s-head"><span class="cl-label">06 · Components</span><h2>Sticky notes, memory cards, and quest slips in both themes.</h2><p>Every `cl-` component uses CSS custom properties from `tokens.css` only — zero literal hex colors — so the exact same stylesheet powers `heyclyde.me`, `memory.heyclyde.me`, and MCP chat cards.</p></div>
+ <div class="pair">
+  <div class="tile-light comp"><span class="tag">Light</span>
+   <div class="cl-sticky cl-sticky--tilt"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px"><span class="cl-label">Fair warning</span><span class="cl-stamp cl-stamp--warn">Read this</span></div><b>Not a vault — don't store passwords here.</b><p class="cl-hint" style="margin-top:4px">Just normal repo quirks, preferences, and sticky-note handoffs.</p></div>
+   <div class="cl-sticky cl-sticky--blue cl-sticky--tilt-r"><span class="cl-label">Blue note variant (.cl-sticky--blue)</span><p style="margin:4px 0 0">Pinned handoff from Grok on iPhone to Claude Code on laptop.</p></div>
+   <article class="cl-card cl-memory is-selected"><div class="cl-memory__top"><span class="cl-chip">Decision</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">93%</span></div><h3 class="cl-memory__title">Deploys go through deploy.sh, never the dashboard</h3><p class="cl-memory__body">A dashboard deploy skips the migration check and once left the function on old code.</p><div class="cl-prov"><span class="cl-prov__who cl-pen-blue">atlas</span><span>Claude Code</span><span class="cl-prov__sep">/</span><span>mbp-work</span><span class="cl-prov__sep">/</span><span>3 w ago</span></div></article>
+   <article class="cl-quest"><div class="cl-quest__stub"><span class="cl-label">Nº</span><span class="cl-quest__no">38</span><span class="cl-quest__pri is-high">High</span></div><div class="cl-quest__main"><div class="cl-quest__head"><h3 class="cl-quest__title">Fix mobile nav overflow on /pricing</h3><span class="cl-stamp cl-stamp--carbon">Claimed <small>atlas</small></span></div><div class="cl-quest__done"><span class="cl-label">Done when</span>320 px viewport has zero horizontal scroll.</div><span class="cl-quest__for">for <b>coding agent</b> · mbp-work</span></div></article>
+  </div>
+  <div class="tile-dark comp"><span class="tag">Dark</span>
+   <div class="cl-sticky cl-sticky--tilt"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px"><span class="cl-label">Fair warning</span><span class="cl-stamp cl-stamp--warn">Read this</span></div><b>Not a vault — don't store passwords here.</b><p class="cl-hint" style="margin-top:4px">Just normal repo quirks, preferences, and sticky-note handoffs.</p></div>
+   <div class="cl-sticky cl-sticky--blue cl-sticky--tilt-r"><span class="cl-label">Blue note variant (.cl-sticky--blue)</span><p style="margin:4px 0 0">Pinned handoff from Grok on iPhone to Claude Code on laptop.</p></div>
+   <article class="cl-card cl-memory is-selected"><div class="cl-memory__top"><span class="cl-chip">Decision</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">93%</span></div><h3 class="cl-memory__title">Deploys go through deploy.sh, never the dashboard</h3><p class="cl-memory__body">A dashboard deploy skips the migration check and once left the function on old code.</p><div class="cl-prov"><span class="cl-prov__who cl-pen-blue">atlas</span><span>Claude Code</span><span class="cl-prov__sep">/</span><span>mbp-work</span><span class="cl-prov__sep">/</span><span>3 w ago</span></div></article>
+   <article class="cl-quest" style="--cl-quest-ground:var(--cl-paper-0)"><div class="cl-quest__stub"><span class="cl-label">Nº</span><span class="cl-quest__no">38</span><span class="cl-quest__pri is-high">High</span></div><div class="cl-quest__main"><div class="cl-quest__head"><h3 class="cl-quest__title">Fix mobile nav overflow on /pricing</h3><span class="cl-stamp cl-stamp--carbon">Claimed <small>atlas</small></span></div><div class="cl-quest__done"><span class="cl-label">Done when</span>320 px viewport has zero horizontal scroll.</div><span class="cl-quest__for">for <b>coding agent</b> · mbp-work</span></div></article>
+  </div>
+ </div>
+</section>
+
+<section class="s" id="assets">
+ <div class="s-head"><span class="cl-label">07 · Shared Asset Kit (memory/design/assets/)</span><h2>Character scenes, store icons, OG banner, and doodle primitives.</h2><p>Reusable vector and raster kit for `heyclyde.me`, `memory.heyclyde.me`, and future connector/plugin listings across Claude, Claude Code, ChatGPT, Codex, Gemini, Antigravity, and Grok. Documented in `memory/design/ASSETS.md`.</p></div>
+
+ <h3 class="sub">Five character-consistent scenes (light &amp; dark traced SVGs in `/_clyde/scenes/`)</h3>
+ <div class="pair">
+  <div class="tile-light"><span class="tag">Light (`*-light.svg`)</span><div class="scene-grid">
+   <div class="scene-card"><img src="assets/scenes/relay-light.svg" alt="Relay"><code>relay</code></div>
+   <div class="scene-card"><img src="assets/scenes/questboard-light.svg" alt="Quest board"><code>questboard</code></div>
+   <div class="scene-card"><img src="assets/scenes/nosecrets-light.svg" alt="No secrets"><code>nosecrets</code></div>
+   <div class="scene-card"><img src="assets/scenes/goldfish-light.svg" alt="Goldfish"><code>goldfish</code></div>
+   <div class="scene-card"><img src="assets/scenes/standing-light.svg" alt="Standing"><code>standing</code></div>
+  </div></div>
+  <div class="tile-dark"><span class="tag">Dark (`*-dark.svg`)</span><div class="scene-grid">
+   <div class="scene-card"><img src="assets/scenes/relay-dark.svg" alt="Relay dark"><code>relay</code></div>
+   <div class="scene-card"><img src="assets/scenes/questboard-dark.svg" alt="Quest board dark"><code>questboard</code></div>
+   <div class="scene-card"><img src="assets/scenes/nosecrets-dark.svg" alt="No secrets dark"><code>nosecrets</code></div>
+   <div class="scene-card"><img src="assets/scenes/goldfish-dark.svg" alt="Goldfish dark"><code>goldfish</code></div>
+   <div class="scene-card"><img src="assets/scenes/standing-dark.svg" alt="Standing dark"><code>standing</code></div>
+  </div></div>
+ </div>
+
+ <h3 class="sub">Connector store icons (`1024`, `512`, `128` PNG + SVG) &amp; `1200×630` social banner</h3>
+ <div class="duo">
+  <div class="cl-card" style="display:grid;gap:14px"><span class="cl-label">Squircle &amp; circle-crop safe app icons</span>
+   <div class="icon-showcase">
+    <figure><img src="assets/icon-light.svg" alt="Light icon" style="width:96px;height:96px"><code>icon-light.svg</code></figure>
+    <figure><img src="assets/icon-light.svg" alt="Circle crop" style="width:96px;height:96px;border-radius:50%"><code>circle crop</code></figure>
+    <figure><img src="assets/icon-dark.svg" alt="Dark icon" style="width:96px;height:96px;border-radius:22px"><code>icon-dark.svg</code></figure>
+   </div>
+   <p class="cl-hint">Raster exports ready at `assets/icon-1024.png`, `icon-512.png`, and `icon-128.png`.</p>
+  </div>
+  <div class="cl-card" style="display:grid;gap:10px"><span class="cl-label">Open Graph &amp; directory banner (`og-banner-1200x630.svg` / `.png`)</span>
+   <img src="assets/og-banner-1200x630.svg" alt="Clyde OG banner" style="width:100%;height:auto;border-radius:8px;border:1px solid var(--cl-rule)">
+  </div>
+ </div>
+
+ <h3 class="sub">Ten standalone doodle SVG primitives (`assets/doodles/*.svg`)</h3>
+ <div class="doodle-grid">
+  <div class="doodle-card"><img src="assets/doodles/sticky-yellow.svg" alt=""><code>sticky-yellow</code></div>
+  <div class="doodle-card"><img src="assets/doodles/sticky-blue.svg" alt=""><code>sticky-blue</code></div>
+  <div class="doodle-card"><img src="assets/doodles/sticky-tilted-pair.svg" alt=""><code>sticky-tilted-pair</code></div>
+  <div class="doodle-card"><img src="assets/doodles/arrow-right.svg" alt=""><code>arrow-right</code></div>
+  <div class="doodle-card"><img src="assets/doodles/arrow-curve.svg" alt=""><code>arrow-curve</code></div>
+  <div class="doodle-card"><img src="assets/doodles/scribble-underline.svg" alt=""><code>scribble-underline</code></div>
+  <div class="doodle-card"><img src="assets/doodles/scribble-circle.svg" alt=""><code>scribble-circle</code></div>
+  <div class="doodle-card"><img src="assets/doodles/tape-strip.svg" alt=""><code>tape-strip</code></div>
+  <div class="doodle-card"><img src="assets/doodles/pushpin.svg" alt=""><code>pushpin</code></div>
+  <div class="doodle-card"><img src="assets/doodles/app-handoff.svg" alt=""><code>app-handoff</code></div>
+ </div>
+</section>
+
+<section class="s" id="in-use">
+ <div class="s-head"><span class="cl-label">08 · In use</span><h2>Same tokens across web pages and sandboxed MCP chat cards.</h2></div>
+ <div class="duo">
+  <div class="chat"><div class="chat-top"><i></i><i></i><i></i><span>Claude / ChatGPT · Clyde MCP card</span></div>
+   <div class="chat-body"><div class="bubble">Wait, how do we deploy this repo again?</div>
+    <div class="reply"><span>You told Claude Code three weeks ago:</span>
+     <article class="cl-card cl-memory"><div class="cl-memory__top"><span class="cl-chip">Decision</span><span class="cl-state cl-state--settled">Settled</span><span class="cl-memory__conf">93%</span></div><h3 class="cl-memory__title">Deploys go through deploy.sh, never the dashboard</h3><div class="cl-prov"><span class="cl-prov__who cl-pen-blue">atlas</span><span>Claude Code</span><span class="cl-prov__sep">/</span><span>mbp-work</span></div></article>
+     <span class="via"><span style="display:inline-block;--cl-logo-h:16px"><!-- @logo mark --></span>from Clyde</span></div></div></div>
+  <div class="cl-empty"><img src="assets/scenes/goldfish-light.svg" alt="Clyde and goldfish" style="height:124px;width:auto"><h3 class="cl-empty__title">Nothing in Clyde matches that yet</h3><p class="cl-empty__text">Once one of your agents learns a repo quirk or preference, the next one pulls it up here instead of guessing.</p><button class="cl-btn cl-btn--primary" type="button">Hook up an app</button></div>
+ </div>
+</section>
+
+<section class="s" id="files">
+ <div class="s-head"><span class="cl-label">09 · Files</span><h2>One source in `memory/design/`.</h2><p>Run `node memory/design/build.mjs` after editing any token, component, or `src/*.html` page to sync `css.js`, `ui/design.ts`, and the standalone HTML artifacts.</p></div>
+ <div class="table-wrap cl-card" style="padding:0;overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:520px;font:var(--cl-text-small)">
+  <tbody>
+  <tr><td style="padding:12px 16px;font:var(--cl-text-mono)">tokens.css</td><td style="padding:12px 16px">Paper, sticky-note, ink, carbon, status, and agent pen tokens (WCAG tested in CI).</td></tr>
+  <tr><td style="padding:12px 16px;border-top:1px solid var(--cl-rule);font:var(--cl-text-mono)">components.css</td><td style="padding:12px 16px;border-top:1px solid var(--cl-rule)">Every `cl-` component including `.cl-sticky`, `.cl-scribble`, `.cl-quest`, and `.cl-memory`.</td></tr>
+  <tr><td style="padding:12px 16px;border-top:1px solid var(--cl-rule);font:var(--cl-text-mono)">brand.js · brand/</td><td style="padding:12px 16px;border-top:1px solid var(--cl-rule)">Sticky-Note Forehead Clyde mascot, lockup, mark, and auto-theme favicon.</td></tr>
+  <tr><td style="padding:12px 16px;border-top:1px solid var(--cl-rule);font:var(--cl-text-mono)">ASSETS.md · assets/</td><td style="padding:12px 16px;border-top:1px solid var(--cl-rule)">5 multi-pose character scenes, connector icons (`1024`/`512`/`128`), `1200×630` OG banner, and 10 doodle primitives.</td></tr>
+  <tr><td style="padding:12px 16px;border-top:1px solid var(--cl-rule);font:var(--cl-text-mono)">BRAND.md · APP-LOGOS.md</td><td style="padding:12px 16px;border-top:1px solid var(--cl-rule)">Candid voice rules, visual language, and third-party trademark compliance.</td></tr>
+  </tbody></table></div>
+ <div class="foot"><span class="cl-wordmark"><!-- @logo lockup --></span><span>bare-minimum memory for forgetful agents · heyclyde.me</span></div>
+</section>
+</main>
+</div>

@@ -1,0 +1,366 @@
+[
+ {
+  "kind": "contradiction",
+  "ids": [
+   "vid-krea-removed-seedance",
+   "rx-krea-removed",
+   "vid-t212-krea-works-incredibly-well-for-seedance",
+   "vid-t216-generated-hundreds-of-seedance-2-5-clips",
+   "vid-t216-research-flawed-krea-claimed-not-to-run"
+  ],
+  "why": "Around turn 216 Wen had made hundreds of Seedance 2.5 clips on Krea and called Claude's research flawed for saying Krea lacked it. Later in the same chat he said Krea removed it. Nothing is superseded, so recall can hand either side over as current.",
+  "question_for_wen": "Is Seedance 2.5 gone from Krea entirely, or only from the Krea mobile app? Roughly when did it go?"
+ },
+ {
+  "kind": "contradiction",
+  "ids": [
+   "pkg-draft-pin-approved",
+   "pkg-no-freeze-check",
+   "pkg-retrieval-carries-memory",
+   "pkg-hooks-lifecycle"
+  ],
+  "why": "The draft exempts approved decisions from weight changes and gates training on invariant probes staying 95% stable. That reads like the freeze check Wen called dumb. The approved hook design still injects pinned decisions at session start, so pinning is half adopted and nothing links them.",
+  "question_for_wen": "Do approved decisions sit outside weight learning, or learn like everything else? Is a 95% stability gate on probes the freeze check you rejected?"
+ },
+ {
+  "kind": "contradiction",
+  "ids": [
+   "pref-plans-are-inspiration",
+   "pref-ask-dont-assert",
+   "vid-t158-told-claude-to-stop-arguing-and-answer-t",
+   "vid-t156-seedance-handles-text-prompted-fight-sce",
+   "vid-t160-told-claude-to-stop-fixating-on-motion"
+  ],
+  "why": "One rule says challenge Wen. The film thread says stop fighting him. No entry draws the line, so recall can't pick by context. Proposed line: challenge plans and designs by asking, take his hands-on results as fact, answer the question he asked before arguing.",
+  "question_for_wen": "Is that the line? Challenge your plans by asking, treat your own test results as fact, answer what you asked before pushing back."
+ },
+ {
+  "kind": "missing_entry",
+  "ids": [
+   "pref-ask-dont-assert",
+   "vid-t282-do-the-searches-instead-of-asking-him",
+   "vid-t034-wants-claude-to-fetch-content-itself-not",
+   "vid-t136-hand-off-hands-on-infra-work-to-claude-c"
+  ],
+  "why": "PLAN.md's when-to-ask table lives only in the plan. Never ask: execution on Wen's machine, reversible steps, anything an agent can verify. Ask now: design, money, publishing, irreversible. The closest entries are film-scoped, so an execution task in this repo finds only pref-ask-dont-assert and over-asks.",
+  "question_for_wen": "Can I write the when-to-ask table as entries in your words, global across clients and repos? Does an irreversible step on your machine, like a --recreate deploy or dropping a database, still need a yes?"
+ },
+ {
+  "kind": "contradiction",
+  "ids": [
+   "vid-t232-challenged-claude-s-chained-cost-math",
+   "vid-segmind-invoice-rate",
+   "vid-segmind-cheapest"
+  ],
+  "why": "vid-t232 says Wen's real bill was about $2 for a 30s clip. vid-segmind-invoice-rate says his invoice was $3.1662 per 30s at 480p. Train question q05 grades the invoice rate as gold, so one of them makes the gold wrong.",
+  "question_for_wen": "Your real 30s Seedance bill: about $2, or $3.17 at 480p on Segmind? Different provider or resolution?"
+ },
+ {
+  "kind": "contradiction",
+  "ids": [
+   "vid-draft-byteplus-not-canada",
+   "vid-t210-byteplus-modelark-not-working-well",
+   "vid-t078-prefer-bytedance-first-party-api",
+   "vid-t076-bytedance-direct-api-costs-look-acceptab"
+  ],
+  "why": "The draft says the official BytePlus route is not sold in Canada. vid-t210 says Wen tried ModelArk and it worked badly, which means he got in. An approved preference for going direct is superseded by one bad run.",
+  "question_for_wen": "Did you get a BytePlus ModelArk account from Canada? Is going direct to ByteDance still your preference when it works?"
+ },
+ {
+  "kind": "mislabel",
+  "ids": [
+   "vid-t188-linkedin-h3-compute-ratio-explained-his",
+   "pkg-phase0-decider-results"
+  ],
+  "why": "'this explains a lot' is labeled negative but reads as agreement with Claude's finding. The decider run-off counts it as a missed pushback, which skews its recall.",
+  "question_for_wen": "Was 'this explains a lot' pushback or agreement? Should I relabel reactions like it before the decider rerun?"
+ },
+ {
+  "kind": "open_question",
+  "ids": [
+   "pkg-phase0-decider-results",
+   "pkg-decider-slot"
+  ],
+  "why": "The entry already leaves two calls open for Wen: relabel the weak negatives, and send the previous assistant turn with the hook payload. Both change what the decider sees.",
+  "question_for_wen": "Should the hook send the previous assistant turn to the decider?"
+ },
+ {
+  "kind": "overlap",
+  "ids": [
+   "pkg-auditor-agent",
+   "pkg-decider-slot",
+   "pkg-negative-signal-wen-reaction",
+   "pkg-judging-agent-and-wen"
+  ],
+  "why": "Two approved components label Wen's reactions: the decider at hook time and the auditor on idle. Neither says whose label moves weights. Training needs one answer.",
+  "question_for_wen": "Which labels move weights: the hook-time decider, the idle auditor, or both with the auditor as the check?"
+ },
+ {
+  "kind": "plan_conflict",
+  "ids": [
+   "pkg-audit-on-idle",
+   "pkg-draft-nightly-audit"
+  ],
+  "why": "PLAN.md workstream 5 schedules a nightly audit for grooming. Wen moved the transcript audit off nightly onto idle. The grooming audit reads the graph, not transcripts, so the rule may not apply.",
+  "question_for_wen": "Grooming audit on idle too, or is nightly fine since it reads the graph, not transcripts?"
+ },
+ {
+  "kind": "wrong_scope",
+  "ids": [
+   "vid-t148-individual-accounts-only-no-org-accounts",
+   "vid-t150-fewer-accounts-to-manage",
+   "app-incorporation-undecided",
+   "app-draft-individual-locks-name"
+  ],
+  "why": "'No org accounts' is scoped to film. The app may need a company-held developer account to sell under a brand name. If the rule widens to global, the app is its exception.",
+  "question_for_wen": "Is 'individual accounts only' a film-tools rule, or everywhere with the app as the exception?"
+ },
+ {
+  "kind": "wrong_scope",
+  "ids": [
+   "vid-t282-do-the-searches-instead-of-asking-him",
+   "vid-t034-wants-claude-to-fetch-content-itself-not",
+   "vid-t096-wants-summaries-filtered-to-what-applies"
+  ],
+  "why": "These read as how Wen wants agents to work everywhere, but sit in domain:film. A context-aware arm will hide them outside film.",
+  "question_for_wen": "Make these three global?"
+ },
+ {
+  "kind": "wrong_scope",
+  "ids": [
+   "vid-t200-prices-in-cad-per-second-at-480p-verifie",
+   "pkg-budget-cad50"
+  ],
+  "why": "CAD is how Wen thinks about money everywhere. Per second at 480p is film-only. One entry holds both.",
+  "question_for_wen": "Prices in CAD everywhere? If yes I split the entry."
+ },
+ {
+  "kind": "stale_draft",
+  "ids": [
+   "pkg-draft-four-arms",
+   "pkg-hindsight-arm",
+   "pref-arm-names",
+   "pkg-live-3-arms"
+  ],
+  "why": "The four arms plus the no-memory floor are in use under names and Hindsight is approved. The draft still reads as a proposal with A0 to A3.",
+  "question_for_wen": "Promote the arm list to approved as no-memory, index, hybrid, spreading and hindsight?"
+ },
+ {
+  "kind": "stale_draft",
+  "ids": [
+   "pkg-draft-type-level-weights",
+   "pkg-core-mechanisms"
+  ],
+  "why": "pkg-core-mechanisms already approves per-link-type weights and PLAN.md uses the draft's ant settings. The existing link is relates and should be refines.",
+  "question_for_wen": "Are the ant settings (3 hops, alpha 1, beta 2, 10% exploration) fixed, or knobs to tune on train?"
+ },
+ {
+  "kind": "stale_draft",
+  "ids": [
+   "pkg-draft-multilingual-embed",
+   "pkg-server-where"
+  ],
+  "why": "bge-m3 runs in production, so the draft is implemented but still a draft.",
+  "question_for_wen": "Mark the multilingual embedder as approved?"
+ },
+ {
+  "kind": "stale_draft",
+  "ids": [
+   "vid-draft-seedream-asian",
+   "vid-t254-gpt-image-2-is-the-best-image-model-for",
+   "vid-gpt-image2-character-sheets",
+   "vid-t294-models-don-t-grasp-small-asian-frames"
+  ],
+  "why": "The draft guessed Seedream 5 beats GPT Image 2 for Asian physique sheets. Wen later tested and picked GPT Image 2, yet says models still miss small Asian frames.",
+  "question_for_wen": "Did GPT Image 2 also win for Asian physique sheets, or is Seedream 5 still worth a test there?"
+ },
+ {
+  "kind": "stale_draft",
+  "ids": [
+   "vid-draft-blackwell",
+   "vid-t128-pushed-back-on-overspecced-gpu"
+  ],
+  "why": "Wen called the RTX PRO 6000 excessive. The draft keeps it as a future card for pose pipelines and LoRA training.",
+  "question_for_wen": "Keep the RTX PRO 6000 as a future option for LoRA training, or drop it?"
+ },
+ {
+  "kind": "contradiction",
+  "ids": [
+   "vid-t244-desktop-trim-folder-that-tails-clips-to",
+   "vid-draft-character-refs"
+  ],
+  "why": "The trim folder writes 5 second tails. The character draft trims reference tails to 2 to 3 seconds. Same operation, two numbers.",
+  "question_for_wen": "Reference tails: 5 seconds like the trim folder, or 2 to 3 like the draft?"
+ },
+ {
+  "kind": "stale_status",
+  "ids": [
+   "crs-m3-next",
+   "app-pre-revenue",
+   "app-incorporation-undecided"
+  ],
+  "why": "Status entries from late August and early September that say they may be stale. Six weeks on, recall still serves them as current.",
+  "question_for_wen": "Course still at module 3? App still pre-revenue with no entity formed?"
+ },
+ {
+  "kind": "missing_entry",
+  "ids": [
+   "pkg-scope-life",
+   "pkg-decider-slot",
+   "pkg-phase0-decider-results"
+  ],
+  "why": "'Private entries never reach a third-party model unredacted' lives only in decider.redact. The decider is OpenAI, so the rule matters and recall can't find it.",
+  "question_for_wen": "Write the redaction rule as an approved entry?"
+ },
+ {
+  "kind": "missing_supersede",
+  "ids": [
+   "vid-t010-picked-least-painful-setup-to-try-immedi",
+   "vid-t008-shortlisted-runcomfy-comfy-cloud-runpod",
+   "vid-runcomfy-rejected",
+   "vid-runpod-a6000"
+  ],
+  "why": "Approved decisions picking RunComfy were reversed by RunPod and the RunComfy rejection. Without supersedes links a which-host query can serve RunComfy as current."
+ },
+ {
+  "kind": "missing_supersede",
+  "ids": [
+   "vid-t116-rejected-r2v-prompt-continuation-try-mot",
+   "vid-minimax-dropped"
+  ],
+  "why": "An approved plan to try H3 Motion Context nodes outlived the decision to drop H3."
+ },
+ {
+  "kind": "naming_drift",
+  "ids": [
+   "pkg-hindsight-arm",
+   "pkg-recall-subagent-variant",
+   "pkg-draft-four-arms",
+   "pref-arm-names"
+  ],
+  "why": "Bodies say A2 and A3, which pref-arm-names bans. The numbers also land in search_text."
+ },
+ {
+  "kind": "stale_dates",
+  "ids": [
+   "vid-t212-krea-works-incredibly-well-for-seedance",
+   "vid-krea-removed-seedance",
+   "rx-krea-removed",
+   "rx-wan-ga",
+   "vid-draft-krea-mobile"
+  ],
+  "why": "Every src-chat-video entry carries valid_from 2026-09-02, the export date, though the chat ran from about Aug 11. The rx and draft entries from that chat have no turn number, so newer cannot be told from older. That is why the Krea flip is unresolvable from the graph."
+ },
+ {
+  "kind": "wrong_scope",
+  "ids": [
+   "vid-t300-exploring-long-novel-writing-workflow-wi",
+   "vid-t302-clarified-novels-are-text-only"
+  ],
+  "why": "Novel writing is filed under the film project. Wen said text only, no video."
+ },
+ {
+  "kind": "wrong_scope",
+  "ids": [
+   "pref-payg",
+   "pref-terse-precise",
+   "pref-ask-dont-assert",
+   "pref-live-pages",
+   "pref-version-scoped-sources",
+   "pref-evidence-over-hype",
+   "vid-macbook-limit",
+   "pkg-ollama-sub"
+  ],
+  "why": "Global entries hang part_of a single project hub. Spreading from another project reaches them only through the wrong hub. Fix with a profile hub or no part_of for global entries."
+ },
+ {
+  "kind": "bad_link",
+  "ids": [
+   "pkg-live-3-arms",
+   "pkg-core-mechanisms",
+   "pkg-draft-pin-approved",
+   "proj-pkg"
+  ],
+  "why": "pkg-live-3-arms supports pkg-core-mechanisms and pkg-draft-pin-approved supports proj-pkg. Neither link carries its claim. PPR would spread weight down them anyway."
+ },
+ {
+  "kind": "duplicate",
+  "ids": [
+   "vid-seedance-fight-choreo",
+   "vid-t156-seedance-handles-text-prompted-fight-sce"
+  ],
+  "why": "Same fact from the summary and the turn."
+ },
+ {
+  "kind": "duplicate",
+  "ids": [
+   "vid-kling3-poor",
+   "vid-t172-kling-3-0-is-bad"
+  ],
+  "why": "Same verdict on Kling 3.0."
+ },
+ {
+  "kind": "duplicate",
+  "ids": [
+   "vid-macbook-limit",
+   "vid-t002-laptop-is-a-16gb-m4-macbook-air"
+  ],
+  "why": "Same laptop fact. Scopes differ, global vs film. Keep global."
+ },
+ {
+  "kind": "duplicate",
+  "ids": [
+   "vid-wan3-slow",
+   "vid-t180-slow-wan-3-0-run-was-30s-at-480p"
+  ],
+  "why": "The slow run detail is already in vid-wan3-slow."
+ },
+ {
+  "kind": "duplicate",
+  "ids": [
+   "vid-wan3-via-wavespeed",
+   "vid-t192-uses-wavespeed-for-wan-3-0"
+  ],
+  "why": "Same access route."
+ },
+ {
+  "kind": "duplicate",
+  "ids": [
+   "vid-gpt-image2-character-sheets",
+   "vid-t254-gpt-image-2-is-the-best-image-model-for"
+  ],
+  "why": "Same pick. Memory version and chat version."
+ },
+ {
+  "kind": "duplicate",
+  "ids": [
+   "vid-runpod-a6000",
+   "vid-t134-deployed-runpod-a6000-at-0-56-hr"
+  ],
+  "why": "Same GPU choice and price."
+ },
+ {
+  "kind": "duplicate",
+  "ids": [
+   "rx-wan-ga",
+   "vid-t264-insisted-wan-3-0-is-ga-search-from-the-2"
+  ],
+  "why": "Same correction, likely consecutive turns."
+ },
+ {
+  "kind": "duplicate",
+  "ids": [
+   "vid-runcomfy-rejected",
+   "vid-t108-runcomfy-judged-terrible-for-h3-wants-ma"
+  ],
+  "why": "Near duplicate. t108 adds the ask for managed hosting."
+ },
+ {
+  "kind": "duplicate",
+  "ids": [
+   "vid-t002-gpu-cloud-budget-under-100-month",
+   "vid-t006-wants-comfyui-on-per-second-gpu-or-cloud"
+  ],
+  "why": "Near duplicate budget. t006 adds the ComfyUI choice."
+ }
+]

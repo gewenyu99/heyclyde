@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/memory-hook SessionStart" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/memory-hook UserPromptSubmit" }] }],
+    "PostToolUse": [{ "matcher": "mcp__memory__.*", "hooks": [{ "type": "command", "command": "~/.config/memory/memory-hook PostToolUse" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/memory-hook Stop" }] }],
+    "PreCompact": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/memory-hook PreCompact" }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/memory-hook SessionEnd" }] }]
+  }
+}
