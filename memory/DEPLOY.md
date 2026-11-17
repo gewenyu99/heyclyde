@@ -87,7 +87,7 @@ A custom connector. See [Connect Claude chats, Cowork and the phone](#connect-cl
 
    To add it by hand, put that `memory` entry in the file yourself. A rerun of the installer writes nothing when the entry is already there.
 3. Restart Antigravity, or refresh its MCP servers. It registers itself with memory's OAuth server and opens the sign-in, with the callback `https://antigravity.google/oauth-callback`. Click the link in your email.
-4. Check that memory's tools are listed in Antigravity's MCP servers. Antigravity has no hooks, so like claude.ai it gets the tools only.
+4. Check that memory's tools are listed in Antigravity's MCP servers, then install `~/.config/memory/clyde-hook.sh` and merge the Antigravity task-shift hooks into `~/.gemini/config/hooks.json` (plus `.agents/rules/clyde.md` with `trigger: model_decision`) from `https://heyclyde.me/docs#hook-configs`.
 
 ### The Gemini app
 

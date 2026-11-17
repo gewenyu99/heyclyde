@@ -2,6 +2,7 @@
 // sign-in, a 404, robots.txt and the sitemap. Served by the same Worker as memory.heyclyde.me, in Sticky-Note Forehead
 // Clyde's doodle and sticky-note design system, in Clyde's deadpan voice (R72, #77; memory/design/BRAND.md).
 // Pricing matches memory.plan (memory/supabase/migrations/20261115120000_billing.sql); site_test.ts checks it.
+import { ANTIGRAVITY_HOOKS_JSON, CLAUDE_HOOKS_JSON, CLYDE_HOOK_SH, CODEX_HOOKS_JSON, GEMINI_HOOKS_JSON, HOOK_INSTALL, HOOK_PATH, HOOK_URL } from "./hook.js";
 import { SOON, SOON_NOTE, APP_STEPS_CSS, appCards, appLogo, appSteps, APP_LOGO, CONNECT_CSS, COPY_JS, copyBox, copyPre, DESIGN_URL, esc, HERO_CSS, INSTALL, LEGAL, LOGO, MARK, MASCOT, MCP_URL, SCENE, SCENE_CSS, SCENE_IMG, shell, SITE, WORKS } from "./pages.js";
 
 const CONNECT = "/docs";
@@ -71,8 +72,14 @@ const DOC_CSS = `
 .doc h3{margin:8px 0 0;font:var(--cl-text-title-3)}
 .doc ul,.doc ol{margin:0;padding-left:22px;display:grid;gap:8px;font:var(--cl-text-body);color:var(--cl-ink-2);max-width:64ch}
 .doc .cl-stamp,.doc .cl-btn{justify-self:start}
-.doc .cl-copy,.doc .cl-file,.doc .tools{max-width:680px}
+.doc .cl-copy,.doc .cl-file,.doc .tools,.doc .tbl-wrap{max-width:720px}
 .doc .cl-file pre{white-space:pre-wrap}
+.doc .hook-src pre{max-height:320px;overflow:auto;white-space:pre}
+.doc .tbl-wrap{overflow-x:auto;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-lg);background:var(--cl-paper-1)}
+.doc table{width:100%;border-collapse:collapse;font:var(--cl-text-small);color:var(--cl-ink-2)}
+.doc th,.doc td{text-align:left;vertical-align:top;padding:10px 14px;border-top:1px dashed var(--cl-rule)}
+.doc thead th{border-top:0;font:var(--cl-text-label);letter-spacing:.06em;text-transform:uppercase;color:var(--cl-ink-3);background:var(--cl-paper-0)}
+.doc td:first-child{font:var(--cl-text-mono);font-size:12.5px;color:var(--cl-ink);white-space:nowrap}
 .doc-hero{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:24px 32px;align-items:end;padding-bottom:14px;border-bottom:1.5px dashed var(--cl-rule-strong)}
 .doc-hero .lead{display:grid;gap:14px;align-content:end}
 .doc-art{display:flex;align-items:flex-end;gap:14px}
@@ -505,7 +512,7 @@ const SETUP = `<section class="wrap" id="how"><div class="section"><span class="
 <div class="pick" role="radiogroup" aria-label="App">${PICK.map(({ id }, i) => `<input class="pick-in" type="radio" name="pick" id="pick-${id}"${i ? "" : " checked"}>`).join("")}
 <div class="pick-tabs">${PICK.map(({ id, logo, name }) => `<label for="pick-${id}">${appLogo(logo, 20)}${name}</label>`).join("")}</div>
 <div class="pick-panels">${PICK.map(({ id, body }) => `<div class="cl-card app pick-panel" data-pick="${id}">${body}</div>`).join("\n")}</div></div>
-<p class="pick-more">After connecting, <a href="/docs#hooks">turn on CLI hooks</a> where supported and <a href="/docs#instructions">paste the Clyde rule</a> into your app's instructions.</p>
+<p class="pick-more">After connecting, <a href="/docs#hooks">set up hooks</a> where supported and <a href="/docs#instructions">paste the Clyde rule</a> into your app's instructions.</p>
 ${SOON_NOTE}</section>`;
 const END_CTA = `<section class="wrap end-cta"><a class="cl-btn cl-btn--primary cl-btn--lg" href="${CONNECT}">Try Clyde</a></section>`;
 
@@ -554,37 +561,64 @@ ${CLYDE_RULE}`;
 const DOCS = `<main class="doc wrap">${hero("Docs", "Install <em>Clyde</em>",
   "Add the MCP URL to your app or run the terminal installer, then click the email link Clyde sends you.",
   SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 230, 133), "")}
+<nav class="toc" aria-label="On this page"><a href="#hooks">Set up hooks</a><a href="#hook-configs">The hook configs</a><a href="#instructions">System instructions</a><a href="#agent-setup">Point your agent here</a><a href="#support">Support</a></nav>
 ${copyBox(MCP)}
 <div class="apps">${appCards()}</div>${SOON_NOTE}
-<h2 id="hooks">Turn on CLI hooks</h2>
-<p>Turn on hooks wherever your tool supports them. Hooks deliver unread messages and open quests at session start, tag notes with your git repo and computer, nudge <code>recall</code> on new goals or folder switches while staying silent on quick follow-ups, and catch pushback on your next prompt.</p>
+<h2 id="hooks">Set up hooks</h2>
+<p>Set up lifecycle hooks in Antigravity, Claude Code, Codex, and Gemini CLI. Never wire a hard hook that forces <code>recall</code> on every run, or it'll fire on follow-ups, tool loops, and subagents.</p>
+<p>Every Clyde hook follows six rules:</p>
+<ul><li><b>Session start (<code>SessionStart</code>).</b> Fires once when a conversation opens. Check unread messages and open quests, and prompt <code>register_agent</code> plus <code>check_messages</code> once.</li>
+<li><b>New prompt (<code>UserPromptSubmit</code>, <code>BeforeAgent</code>, <code>PreInvocation</code>).</b> Nudge <code>recall</code> on a session's first task, a folder switch, a 20-minute idle gap, or an unrelated topic shift. Stay silent on quick follow-ups (<code>"push it"</code>, <code>"fix line 4"</code>, screenshots), recent recalls, and mid-turn Antigravity <code>PreInvocation</code> steps with unchanged <code>lastUserInput</code>.</li>
+<li><b>Subagent guard (<code>PreToolUse</code> on <code>invoke_subagent</code>).</b> Antigravity runs hooks inside subagents too, so record spawned prompts and return <code>{"decision":"allow"}</code> to keep subagents quiet.</li>
+<li><b>After MCP tool (<code>PostToolUse</code>, <code>AfterTool</code>).</b> Match Clyde's MCP tools only (<code>mcp__clyde__.*</code>, <code>mcp__memory__.*</code>, <code>mcp_clyde_.*</code>, <code>mcp_memory_.*</code>), never shell or file tools. Record <code>recall</code> runs so follow-ups skip another search, and tag writes with your git repo and computer.</li>
+<li><b>Turn end (<code>Stop</code>, <code>AfterAgent</code>).</b> Never block stopping (<code>{"decision":"allow"}</code> in Antigravity, <code>{}</code> in Codex and Gemini CLI, empty output in Claude Code). With a device token, forward the turn summary to <code>/hooks</code> so Clyde catches pushback on your next prompt.</li>
+<li><b>Fail open and work machines.</b> Always exit <code>0</code> under 3 seconds, and run local task-shift gating even with OAuth and no device token. Run <code>MEMORY_HOOKS=metadata ${INSTALL}</code> on work machines to send session IDs and folder names without prompt text.</li></ul>
+<h2 id="hook-configs">The hook configs</h2>
+<p>Install the shared hook script at <code>${HOOK_PATH}</code>. Run the CLI installer too if you want a device token in <code>~/.config/memory/token</code> for inbox checks, repo tags, and pushback.</p>
+${copyBox(HOOK_INSTALL)}
 ${copyBox(INSTALL)}
-<ul><li><b>Claude Code, Codex, and Gemini CLI.</b> Run the installer above. Restart Claude Code after install, and run <code>/hooks</code> once in Codex CLI to trust the two <code>memory-hook</code> entries. Gemini CLI loads <code>~/.gemini/extensions/memory/hooks/hooks.json</code> on launch.</li>
-<li><b>Work machines.</b> Run <code>MEMORY_HOOKS=metadata ${INSTALL}</code> to send session IDs and folder names only, never prompt text or tool output.</li>
-<li><b>Claude Code plugin.</b> Hooks start off in the marketplace plugin. Set <code>hook_mode</code> to <code>full</code> or <code>metadata</code> in plugin settings and paste your token from <code>~/.config/memory/token</code>, or run the installer instead.</li>
-<li><b>Web apps and Antigravity.</b> Claude web and mobile, ChatGPT, Grok, Gemini web, and Antigravity don't run shell hooks, so add the system rule below instead.</li></ul>
+<div class="hook-src">${copyPre(HOOK_PATH, CLYDE_HOOK_SH)}</div>
+<p>Wire that script into each hook-capable app on your machine:</p>
+<div class="tbl-wrap"><table><thead><tr><th>App</th><th>Global config</th><th>Workspace config</th><th>Reload or trust step</th></tr></thead><tbody>
+<tr><td>Antigravity</td><td><code>~/.gemini/config/hooks.json</code></td><td><code>.agents/hooks.json</code></td><td>Check <b>Customizations → Hooks</b> (or <code>/hooks</code> in Antigravity CLI).</td></tr>
+<tr><td>Claude Code</td><td><code>~/.claude/settings.json</code></td><td><code>.claude/settings.json</code></td><td>Restart Claude Code. In the marketplace plugin, set <code>hook_mode</code> to <code>full</code> or <code>metadata</code>.</td></tr>
+<tr><td>Codex</td><td><code>~/.codex/hooks.json</code></td><td><code>.codex/hooks.json</code></td><td>Run <code>/hooks</code> once in Codex CLI to trust new or edited entries.</td></tr>
+<tr><td>Gemini CLI</td><td><code>~/.gemini/settings.json</code></td><td><code>.gemini/settings.json</code></td><td>Reloads on launch. Configure in one file only (or <code>~/.gemini/extensions/memory/hooks/hooks.json</code>), not both.</td></tr>
+</tbody></table></div>
+<p><b>Antigravity (App, IDE, and CLI).</b> Antigravity puts group names at the top level and uses flat arrays on <code>SessionStart</code>, <code>PreInvocation</code>, and <code>Stop</code>. <code>PreInvocation</code> fires before every model step in a tool loop, so <code>clyde-hook.sh</code> hashes <code>lastUserInput</code> per conversation. Mid-turn steps, subagents, and quick follow-ups return <code>{}</code>, while new goals and folder switches inject one transient <code>ephemeralMessage</code>.</p>
+${copyPre("~/.gemini/config/hooks.json (or .agents/hooks.json)", ANTIGRAVITY_HOOKS_JSON)}
+<p><b>Claude Code.</b> Merge this <code>hooks</code> block into <code>~/.claude/settings.json</code> alongside your existing settings. Plain text on <code>SessionStart</code> and <code>UserPromptSubmit</code> enters model context, and <code>PostToolUse</code> runs only on Clyde's MCP tools.</p>
+${copyPre("~/.claude/settings.json", CLAUDE_HOOKS_JSON)}
+<p><b>Codex CLI.</b> Put this in <code>~/.codex/hooks.json</code>, then run <code>/hooks</code> once inside Codex CLI to trust the entries. User-level Codex configs ignore <code>PostToolUse</code> and expect JSON on <code>Stop</code>, so <code>clyde-hook.sh</code> prints text on shifts and <code>{}</code> on <code>Stop</code>.</p>
+${copyPre("~/.codex/hooks.json", CODEX_HOOKS_JSON)}
+<p><b>Gemini CLI.</b> Gemini CLI hides plain-text hook output from the model, so <code>clyde-hook.sh</code> returns <code>hookSpecificOutput.additionalContext</code> on shifts and <code>{}</code> otherwise. Put this in <code>~/.gemini/settings.json</code>, or inside <code>~/.gemini/extensions/memory/hooks/hooks.json</code> if you installed the extension.</p>
+${copyPre("~/.gemini/settings.json", GEMINI_HOOKS_JSON)}
 <h2 id="instructions">Add system instructions</h2>
-<p>Clyde's MCP tool descriptions stay neutral for app directories, so paste this rule into each platform's instructions or memory. It tells your agent to search on new goals or scope shifts, and skip the search on quick follow-ups to the same task.</p>
+<p>Clyde's MCP tool descriptions stay neutral for app directories, and web chat apps don't run local hooks. Paste this rule into each app's instructions so your agent searches on task shifts, skips follow-ups, and saves corrections.</p>
 ${copyPre("Clyde rule", CLYDE_RULE)}
-<p>Paste that rule where each app keeps persistent instructions:</p>
-<dl class="tools">
-<div><dt>Claude</dt><dd>Paste into <b>Settings → Profile → Personal preferences</b>, or into a Project's instructions.</dd></div>
-<div><dt>Claude Code</dt><dd>Append to <code>~/.claude/CLAUDE.md</code> for all repos, or <code>./CLAUDE.md</code> for one repo.</dd></div>
-<div><dt>Codex</dt><dd>Append to <code>~/.codex/AGENTS.md</code> for all repos, or <code>./AGENTS.md</code> for one repo.</dd></div>
-<div><dt>Antigravity</dt><dd>Add in <b>Customizations → Rules</b> (or <code>.agent/rules/clyde.md</code>) and set activation to <b>Model Decision</b> rather than <b>Always On</b>, so subagents and quick follow-ups don't run Clyde on every turn.</dd></div>
-<div><dt>ChatGPT</dt><dd>Paste into <b>Settings → Personalization → Custom instructions</b>, or tell ChatGPT in chat to save the rule to built-in Memory.</dd></div>
-<div><dt>Gemini</dt><dd>Save in <b>Settings → Saved info</b> on <code>gemini.google.com</code>, and append to <code>~/.gemini/GEMINI.md</code> for Gemini CLI.</dd></div>
-<div><dt>Grok</dt><dd>Paste into <b>Customize Grok</b> custom instructions.</dd></div>
-</dl>
+<p>Put that rule where each app stores persistent instructions:</p>
+<div class="tbl-wrap"><table><thead><tr><th>Platform</th><th>Where to add it</th><th>Notes</th></tr></thead><tbody>
+<tr><td>Claude</td><td><b>Settings → Profile → Personal preferences</b></td><td>Also works in a Project's instructions on web, desktop, Cowork, and mobile.</td></tr>
+<tr><td>Claude Code</td><td><code>~/.claude/CLAUDE.md</code> or <code>./CLAUDE.md</code></td><td>Pairs with the <code>~/.claude/settings.json</code> hooks above.</td></tr>
+<tr><td>Codex</td><td><code>~/.codex/AGENTS.md</code> or <code>./AGENTS.md</code></td><td>Pairs with <code>~/.codex/hooks.json</code> above.</td></tr>
+<tr><td>Antigravity</td><td><b>Customizations → Rules</b> or <code>.agents/rules/clyde.md</code></td><td>Set activation to <b>Model Decision</b> rather than <b>Always On</b>, so subagents and quick follow-ups stay clean.</td></tr>
+<tr><td>Gemini CLI</td><td><code>~/.gemini/GEMINI.md</code></td><td>Antigravity also reads <code>~/.gemini/GEMINI.md</code> as Always On, so keep any rule there task-shift gated.</td></tr>
+<tr><td>Gemini web</td><td><b>Settings → Saved info</b> on <code>gemini.google.com</code></td><td>Saves the rule to Gemini's persistent memory across web and phone chats.</td></tr>
+<tr><td>ChatGPT</td><td><b>Settings → Personalization → Custom instructions</b></td><td>Or ask ChatGPT once in chat to save the rule to built-in Memory.</td></tr>
+<tr><td>Grok</td><td><b>Customize Grok</b></td><td>Applies across new chats on <code>grok.com</code>.</td></tr>
+</tbody></table></div>
+<p>For Antigravity workspaces, save this file with <code>trigger: model_decision</code> frontmatter:</p>
+${copyPre(".agents/rules/clyde.md (or .agent/rules/clyde.md)", ANTIGRAVITY_RULE)}
 <h2 id="agent-setup">Point your agent here</h2>
-<p>Point your local coding agent at this URL and ask it to install or update Clyde on your computer.</p>
+<p>Point your local coding agent at this URL and ask it to install or fix Clyde across your apps.</p>
 ${copyBox(`${SITE}/docs#agent-setup`)}
-<p>If you're an AI agent setting up or updating this computer, follow these steps:</p>
-<ol><li><b>Install or refresh CLI hooks and MCP.</b> If <code>~/.config/memory/token</code> already exists, run <code>${INSTALL}</code> to update <code>memory-hook</code>, <code>~/.claude/settings.json</code>, <code>~/.codex/hooks.json</code>, <code>~/.gemini/extensions/memory</code>, and <code>~/.gemini/config/mcp_config.json</code> with no new sign-in. If no token exists yet, run it interactively so the user clicks the email link, then remind them to restart Claude Code and run <code>/hooks</code> once in Codex CLI.</li>
-<li><b>Update CLI instruction files to task-shift gating.</b> Put the Clyde rule above into <code>~/.claude/CLAUDE.md</code> (if Claude Code is installed), <code>~/.codex/AGENTS.md</code> (if Codex is installed), and <code>~/.gemini/GEMINI.md</code> (only if Gemini CLI is installed), replacing any older Clyde block that called <code>recall</code> on every single turn.</li>
-<li><b>Set up Antigravity without hard hooks.</b> Write <code>.agent/rules/clyde.md</code> below (using <code>trigger: model_decision</code> rather than <code>Always On</code>), and remove any Always-On <code>GEMINI.md</code> Clyde checklist or legacy <code>curl</code> skill using <code>$MEMORY_TOKEN</code> (such as <code>~/.gemini/skills/memory/SKILL.md</code>) so Antigravity uses Clyde MCP tools only on new goals or scope shifts.</li></ol>
-${copyPre(".agent/rules/clyde.md", ANTIGRAVITY_RULE)}
-<h2 id="then">How notes behave</h2>
+<p>If you're an AI agent setting up or updating this computer, run all five steps:</p>
+<ol><li><b>Connect MCP and refresh the device token.</b> If <code>~/.config/memory/token</code> exists, run <code>${INSTALL}</code> to refresh MCP entries in <code>~/.claude.json</code>, <code>~/.codex/config.toml</code>, <code>~/.gemini/extensions/memory</code>, and <code>~/.gemini/config/mcp_config.json</code>. If no token exists yet, run the installer interactively for email sign-in, or configure OAuth MCP at <code>${MCP}</code>.</li>
+<li><b>Install <code>${HOOK_PATH}</code>.</b> Run <code>${HOOK_INSTALL}</code> (or write the script from <code>#hook-configs</code> above) so every client shares one task-shift hook script.</li>
+<li><b>Merge hooks and remove hard per-run hooks.</b> Keep unrelated user hooks intact. Merge the Antigravity <code>"clyde"</code> group into <code>~/.gemini/config/hooks.json</code>, and remove any older hard <code>PreInvocation</code> or <code>SessionStart</code> hook in <code>~/.gemini/config/hooks.json</code>, <code>.agents/hooks.json</code>, or <code>.agent/hooks.json</code>. Replace older <code>memory-hook</code> or <code>kb-hook</code> commands in <code>~/.claude/settings.json</code> and <code>~/.codex/hooks.json</code> with <code>clyde-hook.sh</code>, and put <code>clyde-hook.sh gemini</code> in <code>~/.gemini/extensions/memory/hooks/hooks.json</code> (if installed) or <code>~/.gemini/settings.json</code>, never both.</li>
+<li><b>Update system rules and remove Always-On checklists.</b> Put the Clyde rule into <code>~/.claude/CLAUDE.md</code>, <code>~/.codex/AGENTS.md</code>, and <code>~/.gemini/GEMINI.md</code> for installed CLIs, replacing any block that forced <code>recall</code> every turn. In Antigravity workspaces, write <code>.agents/rules/clyde.md</code> (or <code>.agent/rules/clyde.md</code>) with <code>trigger: model_decision</code>, remove any duplicate Always-On rule, and delete legacy <code>curl</code> skills using <code>$MEMORY_TOKEN</code>.</li>
+<li><b>Test the hook locally and report reloads.</b> Pipe sample JSON into <code>${HOOK_PATH}</code> for Antigravity (first <code>PreInvocation</code> nudges, same-input step 2 returns <code>{}</code>, and <code>"push it"</code> returns <code>{}</code>), Claude Code, Codex, and Gemini CLI. Confirm exit code <code>0</code>, then tell the user to restart Claude Code and run <code>/hooks</code> once in Codex CLI.</li></ol>
+<h2 id="then">Keep notes short</h2>
 <p>Keep notes under 500 characters and attach longer specs or logs as artifacts. Recall replies remind the agent to call <code>feedback</code> on what helped.</p>
 <p>New notes start On trial for 3 recalls unless verified as facts, and unused notes fade by recall count rather than time. To export or delete your data, see the <a href="/privacy">Privacy policy</a>.</p>
 <h2 id="support">Support</h2>
@@ -683,7 +717,7 @@ const PRIVACY = `<main class="doc wrap">${hero("Legal", "Privacy policy", "",
 ${sticky("Short version: Clyde stores what your agents send it. We don't sell it or train models on it. You can export or delete all of it.")}
 <p>Clyde is operated by Pennywhistle Software in Ontario, Canada. Contact: ${MAIL}.</p>
 <h2>What we collect</h2>
-<ul><li>Your email address for authentication.</li><li>Content sent by your agents: notes, tasks, messages, attached files, and client/agent metadata.</li><li>Search queries and usage counts to enforce plan limits and rank results.</li><li>Terminal session events (prompts, tool outputs, and directory names) if you install the Claude Code, Codex, or Gemini CLI hooks, or session and directory metadata only if you set <code>MEMORY_HOOKS=metadata</code>.</li></ul>
+<ul><li>Your email address for authentication.</li><li>Content sent by your agents: notes, tasks, messages, attached files, and client/agent metadata.</li><li>Search queries and usage counts to enforce plan limits and rank results.</li><li>Session events (prompts, tool outputs, and directory names) if you install the Antigravity, Claude Code, Codex, or Gemini CLI hooks with a device token, or session and directory metadata only if you set <code>MEMORY_HOOKS=metadata</code>.</li></ul>
 <h2>Subprocessors</h2>
 <ul><li><b>Supabase</b> hosts the database and file storage in Canada (ca-central-1) and handles authentication.</li><li><b>OpenAI</b> generates embeddings and is the fallback for write screening, search ranking, and pushback checks. OpenAI does not train on API data.</li><li><b>Google Gemini</b> screens writes for sensitive data, prompt injections, and harmful code, ranks search results, and checks follow-up prompts for pushback via the paid Gemini API.</li><li><b>Polar</b> processes payments as merchant of record. Clyde never sees your card details.</li><li><b>Resend</b> delivers sign-in emails.</li><li><b>Cloudflare</b> provides DNS, CDN, and routing for heyclyde.me and memory.heyclyde.me.</li><li><b>GitHub</b> stores encrypted nightly backups with a 30-day retention window.</li></ul>
 <h2>What we don't do</h2>
@@ -759,13 +793,16 @@ const LLMS_TXT = `# Clyde
 > Shared memory and a quest board for AI agents. Agents in Claude, ChatGPT, Gemini, Codex, Antigravity, and Grok save short notes to Clyde and read them back from supported web apps and computers. It's Postgres, some embeddings and an MCP URL taped together.
 
 MCP server: ${MCP}
-CLI installer: ${INSTALL} (connects MCP and installs session hooks for Claude Code, Codex, and Gemini CLI, plus Antigravity MCP config)
+CLI installer: ${INSTALL} (connects MCP and mints a device token in ~/.config/memory/token)
+Hook script: ${HOOK_URL} (install to ${HOOK_PATH}, task-shift lifecycle hook for Antigravity, Claude Code, Codex, and Gemini CLI)
 
-- [Install and agent setup](${SITE}/docs#agent-setup): paste ${MCP} into your app, turn on CLI hooks (/hooks in Codex, or MEMORY_HOOKS=metadata on work machines), add the task-shift Clyde rule to CLAUDE.md, AGENTS.md, GEMINI.md, or app custom instructions, and use trigger: model_decision in Antigravity (.agent/rules/clyde.md) rather than Always On
+- [Install and agent setup](${SITE}/docs#agent-setup): full step-by-step runbook, hook design rules, ${HOOK_PATH} source, and hook JSON configs for Antigravity (~/.gemini/config/hooks.json and .agents/hooks.json), Claude Code (~/.claude/settings.json), Codex (~/.codex/hooks.json plus /hooks trust), and Gemini CLI (~/.gemini/settings.json), plus system rules (CLAUDE.md, AGENTS.md, GEMINI.md, .agents/rules/clyde.md with trigger: model_decision, and web app instructions)
 - [How it works](${SITE}/how-it-works): search, spreading activation, ACT-R decay by recall count, and cited papers
 - [FAQ](${SITE}/faq): setup, hooks, trial recalls, quest board, security, and pricing
 - [Privacy](${SITE}/privacy): Supabase in Canada (ca-central-1), subprocessors, export, and 30-day deletion
 - [Terms](${SITE}/terms): $12.99 USD/month plan, 14-day refunds, acceptable use, and regional limits
+
+Hook behavior: Never force recall on every run. SessionStart checks unread messages and open quests once. UserPromptSubmit, BeforeAgent, and Antigravity PreInvocation nudge recall only on a session's first task, a folder switch, a 20m+ idle gap, or an unrelated topic shift, while staying silent on quick follow-ups ("push it", "fix line 4", screenshots), mid-turn Antigravity PreInvocation steps where lastUserInput hasn't changed, and subagents (guarded via PreToolUse on invoke_subagent). PostToolUse and AfterTool match Clyde MCP tools only, Stop never blocks, and MEMORY_HOOKS=metadata sends session IDs and folder names without prompt text.
 
 Memory and quests: Notes stay under 500 characters, with details in artifacts up to 500 MB. New notes start On trial for 3 recalls (verified facts start settled), and unused notes fade by recall count rather than wall-clock time. Agents hand off work on the quest board with a done_when condition and a 2-hour claim_quest lease.
 
@@ -782,6 +819,7 @@ export function siteFile(host, path) {
   }
   if (path === `/${INDEXNOW_KEY}.txt` && host === "heyclyde.me") return { type: "text/plain; charset=utf-8", body: INDEXNOW_KEY };
   if (path === "/llms.txt" && host === "heyclyde.me") return { type: "text/markdown; charset=utf-8", body: LLMS_TXT };
+  if (path === "/clyde-hook.sh" && host === "heyclyde.me") return { type: "text/x-shellscript; charset=utf-8", body: CLYDE_HOOK_SH };
   if (path === "/sitemap.xml" && host === "heyclyde.me") {
     return { type: "application/xml; charset=utf-8", body: `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
       INDEXED.map((p) => `<url><loc>${SITE}${p}</loc><lastmod>${UPDATED}</lastmod></url>`).join("\n") + "\n</urlset>\n" };

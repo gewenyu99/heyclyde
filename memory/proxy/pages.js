@@ -327,25 +327,25 @@ const APPS = [
   },
   {
     id: "claude-code", logo: "claude-code", name: "Claude Code and Codex", sub: "Terminal agents + hooks", tag: "One-liner",
-    body: `<ol class="steps"><li><span>Run the installer to connect MCP and set up session hooks for Claude Code, Codex, and Gemini CLI.</span></li>
-<li><span>Restart Claude Code. In Codex CLI, run <code>/hooks</code> once to trust the two <code>memory-hook</code> entries.</span></li>
+    body: `<ol class="steps"><li><span>Run the installer to connect MCP and mint a device token for hooks and inbox checks.</span></li>
+<li><span>Install <code>clyde-hook.sh</code> and merge the <a href="https://heyclyde.me/docs#hook-configs">hook configs</a> into <code>~/.claude/settings.json</code> and <code>~/.codex/hooks.json</code>, then restart Claude Code and run <code>/hooks</code> once in Codex CLI.</span></li>
 <li><span>Add the Clyde rule to <code>~/.claude/CLAUDE.md</code> and <code>~/.codex/AGENTS.md</code>. On work machines, prefix with <code>MEMORY_HOOKS=metadata</code> to skip prompt text.</span></li></ol>${copyBox(INSTALL)}`,
   },
   {
-    id: "antigravity", logo: "antigravity", name: "Antigravity", sub: "Desktop IDE and CLI", tag: "Config",
-    body: `<p class="fine">Run the terminal installer or put this in <code>~/.gemini/config/mcp_config.json</code>. Antigravity has no shell hooks, so add the Clyde rule in <span class="k">Customizations → Rules</span> set to <span class="k">Model Decision</span> rather than <span class="k">Always On</span>.</p>
+    id: "antigravity", logo: "antigravity", name: "Antigravity", sub: "Desktop App, IDE, and CLI", tag: "Config",
+    body: `<p class="fine">Put this in <code>~/.gemini/config/mcp_config.json</code> (or run the terminal installer), add the task-shift lifecycle hook in <code>~/.gemini/config/hooks.json</code> (<a href="https://heyclyde.me/docs#hook-configs">see hook configs</a>), and add the Clyde rule in <span class="k">Customizations → Rules</span> set to <span class="k">Model Decision</span> rather than <span class="k">Always On</span>.</p>
 ${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { memory: { serverUrl: MCP_URL } } }, null, 2))}`,
   },
   {
     id: "gemini", logo: "gemini", name: "Gemini app", sub: "gemini.google.com and CLI", tag: "Custom app",
     body: `<ol class="steps"><li><span>Open <span class="k">Settings → Connected Apps</span>, add Clyde's URL, and sign in via email link.</span></li>
-<li><span>Save the Clyde rule in <span class="k">Settings → Saved info</span> so Gemini checks notes on new tasks.</span></li></ol><p class="fine">Web needs Google AI Ultra or a US account. Gemini CLI users: run the terminal installer to set up MCP and hooks, and add the rule to <code>~/.gemini/GEMINI.md</code>.</p>${copyBox(MCP_URL)}`,
+<li><span>Save the Clyde rule in <span class="k">Settings → Saved info</span>, so Gemini checks notes on new tasks.</span></li></ol><p class="fine">Web needs Google AI Ultra or a US account. Gemini CLI users: run the terminal installer, wire <code>clyde-hook.sh</code> in <a href="https://heyclyde.me/docs#hook-configs">hook configs</a>, and add the rule to <code>~/.gemini/GEMINI.md</code>.</p>${copyBox(MCP_URL)}`,
   },
   {
     id: "grok", logo: "grok", name: "Grok", sub: "grok.com", tag: "Connector",
     body: `<ol class="steps"><li><span>Open <a href="https://grok.com/connectors" rel="noopener noreferrer" target="_blank">grok.com/connectors</a> and select <span class="k">Custom</span>.</span></li>
 <li><span>Paste the URL, connect, and sign in via email link.</span></li>
-<li><span>Paste the Clyde rule into <span class="k">Customize Grok</span> so Grok checks notes on new tasks.</span></li></ol>${copyBox(MCP_URL)}`,
+<li><span>Paste the Clyde rule into <span class="k">Customize Grok</span>, so Grok checks notes on new tasks.</span></li></ol>${copyBox(MCP_URL)}`,
   },
   {
     id: "chatgpt", logo: "chatgpt", name: "ChatGPT", sub: "chatgpt.com", tag: "Custom connector",
@@ -354,7 +354,7 @@ ${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { memory: { serverUrl:
   },
   {
     id: "antigravity-cloud", logo: "antigravity", name: "Antigravity cloud", sub: "Headless cloud environments", tag: "Token",
-    body: `<p class="fine">Headless boxes can't open links. Run the installer on a local machine first, copy <code>~/.config/memory/token</code> to your secrets (never commit it to git), and put the Clyde rule in <code>.agent/rules/clyde.md</code>.</p>
+    body: `<p class="fine">Headless boxes can't open links. Run the installer on a local machine first, copy <code>~/.config/memory/token</code> to your secrets (never commit it to git), and put the Clyde rule in <code>.agents/rules/clyde.md</code> alongside <code>.agents/hooks.json</code>.</p>
 ${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { memory: { serverUrl: MCP_URL, headers: { Authorization: "Bearer <your device token>" } } } }, null, 2))}`,
   },
   {

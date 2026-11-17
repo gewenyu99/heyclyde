@@ -4,6 +4,7 @@
  */
 import assert from 'node:assert/strict'
 import worker from '../../../memory/proxy/worker.js'
+import { CLYDE_HOOK_SH } from '../../../memory/proxy/hook.js'
 import { APP_LOGO, appCards, appSteps, DESIGN_URL, homePage, SOON, statePage } from '../../../memory/proxy/pages.js'
 import { INDEXED as SITE_INDEXED, INDEXNOW_KEY, MOVED } from '../../../memory/proxy/site.js'
 
@@ -223,17 +224,35 @@ Deno.test('the store pages', async () => {
   assert.deepEqual(apps, attr(homePage('n0nce0000000000000000'), /data-app="([^"]+)"/g), '/docs and the connect page list the same apps')
   assert.deepEqual(apps, ['claude-ai', 'claude-code', 'antigravity', 'gemini', 'grok', 'chatgpt', 'antigravity-cloud', 'other'])
   assert.ok(/<article[^>]*id="grok"[\s\S]*?grok\.com\/connectors[\s\S]*?https:\/\/heyclyde\.me\/mcp/.test(docs), '/docs#grok: the Grok steps with the MCP URL')
-  const hooks = /<h2 id="hooks">[\s\S]*?<h2 id="instructions">/.exec(docs)?.[0] ?? ''
-  for (const w of ['curl -fsSL https://memory.heyclyde.me/install | sh', '/hooks', 'MEMORY_HOOKS=metadata', 'hook_mode']) {
+  const hooks = /<h2 id="hooks">[\s\S]*?<h2 id="hook-configs">/.exec(docs)?.[0] ?? ''
+  for (const w of ['SessionStart', 'PreInvocation', 'invoke_subagent', 'PostToolUse', 'Stop', '/hooks', 'MEMORY_HOOKS=metadata']) {
     assert.ok(hooks.includes(w), `/docs#hooks mentions ${w}`)
+  }
+  const hookConfigs = /<h2 id="hook-configs">[\s\S]*?<h2 id="instructions">/.exec(docs)?.[0] ?? ''
+  for (const w of [
+    'https://heyclyde.me/clyde-hook.sh',
+    'curl -fsSL https://memory.heyclyde.me/install | sh',
+    '~/.config/memory/clyde-hook.sh',
+    '~/.gemini/config/hooks.json',
+    '.agents/hooks.json',
+    '~/.claude/settings.json',
+    'hook_mode',
+    '~/.codex/hooks.json',
+    '~/.gemini/settings.json',
+    'clyde-hook.sh antigravity PreInvocation',
+    'clyde-hook.sh claude UserPromptSubmit',
+    'clyde-hook.sh codex UserPromptSubmit',
+    'clyde-hook.sh gemini BeforeAgent',
+  ]) {
+    assert.ok(hookConfigs.includes(w), `/docs#hook-configs mentions ${w}`)
   }
   const instructions = /<h2 id="instructions">[\s\S]*?<h2 id="agent-setup">/.exec(docs)?.[0] ?? ''
   assert.ok(instructions.includes('data-copy="Use Clyde MCP tools'), '/docs#instructions has a copyable Clyde rule')
-  for (const w of ['Personal preferences', 'CLAUDE.md', 'AGENTS.md', 'Model Decision', 'Custom instructions', 'Saved info', 'GEMINI.md', 'Customize Grok']) {
+  for (const w of ['Personal preferences', 'CLAUDE.md', 'AGENTS.md', 'Model Decision', 'Custom instructions', 'Saved info', 'GEMINI.md', 'Customize Grok', '.agents/rules/clyde.md']) {
     assert.ok(instructions.includes(w), `/docs#instructions covers ${w}`)
   }
   const agentSetup = /<h2 id="agent-setup">[\s\S]*?<h2 id="then">/.exec(docs)?.[0] ?? ''
-  for (const w of ['trigger: model_decision', '.agent/rules/clyde.md', '~/.config/memory/token', 'https://heyclyde.me/docs#agent-setup']) {
+  for (const w of ['trigger: model_decision', '.agents/rules/clyde.md', '.agent/rules/clyde.md', '~/.config/memory/token', 'clyde-hook.sh', '~/.gemini/config/hooks.json', 'https://heyclyde.me/docs#agent-setup']) {
     assert.ok(agentSetup.includes(w), `/docs#agent-setup covers ${w}`)
   }
   const support = /<h2 id="support">[\s\S]*?<\/main>/.exec(docs)?.[0] ?? ''
@@ -390,9 +409,14 @@ Deno.test('llms.txt and the IndexNow key', async () => {
   const md = await llms.text()
   assert.ok(md.startsWith('# Clyde\n'), 'llms.txt opens with an h1')
   assert.ok(md.includes('https://heyclyde.me/mcp'), 'llms.txt names the MCP URL')
+  assert.ok(md.includes('https://heyclyde.me/clyde-hook.sh'), 'llms.txt names the hook script URL')
   const links = attr(md, /\]\((https:\/\/heyclyde\.me[^)]*)\)/g).map((u) => new URL(u).pathname)
   assert.ok(links.length >= 4, `${links.length} links`)
   for (const p of links) assert.ok(INDEXED.includes(p), `llms.txt links ${p}, an indexed page`)
+  const hookRes = await worker.fetch(new Request('https://heyclyde.me/clyde-hook.sh'), ENV)
+  assert.equal(hookRes.status, 200)
+  assert.match(String(hookRes.headers.get('content-type')), /^text\/x-shellscript/)
+  assert.equal(await hookRes.text(), CLYDE_HOOK_SH)
   assert.match(INDEXNOW_KEY, /^[a-f0-9]{32}$/, 'IndexNow key is 32 hex characters')
   const key = await worker.fetch(new Request(`https://heyclyde.me/${INDEXNOW_KEY}.txt`), ENV)
   assert.equal(key.status, 200)
