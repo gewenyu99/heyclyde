@@ -2,6 +2,7 @@
 // "connect your apps" page at /. They wear Clyde's sticky-note & doodle design system (R68): tokens.css, components.css
 // and fonts.css, inlined from memory/design/css.js because the CSP allows only this response's nonce'd styles.
 import { COMPONENTS_CSS, FONTS_CSS, TOKENS_CSS } from "../design/css.js";
+import { ANTIGRAVITY_HOOKS_JSON, CLAUDE_HOOKS_JSON, CODEX_HOOKS_JSON, GEMINI_HOOKS_JSON, HOOK_INSTALL } from "./hook.js";
 
 // The one connector URL every app and store listing uses (R53). memory.heyclyde.me/mcp stays as an alias.
 export const MCP_URL = "https://heyclyde.me/mcp";
@@ -103,6 +104,7 @@ export const APP_STEPS_CSS = `
 .app{display:flex;flex-direction:column;gap:14px;padding:20px}
 .app .fine{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2)}
 .app .fine code{color:var(--cl-ink);overflow-wrap:anywhere}
+.app .cl-file pre{max-height:220px;overflow:auto}
 @media (max-width:480px){.app .cl-copy code{font-size:12px}}
 ol.steps{margin:0;padding:0;list-style:none;counter-reset:s;display:grid;gap:8px;font:var(--cl-text-body);color:var(--cl-ink-2)}
 ol.steps li{counter-increment:s;display:grid;grid-template-columns:22px minmax(0,1fr);gap:8px;align-items:baseline}
@@ -116,7 +118,7 @@ export const CONNECT_CSS = APP_STEPS_CSS + `
 .apps-head{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,420px);gap:24px;align-items:end;margin-bottom:24px}
 .apps-head .section{margin:0}
 .apps-head .cl-copy{box-shadow:var(--cl-copy-2);border-color:var(--cl-ink-3);padding:8px 8px 8px 14px}
-.apps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-bottom:68px}
+.apps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start;margin-bottom:68px}
 @media (max-width:760px){.apps{grid-template-columns:minmax(0,1fr)}}
 .app-head{display:flex;align-items:center;gap:12px;min-width:0}
 .app-logo{width:40px;height:40px;flex:none;display:grid;place-items:center;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-md);background:var(--cl-paper-1)}
@@ -321,47 +323,77 @@ export const appLogo = (slug, size = 24) => {
 const APPS = [
   {
     id: "claude-ai", logo: "claude", name: "Claude", sub: "claude.ai, Cowork, and mobile", tag: "Connector",
-    body: `<ol class="steps"><li><span>Open <span class="k">Settings → Connectors → Add custom connector</span>.</span></li>
-<li><span>Paste the URL, click <span class="k">Add</span>, then <span class="k">Connect</span>, and sign in via email link.</span></li>
-<li><span>Paste the Clyde rule into <span class="k">Settings → Profile → Personal preferences</span> (or Project instructions) so Claude checks notes on new tasks.</span></li></ol>${copyBox(MCP_URL)}`,
+    body: `<ol class="steps"><li><span><span class="k">MCP:</span> Open <span class="k">Settings → Connectors → Add custom connector</span> and paste the URL below.</span></li>
+<li><span><span class="k">Login:</span> Click <span class="k">Add</span>, click <span class="k">Connect</span>, and open the sign-in link in your email.</span></li>
+<li><span><span class="k">Confirm:</span> Ask Claude to call <code>register_agent</code> and save a first note with <code>remember</code> so a note ID returns.</span></li>
+<li><span><span class="k">Rules:</span> Paste the <a href="https://heyclyde.me/docs#instructions">Clyde rule</a> into <span class="k">Settings → Profile → Personal preferences</span>.</span></li>
+<li><span><span class="k">Restart:</span> Open a new chat so Personal preferences and Clyde load together.</span></li></ol>${copyBox(MCP_URL)}`,
   },
   {
-    id: "claude-code", logo: "claude-code", name: "Claude Code and Codex", sub: "Terminal agents + hooks", tag: "One-liner",
-    body: `<ol class="steps"><li><span>Run the installer to connect MCP and mint a device token for hooks and inbox checks.</span></li>
-<li><span>Install <code>clyde-hook.sh</code> and merge the <a href="https://heyclyde.me/docs#hook-configs">hook configs</a> into <code>~/.claude/settings.json</code> and <code>~/.codex/hooks.json</code>, then restart Claude Code and run <code>/hooks</code> once in Codex CLI.</span></li>
-<li><span>Add the Clyde rule to <code>~/.claude/CLAUDE.md</code> and <code>~/.codex/AGENTS.md</code>. On work machines, prefix with <code>MEMORY_HOOKS=metadata</code> to skip prompt text.</span></li></ol>${copyBox(INSTALL)}`,
+    id: "claude-code", logo: "claude-code", name: "Claude Code and Codex", sub: "Terminal agents + hooks", tag: "CLI + hooks",
+    body: `<ol class="steps"><li><span><span class="k">MCP &amp; login:</span> Run the installer below and click the email sign-in link to wire MCP and mint <code>~/.config/memory/token</code>.</span></li>
+<li><span><span class="k">Confirm:</span> Have the agent call <code>register_agent</code> and save a first note with <code>remember</code> to confirm a note ID returns.</span></li>
+<li><span><span class="k">Hooks:</span> Install <code>clyde-hook.sh</code> and merge the configs below into <code>~/.claude/settings.json</code> and <code>~/.codex/hooks.json</code> (<code>MEMORY_HOOKS=metadata</code> on work machines).</span></li>
+<li><span><span class="k">Rules:</span> Add the <a href="https://heyclyde.me/docs#instructions">Clyde rule</a> to <code>~/.claude/CLAUDE.md</code> and <code>~/.codex/AGENTS.md</code>.</span></li>
+<li><span><span class="k">Restart:</span> Restart Claude Code, and restart Codex CLI then run <code>/hooks</code> once to trust the new hooks.</span></li></ol>
+${copyBox(INSTALL)}${copyBox(HOOK_INSTALL)}
+${copyPre("~/.claude/settings.json", CLAUDE_HOOKS_JSON)}
+${copyPre("~/.codex/hooks.json", CODEX_HOOKS_JSON)}`,
   },
   {
-    id: "antigravity", logo: "antigravity", name: "Antigravity", sub: "Desktop App, IDE, and CLI", tag: "Config",
-    body: `<p class="fine">Put this in <code>~/.gemini/config/mcp_config.json</code> (or run the terminal installer), add the task-shift lifecycle hook in <code>~/.gemini/config/hooks.json</code> (<a href="https://heyclyde.me/docs#hook-configs">see hook configs</a>), and add the Clyde rule in <span class="k">Customizations → Rules</span> set to <span class="k">Model Decision</span> rather than <span class="k">Always On</span>.</p>
-${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { memory: { serverUrl: MCP_URL } } }, null, 2))}`,
+    id: "antigravity", logo: "antigravity", name: "Antigravity", sub: "Desktop App, IDE, and CLI", tag: "MCP + hooks",
+    body: `<ol class="steps"><li><span><span class="k">MCP:</span> Merge <code>mcp_config.json</code> below into <code>~/.gemini/config/mcp_config.json</code> (or run the terminal installer).</span></li>
+<li><span><span class="k">Login:</span> Refresh <span class="k">MCP Servers</span> in Antigravity and click the sign-in link in your email.</span></li>
+<li><span><span class="k">Confirm:</span> Ask Antigravity to call <code>register_agent</code> and save a first note with <code>remember</code> so a note ID returns.</span></li>
+<li><span><span class="k">Hooks &amp; rules:</span> Install <code>clyde-hook.sh</code>, merge <code>hooks.json</code> below into <code>~/.gemini/config/hooks.json</code> (removing any hard per-step hook), and save <code>.agents/rules/clyde.md</code> set to <span class="k">Model Decision</span>.</span></li>
+<li><span><span class="k">Restart:</span> Restart Antigravity (or check <span class="k">Customizations → Hooks</span> and <span class="k">Rules</span>) so task-shift hooks take over.</span></li></ol>
+${copyPre("~/.gemini/config/mcp_config.json", JSON.stringify({ mcpServers: { memory: { serverUrl: MCP_URL } } }, null, 2))}
+${copyBox(HOOK_INSTALL)}
+${copyPre("~/.gemini/config/hooks.json (or .agents/hooks.json)", ANTIGRAVITY_HOOKS_JSON)}`,
   },
   {
-    id: "gemini", logo: "gemini", name: "Gemini app", sub: "gemini.google.com and CLI", tag: "Custom app",
-    body: `<ol class="steps"><li><span>Open <span class="k">Settings → Connected Apps</span>, add Clyde's URL, and sign in via email link.</span></li>
-<li><span>Save the Clyde rule in <span class="k">Settings → Saved info</span>, so Gemini checks notes on new tasks.</span></li></ol><p class="fine">Web needs Google AI Ultra or a US account. Gemini CLI users: run the terminal installer, wire <code>clyde-hook.sh</code> in <a href="https://heyclyde.me/docs#hook-configs">hook configs</a>, and add the rule to <code>~/.gemini/GEMINI.md</code>.</p>${copyBox(MCP_URL)}`,
+    id: "gemini", logo: "gemini", name: "Gemini app and CLI", sub: "gemini.google.com and Gemini CLI", tag: "App + hooks",
+    body: `<ol class="steps"><li><span><span class="k">MCP:</span> On web, open <span class="k">Settings → Connected Apps</span> and add the URL (Google AI Ultra or US account). In Gemini CLI, run the terminal installer.</span></li>
+<li><span><span class="k">Login:</span> Click the one-time sign-in link in your email.</span></li>
+<li><span><span class="k">Confirm:</span> Ask Gemini to call <code>register_agent</code> and save a first note with <code>remember</code> to confirm a note ID returns.</span></li>
+<li><span><span class="k">Hooks &amp; rules:</span> Save the <a href="https://heyclyde.me/docs#instructions">Clyde rule</a> in <span class="k">Settings → Saved info</span> on web. In Gemini CLI, install <code>clyde-hook.sh</code>, add <code>settings.json</code> below (or extension <code>hooks.json</code>, never both), and put the rule in <code>~/.gemini/GEMINI.md</code>.</span></li>
+<li><span><span class="k">Restart:</span> Restart Gemini CLI (or open a new web chat) so hooks and rules load.</span></li></ol>
+${copyBox(MCP_URL)}${copyBox(HOOK_INSTALL)}
+${copyPre("~/.gemini/settings.json (Gemini CLI)", GEMINI_HOOKS_JSON)}`,
   },
   {
     id: "grok", logo: "grok", name: "Grok", sub: "grok.com", tag: "Connector",
-    body: `<ol class="steps"><li><span>Open <a href="https://grok.com/connectors" rel="noopener noreferrer" target="_blank">grok.com/connectors</a> and select <span class="k">Custom</span>.</span></li>
-<li><span>Paste the URL, connect, and sign in via email link.</span></li>
-<li><span>Paste the Clyde rule into <span class="k">Customize Grok</span>, so Grok checks notes on new tasks.</span></li></ol>${copyBox(MCP_URL)}`,
+    body: `<ol class="steps"><li><span><span class="k">MCP:</span> Open <a href="https://grok.com/connectors" rel="noopener noreferrer" target="_blank">grok.com/connectors</a>, choose <span class="k">Custom</span>, and paste the URL.</span></li>
+<li><span><span class="k">Login:</span> Click <span class="k">Connect</span> and open the sign-in link in your email.</span></li>
+<li><span><span class="k">Confirm:</span> Ask Grok to call <code>register_agent</code> and save a first note with <code>remember</code>.</span></li>
+<li><span><span class="k">Rules:</span> Paste the <a href="https://heyclyde.me/docs#instructions">Clyde rule</a> into <span class="k">Customize Grok</span>.</span></li>
+<li><span><span class="k">Restart:</span> Open a new Grok chat so Customize Grok applies.</span></li></ol>${copyBox(MCP_URL)}`,
   },
   {
     id: "chatgpt", logo: "chatgpt", name: "ChatGPT", sub: "chatgpt.com", tag: "Custom connector",
-    body: `<ol class="steps"><li><span>Turn on developer mode in <span class="k">Settings → Connectors</span>, add this URL, and sign in via email link.</span></li>
-<li><span>Paste the Clyde rule into <span class="k">Settings → Personalization → Custom instructions</span>, or ask ChatGPT once to save it to Memory.</span></li></ol>${copyBox(MCP_URL)}`,
+    body: `<ol class="steps"><li><span><span class="k">MCP:</span> Turn on developer mode in <span class="k">Settings → Connectors</span> and add the URL.</span></li>
+<li><span><span class="k">Login:</span> Connect and click the sign-in link in your email.</span></li>
+<li><span><span class="k">Confirm:</span> Ask ChatGPT to call <code>register_agent</code> and save a first note with <code>remember</code>.</span></li>
+<li><span><span class="k">Rules:</span> Paste the <a href="https://heyclyde.me/docs#instructions">Clyde rule</a> into <span class="k">Settings → Personalization → Custom instructions</span> (or Memory).</span></li>
+<li><span><span class="k">Restart:</span> Start a new chat so Custom instructions and Clyde load together.</span></li></ol>${copyBox(MCP_URL)}`,
   },
   {
-    id: "antigravity-cloud", logo: "antigravity", name: "Antigravity cloud", sub: "Headless cloud environments", tag: "Token",
-    body: `<p class="fine">Headless boxes can't open links. Run the installer on a local machine first, copy <code>~/.config/memory/token</code> to your secrets (never commit it to git), and put the Clyde rule in <code>.agents/rules/clyde.md</code> alongside <code>.agents/hooks.json</code>.</p>
-${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { memory: { serverUrl: MCP_URL, headers: { Authorization: "Bearer <your device token>" } } } }, null, 2))}`,
+    id: "antigravity-cloud", logo: "antigravity", name: "Antigravity cloud", sub: "Headless cloud environments", tag: "Token + hooks",
+    body: `<ol class="steps"><li><span><span class="k">MCP &amp; login:</span> Run the installer on a local machine first, copy <code>~/.config/memory/token</code> to cloud secrets (never git), and add <code>mcp_config.json</code>.</span></li>
+<li><span><span class="k">Confirm:</span> Have the cloud agent call <code>register_agent</code> and save a first note with <code>remember</code> to confirm the token works.</span></li>
+<li><span><span class="k">Hooks &amp; rules:</span> Install <code>clyde-hook.sh</code>, add <code>.agents/hooks.json</code> below, and save <code>.agents/rules/clyde.md</code> (<code>trigger: model_decision</code>).</span></li>
+<li><span><span class="k">Restart:</span> Start a fresh cloud session so MCP, workspace hooks, and rules load together.</span></li></ol>
+${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { memory: { serverUrl: MCP_URL, headers: { Authorization: "Bearer <your device token>" } } } }, null, 2))}
+${copyBox(HOOK_INSTALL)}
+${copyPre(".agents/hooks.json", ANTIGRAVITY_HOOKS_JSON)}`,
   },
   {
     id: "other", logo: "other", name: "Other agents", sub: "Anything that speaks MCP", tag: "Remote MCP",
-    body: `<ol class="steps"><li><span>Add a remote MCP server with this URL and click the sign-in link Clyde emails you.</span></li>
-<li><span>No browser? Send <span class="k">Authorization: Bearer</span> plus your token from <code>~/.config/memory/token</code>.</span></li>
-<li><span>Paste the Clyde rule into your agent's system prompt or rules file.</span></li></ol>
+    body: `<ol class="steps"><li><span><span class="k">MCP:</span> Add a remote MCP server with this URL.</span></li>
+<li><span><span class="k">Login:</span> Click the email sign-in link, or send <span class="k">Authorization: Bearer</span> plus <code>~/.config/memory/token</code> on headless hosts.</span></li>
+<li><span><span class="k">Confirm:</span> Call <code>register_agent</code> and save a first note with <code>remember</code> to confirm a note ID returns.</span></li>
+<li><span><span class="k">Hooks &amp; rules:</span> Wire <code>clyde-hook.sh</code> if your client supports shell hooks and paste the <a href="https://heyclyde.me/docs#instructions">Clyde rule</a> into its system prompt.</span></li>
+<li><span><span class="k">Restart:</span> Restart your client so MCP, hooks, and rules load.</span></li></ol>
 ${copyPre("mcp.json", JSON.stringify({ mcpServers: { clyde: { url: MCP_URL } } }, null, 2))}`,
   },
 ];

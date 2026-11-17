@@ -9,7 +9,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ANTIGRAVITY_HOOKS_JSON, CLAUDE_HOOKS_JSON, CLYDE_HOOK_SH, CODEX_HOOKS_JSON, GEMINI_HOOKS_JSON } from '../../../memory/proxy/hook.js'
+import { ANTIGRAVITY_HOOKS_JSON, CLAUDE_HOOKS_JSON, CLYDE_HOOK_SH, CLYDE_VERIFY_SH, CODEX_HOOKS_JSON, GEMINI_HOOKS_JSON } from '../../../memory/proxy/hook.js'
 
 function makeEnv() {
   const dir = mkdtempSync(join(tmpdir(), 'clyde-hook-test-'))
@@ -267,3 +267,59 @@ Deno.test('device token forwarding supports full and metadata modes without dupl
     h.cleanup()
   }
 })
+
+Deno.test('CLYDE_VERIFY_SH runs initialize, register_agent, and remember with required MCP fields', async () => {
+  const calls: { method: string; session: string; params: Record<string, unknown> }[] = []
+  const srv = createServer((req, res) => {
+    const chunks: Buffer[] = []
+    req.on('data', (c) => chunks.push(c))
+    req.on('end', () => {
+      const rpc = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      calls.push({
+        method: rpc.method,
+        session: String(req.headers['mcp-session-id'] || ''),
+        params: rpc.params || {},
+      })
+      res.writeHead(200, { 'content-type': 'application/json', 'mcp-session-id': 'sess-verify-1' })
+      const name = rpc.params?.name
+      res.end(JSON.stringify({
+        jsonrpc: '2.0',
+        id: rpc.id,
+        result: name === 'remember' ? { id: 'note-first-1' } : { ok: true },
+      }))
+    })
+  })
+  await new Promise<void>((resolve) => srv.listen(0, '127.0.0.1', resolve))
+  const port = (srv.address() as { port: number }).port
+  try {
+    const out = await new Promise<string>((resolve, reject) => {
+      const child = spawn('sh', ['-c', CLYDE_VERIFY_SH], {
+        env: {
+          ...process.env,
+          MEMORY_TOKEN: 'tok-verify',
+          MEMORY_URL: `http://127.0.0.1:${port}`,
+          NO_PROXY: '127.0.0.1,localhost',
+          no_proxy: '127.0.0.1,localhost',
+        },
+      })
+      let stdout = '', stderr = ''
+      child.stdout.on('data', (d) => { stdout += d })
+      child.stderr.on('data', (d) => { stderr += d })
+      child.on('error', reject)
+      child.on('close', (code) => code === 0 ? resolve(stdout) : reject(new Error(`exit ${code}: ${stderr}`)))
+    })
+    assert.deepEqual(calls.map((c) => c.method), ['initialize', 'tools/call', 'tools/call'])
+    assert.equal(calls[1].session, 'sess-verify-1')
+    assert.equal(calls[1].params.name, 'register_agent')
+    const regArgs = calls[1].params.arguments as Record<string, unknown>
+    for (const k of ['name', 'context', 'surface', 'description']) assert.ok(regArgs[k], `register_agent.${k}`)
+    assert.equal(calls[2].params.name, 'remember')
+    const remArgs = calls[2].params.arguments as Record<string, unknown>
+    for (const k of ['pattern', 'title', 'body', 'evidence']) assert.ok(remArgs[k], `remember.${k}`)
+    assert.ok(String(remArgs.body).length < 500, 'remember body under 500 chars')
+    assert.ok(out.includes('note-first-1'), 'prints returned first note id')
+  } finally {
+    srv.close()
+  }
+})
+

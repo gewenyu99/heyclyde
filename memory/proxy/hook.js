@@ -297,91 +297,83 @@ emit("\\n".join(parts))
 ' "$client" "$event" || fallback
 `;
 
-export const ANTIGRAVITY_HOOKS_JSON = JSON.stringify({
-  clyde: {
-    SessionStart: [
-      { type: "command", command: `${HOOK_PATH} antigravity SessionStart`, timeout: 5 },
-    ],
-    PreInvocation: [
-      { type: "command", command: `${HOOK_PATH} antigravity PreInvocation`, timeout: 5 },
-    ],
-    PreToolUse: [
-      {
-        matcher: "invoke_subagent",
-        hooks: [{ type: "command", command: `${HOOK_PATH} antigravity PreToolUse`, timeout: 5 }],
-      },
-    ],
-    PostToolUse: [
-      {
-        matcher: "^(mcp_+)?(clyde|memory)[_:\\.].*",
-        hooks: [{ type: "command", command: `${HOOK_PATH} antigravity PostToolUse`, timeout: 5 }],
-      },
-    ],
-    Stop: [
-      { type: "command", command: `${HOOK_PATH} antigravity Stop`, timeout: 5 },
-    ],
-  },
-}, null, 2);
+export const ANTIGRAVITY_HOOKS_JSON = `{
+  "clyde": {
+    "SessionStart": [{ "type": "command", "command": "${HOOK_PATH} antigravity SessionStart", "timeout": 5 }],
+    "PreInvocation": [{ "type": "command", "command": "${HOOK_PATH} antigravity PreInvocation", "timeout": 5 }],
+    "PreToolUse": [{ "matcher": "invoke_subagent", "hooks": [{ "type": "command", "command": "${HOOK_PATH} antigravity PreToolUse", "timeout": 5 }] }],
+    "PostToolUse": [{ "matcher": "^(mcp_+)?(clyde|memory)[_:\\\\.].*", "hooks": [{ "type": "command", "command": "${HOOK_PATH} antigravity PostToolUse", "timeout": 5 }] }],
+    "Stop": [{ "type": "command", "command": "${HOOK_PATH} antigravity Stop", "timeout": 5 }]
+  }
+}`;
 
-export const CLAUDE_HOOKS_JSON = JSON.stringify({
-  hooks: {
-    SessionStart: [
-      { hooks: [{ type: "command", command: `${HOOK_PATH} claude SessionStart` }] },
-    ],
-    UserPromptSubmit: [
-      { hooks: [{ type: "command", command: `${HOOK_PATH} claude UserPromptSubmit` }] },
-    ],
-    PostToolUse: [
-      {
-        matcher: "mcp__(plugin_clyde_)?(clyde|memory)__.*",
-        hooks: [{ type: "command", command: `${HOOK_PATH} claude PostToolUse` }],
-      },
-    ],
-    Stop: [
-      { hooks: [{ type: "command", command: `${HOOK_PATH} claude Stop` }] },
-    ],
-    PreCompact: [
-      { hooks: [{ type: "command", command: `${HOOK_PATH} claude PreCompact` }] },
-    ],
-    SessionEnd: [
-      { hooks: [{ type: "command", command: `${HOOK_PATH} claude SessionEnd` }] },
-    ],
-  },
-}, null, 2);
+export const CLAUDE_HOOKS_JSON = `{
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} claude SessionStart" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} claude UserPromptSubmit" }] }],
+    "PostToolUse": [{ "matcher": "mcp__(plugin_clyde_)?(clyde|memory)__.*", "hooks": [{ "type": "command", "command": "${HOOK_PATH} claude PostToolUse" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} claude Stop" }] }],
+    "PreCompact": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} claude PreCompact" }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} claude SessionEnd" }] }]
+  }
+}`;
 
-export const CODEX_HOOKS_JSON = JSON.stringify({
-  hooks: {
-    SessionStart: [
-      {
-        matcher: "startup|resume",
-        hooks: [{ type: "command", command: `${HOOK_PATH} codex SessionStart` }],
-      },
-    ],
-    UserPromptSubmit: [
-      { hooks: [{ type: "command", command: `${HOOK_PATH} codex UserPromptSubmit` }] },
-    ],
-    Stop: [
-      { hooks: [{ type: "command", command: `${HOOK_PATH} codex Stop` }] },
-    ],
-  },
-}, null, 2);
+export const CODEX_HOOKS_JSON = `{
+  "hooks": {
+    "SessionStart": [{ "matcher": "startup|resume", "hooks": [{ "type": "command", "command": "${HOOK_PATH} codex SessionStart" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} codex UserPromptSubmit" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} codex Stop" }] }]
+  }
+}`;
 
-export const GEMINI_HOOKS_JSON = JSON.stringify({
-  hooks: {
-    SessionStart: [
-      { hooks: [{ type: "command", command: `${HOOK_PATH} gemini SessionStart`, timeout: 5000 }] },
-    ],
-    BeforeAgent: [
-      { hooks: [{ type: "command", command: `${HOOK_PATH} gemini BeforeAgent`, timeout: 5000 }] },
-    ],
-    AfterTool: [
-      {
-        matcher: "mcp_+(clyde|memory)_.*|(clyde|memory)__.*",
-        hooks: [{ type: "command", command: `${HOOK_PATH} gemini AfterTool`, timeout: 5000 }],
-      },
-    ],
-    AfterAgent: [
-      { hooks: [{ type: "command", command: `${HOOK_PATH} gemini AfterAgent`, timeout: 5000 }] },
-    ],
-  },
-}, null, 2);
+export const GEMINI_HOOKS_JSON = `{
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} gemini SessionStart", "timeout": 5000 }] }],
+    "BeforeAgent": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} gemini BeforeAgent", "timeout": 5000 }] }],
+    "AfterTool": [{ "matcher": "mcp_+(clyde|memory)_.*|(clyde|memory)__.*", "hooks": [{ "type": "command", "command": "${HOOK_PATH} gemini AfterTool", "timeout": 5000 }] }],
+    "AfterAgent": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} gemini AfterAgent", "timeout": 5000 }] }]
+  }
+}`;
+
+export const CLYDE_RULE = `Use Clyde MCP tools for shared memory across sessions and apps:
+- Once per session, call register_agent and check_messages, then ack_messages once handled.
+- On a new task, new goal, or repo/topic shift, call recall before guessing past decisions or preferences, then call feedback on what helped.
+- Skip recall on quick follow-ups to the same task (typos, small tweaks, screenshots, "push it"), and skip Clyde inside subagents.
+- When I state a lasting decision, preference, or correction, save it with remember under 500 characters. Never store secrets.`;
+
+export const ANTIGRAVITY_RULE = `---
+trigger: model_decision
+description: Apply when starting a new goal, switching repos or topics, or saving a lasting decision or correction in Clyde. Skip on quick follow-ups to the same task and inside subagents.
+---
+${CLYDE_RULE}`;
+
+// Confirms MCP auth, calls register_agent, and writes a first setup memory over HTTPS before a CLI restarts.
+export const CLYDE_VERIFY_SH = `python3 - <<'PY'
+import json, os, pathlib, platform, socket, urllib.request
+cfg = pathlib.Path(os.environ.get("CLYDE_CONFIG_DIR") or pathlib.Path.home().joinpath(".config/memory"))
+tok = (os.environ.get("MEMORY_TOKEN") or cfg.joinpath("token").read_text()).strip()
+host = socket.gethostname().split(".")[0].lower() or "local"
+url = (os.environ.get("MEMORY_URL") or "https://memory.heyclyde.me").rstrip("/") + "/mcp"
+sid = None
+def rpc(rid, method, params):
+    global sid
+    hdrs = {"Authorization": f"Bearer {tok}", "Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
+    if sid: hdrs["Mcp-Session-Id"] = sid
+    req = urllib.request.Request(url, data=json.dumps({"jsonrpc": "2.0", "id": rid, "method": method, "params": params}).encode(), headers=hdrs)
+    with urllib.request.urlopen(req, timeout=15) as r:
+        sid = r.headers.get("mcp-session-id") or sid
+        return json.loads(r.read().decode())
+rpc(1, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "clyde-setup", "version": "1.0"}})
+reg = rpc(2, "tools/call", {"name": "register_agent", "arguments": {
+    "name": f"setup-{host}"[:32], "context": "work", "surface": "cli-setup",
+    "description": f"Local coding agent on {host}.", "computer": host, "type": "coding",
+}})
+note = rpc(3, "tools/call", {"name": "remember", "arguments": {
+    "pattern": "observations", "title": f"Connected {host} to Clyde",
+    "body": f"Registered local coding agent on {host} ({platform.system()}) and verified Clyde MCP + task-shift hooks.",
+    "evidence": f"Verified via clyde-setup on {host}", "computer": host,
+}})
+print("register_agent:", json.dumps(reg.get("result", reg)))
+print("first_memory:", json.dumps(note.get("result", note)))
+PY`;
+

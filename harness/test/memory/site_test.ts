@@ -251,10 +251,39 @@ Deno.test('the store pages', async () => {
   for (const w of ['Personal preferences', 'CLAUDE.md', 'AGENTS.md', 'Model Decision', 'Custom instructions', 'Saved info', 'GEMINI.md', 'Customize Grok', '.agents/rules/clyde.md']) {
     assert.ok(instructions.includes(w), `/docs#instructions covers ${w}`)
   }
+  const cards = appCards()
+  for (const id of ['claude-ai', 'claude-code', 'antigravity', 'gemini', 'grok', 'chatgpt', 'antigravity-cloud', 'other']) {
+    const card = new RegExp(`<article[^>]*data-app="${id}"[\\s\\S]*?<\\/article>`).exec(cards)?.[0] ?? ''
+    for (const w of ['MCP', 'Confirm:', 'register_agent', 'remember', 'Restart:']) {
+      assert.ok(card.includes(w), `card ${id} includes ${w}`)
+    }
+  }
+  for (const [id, cfg] of [
+    ['claude-code', '~/.claude/settings.json'],
+    ['claude-code', '~/.codex/hooks.json'],
+    ['antigravity', '~/.gemini/config/hooks.json'],
+    ['gemini', '~/.gemini/settings.json'],
+    ['antigravity-cloud', '.agents/hooks.json'],
+  ] as const) {
+    const card = new RegExp(`<article[^>]*data-app="${id}"[\\s\\S]*?<\\/article>`).exec(cards)?.[0] ?? ''
+    assert.ok(card.includes(cfg) && card.includes('clyde-hook.sh'), `card ${id} carries inline hook config ${cfg}`)
+  }
   const agentSetup = /<h2 id="agent-setup">[\s\S]*?<h2 id="then">/.exec(docs)?.[0] ?? ''
-  for (const w of ['trigger: model_decision', '.agents/rules/clyde.md', '.agent/rules/clyde.md', '~/.config/memory/token', 'clyde-hook.sh', '~/.gemini/config/hooks.json', 'https://heyclyde.me/docs#agent-setup']) {
+  for (const w of [
+    'Wire MCP', 'Guide sign-in', 'register_agent', 'remember', 'trigger: model_decision',
+    '.agents/rules/clyde.md', '.agent/rules/clyde.md', '~/.config/memory/token',
+    'clyde-hook.sh', '~/.gemini/config/hooks.json', 'Tell the user to restart',
+    'https://heyclyde.me/docs#agent-setup',
+  ]) {
     assert.ok(agentSetup.includes(w), `/docs#agent-setup covers ${w}`)
   }
+  assert.ok(
+    agentSetup.indexOf('Wire MCP') < agentSetup.indexOf('Guide sign-in') &&
+      agentSetup.indexOf('Guide sign-in') < agentSetup.indexOf('register_agent') &&
+      agentSetup.indexOf('register_agent') < agentSetup.indexOf('Install task-shift hooks') &&
+      agentSetup.indexOf('Install task-shift hooks') < agentSetup.indexOf('Tell the user to restart'),
+    '/docs#agent-setup walks MCP -> login -> confirm -> hooks -> restart in order',
+  )
   const support = /<h2 id="support">[\s\S]*?<\/main>/.exec(docs)?.[0] ?? ''
   assert.ok(support.includes(`href="mailto:${SUPPORT}"`), '/docs#support: a mailto link to support')
   assert.ok(docs.includes('href="/privacy"'), '/docs points export and delete at the privacy policy')
