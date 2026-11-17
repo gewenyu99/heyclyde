@@ -219,7 +219,7 @@ Submit the plugin bundle from [`gewenyu99/heyclyde`](https://github.com/gewenyu9
 
 - **GitHub repository.** `https://github.com/gewenyu99/heyclyde` (bundle path `./plugins/claude`, marketplace `.claude-plugin/marketplace.json`).
 - **Direct archive.** `/Users/vincent/.gemini/antigravity/scratch/heyclyde/dist/clyde-claude-plugin.zip` (also attached to GitHub Release `v1.0.0`).
-- **Local validator.** `/Users/vincent/.paseo/bin/claude plugin validate --profile directory --strict ./plugins/claude` passed with zero warnings. Optional Claude Code hooks default to `off` and make zero network requests unless `hook_mode` and `device_token` are set.
+- **Validator checks.** `plugins/claude` ships zero local command hooks, PNG-only icons, and no `userConfig`. `/Users/vincent/.paseo/bin/claude plugin validate --profile directory --strict ./plugins/claude` passes, and Anthropic's online directory validator (`claude.ai/directory/manage/new/plugin`) reports zero blocking errors and zero policy holds.
 
 ## OpenAI ChatGPT and Codex
 

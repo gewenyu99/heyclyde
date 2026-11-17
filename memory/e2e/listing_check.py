@@ -329,7 +329,21 @@ def openai_verification_file(errs):
 
 
 PLUGIN_REPO = "gewenyu99/heyclyde"
-RAW_REPO = f"https://raw.githubusercontent.com/{PLUGIN_REPO}/main"
+_RAW_REPO_BASE = None
+
+
+def raw_repo_base():
+    """Resolve current main commit SHA once so raw.githubusercontent.com bypasses branch CDN lag."""
+    global _RAW_REPO_BASE
+    if _RAW_REPO_BASE is None:
+        status, _, body = fetch_raw(
+            f"https://api.github.com/repos/{PLUGIN_REPO}/commits/main",
+            accept="application/vnd.github.sha",
+        )
+        sha = body.decode("utf-8", "replace").strip() if status == 200 else ""
+        ref = sha if re.fullmatch(r"[0-9a-f]{40}", sha) else "main"
+        _RAW_REPO_BASE = f"https://raw.githubusercontent.com/{PLUGIN_REPO}/{ref}"
+    return _RAW_REPO_BASE
 
 
 def fetch_raw(url, accept="*/*"):
@@ -354,13 +368,14 @@ def fetch_json(url, errs, label, accept="application/json"):
 
 
 def gemini_cli_repo(errs):
+    raw_base = raw_repo_base()
     repo = fetch_json(f"https://api.github.com/repos/{PLUGIN_REPO}", errs, "github repo", "application/vnd.github+json")
     if repo is not None:
         if repo.get("private", True):
             errs.append(f"{PLUGIN_REPO} is not public")
         if "gemini-cli-extension" not in repo.get("topics", []):
             errs.append(f"{PLUGIN_REPO} missing topic 'gemini-cli-extension'")
-    ext = fetch_json(f"{RAW_REPO}/gemini-extension.json", errs, "gemini-extension.json")
+    ext = fetch_json(f"{raw_base}/gemini-extension.json", errs, "gemini-extension.json")
     if ext is not None:
         if ext.get("name") != "clyde":
             errs.append(f"gemini-extension.json name={ext.get('name')!r}")
@@ -369,19 +384,26 @@ def gemini_cli_repo(errs):
 
 
 def claude_plugin_bundle(errs):
-    manifest = fetch_json(f"{RAW_REPO}/plugins/claude/.claude-plugin/plugin.json", errs, "claude plugin.json")
+    raw_base = raw_repo_base()
+    manifest = fetch_json(f"{raw_base}/plugins/claude/.claude-plugin/plugin.json", errs, "claude plugin.json")
     if manifest is not None:
         if manifest.get("name") != "clyde":
             errs.append(f"claude plugin.json name={manifest.get('name')!r}")
-        if manifest.get("userConfig", {}).get("hook_mode", {}).get("default") != "off":
-            errs.append("claude plugin.json hook_mode default is not 'off'")
-    mcp = fetch_json(f"{RAW_REPO}/plugins/claude/.mcp.json", errs, "claude .mcp.json")
+        if "userConfig" in manifest:
+            errs.append("claude plugin.json must omit userConfig (triggers directory policy hold)")
+    hook_status, _, _ = fetch_raw(f"{raw_base}/plugins/claude/hooks/hooks.json")
+    if hook_status != 404:
+        errs.append(f"claude bundle must omit hooks/hooks.json (got status {hook_status})")
+    svg_status, _, _ = fetch_raw(f"{raw_base}/plugins/claude/assets/clyde.svg")
+    if svg_status != 404:
+        errs.append(f"claude bundle must omit assets/clyde.svg (got status {svg_status})")
+    mcp = fetch_json(f"{raw_base}/plugins/claude/.mcp.json", errs, "claude .mcp.json")
     if mcp is not None and mcp.get("mcpServers", {}).get("clyde", {}).get("url") != CONNECTOR:
         errs.append("claude .mcp.json missing clyde url")
-    mp = fetch_json(f"{RAW_REPO}/.claude-plugin/marketplace.json", errs, "claude marketplace.json")
+    mp = fetch_json(f"{raw_base}/.claude-plugin/marketplace.json", errs, "claude marketplace.json")
     if mp is not None and not any(p.get("source") == "./plugins/claude" for p in mp.get("plugins", [])):
         errs.append("claude marketplace.json missing ./plugins/claude")
-    status, _, body = fetch_raw(f"{RAW_REPO}/plugins/claude/README.md")
+    status, _, body = fetch_raw(f"{raw_base}/plugins/claude/README.md")
     if status != 200:
         errs.append(f"claude README.md: status {status}")
     else:
@@ -396,7 +418,8 @@ def claude_plugin_bundle(errs):
 
 
 def antigravity_plugin_bundle(errs):
-    manifest = fetch_json(f"{RAW_REPO}/plugins/antigravity/plugin.json", errs, "antigravity plugin.json")
+    raw_base = raw_repo_base()
+    manifest = fetch_json(f"{raw_base}/plugins/antigravity/plugin.json", errs, "antigravity plugin.json")
     if manifest is not None:
         desc = manifest.get("description", "")
         if not (120 <= len(desc) <= 160):
@@ -407,10 +430,10 @@ def antigravity_plugin_bundle(errs):
             errs.append("antigravity description ends with disallowed suffix")
         if not manifest.get("$schema"):
             errs.append("antigravity plugin.json missing $schema")
-    mcp = fetch_json(f"{RAW_REPO}/plugins/antigravity/mcp_config.json", errs, "antigravity mcp_config.json")
+    mcp = fetch_json(f"{raw_base}/plugins/antigravity/mcp_config.json", errs, "antigravity mcp_config.json")
     if mcp is not None and mcp.get("mcpServers", {}).get("clyde", {}).get("serverUrl") != CONNECTOR:
         errs.append("antigravity mcp_config.json missing clyde serverUrl")
-    status, _, body = fetch_raw(f"{RAW_REPO}/plugins/antigravity/assets/logo.svg")
+    status, _, body = fetch_raw(f"{raw_base}/plugins/antigravity/assets/logo.svg")
     if status != 200:
         errs.append(f"antigravity logo.svg: status {status}")
     else:
@@ -421,7 +444,7 @@ def antigravity_plugin_bundle(errs):
                 errs.append(f"antigravity logo.svg viewBox {vb} not square")
         except ET.ParseError as e:
             errs.append(f"antigravity logo.svg parse error: {e}")
-    status, _, body = fetch_raw(f"{RAW_REPO}/plugins/antigravity/skills/clyde/SKILL.md")
+    status, _, body = fetch_raw(f"{raw_base}/plugins/antigravity/skills/clyde/SKILL.md")
     if status != 200 or not body.decode("utf-8", "replace").startswith("---\nname: clyde\n"):
         errs.append("antigravity SKILL.md missing or bad frontmatter")
 
@@ -451,6 +474,18 @@ def openai_plugin_release(errs):
                 clyde = mcp.get("mcpServers", {}).get("clyde", {})
                 if clyde.get("url") != CONNECTOR:
                     errs.append(f"openai mcp.json url={clyde.get('url')!r}")
+    status, _, cbytes = fetch_raw(assets["clyde-claude-plugin.zip"])
+    if status != 200:
+        errs.append(f"clyde-claude-plugin.zip: status {status}")
+    else:
+        with zipfile.ZipFile(io.BytesIO(cbytes)) as zf:
+            cnames = {n[2:] if n.startswith("./") else n for n in zf.namelist()}
+            if ".claude-plugin/plugin.json" not in cnames or ".mcp.json" not in cnames:
+                errs.append("clyde-claude-plugin.zip missing .claude-plugin/plugin.json or .mcp.json")
+            if any(n == "hooks/hooks.json" or n.startswith("hooks/") for n in cnames):
+                errs.append("clyde-claude-plugin.zip must not contain hooks")
+            if "assets/clyde.svg" in cnames:
+                errs.append("clyde-claude-plugin.zip must not contain assets/clyde.svg")
     status, _, tbytes = fetch_raw(assets["clyde.tar.gz"])
     if status != 200:
         errs.append(f"clyde.tar.gz: status {status}")
