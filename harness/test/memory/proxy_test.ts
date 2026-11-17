@@ -126,7 +126,7 @@ Deno.test('the home page lists every app and / still reaches the function', asyn
   assert.match(String(r.headers.get('content-type')), /^text\/html/)
   const html = await r.text()
   const apps = [...html.matchAll(/data-app="([^"]+)"/g)].map((m) => m[1])
-  assert.deepEqual(apps, ['claude-ai', 'claude-code', 'antigravity', 'gemini', 'grok', 'chatgpt', 'antigravity-cloud', 'other'])
+  assert.deepEqual(apps, ['agent-setup', 'claude-ai', 'antigravity', 'grok', 'other', 'claude-code', 'gemini', 'chatgpt', 'antigravity-cloud'])
   assert.equal(h1(html), 'Connect your apps')
   assert.ok(html.includes('https://heyclyde.me/mcp'))
   assert.ok(html.includes('curl -fsSL https://memory.heyclyde.me/install | sh'))

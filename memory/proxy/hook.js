@@ -377,3 +377,11 @@ print("register_agent:", json.dumps(reg.get("result", reg)))
 print("first_memory:", json.dumps(note.get("result", note)))
 PY`;
 
+export const AGENT_SETUP_PROMPT = `Guide me through the full Clyde setup on this computer in 5 steps (configs at https://heyclyde.me/docs):
+1. Wire MCP: Merge https://heyclyde.me/mcp into every installed client without clobbering existing entries (~/.gemini/config/mcp_config.json for Antigravity, ~/.claude.json for Claude Code, ~/.codex/config.toml for Codex, and ~/.gemini/extensions/memory or ~/.gemini/settings.json for Gemini CLI).
+2. Guide sign-in: If ~/.config/memory/token exists and passes an initialize check, run \`curl -fsSL https://memory.heyclyde.me/install | sh\`. Otherwise ask for my email, run \`MEMORY_EMAIL=<email> sh -c 'curl -fsSL https://memory.heyclyde.me/install | sh'\` (or have me refresh MCP Servers in Antigravity), and wait for me to click the one-time email sign-in link.
+3. Confirm with a first memory: Call \`register_agent\` (handle, context, surface, description, computer), \`check_messages\`, and \`remember\` (<500 chars) and show me the returned note ID. If MCP tools aren't mounted until restart, run the verification snippet on https://heyclyde.me/docs against ~/.config/memory/token.
+4. Install task-shift hooks and rules: Run \`${HOOK_INSTALL}\`, merge the hook JSON configs from https://heyclyde.me/docs into ~/.gemini/config/hooks.json, ~/.claude/settings.json, ~/.codex/hooks.json, and ~/.gemini/settings.json (never both extension and settings in Gemini CLI), remove any old hard per-step PreInvocation hooks or legacy $MEMORY_TOKEN curl skills, add the Clyde rule to ~/.claude/CLAUDE.md, ~/.codex/AGENTS.md, ~/.gemini/GEMINI.md, and .agents/rules/clyde.md (or .agent/rules/clyde.md) with \`trigger: model_decision\`, and verify ${HOOK_PATH} exits 0.
+5. Tell me to restart: List every app I need to restart (Antigravity, Claude Code, Codex CLI + run \`/hooks\` once to trust ~/.codex/hooks.json, and Gemini CLI).`;
+
+

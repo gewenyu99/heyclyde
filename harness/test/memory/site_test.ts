@@ -64,11 +64,11 @@ Deno.test('the home page has an app picker, a recall carousel and one bottom but
 
   // The picker: one radio and one label per app, Claude checked, each panel the same steps /docs shows.
   const how = section('how')
-  const ids = ['claude-ai', 'claude-code', 'antigravity', 'gemini', 'grok', 'chatgpt', 'other']
+  const ids = ['claude-ai', 'agent-setup', 'claude-code', 'antigravity', 'gemini', 'grok', 'chatgpt', 'other']
   const radios = [...how.matchAll(/<input[^>]*type="radio"[^>]*>/g)].map((m) => m[0])
   assert.deepEqual(radios.map((r) => /id="pick-([^"]+)"/.exec(r)?.[1]), ids, 'one radio per app, in order')
   assert.equal(new Set(radios.map((r) => /name="([^"]+)"/.exec(r)?.[1])).size, 1, 'the radios share one name, so arrow keys move between them')
-  assert.deepEqual(radios.map((r) => / checked/.test(r)), [true, false, false, false, false, false, false], 'Claude is checked by default')
+  assert.deepEqual(radios.map((r) => / checked/.test(r)), [true, false, false, false, false, false, false, false], 'Claude is checked by default')
   for (const id of ids) {
     const app = appSteps(id)
     const label = new RegExp(`<label for="pick-${id}">([\\s\\S]*?)</label>`).exec(how)?.[1] ?? ''
@@ -222,7 +222,9 @@ Deno.test('the store pages', async () => {
   assert.ok(docs.includes(appCards()), '/docs carries appCards() as the connect page renders it')
   const apps = attr(docs, /data-app="([^"]+)"/g)
   assert.deepEqual(apps, attr(homePage('n0nce0000000000000000'), /data-app="([^"]+)"/g), '/docs and the connect page list the same apps')
-  assert.deepEqual(apps, ['claude-ai', 'claude-code', 'antigravity', 'gemini', 'grok', 'chatgpt', 'antigravity-cloud', 'other'])
+  assert.deepEqual(apps, ['agent-setup', 'claude-ai', 'antigravity', 'grok', 'other', 'claude-code', 'gemini', 'chatgpt', 'antigravity-cloud'])
+  assert.ok(/\.apps\{columns:2 380px;column-gap:16px/.test(docs) && /\.apps>\.app\{[^}]*break-inside:avoid/.test(docs), '/docs stacks app cards in a mosaic rather than a rigid row grid')
+  assert.ok(!/\.apps\{display:grid/.test(docs) && !/<h2 id="agent-setup">/.test(docs), 'agent-setup lives inside the mosaic rather than a separate section')
   assert.ok(/<article[^>]*id="grok"[\s\S]*?grok\.com\/connectors[\s\S]*?https:\/\/heyclyde\.me\/mcp/.test(docs), '/docs#grok: the Grok steps with the MCP URL')
   const hooks = /<h2 id="hooks">[\s\S]*?<h2 id="hook-configs">/.exec(docs)?.[0] ?? ''
   for (const w of ['SessionStart', 'PreInvocation', 'invoke_subagent', 'PostToolUse', 'Stop', '/hooks', 'MEMORY_HOOKS=metadata']) {
@@ -246,7 +248,7 @@ Deno.test('the store pages', async () => {
   ]) {
     assert.ok(hookConfigs.includes(w), `/docs#hook-configs mentions ${w}`)
   }
-  const instructions = /<h2 id="instructions">[\s\S]*?<h2 id="agent-setup">/.exec(docs)?.[0] ?? ''
+  const instructions = /<h2 id="instructions">[\s\S]*?<h2 id="then">/.exec(docs)?.[0] ?? ''
   assert.ok(instructions.includes('data-copy="Use Clyde MCP tools'), '/docs#instructions has a copyable Clyde rule')
   for (const w of ['Personal preferences', 'CLAUDE.md', 'AGENTS.md', 'Model Decision', 'Custom instructions', 'Saved info', 'GEMINI.md', 'Customize Grok', '.agents/rules/clyde.md']) {
     assert.ok(instructions.includes(w), `/docs#instructions covers ${w}`)
@@ -268,21 +270,22 @@ Deno.test('the store pages', async () => {
     const card = new RegExp(`<article[^>]*data-app="${id}"[\\s\\S]*?<\\/article>`).exec(cards)?.[0] ?? ''
     assert.ok(card.includes(cfg) && card.includes('clyde-hook.sh'), `card ${id} carries inline hook config ${cfg}`)
   }
-  const agentSetup = /<h2 id="agent-setup">[\s\S]*?<h2 id="then">/.exec(docs)?.[0] ?? ''
+  const agentSetup = /<article[^>]*data-app="agent-setup"[\s\S]*?<\/article>/.exec(cards)?.[0] ?? ''
+  assert.ok(agentSetup.includes('cl-sticky'), 'agent-setup wears a sticky-note card in the mosaic')
   for (const w of [
     'Wire MCP', 'Guide sign-in', 'register_agent', 'remember', 'trigger: model_decision',
     '.agents/rules/clyde.md', '.agent/rules/clyde.md', '~/.config/memory/token',
     'clyde-hook.sh', '~/.gemini/config/hooks.json', 'Tell the user to restart',
-    'https://heyclyde.me/docs#agent-setup',
+    'Paste into your coding agent',
   ]) {
-    assert.ok(agentSetup.includes(w), `/docs#agent-setup covers ${w}`)
+    assert.ok(agentSetup.includes(w), `mosaic agent-setup card covers ${w}`)
   }
   assert.ok(
     agentSetup.indexOf('Wire MCP') < agentSetup.indexOf('Guide sign-in') &&
       agentSetup.indexOf('Guide sign-in') < agentSetup.indexOf('register_agent') &&
       agentSetup.indexOf('register_agent') < agentSetup.indexOf('Install task-shift hooks') &&
       agentSetup.indexOf('Install task-shift hooks') < agentSetup.indexOf('Tell the user to restart'),
-    '/docs#agent-setup walks MCP -> login -> confirm -> hooks -> restart in order',
+    'agent-setup mosaic card walks MCP -> login -> confirm -> hooks -> restart in order',
   )
   const support = /<h2 id="support">[\s\S]*?<\/main>/.exec(docs)?.[0] ?? ''
   assert.ok(support.includes(`href="mailto:${SUPPORT}"`), '/docs#support: a mailto link to support')

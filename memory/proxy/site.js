@@ -2,7 +2,7 @@
 // sign-in, a 404, robots.txt and the sitemap. Served by the same Worker as memory.heyclyde.me, in Sticky-Note Forehead
 // Clyde's doodle and sticky-note design system, in Clyde's deadpan voice (R72, #77; memory/design/BRAND.md).
 // Pricing matches memory.plan (memory/supabase/migrations/20261115120000_billing.sql); site_test.ts checks it.
-import { ANTIGRAVITY_HOOKS_JSON, ANTIGRAVITY_RULE, CLAUDE_HOOKS_JSON, CLYDE_HOOK_SH, CLYDE_RULE, CLYDE_VERIFY_SH, CODEX_HOOKS_JSON, GEMINI_HOOKS_JSON, HOOK_INSTALL, HOOK_PATH, HOOK_URL } from "./hook.js";
+import { ANTIGRAVITY_HOOKS_JSON, ANTIGRAVITY_RULE, CLAUDE_HOOKS_JSON, CLYDE_HOOK_SH, CLYDE_RULE, CODEX_HOOKS_JSON, GEMINI_HOOKS_JSON, HOOK_INSTALL, HOOK_PATH, HOOK_URL } from "./hook.js";
 import { SOON, SOON_NOTE, APP_STEPS_CSS, appCards, appLogo, appSteps, APP_LOGO, CONNECT_CSS, COPY_JS, copyBox, copyPre, DESIGN_URL, esc, HERO_CSS, INSTALL, LEGAL, LOGO, MARK, MASCOT, MCP_URL, SCENE, SCENE_CSS, SCENE_IMG, shell, SITE, WORKS } from "./pages.js";
 
 const CONNECT = "/docs";
@@ -66,6 +66,8 @@ const SITE_HOME_CSS = `
 
 const DOC_CSS = `
 .doc{flex:1;max-width:820px;display:grid;gap:18px;padding-block:20px 56px;align-content:start}
+.doc--wide{max-width:var(--cl-page-max)}
+.doc .apps{margin-bottom:6px}
 .doc h1{margin:0}.doc h1 em{font-style:normal;color:var(--cl-carbon)}
 .doc p{margin:0;font:var(--cl-text-body-l);color:var(--cl-ink-2);max-width:64ch}
 .doc h2{margin:30px 0 0;font:var(--cl-text-title-2)}
@@ -491,7 +493,7 @@ const PLANS = `<section class="wrap" id="pricing"><div class="section"><span cla
 </div></section>`;
 
 // The app picker: radio inputs and labels, no script. Each panel is that app's steps from pages.js (appSteps).
-const PICK = ["claude-ai", "claude-code", "antigravity", "gemini", "grok", "chatgpt", "other"].map(appSteps);
+const PICK = ["claude-ai", "agent-setup", "claude-code", "antigravity", "gemini", "grok", "chatgpt", "other"].map(appSteps);
 const PICK_CSS = `
 #how{margin-bottom:84px}
 #how .soon-note{margin-top:16px}
@@ -546,10 +548,10 @@ ${END_CTA}
 const EXPORT_DELETE = `<p><b>Export:</b> Email ${MAIL} from your account email. We'll send a JSON archive of your notes, tasks, messages, and files within 30 days, usually within a week.</p>
 <p><b>Delete:</b> Email ${MAIL} from your account email to delete specific notes or your entire account. Live data is deleted within 30 days, and encrypted backups expire 30 days after that. Self-serve export and deletion in Settings is coming soon.</p>`;
 
-const DOCS = `<main class="doc wrap">${hero("Docs", "Install <em>Clyde</em>",
+const DOCS = `<main class="doc doc--wide wrap">${hero("Docs", "Install <em>Clyde</em>",
   "Connect MCP, sign in by email, confirm with a first memory, wire task-shift hooks, and restart your app.",
   SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 230, 133), "")}
-<nav class="toc" aria-label="On this page"><a href="#hooks">Set up hooks</a><a href="#hook-configs">The hook configs</a><a href="#instructions">System instructions</a><a href="#agent-setup">Point your agent here</a><a href="#support">Support</a></nav>
+<nav class="toc" aria-label="On this page"><a href="#agent-setup">Agent setup</a><a href="#hooks">Set up hooks</a><a href="#hook-configs">The hook configs</a><a href="#instructions">System instructions</a><a href="#support">Support</a></nav>
 ${copyBox(MCP)}
 <div class="apps">${appCards()}</div>${SOON_NOTE}
 <h2 id="hooks">Set up hooks</h2>
@@ -597,16 +599,6 @@ ${copyPre("Clyde rule", CLYDE_RULE)}
 </tbody></table></div>
 <p>For Antigravity workspaces, save this file with <code>trigger: model_decision</code> frontmatter:</p>
 ${copyPre(".agents/rules/clyde.md (or .agent/rules/clyde.md)", ANTIGRAVITY_RULE)}
-<h2 id="agent-setup">Point your agent here</h2>
-<p>Point your local coding agent at this URL and ask it to guide you through the full Clyde setup.</p>
-${copyBox(`${SITE}/docs#agent-setup`)}
-<p>If you're an AI agent setting up or fixing this computer, walk the user through all five steps in order:</p>
-<ol><li><b>Wire MCP (<code>mcp</code>).</b> Detect every installed client and merge Clyde's MCP server without clobbering existing entries: <code>~/.gemini/config/mcp_config.json</code> for Antigravity, <code>~/.claude.json</code> for Claude Code, <code>~/.codex/config.toml</code> for Codex, and <code>~/.gemini/extensions/memory</code> (or <code>~/.gemini/settings.json</code>) for Gemini CLI, using <code>${MCP}</code>.</li>
-<li><b>Guide sign-in (<code>login</code>).</b> If <code>~/.config/memory/token</code> exists and passes an <code>initialize</code> check, run <code>${INSTALL}</code> to refresh all CLIs with zero prompts. Otherwise ask the user for their email, run <code>MEMORY_EMAIL=&lt;email&gt; sh -c '${INSTALL}'</code> (or ask them to click <b>Refresh / Connect</b> on the MCP server in Antigravity), tell them to click the one-time email link, and wait until login finishes.</li>
-<li><b>Confirm by registering yourself and saving a first memory (<code>register_agent</code> + <code>remember</code>).</b> Before moving on, call <code>register_agent</code> (with your handle, <code>context</code>, <code>surface</code>, <code>description</code>, and <code>computer</code>), run <code>check_messages</code>, and call <code>remember</code> to save a short first setup memory so you can show the user the returned note ID. If this CLI hasn't restarted to mount MCP tools yet, run the verification snippet below against <code>~/.config/memory/token</code>.</li>
-<li><b>Install task-shift hooks and rules (<code>hooks</code>).</b> Run <code>${HOOK_INSTALL}</code>, then merge the configs from <code>#hook-configs</code> into <code>~/.gemini/config/hooks.json</code>, <code>~/.claude/settings.json</code>, <code>~/.codex/hooks.json</code>, and <code>~/.gemini/extensions/memory/hooks/hooks.json</code> (or <code>~/.gemini/settings.json</code>, never both). Remove any older hard per-step <code>PreInvocation</code> or <code>SessionStart</code> hook in <code>~/.gemini/config/hooks.json</code>, <code>.agents/hooks.json</code>, or <code>.agent/hooks.json</code>, add the Clyde rule to <code>~/.claude/CLAUDE.md</code>, <code>~/.codex/AGENTS.md</code>, <code>~/.gemini/GEMINI.md</code>, and <code>.agents/rules/clyde.md</code> (or <code>.agent/rules/clyde.md</code>) with <code>trigger: model_decision</code>, delete legacy <code>$MEMORY_TOKEN</code> <code>curl</code> skills, and test <code>${HOOK_PATH}</code> on sample JSON for exit <code>0</code>.</li>
-<li><b>Tell the user to restart (<code>restart</code>).</b> Give the user a clear reload list for every app you configured: restart Antigravity (or refresh <b>MCP Servers</b> and check <b>Customizations → Hooks</b> and <b>Rules</b>), restart Claude Code, restart Codex CLI and run <code>/hooks</code> once to trust <code>~/.codex/hooks.json</code>, and restart Gemini CLI.</li></ol>
-${copyPre("Confirm register_agent + first memory (before CLI restart)", CLYDE_VERIFY_SH)}
 <h2 id="then">Keep notes short</h2>
 <p>Keep notes under 500 characters and attach longer specs or logs as artifacts. Recall replies remind the agent to call <code>feedback</code> on what helped.</p>
 <p>New notes start On trial for 3 recalls unless verified as facts, and unused notes fade by recall count rather than time. To export or delete your data, see the <a href="/privacy">Privacy policy</a>.</p>
@@ -785,7 +777,7 @@ MCP server: ${MCP}
 CLI installer: ${INSTALL} (connects MCP and mints a device token in ~/.config/memory/token)
 Hook script: ${HOOK_URL} (install to ${HOOK_PATH}, task-shift lifecycle hook for Antigravity, Claude Code, Codex, and Gemini CLI)
 
-- [Install and agent setup](${SITE}/docs#agent-setup): full 5-step onboarding runbook (1. MCP -> 2. Login -> 3. Confirm by calling register_agent and saving a first memory with remember -> 4. Install ${HOOK_PATH} + per-app hook JSON configs + system rules -> 5. Tell the user to restart and run /hooks in Codex CLI)
+- [Install and agent setup](${SITE}/docs): mosaic of per-app setup cards including "Let your agent set it up" (1. MCP -> 2. Login -> 3. Confirm by calling register_agent and saving a first memory with remember -> 4. Install ${HOOK_PATH} + per-app hook JSON configs + system rules -> 5. Tell the user to restart and run /hooks in Codex CLI)
 - [How it works](${SITE}/how-it-works): search, spreading activation, ACT-R decay by recall count, and cited papers
 - [FAQ](${SITE}/faq): setup, hooks, trial recalls, quest board, security, and pricing
 - [Privacy](${SITE}/privacy): Supabase in Canada (ca-central-1), subprocessors, export, and 30-day deletion
