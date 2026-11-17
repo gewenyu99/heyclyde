@@ -86,10 +86,24 @@ test('R67 the cards use only the design tokens', () => {
   assert.equal((CARD_CSS.match(/#[0-9a-f]{3,8}\b|rgb\(/gi) ?? []).length, 0, 'the card CSS has no literal colors')
 })
 
-test('R67 cards render and escape everything from memory', { skip: NO_CHROME }, () => {
-  const report = run(frames('light', 640))
+test('R67 cards start compact, label confidence and agent-filed, and escape everything when expanded', { skip: NO_CHROME }, () => {
+  const compact = run(frames('light', 640))
   const ids = Object.keys(FIXTURES)
   assert.equal(ids.length, 7)
+  for (const id of ['recall', 'entry', 'remembered', 'artifact', 'quests'] as const) {
+    assert.ok(compact.frames[id].compactItems >= 1, `${id} starts collapsed in compact view`)
+  }
+  for (const id of ['recall', 'entry', 'remembered'] as const) {
+    assert.equal(compact.frames[id].memoryPadding, '8px 12px', `${id} uses compact .cl-memory padding by default`)
+    assert.match(compact.frames[id].text, /\d+% confidence/, `${id} labels confidence`)
+    assert.ok(!compact.frames[id].text.includes('unreviewed'), `${id} drops unreviewed label`)
+  }
+  assert.match(compact.frames.recall.text, /\bagent-filed\b/, 'draft memory renders as agent-filed')
+  assert.match(compact.frames.remembered.text, /\bSaved\b/i, 'remembered card stamps Saved in compact view')
+  assert.equal(compact.xss, 0)
+
+  const expandClicks = Object.fromEntries(ids.map((id) => [id, ['button.c-toggle']]))
+  const report = run(frames('light', 640, expandClicks))
   for (const id of ids) {
     const f = report.frames[id]
     assert.equal(f.ready, cardFor(id), `${id} drew`)
@@ -98,16 +112,42 @@ test('R67 cards render and escape everything from memory', { skip: NO_CHROME }, 
   }
   assert.match(report.frames.remembered.text, /\bSaved\b/i, 'remembered card stamps Saved')
   for (const id of ['recall', 'entry', 'remembered'] as const) {
-    assert.equal(report.frames[id].memoryPadding, '14px 16px 12px', `${id} keeps .cl-memory padding`)
+    assert.equal(report.frames[id].memoryPadding, '14px 16px 12px', `${id} keeps .cl-memory padding when expanded`)
   }
   assert.equal(report.frames.agent.memoryPadding, null, 'agent card has no .cl-memory wrapper')
   assert.equal(report.xss, 0)
 })
 
-test('R67 card buttons call the tools', { skip: NO_CHROME }, () => {
+test('R67 multi-item cards cap at top three by default with a show-more button', { skip: NO_CHROME }, () => {
+  const baseRecall = (FIXTURES.recall as any)._meta['clyde/card']
+  const manyRecall = {
+    content: [{ type: 'text', text: '5 results' }],
+    _meta: { 'clyde/card': { ...baseRecall, items: [1, 2, 3, 4, 5].map((k) => ({ ...baseRecall.items[0], id: `m-${k}`, title: `Result ${k}` })) } },
+  }
+  const baseQuests = (FIXTURES.quests as any)._meta['clyde/card']
+  const manyQuests = {
+    content: [{ type: 'text', text: '5 quests' }],
+    _meta: { 'clyde/card': { ...baseQuests, quests: [1, 2, 3, 4, 5].map((k) => ({ ...baseQuests.quests[0], id: 100 + k, title: `Quest ${k}` })) } },
+  }
+  const report = run([
+    { id: 'r-capped', card: 'recall', html: cardHtml('recall'), theme: 'dark', result: manyRecall, width: 640 },
+    { id: 'r-more', card: 'recall', html: cardHtml('recall'), theme: 'dark', result: manyRecall, width: 640, clicks: ['button.c-more'] },
+    { id: 'q-capped', card: 'quests', html: cardHtml('quests'), theme: 'dark', result: manyQuests, width: 640 },
+    { id: 'q-more', card: 'quests', html: cardHtml('quests'), theme: 'dark', result: manyQuests, width: 640, clicks: ['button.c-more'] },
+  ])
+  assert.equal(report.frames['r-capped'].visibleItems, 3)
+  assert.ok(report.frames['r-capped'].buttons.includes('Show 2 more'))
+  assert.equal(report.frames['r-more'].visibleItems, 5)
+  assert.ok(report.frames['r-more'].buttons.includes('Show top 3'))
+  assert.equal(report.frames['q-capped'].visibleItems, 3)
+  assert.ok(report.frames['q-capped'].buttons.includes('Show 2 more'))
+  assert.equal(report.frames['q-more'].visibleItems, 5)
+})
+
+test('R67 card buttons call the tools, and degrade cleanly when host tool IPC is missing', { skip: NO_CHROME }, () => {
   const report = run(frames('light', 640, {
-    recall: ['article[data-id="e-1"] button.c-used', 'div.c-foot button.cl-btn--primary', 'article[data-id="e-1"] button.c-open'],
-    quests: ['article[data-quest="12"] button.c-claim'],
+    recall: ['article[data-id="e-1"] button.c-sum', 'article[data-id="e-1"] button.c-used', 'div.c-foot button.cl-btn--primary', 'article[data-id="e-1"] button.c-open'],
+    quests: ['article[data-quest="12"] button.c-qsum', 'article[data-quest="12"] button.c-claim'],
   }))
   const calls = report.calls.map((c: any) => ({ name: c.name, arguments: c.arguments }))
   assert.deepEqual(calls, [
@@ -115,20 +155,40 @@ test('R67 card buttons call the tools', { skip: NO_CHROME }, () => {
     { name: 'get_entry', arguments: { id: 'e-1' } },
     { name: 'claim_quest', arguments: { id: 12 } },
   ])
+
+  const noIpcReport = run([
+    {
+      id: 'recall-noipc', card: 'recall', html: cardHtml('recall'), theme: 'dark', result: FIXTURES.recall, width: 640, noIpc: true,
+      clicks: ['article[data-id="e-1"] button.c-sum', 'article[data-id="e-1"] button.c-used', 'div.c-foot button.cl-btn--primary', 'article[data-id="e-1"] button.c-open'],
+    },
+    {
+      id: 'quests-noipc', card: 'quests', html: cardHtml('quests'), theme: 'dark', result: FIXTURES.quests, width: 640, noIpc: true,
+      clicks: ['article[data-quest="12"] button.c-qsum', 'article[data-quest="12"] button.c-claim'],
+    },
+  ])
+  for (const id of ['recall-noipc', 'quests-noipc'] as const) {
+    assert.ok(!noIpcReport.frames[id].text.includes('IPC not available'), `${id} hides raw IPC error`)
+  }
+  assert.match(noIpcReport.frames['recall-noipc'].text, /Feedback can't send from this card right now/)
+  assert.match(noIpcReport.frames['recall-noipc'].text, /\be-1\b/, 'Open falls back to local entry details without IPC')
+  assert.match(noIpcReport.frames['quests-noipc'].text, /Actions can't send from this card right now/)
 })
 
 test('R67 cards follow the host theme and fit chat width', { skip: NO_CHROME }, () => {
+  const expandAll = Object.fromEntries(Object.keys(FIXTURES).map((id) => [id, ['button.c-toggle']]))
   let checked = 0
   for (const theme of ['light', 'dark'] as const) {
     for (const width of [640, 360]) {
-      const report = run(frames(theme, width))
-      for (const [id, f] of Object.entries<any>(report.frames)) {
-        assert.equal(f.theme, theme, `${id} ${theme} ${width}`)
-        assert.equal(f.background, theme === 'light' ? 'rgb(255, 255, 255)' : 'rgb(27, 28, 26)', `${id} ${theme}`)
-        assert.equal(f.overflow, false, `${id} at ${width} px scrolls sideways`)
-        checked++
+      for (const clicks of [{}, expandAll]) {
+        const report = run(frames(theme, width, clicks))
+        for (const [id, f] of Object.entries<any>(report.frames)) {
+          assert.equal(f.theme, theme, `${id} ${theme} ${width}`)
+          assert.equal(f.background, theme === 'light' ? 'rgb(255, 255, 255)' : 'rgb(27, 28, 26)', `${id} ${theme}`)
+          assert.equal(f.overflow, false, `${id} at ${width} px scrolls sideways`)
+          checked++
+        }
       }
     }
   }
-  assert.equal(checked, 28)
+  assert.equal(checked, 56)
 })
