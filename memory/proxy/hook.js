@@ -358,8 +358,18 @@ inbox_msg = ""
 status = ""
 registered = None
 if token and url.startswith(("https://", "http://127.0.0.1", "http://localhost")):
+    git_remote = ""
+    if canon == "SessionStart" and cwd and cwd != "/":
+        try:
+            gr = subprocess.run(["git", "-C", cwd, "config", "--get", "remote.origin.url"], capture_output=True, text=True, timeout=1.0)
+            if gr.returncode == 0:
+                git_remote = (gr.stdout or "").strip()
+        except Exception:
+            git_remote = ""
     if hmode == "metadata":
         sbody = {"session_id": sid, "cwd": cwd, "hook_event_name": canon}
+        if git_remote:
+            sbody["git_remote"] = git_remote
         for k in ("tool_name", "matcher", "source", "reason"):
             if k in data:
                 sbody[k] = data[k]
@@ -368,6 +378,8 @@ if token and url.startswith(("https://", "http://127.0.0.1", "http://localhost")
     else:
         sbody = dict(data)
         sbody.update({"session_id": sid, "cwd": cwd, "hook_event_name": canon})
+        if git_remote and "git_remote" not in sbody:
+            sbody["git_remote"] = git_remote
         if prompt and "prompt" not in sbody:
             sbody["prompt"] = prompt
         if tname and "tool_name" not in sbody:

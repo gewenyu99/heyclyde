@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
-import { readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 import { Memory } from '../../src/memory.ts'
@@ -17,7 +17,7 @@ import { tempDir, waitFor } from '../helpers.ts'
 import { repoRoot } from '../../src/config.ts'
 import { jwt } from './auth.ts'
 import { FAKE_DOWN, FAKE_REFUSE } from './openai.ts'
-import { apply, purge, SKIP, sql, startRealMemory, type RealMemory } from './server.ts'
+import { apply, exec, purge, SKIP, sql, startRealMemory, type RealMemory } from './server.ts'
 import { verifies } from './signing.ts'
 import { CLIENT_SURFACE_FILES } from './surface-hash.ts'
 
@@ -1174,4 +1174,148 @@ test('/oauth/consent returns 502 and keeps no consent row when the SMTP send fai
     memory.auth.otpFailure = null
     sql('delete from memory.oauth_consent')
   }
+})
+
+// ----------------------------------------------------------------------------------------------------- R61 (#66)
+
+function r61Owner(tag: string) {
+  const id = randomUUID()
+  const email = `r61-${tag}-${randomUUID().slice(0, 8)}@example.com`
+  const token = `dev-${tag}-${randomBytes(10).toString('hex')}`
+  const deviceName = `r61-${tag}-box`
+  exec(`insert into memory.allowed_email (email, plan) values ('${email}', 'owner');
+    insert into memory.account (owner_id, email, email_confirmed) values ('${id}', '${email}', true);
+    insert into memory.device (name, token_sha256, owner_id) values ('${deviceName}', '${createHash('sha256').update(token).digest('hex')}', '${id}');`)
+  const [dev] = sql(`select id from memory.device where owner_id = '${id}' and name = '${deviceName}'`)
+  return { id, email, token, deviceId: Number(dev.id), deviceName }
+}
+
+async function mcpToolCall(token: string, client: string, name: string, args: Record<string, unknown>) {
+  const init = await call('POST', '/mcp', bearer(token),
+    { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', clientInfo: { name: client } } })
+  assert.equal(init.status, 200, init.text)
+  const session = String(init.headers['mcp-session-id'])
+  const r = await call('POST', '/mcp', { ...bearer(token), 'mcp-session-id': session },
+    { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name, arguments: args } })
+  assert.equal(r.status, 200, r.text)
+  const res = JSON.parse(r.text).result
+  return { text: res.content[0].text as string, error: Boolean(res.isError) }
+}
+
+test('register_agent v2 fields', { skip: SKIP }, async () => {
+  const owner = r61Owner('v2')
+  const suffix = randomBytes(3).toString('hex')
+  const res = await mcpToolCall(owner.token, 'claude-code', 'register_agent', {
+    name: `ada-coder-${suffix}`,
+    nickname: 'ada',
+    type: 'coding',
+    context: 'work',
+    surface: 'claude-code',
+    description: 'Writes and tests features.',
+  })
+  assert.equal(res.error, false, res.text)
+  const rows = sql(`select name, nickname, type, harness, device_id from memory.agent where owner_id = '${owner.id}'`)
+  assert.equal(rows.length, 1, JSON.stringify(rows))
+  assert.equal(rows[0].nickname, 'ada')
+  assert.equal(rows[0].type, 'coding')
+  assert.equal(rows[0].harness, 'claude-code')
+  assert.equal(Number(rows[0].device_id), owner.deviceId)
+})
+
+test('agent type is checked', { skip: SKIP }, async () => {
+  const owner = r61Owner('typechk')
+  const res = await mcpToolCall(owner.token, 'claude-code', 'register_agent', {
+    name: `bad-type-${randomBytes(3).toString('hex')}`,
+    type: 'wizard',
+    context: 'work',
+    surface: 'claude-code',
+    description: 'Invalid agent type test.',
+  })
+  assert.equal(res.error, true)
+  for (const t of ['coding', 'exploration', 'research', 'review', 'ops', 'assistant', 'other']) {
+    assert.ok(res.text.includes(t), `missing ${t} in ${res.text}`)
+  }
+})
+
+test('nicknames are unique per owner', { skip: SKIP }, async () => {
+  const A = r61Owner('nick-a')
+  const B = r61Owner('nick-b')
+  const suffix = randomBytes(3).toString('hex')
+
+  const okA = await mcpToolCall(A.token, 'claude-code', 'register_agent', {
+    name: `a-ada-${suffix}`,
+    nickname: 'ada',
+    type: 'coding',
+    context: 'work',
+    surface: 'claude-code',
+    description: 'Owner A agent.',
+  })
+  assert.equal(okA.error, false, okA.text)
+
+  const okB = await mcpToolCall(B.token, 'claude-code', 'register_agent', {
+    name: `b-ada-${suffix}`,
+    nickname: 'ada',
+    type: 'coding',
+    context: 'work',
+    surface: 'claude-code',
+    description: 'Owner B agent.',
+  })
+  assert.equal(okB.error, false, okB.text)
+
+  const tokenA2 = `dev-a2-${randomBytes(10).toString('hex')}`
+  exec(`insert into memory.device (name, token_sha256, owner_id) values ('r61-nick-a2-box', '${createHash('sha256').update(tokenA2).digest('hex')}', '${A.id}');`)
+
+  const dup = await mcpToolCall(tokenA2, 'codex-mcp-client', 'register_agent', {
+    name: `a-ada2-${suffix}`,
+    nickname: 'ada',
+    type: 'review',
+    context: 'work',
+    surface: 'codex',
+    description: 'Duplicate nickname on second credential.',
+  })
+  assert.equal(dup.error, true)
+  assert.match(dup.text, /taken/i)
+})
+
+test('R19 callers still register', { skip: SKIP }, async () => {
+  const owner = r61Owner('r19')
+  const agentName = `r19-only-${randomBytes(3).toString('hex')}`
+  const res = await mcpToolCall(owner.token, 'claude-code', 'register_agent', {
+    name: agentName,
+    context: 'work',
+    surface: 'claude-code',
+    description: 'Legacy 4-field caller.',
+  })
+  assert.equal(res.error, false, res.text)
+  const rows = sql(`select type from memory.agent where owner_id = '${owner.id}' and name = '${agentName}'`)
+  assert.deepEqual(rows, [{ type: 'other' }])
+})
+
+test('repos from the hook', { skip: SKIP }, async () => {
+  const owner = r61Owner('hookrepo')
+  const agentName = `repo-agent-${randomBytes(3).toString('hex')}`
+  const reg = await mcpToolCall(owner.token, 'claude-code', 'register_agent', {
+    name: agentName,
+    context: 'work',
+    surface: 'claude-code',
+    description: 'Receives repos from SessionStart.',
+  })
+  assert.equal(reg.error, false, reg.text)
+
+  const dir = tempDir('r61-hook-')
+  const fakeHome = join(dir, 'home')
+  const repoDir = join(dir, 'repo')
+  mkdirSync(fakeHome, { recursive: true })
+  mkdirSync(repoDir, { recursive: true })
+  execFileSync('git', ['init'], { cwd: repoDir, stdio: 'ignore' })
+  execFileSync('git', ['remote', 'add', 'origin', 'git@github.com:gewenyu99/like-vincent.git'], { cwd: repoDir, stdio: 'ignore' })
+  const hookScript = join(repoRoot(), 'memory', 'supabase', 'functions', 'memory', 'client', 'clyde-hook.sh')
+  execFileSync('sh', [hookScript, 'claude', 'SessionStart'], {
+    input: JSON.stringify({ session_id: `sess-${randomBytes(4).toString('hex')}`, cwd: repoDir }),
+    env: { ...process.env, HOME: fakeHome, MEMORY_URL: memory.url, MEMORY_TOKEN: owner.token },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  })
+
+  const [row] = sql(`select repos from memory.agent where owner_id = '${owner.id}' and name = '${agentName}'`)
+  assert.ok(Array.isArray(row?.repos) && row.repos.includes('gewenyu99/like-vincent'), JSON.stringify(row))
 })

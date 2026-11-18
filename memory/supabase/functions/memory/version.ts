@@ -12,8 +12,8 @@
 // Each is pinned to the hash of its surface: version.test.ts fails unless the surface on disk hashes to the entry for the
 // current version, no two versions share a hash, and no entry that main already has changed. After a bump, add an entry
 // with the hash the failing test prints. deploy.sh runs that guard before it deploys.
-export const CLIENT_VERSION = "20261117.4";
-export const SERVER_VERSION = "20261117.2";
+export const CLIENT_VERSION = "20261117.5";
+export const SERVER_VERSION = "20261117.3";
 
 /** Every client version that was released, oldest first, with the day it was. A client is expired only when it is behind
  * a version released more than the cutoff ago, so a new release can never expire a client on the day it ships.
@@ -25,6 +25,7 @@ export const CLIENT_RELEASES: { version: string; released: string }[] = [
   { version: "20261117.2", released: "2026-11-17" },
   { version: "20261117.3", released: "2026-11-17" },
   { version: "20261117.4", released: "2026-11-17" },
+  { version: "20261117.5", released: "2026-11-17" },
 ];
 
 /** SHA-256 of the client files at each client version: `{ "20261102.1": "<hash>" }`. Entries are never edited or removed. */
@@ -35,6 +36,7 @@ export const CLIENT_SURFACE_HASHES: Record<string, string> = {
   "20261117.2": "fe076057a1a60d3f33b26fc236d5ac9183dce56aa8eea7975b37e95f4db1af56",
   "20261117.3": "44f13bbd8d465614ddeb4e1fd7316a1b4af3143760411a6b8887a5bacffbc7c2",
   "20261117.4": "e635f223c07e1eadd0f5d3317c9260b8861da6dab0e124a6fac92cbfba1aaa70",
+  "20261117.5": "212cf957d3730bd715f63b2957c98a96feb4370803b9f3d374dece5345bbfbf8",
 };
 
 /** SHA-256 of the MCP tools and server instructions at each server version. Entries are never edited or removed. */
@@ -56,6 +58,7 @@ export const SERVER_SURFACE_HASHES: Record<string, string> = {
   "20261116.1": "4d4f1bd495b287e7a002dccce212da147d84a2861bcb32c5ee82ee492122f352",
   "20261117.1": "e4b7811bc92dc400f89580000215d7569111eeb491c8ad710900d427f2af3ec5",
   "20261117.2": "b22f55adc013ff3cdc1dd9cb08b11340f350b6d9c7d5e176cb09053ad398d725",
+  "20261117.3": "f7bfdd61b2914288d803570e7bd1f74ecf5ee38be6bda66973c33a9878db2620",
 };
 
 /** What a rerun of the installer fixes: it replaces a hook too old to update itself or one that can't, and keeps the

@@ -484,32 +484,87 @@ export function noNul(value: any): any {
 
 /** Store a lifecycle hook payload, with the agent memory-hook names. A recall's PostToolUse also ties the MCP session
  * to the client's session id. */
-async function syncRepoToAgent(sessionId: string | null, agent: string | null, principal: string | null, cwd: string | null) {
-  if (!cwd) return;
-  const [{ repo }] = await sql`select nullif(lower(memory.repo_of(${cwd}::text)), '') as repo`;
+export function parseGitRemote(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim().replace(/\/+$/, "");
+  if (!trimmed) return null;
+  let pathPart: string | null = null;
+  const scp = /^[A-Za-z0-9._-]+@[^:/]+:([^/].+)$/.exec(trimmed);
+  if (scp) {
+    pathPart = scp[1];
+  } else {
+    try {
+      const u = new URL(trimmed);
+      if (u.pathname && u.pathname !== "/") pathPart = u.pathname.replace(/^\/+/, "");
+    } catch {
+      pathPart = null;
+    }
+  }
+  if (!pathPart) return null;
+  return normalizeProjectSlug(pathPart.replace(/\.git$/i, "").replace(/\/+$/, ""));
+}
+
+async function syncRepoToAgent(
+  sessionId: string | null,
+  agent: string | null,
+  principal: string | null,
+  cwd: string | null,
+  gitRemote: string | null = null,
+) {
+  let repo = parseGitRemote(gitRemote);
+  if (!repo && cwd) {
+    const [{ r }] = await sql`select nullif(lower(memory.repo_of(${cwd}::text)), '') as r`;
+    repo = r ?? null;
+  }
   if (!repo) return;
   let boundAgent: string | null = null;
   let boundOwner: string | null = null;
   if (sessionId) {
     const [bound] = await sql`select c.owner_id, c.agent from memory.mcp_client c
       where c.owner_id = memory.owner_default() and c.session_id = ${sessionId} and c.agent is not null`;
-    boundAgent = bound?.agent ?? null;
-    boundOwner = bound?.owner_id ?? null;
-  } else if (agent && principal) {
+    if (bound) {
+      boundAgent = bound.agent;
+      boundOwner = bound.owner_id;
+    } else {
+      const [tied] = await sql`select c.owner_id, c.agent from memory.mcp_session s
+        join memory.mcp_client c on c.owner_id = s.owner_id and c.session_id = s.id
+        where s.owner_id = memory.owner_default() and s.claude_session_id = ${sessionId} and c.agent is not null
+        order by c.created_at desc limit 1`;
+      boundAgent = tied?.agent ?? null;
+      boundOwner = tied?.owner_id ?? null;
+    }
+  }
+  if (!boundAgent && agent && principal) {
     const rows = await sql`select distinct a.owner_id, a.name from memory.agent a
       where a.owner_id = memory.owner_default()
-        and (a.name = ${agent} or exists (select 1 from memory.agent_binding b
-          where b.owner_id = a.owner_id and b.principal = ${principal} and b.agent = a.name and memory.agent_name(b.client) = ${agent}))`;
+        and (a.name = ${agent} or lower(coalesce(a.nickname, '')) = ${agent}
+          or exists (select 1 from memory.agent_binding b
+            where b.owner_id = a.owner_id and b.principal = ${principal} and b.agent = a.name
+              and (memory.agent_name(b.client) = ${agent} or lower(b.client) = ${agent})))`;
+    if (rows.length === 1) {
+      boundAgent = rows[0].name;
+      boundOwner = rows[0].owner_id;
+    }
+  }
+  if (!boundAgent && principal && principal !== "runtime" && !principal.startsWith("oauth:")) {
+    const rows = await sql`select a.owner_id, a.name from memory.agent a
+      where a.owner_id = memory.owner_default()
+        and (a.registered_by = ${principal}
+          or a.device_id = (select d.id from memory.device d where d.owner_id = memory.owner_default() and d.name = ${principal}))`;
     if (rows.length === 1) {
       boundAgent = rows[0].name;
       boundOwner = rows[0].owner_id;
     }
   }
   if (!boundAgent || !boundOwner) return;
-  await sql`update memory.agent set projects = array_append(projects, ${repo}::text), last_seen = now()
+  await sql`update memory.agent set
+      projects = case when ${repo}::text = any(projects) then projects else array_append(projects, ${repo}::text) end,
+      repos = case when ${repo}::text = any(repos) then repos else array_append(repos, ${repo}::text) end,
+      last_seen = now()
     where owner_id = ${boundOwner} and name = ${boundAgent}
-      and not strict_projects and not (${repo}::text = any(projects))
-      and coalesce(array_length(projects, 1), 0) < 20`;
+      and not strict_projects
+      and (not (${repo}::text = any(projects)) or not (${repo}::text = any(repos)))
+      and coalesce(array_length(projects, 1), 0) < 20 and coalesce(array_length(repos, 1), 0) < 20`;
   if (sessionId) {
     await sql`update memory.mcp_client c set session_projects = array_append(coalesce(c.session_projects, '{}'), ${repo}::text)
       from memory.agent a
@@ -525,8 +580,9 @@ export async function hook(event: string, payload: Row, agent: string | null = n
   const sessionId = typeof payload.session_id === "string" ? payload.session_id : null;
   await sql`insert into memory.event (session_id, event, payload, agent) values (${sessionId}, ${event}, ${sql.json(payload)}, ${agent})`;
   const cwd = typeof payload.cwd === "string" && payload.cwd.trim() ? payload.cwd.trim() : null;
-  if (event === "SessionStart" && cwd) {
-    await syncRepoToAgent(null, agent, principal, cwd);
+  const gitRemote = typeof payload.git_remote === "string" && payload.git_remote.trim() ? payload.git_remote.trim() : null;
+  if (event === "SessionStart" && (cwd || gitRemote)) {
+    await syncRepoToAgent(sessionId, agent, principal, cwd, gitRemote);
   }
   if (event === "PostToolUse" && String(payload.tool_name ?? "").endsWith("recall") && sessionId) {
     const m = RID.exec(JSON.stringify(payload.tool_response ?? ""));
@@ -537,10 +593,10 @@ export async function hook(event: string, payload: Row, agent: string | null = n
           cwd_from = case when ${cwd}::text is not null then 'hook' else cwd_from end
         where id = (select mcp_session from memory.retrieval where id = ${m[1]}) returning id`;
       // A note written before the hook arrived gets the folder now.
-      if (tied && cwd) {
+      if (tied && (cwd || gitRemote)) {
         await sql`update memory.entry_provenance set cwd = ${cwd}::text, repo = memory.repo_of(${cwd}::text)
           where session = ${tied.id} and cwd is null`;
-        await syncRepoToAgent(tied.id, agent, principal, cwd);
+        await syncRepoToAgent(tied.id, agent, principal, cwd, gitRemote);
       }
     }
   }

@@ -30,9 +30,9 @@ const MAX_HOOK_BODY = 2_000_000;
 const MAX_ENTRY_BODY = 12 * 1024 * 1024;
 const WRITE_DEADLINE_MS = 1500;
 // Tables the export carries, parents first, so a restore can load them in order. Embeddings are rebuilt, not kept.
-const EXPORT = ["source", "entry", "link", "co_use", "question", "qrel", "blob", "entry_blob", "entry_provenance", "agent", "agent_binding", "mcp_session",
+const EXPORT = ["source", "entry", "link", "co_use", "question", "qrel", "blob", "entry_blob", "entry_provenance", "device", "agent", "agent_binding", "mcp_session",
   "mcp_client", "retrieval",
-  "event", "feedback", "message", "message_delivery", "admin_audit", "link_type_weight", "device", "embed_usage", "param_set", "allocation",
+  "event", "feedback", "message", "message_delivery", "admin_audit", "link_type_weight", "embed_usage", "param_set", "allocation",
   "openai_usage", "quest", "quest_note", "quest_blob"];
 
 const json = (body: unknown, status = 200) => Response.json(body, { status });
@@ -55,7 +55,7 @@ async function jsonObject(req: Request, cap: number) {
 }
 
 // What a "metadata" computer's hook payloads keep: enough to tie events to sessions and folders, never prompts or output.
-const HOOK_METADATA = ["session_id", "cwd", "hook_event_name", "tool_name", "matcher", "source", "reason"];
+const HOOK_METADATA = ["session_id", "cwd", "git_remote", "hook_event_name", "tool_name", "matcher", "source", "reason"];
 
 async function hooks(req: Request, event: string, url: URL, who: Principal) {
   let payload;

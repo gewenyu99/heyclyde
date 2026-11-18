@@ -28,7 +28,7 @@ const VERSIONS =["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 // when. The recall-first and feedback guidance lives in the Claude Code plugin's skill (plugins/memory/skills/clyde).
 export const INSTRUCTIONS = "Clyde keeps one set of notes for all of a person's AI agents: what one agent learns, every other agent can " +
   "recall. register_agent names the agent once per token and app (name, context work, home, hobby, personal or both, surface, " +
-  "description, plus optional projects, computer, type, strict_projects), so its notes and messages carry that name. recall searches " +
+  "description, plus optional nickname, type, harness, repos, projects, computer, strict_projects), so its notes and messages carry that name. recall searches " +
   "the notes: decisions, preferences, observations and past reactions, with optional category, context, project or transferability " +
   "filters. Each result packet starts with a retrieval id. recall_more takes that id and returns the next page, dormant and " +
   "replaced notes included. feedback takes the same id and a verdict (used, irrelevant or wrong) for each result shown, those under " +
@@ -62,6 +62,9 @@ export const TOOLS = [
       "context: work, home, hobby, personal or both: the part of the person's life the agent works on.\n" +
       "surface: where the agent runs, like claude-code, claude.ai, cowork, codex or a script.\n" +
       "description: one or two sentences on what the agent does.\n" +
+      "nickname: optional short unique nickname per owner (lowercase letters, digits, dashes and underscores).\n" +
+      "repos: optional list of owner/repo names or project slugs the agent can reach.\n" +
+      "harness: optional client harness name; inferred from clientInfo.name when omitted.\n" +
       "projects: optional list of project slugs or owner/repo names the agent works on.\n" +
       "computer: optional machine name the agent runs on.\n" +
       "type: optional role (coding, exploration, research, review, ops, assistant or other).\n" +
@@ -71,6 +74,9 @@ export const TOOLS = [
       properties: {
         name: str("Lowercase handle, letters, digits and dashes"), context: str("work, home, hobby, personal or both"),
         surface: str("Where the agent runs"), description: str("What the agent does"),
+        nickname: str("Optional unique nickname per owner (1-40 lowercase letters, digits, dashes and underscores)"),
+        repos: { type: "array", items: { type: "string" }, description: "Repositories or project slugs the agent can reach" },
+        harness: str("Optional client harness name; inferred from clientInfo.name when omitted"),
         projects: { type: "array", items: { type: "string" }, description: "Project slugs or owner/repo names" },
         computer: str("Computer or machine name (1-64 characters)"),
         type: { type: "string", enum: [...AGENT_TYPES], description: "Agent type: coding, exploration, research, review, ops, assistant or other" },
@@ -398,6 +404,7 @@ export const NUDGE = "memory: you haven't registered yet. Call register_agent {n
   "context is work, home, hobby, personal or both (plus optional projects, computer, type, strict_projects). memory remembers it for this token and app, and your notes and messages then carry your name.";
 
 const AGENT_NAME = /^[a-z0-9][a-z0-9-]{1,39}$/;
+const NICKNAME_RE = /^[a-z0-9][a-z0-9_-]{0,39}$/;
 const CONTEXTS: string[] = [...AGENT_CONTEXTS];
 const RESERVED = ["claude", "codex", "all", "wen", "memory"];
 // Control characters, NUL included, would reach a note's source line, and Postgres refuses NUL.
@@ -418,25 +425,45 @@ async function register({ session, client, principal, args }: Call) {
     RESERVED.includes(name) ? `${name} is reserved. Pick a name of your own.` : "",
   ].filter(Boolean);
 
-  const projectsProvided = args.projects !== undefined;
-  let projects: string[] = [];
-  if (projectsProvided && args.projects !== null) {
-    if (!Array.isArray(args.projects) || args.projects.length > 50) {
-      errs.push("projects must be a list of up to 50 project slugs.");
+  const nicknameProvided = args.nickname !== undefined;
+  let nickname: string | null = null;
+  if (nicknameProvided && args.nickname !== null && String(args.nickname).trim() !== "") {
+    const n = typeof args.nickname === "string" ? args.nickname.trim().toLowerCase() : "";
+    if (!NICKNAME_RE.test(n) || RESERVED.includes(n)) {
+      errs.push("nickname must be 1 to 40 lowercase letters, digits, dashes and underscores, starting with a letter or digit.");
     } else {
-      const seen = new Set<string>();
-      for (const raw of args.projects) {
-        const slug = normalizeProjectSlug(raw);
-        if (!slug) {
-          errs.push("each project must be a valid slug or owner/repo name.");
-          break;
-        }
-        if (!seen.has(slug)) {
-          seen.add(slug);
-          projects.push(slug);
-        }
+      nickname = n;
+    }
+  }
+
+  const projectsProvided = args.projects !== undefined || args.repos !== undefined;
+  let projects: string[] = [];
+  const rawList: unknown[] = [];
+  let badList = false;
+  for (const [k, v] of [["projects", args.projects], ["repos", args.repos]] as const) {
+    if (v !== undefined && v !== null) {
+      if (!Array.isArray(v)) {
+        errs.push(`${k} must be a list of up to 50 project slugs.`);
+        badList = true;
+      } else {
+        rawList.push(...v);
       }
     }
+  }
+  if (!badList && rawList.length) {
+    const seen = new Set<string>();
+    for (const raw of rawList) {
+      const slug = normalizeProjectSlug(raw);
+      if (!slug) {
+        errs.push("each project must be a valid slug or owner/repo name.");
+        break;
+      }
+      if (!seen.has(slug)) {
+        seen.add(slug);
+        projects.push(slug);
+      }
+    }
+    if (projects.length > 50) errs.push("projects must be a list of up to 50 project slugs.");
   }
 
   const computerProvided = args.computer !== undefined;
@@ -458,6 +485,15 @@ async function register({ session, client, principal, args }: Call) {
     }
   }
 
+  const harnessProvided = args.harness !== undefined;
+  let harness: string | null = null;
+  if (harnessProvided && args.harness !== null && String(args.harness).trim() !== "") {
+    harness = plain(args.harness, 64);
+    if (!harness) errs.push("harness must be 1 to 64 characters.");
+  } else if (!harnessProvided && client) {
+    harness = plain(client, 64);
+  }
+
   const strictProvided = args.strict_projects !== undefined;
   let strictProjects = false;
   if (strictProvided && args.strict_projects !== null) {
@@ -466,20 +502,49 @@ async function register({ session, client, principal, args }: Call) {
   }
 
   if (errs.length) throw new Refused(errs.join("\n"));
+
+  if (nickname !== null) {
+    const [taken] = await sql`select name, registered_by from memory.agent
+      where owner_id = memory.owner_default() and lower(nickname) = ${nickname}`;
+    if (taken && (taken.name !== name || taken.registered_by !== principal)) {
+      throw new Refused(`Nickname ${nickname} is already taken. Pick another nickname.`);
+    }
+  }
+
+  let deviceId: number | null = null;
+  if (principal && principal !== "runtime" && !principal.startsWith("oauth:")) {
+    const [dev] = await sql`select id from memory.device
+      where owner_id = memory.owner_default() and name = ${principal} and revoked_at is null`;
+    deviceId = dev ? Number(dev.id) : null;
+  }
+
   // One statement, so two credentials racing for a new name leave one owner. The where keeps a name with the credential that took it.
-  const [agent] = await sql`insert into memory.agent (name, context, surface, description, registered_by, computer, projects, agent_type, strict_projects)
-    values (${name}, ${context}, ${surface}, ${description}, ${principal}, ${computer}, ${projects}::text[], ${agentType}, ${strictProjects})
-    on conflict (owner_id, name) do update set
-      context = excluded.context,
-      surface = excluded.surface,
-      description = excluded.description,
-      computer = case when ${computerProvided}::boolean then excluded.computer else memory.agent.computer end,
-      projects = case when ${projectsProvided}::boolean then excluded.projects else memory.agent.projects end,
-      agent_type = case when ${typeProvided}::boolean then excluded.agent_type else memory.agent.agent_type end,
-      strict_projects = case when ${strictProvided}::boolean then excluded.strict_projects else memory.agent.strict_projects end,
-      last_seen = now()
-      where memory.agent.registered_by is not distinct from excluded.registered_by
-    returning name, context, computer, projects, agent_type, strict_projects, (xmax = 0) as created`;
+  let agent;
+  try {
+    [agent] = await sql`insert into memory.agent (name, nickname, context, surface, description, registered_by, computer, projects, repos, type, agent_type, harness, device_id, strict_projects)
+      values (${name}, ${nickname}, ${context}, ${surface}, ${description}, ${principal}, ${computer}, ${projects}::text[], ${projects}::text[], ${agentType}, ${agentType}, ${harness}, ${deviceId}, ${strictProjects})
+      on conflict (owner_id, name) do update set
+        nickname = case when ${nicknameProvided}::boolean then excluded.nickname else memory.agent.nickname end,
+        context = excluded.context,
+        surface = excluded.surface,
+        description = excluded.description,
+        computer = case when ${computerProvided}::boolean then excluded.computer else memory.agent.computer end,
+        projects = case when ${projectsProvided}::boolean then excluded.projects else memory.agent.projects end,
+        repos = case when ${projectsProvided}::boolean then excluded.repos else memory.agent.repos end,
+        type = case when ${typeProvided}::boolean then excluded.type else memory.agent.type end,
+        agent_type = case when ${typeProvided}::boolean then excluded.agent_type else memory.agent.agent_type end,
+        harness = case when ${harnessProvided}::boolean then excluded.harness else coalesce(excluded.harness, memory.agent.harness) end,
+        device_id = coalesce(excluded.device_id, memory.agent.device_id),
+        strict_projects = case when ${strictProvided}::boolean then excluded.strict_projects else memory.agent.strict_projects end,
+        last_seen = now()
+        where memory.agent.registered_by is not distinct from excluded.registered_by
+      returning name, nickname, context, computer, projects, repos, type, agent_type, harness, device_id, strict_projects, (xmax = 0) as created`;
+  } catch (e) {
+    if ((e as { code?: string }).code === "23505" && nickname) {
+      throw new Refused(`Nickname ${nickname} is already taken. Pick another nickname.`);
+    }
+    throw e;
+  }
   if (!agent) throw new Refused(`${name} is already registered by another credential. Pick a name of your own.`);
   await sql`update memory.mcp_client set
       agent = ${name},
