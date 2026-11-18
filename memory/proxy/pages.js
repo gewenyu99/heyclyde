@@ -49,6 +49,17 @@ img{max-width:100%}
 code{font-family:var(--cl-font-mono);font-size:.9em}
 `;
 
+// R80: the sign-in form's Turnstile wiring. The send button opens once Turnstile vouches for the person, or once a
+// password is typed (a password sign-in needs no token), and closes again on an expired or failed check. A sent form
+// locks its button, so a double click sends one email.
+const HUMAN_JS = `(function(){var f=document.getElementById('ask'),b=document.getElementById('send'),s=document.getElementById('human'),` +
+  `p=document.getElementById('password'),ok=false;function sync(){b.disabled=!(ok||(p&&p.value.length>0))}` +
+  `window.clydeHuman=function(){ok=true;s.textContent='Ready.';sync()};` +
+  `window.clydeNotYet=function(){ok=false;s.textContent='Checking again…';sync()};` +
+  `window.clydeCheckFailed=function(){ok=false;s.textContent="The check didn't load. Reload the page, or turn off a blocker for challenges.cloudflare.com.";sync()};` +
+  `if(p)p.addEventListener('input',sync);f.addEventListener('submit',function(e){if(b.disabled){e.preventDefault();return}` +
+  `setTimeout(function(){b.disabled=true;b.textContent='Sending…'},0)})})();`;
+
 const SIGN_CSS = `
 main.sign{flex:1;display:flex;align-items:center;justify-content:center;padding:8px max(16px,env(safe-area-inset-left,0px)) 40px}
 .ticket{width:100%;max-width:460px;overflow:hidden}
@@ -68,6 +79,8 @@ main.sign{flex:1;display:flex;align-items:center;justify-content:center;padding:
 @keyframes cl-dot{0%,80%,100%{opacity:.25}40%{opacity:1}}
 @media (prefers-reduced-motion:reduce){.dots i{animation:none;opacity:.7}}
 form.ask{display:grid;gap:14px;margin-top:4px}
+.human{margin:0;font:var(--cl-text-small);color:var(--cl-ink-3)}
+form.ask .cl-btn[disabled]{opacity:.55;cursor:progress}
 .social{display:grid;gap:10px;margin-top:4px}
 .social-btn{justify-content:center;gap:10px;text-decoration:none}
 .social-btn svg{width:18px;height:18px;flex:none}
@@ -272,12 +285,19 @@ export function statePage(data, nonce, id = "") {
       const social = providers.length
         ? `<div class="social">${providers.map((pr) => `<a class="cl-btn cl-btn--lg cl-btn--block social-btn" href="/oauth/provider?authorization_id=${esc(encodeURIComponent(id))}&provider=${pr}">${PROVIDER_ICON[pr]}<span>Continue with ${pr === "google" ? "Google" : "GitHub"}</span></a>`).join("")}</div><div class="or-rule"><span>or with email</span></div>`
         : "";
-      extra = `${social}<form class="ask" method="post" action="/oauth/consent?authorization_id=${esc(encodeURIComponent(id))}">
-<div class="cl-field"><label for="email">Email</label><input class="cl-input" id="email" type="email" name="email" autocomplete="email" required autofocus placeholder="you@example.com"></div>
+      // R80: with Turnstile on, the button waits for its token (Cloudflare's callbacks), says what it's waiting for, and
+      // locks again if the token expires or errors. A password sign-in needs no token. A failed try comes back here with
+      // the address kept and the reason above the form.
+      const human = Boolean(data?.turnstile_site_key);
+      const typed = typeof data?.email === "string" ? ` value="${esc(data.email)}"` : "";
+      extra = `${social}<form class="ask" id="ask" method="post" action="/oauth/consent?authorization_id=${esc(encodeURIComponent(id))}">
+${data?.error ? `<p class="cl-error" role="alert">${esc(data.error)}</p>` : ""}
+<div class="cl-field"><label for="email">Email</label><input class="cl-input" id="email" type="email" name="email" autocomplete="email" required autofocus placeholder="you@example.com"${typed}></div>
 <details class="cl-field"><summary>Have a password?</summary><label for="password">Password</label><input class="cl-input" id="password" type="password" name="password" autocomplete="current-password"></details>
-${data?.turnstile_site_key ? `<div class="cf-turnstile" data-sitekey="${esc(data.turnstile_site_key)}"></div>` : ""}
-<button class="cl-btn cl-btn--primary cl-btn--lg cl-btn--block" type="submit">Send sign-in link</button></form>${data?.turnstile_site_key
-        ? `<script nonce="${nonce}" src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>` : ""}`;
+${human ? `<div class="cf-turnstile" data-sitekey="${esc(data.turnstile_site_key)}" data-callback="clydeHuman" data-expired-callback="clydeNotYet" data-error-callback="clydeCheckFailed" data-refresh-expired="auto"></div>
+<p class="human" id="human" role="status" aria-live="polite">Checking you're a person…</p>` : ""}
+<button class="cl-btn cl-btn--primary cl-btn--lg cl-btn--block" id="send" type="submit"${human ? " disabled" : ""}>Send sign-in link</button></form>${human
+        ? `<script nonce="${nonce}">${HUMAN_JS}</script><script nonce="${nonce}" src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>` : ""}`;
       break;
     }
     case "closed":

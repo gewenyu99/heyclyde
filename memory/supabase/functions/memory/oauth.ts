@@ -150,13 +150,7 @@ async function enabledProviders(): Promise<string[]> {
  * form for a caller straight to the function. The form posts back to the same URL. */
 async function emailForm(p: Page, id: string) {
   const [key, providers] = await Promise.all([setting("turnstile_site_key"), enabledProviders()]);
-  if (p.json) {
-    return page(p, "ask_email", "enter your email and we'll send a sign-in link.", 200, {
-      post: `/oauth/consent?authorization_id=${encodeURIComponent(id)}`,
-      ...(key ? { turnstile_site_key: key } : {}),
-      ...(providers.length ? { providers } : {}),
-    });
-  }
+  if (p.json) return page(p, "ask_email", "enter your email and we'll send a sign-in link.", 200, await askData(id));
   const links = providers.length
     ? `<p>${providers.map((pr) => `<a href="/oauth/provider?authorization_id=${encodeURIComponent(id)}&provider=${pr}">Continue with ${pr === "google" ? "Google" : "GitHub"}</a>`).join(" | ")}</p>`
     : "";
@@ -167,6 +161,22 @@ async function emailForm(p: Page, id: string) {
 <label>Password, only if your account has one <input type="password" name="password" autocomplete="current-password"></label>
 <button type="submit">Send the link</button></form></body></html>`,
     { status: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+}
+
+/** What the Worker needs to draw the email form: where it posts, Turnstile's site key and the social sign-ins on offer. */
+async function askData(id: string) {
+  const [key, providers] = await Promise.all([setting("turnstile_site_key"), enabledProviders()]);
+  return {
+    post: `/oauth/consent?authorization_id=${encodeURIComponent(id)}`,
+    ...(key ? { turnstile_site_key: key } : {}),
+    ...(providers.length ? { providers } : {}),
+  };
+}
+
+/** R80: a sign-up the person can fix by trying again (a bad address, a Turnstile check that didn't pass) puts the form
+ * back with what they typed and the reason, rather than a dead end. Nothing is written or sent. */
+async function askAgain(p: Page, id: string, email: string, error: string) {
+  return page(p, "ask_email", error, 400, { ...(await askData(id)), email: email.slice(0, 254), error });
 }
 
 /** POST /oauth/consent with sign-in open: email a sign-in link to whoever asked, creating their account. Refused from a
@@ -194,7 +204,7 @@ async function signUp(p: Page, req: Request, base: string, id: string, form: For
   let { email } = form;
   const human = form.human;
   email = email.trim().toLowerCase();
-  if (!EMAIL.test(email)) return page(p, "error", "that isn't an email address.", 400);
+  if (!EMAIL.test(email)) return askAgain(p, id, email, "That isn't an email address. Check it and send again.");
   const proxied = await viaProxy(req);
   if (!proxied && !(await allowed(email))) return page(p, "error", `sign in at ${DOMAIN}, not this address.`, 403);
   if (geoBlocked(geoOf(req, proxied))) return page(p, "blocked", REFUSAL, 451);
@@ -202,7 +212,7 @@ async function signUp(p: Page, req: Request, base: string, id: string, form: For
   // R54: Turnstile says a person sent it. With no secret set, the door stays shut rather than open to bots.
   const check = await turnstile(human, client);
   if (check === null) return page(p, "error", "sign-up isn't ready yet. Try again later.", 503);
-  if (!check) return page(p, "error", "Clyde couldn't tell a person sent that. Reload the page and try again.", 400);
+  if (!check) return askAgain(p, id, email, "Clyde couldn't tell a person sent that. Wait for the check to finish, then send again.");
   const [{ to, from }] = await sql`select
       count(*) filter (where email = ${email})::int as to,
       count(*) filter (where client = ${client})::int as from
