@@ -65,8 +65,8 @@ test('R78 a new task is blocked before recall and allowed after', () => {
   assert.equal(g.decide('claude', 'ToolSearch', {}, 's1', T0 + 3), 'allow')
   assert.equal(g.decide('claude', 'mcp__clyde__recall', { query: 'billing webhook' }, 's1', T0 + 4), 'allow')
   assert.equal(g.decide('claude', 'Bash', { command: 'ls' }, 's1', T0 + 5), 'allow')
-  // A quick follow-up owes nothing.
-  assert.equal(g.run('claude', 'UserPromptSubmit', { session_id: 's1', prompt: 'push it' }, T0 + 60), '')
+  // A quick follow-up owes no recall, only the save reminder.
+  assert.doesNotMatch(g.run('claude', 'UserPromptSubmit', { session_id: 's1', prompt: 'push it' }, T0 + 60), /recall/)
   assert.equal(g.decide('claude', 'Bash', { command: 'ls' }, 's1', T0 + 61), 'allow')
   // The same gate holds in Codex and Gemini CLI, each in its own output.
   g.run('codex', 'UserPromptSubmit', { session_id: 'c1', prompt: 'migrate the invoices table to the new schema today' }, T0)

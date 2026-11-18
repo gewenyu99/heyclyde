@@ -57,7 +57,11 @@ canon = CANON.get(event, "")
 DEBT_TTL = 1200
 INSTALL = "curl -fsSL https://heyclyde.me/install | sh"
 SCOPE = "Call Clyde recall before acting when the request changes scope or you need information that memory could supply, even after a recent recall. Skip it only when the same task continues unchanged."
-SAVE = "Before replying, use Clyde remember to save any new decisions and results with their evidence. If there is nothing new to save, finish the reply."
+SAVE = "Before your final reply, call Clyde remember with the decisions and results of this turn and their evidence."
+# Stop blocks a turn that ended without remember. The reply is already on screen, so the agent saves and adds one line.
+STOP_SAVE = "Clyde: this turn ended without Clyde remember. Your reply is already on screen, so do not repeat or summarize it. Call Clyde remember now with the decisions and results of this turn and their evidence, then end with one short line naming what you saved."
+# Antigravity folds the text written before a Stop block into the thought process, so there the reply is written again.
+STOP_SAVE_AGY = "Clyde: this turn ended without Clyde remember. Call Clyde remember now with the decisions and results of this turn and their evidence, then write your reply again, because Antigravity hides the text written before this check."
 REGISTER = "register_agent (name, context, surface, description, computer, type, projects)"
 
 def emit(msg="", raw_json=""):
@@ -199,7 +203,7 @@ if canon == "PostToolUse" and not is_tool(tname, *CLYDE_TOOLS):
 
 phash = sha(prompt.strip()) if prompt.strip() else ""
 
-if canon == "UserPromptSubmit" and (data.get("stop_hook_active") or prompt.strip() == SAVE):
+if canon == "UserPromptSubmit" and (data.get("stop_hook_active") or prompt.strip() in (SAVE, STOP_SAVE, STOP_SAVE_AGY)):
     emit()
 if client == "antigravity":
     if state.get("subagent"):
@@ -255,6 +259,8 @@ RECALL = "Clyde: new task, so recall comes first. Call Clyde recall before anyth
 
 if canon == "SessionStart":
     state["started"] = True
+    if phash:
+        state["check_before_reply"] = not bool(GREET_RE.match(prompt.strip()))
     if cwd:
         state["cwd"] = cwd
     local_msg = ONLY + " Top-level session only (skip in subagents): once this session, call check_messages, then ack_messages once handled. " + SCOPE + " " + SAVE
@@ -269,6 +275,7 @@ elif canon == "UserPromptSubmit":
     t = prompt.strip()
     prev_cwd = state.get("cwd", "")
     cwd_shifted = bool(cwd and prev_cwd and cwd != prev_cwd)
+    state["check_before_reply"] = bool(t and not GREET_RE.match(t))
     if GREET_RE.match(t) and not cwd_shifted:
         if phash:
             state["last_prompt_hash"] = phash
@@ -297,6 +304,10 @@ elif canon == "UserPromptSubmit":
         local_msg = SCOPE
         state["task_words"] = list(dict.fromkeys((state.get("task_words") or []) + pwords))[:24]
 elif canon == "PostToolUse":
+    if re.search(r"(?:^|[_:.])(?:memory|clyde)[_:.]+remember$", tname, re.I):
+        response = data.get("tool_response") or data.get("tool_result") or {}
+        if not data.get("error") and not (isinstance(response, dict) and (response.get("isError") or response.get("error"))):
+            state["check_before_reply"] = False
     if is_tool(tname, "register_agent"):
         mark_registered()
     if is_tool(tname, "recall", "recall_more"):
@@ -415,12 +426,18 @@ if token and url.startswith(("https://", "http://127.0.0.1", "http://localhost")
         except Exception:
             pass
 
-# Stop never blocks: a block makes the agent reply a second time. The save reminder rides on the prompt instead.
+if canon == "Stop" and state.pop("check_before_reply", False):
+    save_json(sfile, state)
+    if not down and not data.get("stop_hook_active") and not state.get("subagent"):
+        decision = {"antigravity": "continue", "gemini": "deny"}.get(client, "block")
+        emit(raw_json=json.dumps({"decision": decision, "reason": STOP_SAVE_AGY if client == "antigravity" else STOP_SAVE}))
+
 parts = []
 owes_recall = False
 if down and canon in ("SessionStart", "UserPromptSubmit"):
     state.pop("debt", None)
     state.pop("register_debt", None)
+    state.pop("check_before_reply", None)
     save_json(sfile, state)
     if not state.get("subagent"):
         parts.append(BUSY)
@@ -443,7 +460,7 @@ if local_msg and not down and not (server_msg and "recall" in server_msg and can
     parts.append(local_msg)
 elif owes_recall:
     parts.append("Clyde: other tools are refused until that call is made.")
-if canon == "UserPromptSubmit" and parts and not down and not state.get("subagent"):
+if canon == "UserPromptSubmit" and state.get("check_before_reply") and not down and not state.get("subagent"):
     parts.append(SAVE)
 if status == "expired" and failed_file.exists() and pinned and canon in ("SessionStart", "UserPromptSubmit"):
     parts.append(f"Clyde: the Clyde client on this computer is out of date. Rerun \`{INSTALL}\`, which needs no new sign-in.")
