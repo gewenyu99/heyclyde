@@ -247,9 +247,14 @@ function clientAllowed(uri: string) {
 
 /** The email link or OAuth callback lands here. Sign the user in with the stored verifier and approve the client request. */
 async function approve(p: Page, req: Request, id: string, code: string | null, error: string | null, direct = false) {
-  const [row] = await sql`select code_verifier from memory.oauth_consent
+  const [row] = await sql`select code_verifier, redirect_url, client_name from memory.oauth_consent
     where authorization_id = ${id} and created_at > now() - ${FRESH}::interval`;
   if (!row) return page(p, "expired", "that sign-in expired. Start connecting again from the app.", 410);
+  // A link works once. Opened again after it already signed this request in (a second click, a reload, a mail app that
+  // opens it twice), it's done, not failed.
+  if (!code && row.redirect_url) {
+    return page(p, "connected", `connected${row.client_name ? ` ${row.client_name}` : ""}. Go back to the window that asked. It finishes by itself.`, 200);
+  }
   if (!code) return page(p, "error", `that sign-in link didn't work. ${error ?? ""}`.trim(), 400);
 
   const session = await auth("/token?grant_type=pkce", {
