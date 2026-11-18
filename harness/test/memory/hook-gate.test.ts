@@ -123,3 +123,38 @@ test('R78 the gate answers in under 300 ms', () => {
   const median = (times[9] + times[10]) / 2
   assert.ok(median <= 300, `median ${median.toFixed(0)} ms`)
 })
+
+test("Antigravity's recall through call_mcp_tool pays the debt; other tools wait for it", () => {
+  const g = env()
+  g.decide('antigravity', 'call_mcp_tool', { ServerName: 'clyde', ToolName: 'register_agent' }, 'a0', T0)
+  g.run('antigravity', 'PreInvocation', { conversationId: 'a1', lastUserInput: 'migrate the invoices table to the new schema today' }, T0)
+  assert.equal(g.decide('antigravity', 'run_command', { CommandLine: 'ls' }, 'a1', T0 + 1), 'deny')
+  assert.equal(g.decide('antigravity', 'call_mcp_tool', { ServerName: 'clyde', ToolName: 'list_quests' }, 'a1', T0 + 2), 'deny')
+  assert.equal(g.decide('antigravity', 'call_mcp_tool', { ServerName: 'clyde', ToolName: 'recall', Arguments: { query: 'invoices schema' } }, 'a1', T0 + 3), 'allow')
+  assert.equal(g.decide('antigravity', 'run_command', { CommandLine: 'ls' }, 'a1', T0 + 4), 'allow')
+})
+
+test('Clyde down: nothing is owed or blocked, and the agent hears Clyde is busy', () => {
+  const dir = tempDir('clyde-down-')
+  dirs.push(dir)
+  const script = join(dir, 'clyde-hook.sh')
+  writeFileSync(script, CLYDE_HOOK_SH)
+  chmodSync(script, 0o700)
+  // A token and a server that refuses every connection: the hook's call to Clyde fails at once.
+  const run = (event: string, payload: unknown, now: number) => {
+    const r = spawnSync(script, ['claude', event], {
+      input: JSON.stringify(payload), encoding: 'utf8',
+      env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: dir, CLYDE_CONFIG_DIR: join(dir, 'cfg'), CLYDE_HOOK_STATE_DIR: join(dir, 'state'), CLYDE_HOOK_NOW: String(now), MEMORY_TOKEN: 'tok', MEMORY_URL: 'http://127.0.0.1:9' },
+    })
+    assert.equal(r.status, 0, r.stderr)
+    return r.stdout.trim()
+  }
+  const start = run('SessionStart', { session_id: 'd1' }, T0)
+  assert.match(start, /busy right now/)
+  assert.match(start, /support@heyclyde\.me/)
+  assert.doesNotMatch(start, /refused/)
+  const nudge = run('UserPromptSubmit', { session_id: 'd1', prompt: 'plan the billing webhook retry work for stripe' }, T0 + 1)
+  assert.match(nudge, /busy right now/)
+  assert.doesNotMatch(nudge, /refused/)
+  assert.equal(run('PreToolUse', { session_id: 'd1', tool_name: 'Bash', tool_input: { command: 'ls' } }, T0 + 2), '')
+})

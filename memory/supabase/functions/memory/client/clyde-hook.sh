@@ -113,6 +113,9 @@ prompt = str(data.get("prompt") or data.get("lastUserInput") or "")
 tc = data.get("toolCall") if isinstance(data.get("toolCall"), dict) else {}
 tname = str(data.get("tool_name") or tc.get("name") or "")
 tinput = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else (tc.get("args") if isinstance(tc.get("args"), dict) else {})
+# Antigravity runs every MCP tool through call_mcp_tool, and the tool itself is in ToolName.
+if tname == "call_mcp_tool":
+    tname = str(tinput.get("ToolName") or tinput.get("toolName") or tinput.get("tool_name") or tinput.get("name") or tname)
 
 CLYDE_TOOLS = ("recall", "recall_more", "remember", "feedback", "register_agent", "check_messages", "ack_messages",
     "dismiss_messages", "post_message", "post_quest", "list_quests", "claim_quest", "update_quest", "complete_quest",
@@ -234,6 +237,7 @@ local_msg = ""
 should_nudge = False
 pwords = []
 ONLY = "Clyde is the only memory for this agent: never use the built-in memory or memory files of this app."
+BUSY = "Clyde: Clyde is busy right now and did not answer, so nothing is blocked. Carry on without him. Check on him at https://memory.heyclyde.me/healthz or email support@heyclyde.me."
 RECALL = "Clyde: new task, so recall comes first. Call Clyde recall before anything else (other tools are refused until you do), then call feedback on what helped."
 
 if canon == "SessionStart":
@@ -336,6 +340,7 @@ pinned = server(read_txt(cfg / "url"))
 hmode = os.environ.get("MEMORY_HOOKS") or read_txt(cfg / "hooks") or "full"
 
 server_msg = ""
+down = False
 inbox_msg = ""
 status = ""
 registered = None
@@ -382,10 +387,10 @@ if token and url.startswith(("https://", "http://127.0.0.1", "http://localhost")
             elif failed_file.exists():
                 failed_file.unlink()
     except Exception:
-        pass
+        down = True
     if server_msg.startswith("{") and canon == "Stop" and client == "claude":
         emit(raw_json=server_msg)
-    if canon == "SessionStart" or (canon == "UserPromptSubmit" and (should_nudge or server_msg)):
+    if not down and (canon == "SessionStart" or (canon == "UserPromptSubmit" and (should_nudge or server_msg))):
         try:
             mreq = urllib.request.Request(f"{url}/messages/{client}", headers={"Authorization": f"Bearer {token}", **vheaders})
             with urllib.request.urlopen(mreq, timeout=2.5) as mresp:
@@ -396,13 +401,19 @@ if token and url.startswith(("https://", "http://127.0.0.1", "http://localhost")
 
 parts = []
 owes_recall = False
-if canon == "SessionStart" and not state.get("subagent"):
+if down and canon in ("SessionStart", "UserPromptSubmit"):
+    state.pop("debt", None)
+    state.pop("register_debt", None)
+    save_json(sfile, state)
+    if not state.get("subagent"):
+        parts.append(BUSY)
+elif canon == "SessionStart" and not state.get("subagent"):
     if registered is True:
         save_json(regfile, {"at": now})
     elif not regfile.exists():
         state["register_debt"] = {"at": now}
         parts.append(f"Clyde: this agent is not registered. Call Clyde {REGISTER} before anything else (other tools are refused until you do).")
-if canon in ("SessionStart", "UserPromptSubmit") and not state.get("subagent"):
+if canon in ("SessionStart", "UserPromptSubmit") and not state.get("subagent") and not down:
     owes_recall = should_nudge or (canon == "UserPromptSubmit" and "recall" in server_msg and not server_msg.startswith("{"))
     if owes_recall:
         m = re.search(r"recall\(\"([^\"]*)\"\)", server_msg)
@@ -411,7 +422,7 @@ if canon in ("SessionStart", "UserPromptSubmit") and not state.get("subagent"):
         save_json(sfile, state)
 if server_msg and not server_msg.startswith("{"):
     parts.append(server_msg)
-if local_msg and not (server_msg and "recall" in server_msg and canon == "UserPromptSubmit"):
+if local_msg and not down and not (server_msg and "recall" in server_msg and canon == "UserPromptSubmit"):
     parts.append(local_msg)
 elif owes_recall:
     parts.append("Clyde: other tools are refused until that call is made.")
