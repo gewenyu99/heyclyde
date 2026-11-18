@@ -170,7 +170,7 @@ test('R78 one command on an empty HOME connects clyde in all four apps', async (
     assert.equal(gemini.hooks.BeforeTool[0].matcher, '.*')
     const agyHooks = json(h, '.gemini/config/hooks.json')
     assert.deepEqual(agyHooks, JSON.parse(ANTIGRAVITY_HOOKS_JSON))
-    for (const table of [claude.hooks, codex.hooks, gemini.hooks, agyHooks.clyde]) {
+    for (const table of [claude.hooks, codex.hooks, gemini.hooks, Object.assign({}, ...Object.values(agyHooks))]) {
       const cmds = commands(table)
       assert.ok(cmds.length >= 4)
       for (const c of cmds) assert.match(c, /^~\/\.config\/memory\/clyde-hook\.sh (claude|codex|gemini|antigravity) \w+$/)
@@ -285,8 +285,10 @@ test("R78 the installer migrates an old setup and keeps the user's own", async (
     assert.deepEqual(Object.keys(gset.mcpServers), ['mine'])
     assert.deepEqual(Object.keys(json(h, '.gemini/config/mcp_config.json').mcpServers).sort(), ['chrome-devtools', 'clyde'])
     const agyHooks = json(h, '.gemini/config/hooks.json')
-    assert.deepEqual(Object.keys(agyHooks).sort(), ['clyde', 'memory-lifecycle'])
-    assert.deepEqual(agyHooks.clyde, JSON.parse(ANTIGRAVITY_HOOKS_JSON).clyde)
+    assert.deepEqual(agyHooks, {
+      'memory-lifecycle': { Stop: [{ type: 'command', command: 'python3 ./hooks/memory_hook.py', timeout: 10 }] },
+      ...JSON.parse(ANTIGRAVITY_HOOKS_JSON),
+    })
     for (const f of ['.claude/CLAUDE.md', '.codex/AGENTS.md', '.gemini/GEMINI.md']) {
       const t = text(h, f)
       assert.equal(count(t, 'Use Clyde MCP tools'), 0, f)

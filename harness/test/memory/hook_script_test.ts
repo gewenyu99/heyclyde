@@ -41,12 +41,19 @@ function makeEnv() {
 }
 
 Deno.test('hook JSON configs parse cleanly and match each client schema', () => {
-  const agy = JSON.parse(ANTIGRAVITY_HOOKS_JSON)
-  assert.ok(Array.isArray(agy.clyde.SessionStart) && agy.clyde.SessionStart[0].command.includes('antigravity SessionStart'))
-  assert.ok(Array.isArray(agy.clyde.PreInvocation) && !('hooks' in agy.clyde.PreInvocation[0]), 'Antigravity PreInvocation uses flat handler array')
-  assert.equal(agy.clyde.PreToolUse[0].matcher, 'invoke_subagent')
-  assert.match(agy.clyde.PostToolUse[0].matcher, /clyde/)
-  assert.ok(Array.isArray(agy.clyde.Stop) && !('hooks' in agy.clyde.Stop[0]), 'Antigravity Stop uses flat handler array')
+  for (const [config, field] of [[CODEX_HOOKS_JSON, 'statusMessage'], [CLAUDE_HOOKS_JSON, 'statusMessage'], [GEMINI_HOOKS_JSON, 'name']]) {
+    const groups = Object.values(JSON.parse(config).hooks).flat() as { hooks: Record<string, string>[] }[]
+    const labels = groups.flatMap(group => group.hooks.map(handler => handler[field]))
+    assert.ok(labels.every(label => label && label.includes('Clyde')))
+    assert.equal(new Set(labels).size, labels.length)
+  }
+  assert.ok(Object.keys(JSON.parse(ANTIGRAVITY_HOOKS_JSON)).every(label => label.includes('Clyde')))
+  const agy = Object.assign({}, ...Object.values(JSON.parse(ANTIGRAVITY_HOOKS_JSON)))
+  assert.ok(Array.isArray(agy.SessionStart) && agy.SessionStart[0].command.includes('antigravity SessionStart'))
+  assert.ok(Array.isArray(agy.PreInvocation) && !('hooks' in agy.PreInvocation[0]), 'Antigravity PreInvocation uses flat handler array')
+  assert.equal(agy.PreToolUse[0].matcher, 'invoke_subagent')
+  assert.match(agy.PostToolUse[0].matcher, /clyde/)
+  assert.ok(Array.isArray(agy.Stop) && !('hooks' in agy.Stop[0]), 'Antigravity Stop uses flat handler array')
 
   const claude = JSON.parse(CLAUDE_HOOKS_JSON)
   for (const ev of ['SessionStart', 'UserPromptSubmit', 'PostToolUse', 'Stop', 'PreCompact', 'SessionEnd']) {
@@ -104,16 +111,17 @@ Deno.test('Antigravity lifecycle: deduplicates mid-turn PreInvocation, skips fol
     }, 1010))
     assert.deepEqual(post, {})
 
-    // 5. Stop returns {"decision":"allow"} per Antigravity contract.
+    // 5. Stop requests one memory check before the reply.
     const stop = JSON.parse(h.run('antigravity', 'Stop', {
       conversationId: 'conv-1',
       workspacePaths: ['/work/billing'],
       fullyIdle: true,
     }, 1020))
-    assert.deepEqual(stop, { decision: 'allow' })
+    assert.equal(stop.decision, 'continue')
+    assert.match(stop.reason, /remember.*decisions and results/)
 
     // 6. Quick follow-ups ("push it", "fix line 12 and show me a screenshot") stay silent!
-    for (const [i, follow] of ['push it', 'fix line 12 and show me a screenshot', 'Also log bad webhook headers'].entries()) {
+    for (const [i, follow] of ['push it', 'fix line 12 and show me a screenshot'].entries()) {
       const out = JSON.parse(h.run('antigravity', 'PreInvocation', {
         invocationNum: 4 + i,
         conversationId: 'conv-1',
@@ -181,18 +189,18 @@ Deno.test('Antigravity lifecycle: deduplicates mid-turn PreInvocation, skips fol
 Deno.test('Claude Code, Codex, and Gemini CLI output contracts', () => {
   const h = makeEnv()
   try {
-    // Claude Code: plain text on SessionStart / task-shift UserPromptSubmit, empty on follow-ups and Stop.
+    // Claude Code: plain text on SessionStart / task-shift UserPromptSubmit, empty on unchanged follow-ups.
     assert.match(h.run('claude', 'SessionStart', { session_id: 'c1', cwd: '/repo' }, 100), /register_agent/)
     assert.match(h.run('claude', 'UserPromptSubmit', { session_id: 'c1', cwd: '/repo', prompt: 'Add OAuth callback validation' }, 105), /recall/)
     assert.equal(h.run('claude', 'PostToolUse', { session_id: 'c1', cwd: '/repo', tool_name: 'mcp__clyde__recall', tool_input: { query: 'OAuth callback' } }, 110), '')
     assert.equal(h.run('claude', 'UserPromptSubmit', { session_id: 'c1', cwd: '/repo', prompt: 'ship it' }, 150), '')
-    assert.equal(h.run('claude', 'Stop', { session_id: 'c1', cwd: '/repo' }, 160), '')
+    assert.equal(JSON.parse(h.run('claude', 'Stop', { session_id: 'c1', cwd: '/repo' }, 160)).decision, 'block')
 
-    // Codex: plain text on SessionStart / task-shift UserPromptSubmit, {} JSON on Stop.
+    // Codex: plain text on SessionStart / task-shift UserPromptSubmit, JSON on Stop.
     assert.match(h.run('codex', 'SessionStart', { session_id: 'x1', cwd: '/repo' }, 200), /register_agent/)
     assert.match(h.run('codex', 'UserPromptSubmit', { session_id: 'x1', cwd: '/repo', prompt: 'Set up nightly Postgres backups' }, 205), /recall/)
     assert.equal(h.run('codex', 'UserPromptSubmit', { session_id: 'x1', cwd: '/repo', prompt: 'looks good' }, 240), '')
-    assert.equal(h.run('codex', 'Stop', { session_id: 'x1', cwd: '/repo' }, 250).trim(), '{}')
+    assert.equal(JSON.parse(h.run('codex', 'Stop', { session_id: 'x1', cwd: '/repo' }, 250)).decision, 'block')
 
     // Gemini CLI: mandatory JSON with hookSpecificOutput.additionalContext on nudges, {} when silent.
     const gs = JSON.parse(h.run('gemini', 'SessionStart', { session_id: 'g1', cwd: '/repo' }, 300))
@@ -203,7 +211,39 @@ Deno.test('Claude Code, Codex, and Gemini CLI output contracts', () => {
     assert.match(gb1.hookSpecificOutput.additionalContext, /recall/)
     assert.deepEqual(JSON.parse(h.run('gemini', 'AfterTool', { session_id: 'g1', cwd: '/repo', tool_name: 'mcp_clyde_recall', tool_input: { query: 'CSP headers' } }, 310)), {})
     assert.deepEqual(JSON.parse(h.run('gemini', 'BeforeAgent', { session_id: 'g1', cwd: '/repo', prompt: 'push it' }, 350)), {})
-    assert.deepEqual(JSON.parse(h.run('gemini', 'AfterAgent', { session_id: 'g1', cwd: '/repo', prompt_response: 'Done.' }, 360)), {})
+    assert.equal(JSON.parse(h.run('gemini', 'AfterAgent', { session_id: 'g1', cwd: '/repo', prompt_response: 'Done.' }, 360)).decision, 'deny')
+  } finally {
+    h.cleanup()
+  }
+})
+
+Deno.test('changed scope after recall and one decision check per reply on every client', () => {
+  const h = makeEnv()
+  try {
+    for (const [client, submit, post, stop] of [
+      ['claude', 'UserPromptSubmit', 'PostToolUse', 'Stop'],
+      ['codex', 'UserPromptSubmit', 'PostToolUse', 'Stop'],
+      ['gemini', 'BeforeAgent', 'AfterTool', 'AfterAgent'],
+      ['antigravity', 'PreInvocation', 'PostToolUse', 'Stop'],
+    ]) {
+      const call = (event: string, data: Record<string, unknown>) =>
+        h.run(client, event, { session_id: 'scope', ...data })
+      call(submit, { prompt: 'Document webhook retries' })
+      call(post, { tool_name: 'mcp__clyde__recall' })
+      assert.match(call(submit, { prompt: 'Also log headers' }), /scope.*information/)
+      assert.match(call(submit, { prompt: 'Switch to billing' }), /recall comes first/)
+      call(post, { tool_name: 'mcp__clyde__recall' })
+      const reminder = JSON.parse(call(stop, {}))
+      assert.match(reminder.reason, /remember.*decisions and results/)
+      call(submit, { prompt: reminder.reason })
+      assert.doesNotMatch(call(stop, {}), /remember/)
+      call(submit, { prompt: 'push it' })
+      call(post, { tool_name: 'mcp__clyde__remember', tool_response: { isError: true } })
+      assert.match(call(stop, {}), /remember/)
+      call(submit, { prompt: 'commit it' })
+      call(post, { tool_name: 'mcp__clyde__remember' })
+      assert.doesNotMatch(call(stop, {}), /remember/)
+    }
   } finally {
     h.cleanup()
   }

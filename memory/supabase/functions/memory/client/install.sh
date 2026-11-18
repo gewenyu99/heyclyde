@@ -292,7 +292,7 @@ print("changed" if write(path, dump(doc)) else "unchanged")
 ' "$1" "$2"
 }
 
-# Antigravity keeps hook groups by name at the top of ~/.gemini/config/hooks.json. Ours is "clyde". Our entries anywhere
+# Antigravity keeps hook groups by name at the top of ~/.gemini/config/hooks.json. Each Clyde group names its action. Our entries anywhere
 # else go, and the user's groups stay as they are.
 merge_antigravity() {
   python3 -c "$PYLIB"'
@@ -301,13 +301,14 @@ doc = load(path)
 if not isinstance(doc, dict):
     sys.exit(f"{path} is not a JSON object")
 for name in list(doc):
-    if name in snippet:
-        del doc[name]
-    elif isinstance(doc[name], dict):
+    if isinstance(doc[name], dict):
         clean(doc[name], list(doc[name]))
         if not doc[name]:
             del doc[name]
-doc.update(snippet)
+for name, events in snippet.items():
+    group = doc.setdefault(name, {})
+    for event, handlers in events.items():
+        group.setdefault(event, []).extend(handlers)
 print("changed" if write(path, dump(doc)) else "unchanged")
 ' "$1" "$2"
 }

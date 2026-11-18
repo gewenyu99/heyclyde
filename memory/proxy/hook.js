@@ -56,6 +56,8 @@ CANON = {
 canon = CANON.get(event, "")
 DEBT_TTL = 1200
 INSTALL = "curl -fsSL https://heyclyde.me/install | sh"
+SCOPE = "Call Clyde recall before acting when the request changes scope or you need information that memory could supply, even after a recent recall. Skip it only when the same task continues unchanged."
+SAVE = "Before replying, use Clyde remember to save any new decisions and results with their evidence. If there is nothing new to save, finish the reply."
 REGISTER = "register_agent (name, context, surface, description, computer, type, projects)"
 
 def emit(msg="", raw_json=""):
@@ -197,6 +199,8 @@ if canon == "PostToolUse" and not is_tool(tname, *CLYDE_TOOLS):
 
 phash = sha(prompt.strip()) if prompt.strip() else ""
 
+if canon == "UserPromptSubmit" and (data.get("stop_hook_active") or prompt.strip() == SAVE):
+    emit()
 if client == "antigravity":
     if state.get("subagent"):
         emit()
@@ -224,7 +228,7 @@ FOLLOW_RE = re.compile(
     r"do it|go ahead|proceed|continue|keep going|try again|retry|rerun|run it|test it|fix it|revert|undo|stop)\\b",
     re.I,
 )
-TWEAK_RE = re.compile(r"\\b(fix line \\d+|line \\d+|typo|screenshot|show me a screenshot|same thing|as above)\\b", re.I)
+TWEAK_RE = re.compile(r"(?:fix line \\d+(?: and show me a screenshot)?|show me a screenshot|same thing|as above|looks good|run the tests)", re.I)
 GREET_RE = re.compile(r"^(hi|hello|hey|yo|sup|good morning|good afternoon|good evening)[!.?]*$", re.I)
 SHIFT_RE = re.compile(r"\\b(new task|new goal|switch to|switching to|different repo|another repo|another project|unrelated|moving on to)\\b", re.I)
 
@@ -237,14 +241,10 @@ def words(text):
 
 def is_followup(text):
     t = text.strip()
-    if not t or t.startswith("/") or GREET_RE.match(t):
+    if not t or GREET_RE.match(t):
         return True
-    wc = len(t.split())
-    if FOLLOW_RE.match(t) and wc <= 7:
-        return True
-    if TWEAK_RE.search(t) and wc <= 10:
-        return True
-    return wc <= 3 and len(t) < 24 and not SHIFT_RE.search(t)
+    t = t.rstrip(".!?").lower()
+    return bool(FOLLOW_RE.fullmatch(t) or TWEAK_RE.fullmatch(t))
 
 local_msg = ""
 should_nudge = False
@@ -255,9 +255,11 @@ RECALL = "Clyde: new task, so recall comes first. Call Clyde recall before anyth
 
 if canon == "SessionStart":
     state["started"] = True
+    if phash:
+        state["check_before_reply"] = not bool(GREET_RE.match(prompt.strip()))
     if cwd:
         state["cwd"] = cwd
-    local_msg = ONLY + " Top-level session only (skip in subagents): once this session, call check_messages, then ack_messages once handled."
+    local_msg = ONLY + " Top-level session only (skip in subagents): once this session, call check_messages, then ack_messages once handled. " + SCOPE + " " + SAVE
     if phash and not is_followup(prompt):
         state["last_prompt_hash"] = phash
         state["last_prompt_at"] = now
@@ -269,6 +271,7 @@ elif canon == "UserPromptSubmit":
     t = prompt.strip()
     prev_cwd = state.get("cwd", "")
     cwd_shifted = bool(cwd and prev_cwd and cwd != prev_cwd)
+    state["check_before_reply"] = bool(t and not GREET_RE.match(t))
     if GREET_RE.match(t) and not cwd_shifted:
         if phash:
             state["last_prompt_hash"] = phash
@@ -278,19 +281,10 @@ elif canon == "UserPromptSubmit":
     idle_gap = bool(state.get("last_prompt_at") and (now - float(state["last_prompt_at"])) >= 1200)
     pwords = words(prompt)
     twords = set(state.get("task_words") or [])
-    recalled_recently = bool(state.get("last_recall_at") and (now - float(state["last_recall_at"])) < 120)
     cooled_down = (now - float(state.get("last_nudge_at") or 0)) >= 30
     topic_shifted = bool(SHIFT_RE.search(t)) or (len(pwords) >= 6 and bool(twords) and not (set(pwords) & twords) and cooled_down)
-    if t.startswith("/"):
-        should_nudge = False
-    elif cwd_shifted:
-        should_nudge = True
-    elif first_task and t:
-        should_nudge = True
-    elif is_followup(t) or recalled_recently:
-        should_nudge = False
-    elif idle_gap or topic_shifted:
-        should_nudge = True
+    followup = is_followup(t)
+    should_nudge = cwd_shifted or bool(t and (first_task or (not followup and (idle_gap or topic_shifted))))
     if phash:
         state["last_prompt_hash"] = phash
     if cwd:
@@ -302,13 +296,17 @@ elif canon == "UserPromptSubmit":
         if pwords:
             state["task_words"] = pwords
         local_msg = RECALL
-    elif pwords:
+    elif t and not followup:
+        local_msg = SCOPE
         state["task_words"] = list(dict.fromkeys((state.get("task_words") or []) + pwords))[:24]
 elif canon == "PostToolUse":
+    if re.search(r"(?:^|[_:.])(?:memory|clyde)[_:.]+remember$", tname, re.I):
+        response = data.get("tool_response") or data.get("tool_result") or {}
+        if not data.get("error") and not (isinstance(response, dict) and (response.get("isError") or response.get("error"))):
+            state["check_before_reply"] = False
     if is_tool(tname, "register_agent"):
         mark_registered()
     if is_tool(tname, "recall", "recall_more"):
-        state["last_recall_at"] = now
         state.pop("debt", None)
         qw = words(" ".join(str(tinput.get(k) or "") for k in ("query", "task")))
         if qw:
@@ -424,11 +422,18 @@ if token and url.startswith(("https://", "http://127.0.0.1", "http://localhost")
         except Exception:
             pass
 
+if canon == "Stop" and state.pop("check_before_reply", False):
+    save_json(sfile, state)
+    if not down and not data.get("stop_hook_active") and not state.get("subagent"):
+        decision = {"antigravity": "continue", "gemini": "deny"}.get(client, "block")
+        emit(raw_json=json.dumps({"decision": decision, "reason": SAVE}))
+
 parts = []
 owes_recall = False
 if down and canon in ("SessionStart", "UserPromptSubmit"):
     state.pop("debt", None)
     state.pop("register_debt", None)
+    state.pop("check_before_reply", None)
     save_json(sfile, state)
     if not state.get("subagent"):
         parts.append(BUSY)
@@ -475,14 +480,22 @@ exit 0
 `;
 
 export const ANTIGRAVITY_HOOKS_JSON = `{
-  "clyde": {
-    "SessionStart": [{ "type": "command", "command": "${HOOK_PATH} antigravity SessionStart", "timeout": 5 }],
-    "PreInvocation": [{ "type": "command", "command": "${HOOK_PATH} antigravity PreInvocation", "timeout": 5 }],
+  "Load Clyde session context": {
+    "SessionStart": [{ "type": "command", "command": "${HOOK_PATH} antigravity SessionStart", "timeout": 5 }]
+  },
+  "Check whether to recall from Clyde": {
+    "PreInvocation": [{ "type": "command", "command": "${HOOK_PATH} antigravity PreInvocation", "timeout": 5 }]
+  },
+  "Check Clyde memory requirements": {
     "PreToolUse": [
       { "matcher": "invoke_subagent", "hooks": [{ "type": "command", "command": "${HOOK_PATH} antigravity PreToolUse", "timeout": 5 }] },
       { "matcher": ".*", "hooks": [{ "type": "command", "command": "${HOOK_PATH} antigravity PreToolUse", "timeout": 5 }] }
-    ],
-    "PostToolUse": [{ "matcher": "^(mcp_+)?(clyde|memory)[_:\\\\.].*", "hooks": [{ "type": "command", "command": "${HOOK_PATH} antigravity PostToolUse", "timeout": 5 }] }],
+    ]
+  },
+  "Track Clyde memory calls": {
+    "PostToolUse": [{ "matcher": "^(mcp_+)?(clyde|memory)[_:\\\\.].*", "hooks": [{ "type": "command", "command": "${HOOK_PATH} antigravity PostToolUse", "timeout": 5 }] }]
+  },
+  "Save decisions and results to Clyde": {
     "Stop": [{ "type": "command", "command": "${HOOK_PATH} antigravity Stop", "timeout": 5 }]
   }
 }`;
@@ -490,23 +503,23 @@ export const ANTIGRAVITY_HOOKS_JSON = `{
 export const CLAUDE_HOOKS_JSON = `{
   "autoMemoryEnabled": false,
   "hooks": {
-    "SessionStart": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} claude SessionStart" }] }],
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} claude UserPromptSubmit" }] }],
-    "PreToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "${HOOK_PATH} claude PreToolUse" }] }],
-    "PostToolUse": [{ "matcher": "mcp__.*", "hooks": [{ "type": "command", "command": "${HOOK_PATH} claude PostToolUse" }] }],
-    "Stop": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} claude Stop" }] }],
-    "PreCompact": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} claude PreCompact" }] }],
-    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} claude SessionEnd" }] }]
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} claude SessionStart", "statusMessage": "Load Clyde session context" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} claude UserPromptSubmit", "statusMessage": "Check whether to recall from Clyde" }] }],
+    "PreToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "${HOOK_PATH} claude PreToolUse", "statusMessage": "Check Clyde memory requirements" }] }],
+    "PostToolUse": [{ "matcher": "mcp__.*", "hooks": [{ "type": "command", "command": "${HOOK_PATH} claude PostToolUse", "statusMessage": "Track Clyde memory calls" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} claude Stop", "statusMessage": "Save decisions and results to Clyde" }] }],
+    "PreCompact": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} claude PreCompact", "statusMessage": "Sync Clyde before compaction" }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} claude SessionEnd", "statusMessage": "Close Clyde session" }] }]
   }
 }`;
 
 export const CODEX_HOOKS_JSON = `{
   "hooks": {
-    "SessionStart": [{ "matcher": "startup|resume", "hooks": [{ "type": "command", "command": "${HOOK_PATH} codex SessionStart" }] }],
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} codex UserPromptSubmit" }] }],
-    "PreToolUse": [{ "matcher": ".*", "hooks": [{ "type": "command", "command": "${HOOK_PATH} codex PreToolUse" }] }],
-    "PostToolUse": [{ "matcher": "mcp__.*", "hooks": [{ "type": "command", "command": "${HOOK_PATH} codex PostToolUse" }] }],
-    "Stop": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} codex Stop" }] }]
+    "SessionStart": [{ "matcher": "startup|resume", "hooks": [{ "type": "command", "command": "${HOOK_PATH} codex SessionStart", "statusMessage": "Load Clyde session context" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} codex UserPromptSubmit", "statusMessage": "Check whether to recall from Clyde" }] }],
+    "PreToolUse": [{ "matcher": ".*", "hooks": [{ "type": "command", "command": "${HOOK_PATH} codex PreToolUse", "statusMessage": "Check Clyde memory requirements" }] }],
+    "PostToolUse": [{ "matcher": "mcp__.*", "hooks": [{ "type": "command", "command": "${HOOK_PATH} codex PostToolUse", "statusMessage": "Track Clyde memory calls" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} codex Stop", "statusMessage": "Save decisions and results to Clyde" }] }]
   }
 }`;
 
@@ -516,11 +529,11 @@ memories = false`;
 
 export const GEMINI_HOOKS_JSON = `{
   "hooks": {
-    "SessionStart": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} gemini SessionStart", "timeout": 5000 }] }],
-    "BeforeAgent": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} gemini BeforeAgent", "timeout": 5000 }] }],
-    "BeforeTool": [{ "matcher": ".*", "hooks": [{ "type": "command", "command": "${HOOK_PATH} gemini BeforeTool", "timeout": 5000 }] }],
-    "AfterTool": [{ "matcher": "mcp_+(clyde|memory)_.*|(clyde|memory)__.*", "hooks": [{ "type": "command", "command": "${HOOK_PATH} gemini AfterTool", "timeout": 5000 }] }],
-    "AfterAgent": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} gemini AfterAgent", "timeout": 5000 }] }]
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} gemini SessionStart", "name": "Load Clyde session context", "timeout": 5000 }] }],
+    "BeforeAgent": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} gemini BeforeAgent", "name": "Check whether to recall from Clyde", "timeout": 5000 }] }],
+    "BeforeTool": [{ "matcher": ".*", "hooks": [{ "type": "command", "command": "${HOOK_PATH} gemini BeforeTool", "name": "Check Clyde memory requirements", "timeout": 5000 }] }],
+    "AfterTool": [{ "matcher": "mcp_+(clyde|memory)_.*|(clyde|memory)__.*", "hooks": [{ "type": "command", "command": "${HOOK_PATH} gemini AfterTool", "name": "Track Clyde memory calls", "timeout": 5000 }] }],
+    "AfterAgent": [{ "hooks": [{ "type": "command", "command": "${HOOK_PATH} gemini AfterAgent", "name": "Save decisions and results to Clyde", "timeout": 5000 }] }]
   }
 }`;
 
@@ -544,14 +557,14 @@ export const HOOK_APPS = [
 export const REGISTER_STEP = "call Clyde register_agent (name, context, surface, description, computer, type, projects) before anything else";
 
 export const CLYDE_RULE = `Clyde is your only memory. The Clyde hooks enforce it.
-- Never use this app's built-in memory or its memory files. Save lasting decisions, preferences and corrections with Clyde remember, under 500 characters. Never store secrets.
+- Never use this app's built-in memory or its memory files. Before replying, save new decisions and results, including preferences and corrections, with Clyde remember. Include evidence and keep each note under 500 characters. Never store secrets.
 - First thing in a session, if this app hasn't registered, ${REGISTER_STEP}. Then call check_messages.
-- On a new task, recall from Clyde before guessing past decisions or preferences, then call feedback on what helped. Skip recall on quick follow-ups, and skip Clyde inside subagents.
+- Call Clyde recall before acting when the request changes scope or you need information that memory could supply, even after a recent recall. Skip it only when the same task continues unchanged. Call feedback on what helped. Skip Clyde inside subagents.
 - The hooks are required, not optional. If they're missing, run \`${INSTALL}\`.`;
 
 export const ANTIGRAVITY_RULE = `---
 trigger: model_decision
-description: Apply when starting a new goal, switching repos or topics, or saving a lasting decision or correction in Clyde. Skip on quick follow-ups to the same task and inside subagents.
+description: Apply when a request introduces new scope, memory could supply missing information, or a reply has new decisions or results to save. Skip inside subagents.
 ---
 ${CLYDE_RULE}`;
 
@@ -592,7 +605,7 @@ export const hookSetupText = (h) => `${h.app}: merge into ${h.where}\n${h.config
 export const AGENT_SETUP_PROMPT = `Set up Clyde on this computer (docs: https://heyclyde.me/docs). The hooks are what make Clyde work, so none of this is optional.
 1. Register first: ${REGISTER_STEP}. If Clyde's tools aren't connected here yet, do it first thing after the restart in step 5. The hooks refuse every other tool until you do.
 2. Install: run \`${INSTALL}\`. If ~/.config/memory/token is missing or stale, ask me for my email, run \`MEMORY_EMAIL=<email> sh -c '${INSTALL}'\`, and wait while I click the sign-in link. It connects Clyde's MCP server as "clyde" in Claude Code, Codex, Gemini CLI and Antigravity, removes old "memory" and "kb" entries, installs ${HOOK_PATH} (the hook and the gate), merges the hooks below, turns off each app's own memory, and adds the Clyde rule to ~/.claude/CLAUDE.md, ~/.codex/AGENTS.md and ~/.gemini/GEMINI.md.
-3. Check the hooks: confirm each installed app's file holds exactly these entries, once each, beside my own hooks. If the installer can't run, install the script with \`${HOOK_INSTALL}\` and merge them by hand.
+3. Check the hooks: use descriptive, action-based labels for each hook. Confirm each installed app's file holds exactly these entries, once each, beside my own hooks. If the installer can't run, install the script with \`${HOOK_INSTALL}\` and merge them by hand.
 
 ${HOOK_APPS.map(hookSetupText).join("\n\n")}
 

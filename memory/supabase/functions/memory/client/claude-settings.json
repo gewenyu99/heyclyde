@@ -1,12 +1,12 @@
 {
   "autoMemoryEnabled": false,
   "hooks": {
-    "SessionStart": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh claude SessionStart" }] }],
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh claude UserPromptSubmit" }] }],
-    "PreToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh claude PreToolUse" }] }],
-    "PostToolUse": [{ "matcher": "mcp__.*", "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh claude PostToolUse" }] }],
-    "Stop": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh claude Stop" }] }],
-    "PreCompact": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh claude PreCompact" }] }],
-    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh claude SessionEnd" }] }]
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh claude SessionStart", "statusMessage": "Load Clyde session context" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh claude UserPromptSubmit", "statusMessage": "Check whether to recall from Clyde" }] }],
+    "PreToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh claude PreToolUse", "statusMessage": "Check Clyde memory requirements" }] }],
+    "PostToolUse": [{ "matcher": "mcp__.*", "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh claude PostToolUse", "statusMessage": "Track Clyde memory calls" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh claude Stop", "statusMessage": "Save decisions and results to Clyde" }] }],
+    "PreCompact": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh claude PreCompact", "statusMessage": "Sync Clyde before compaction" }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh claude SessionEnd", "statusMessage": "Close Clyde session" }] }]
   }
 }

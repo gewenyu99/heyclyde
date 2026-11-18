@@ -1,12 +1,20 @@
 {
-  "clyde": {
-    "SessionStart": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh antigravity SessionStart", "timeout": 5 }],
-    "PreInvocation": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh antigravity PreInvocation", "timeout": 5 }],
+  "Load Clyde session context": {
+    "SessionStart": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh antigravity SessionStart", "timeout": 5 }]
+  },
+  "Check whether to recall from Clyde": {
+    "PreInvocation": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh antigravity PreInvocation", "timeout": 5 }]
+  },
+  "Check Clyde memory requirements": {
     "PreToolUse": [
       { "matcher": "invoke_subagent", "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh antigravity PreToolUse", "timeout": 5 }] },
       { "matcher": ".*", "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh antigravity PreToolUse", "timeout": 5 }] }
-    ],
-    "PostToolUse": [{ "matcher": "^(mcp_+)?(clyde|memory)[_:\\.].*", "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh antigravity PostToolUse", "timeout": 5 }] }],
+    ]
+  },
+  "Track Clyde memory calls": {
+    "PostToolUse": [{ "matcher": "^(mcp_+)?(clyde|memory)[_:\\.].*", "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh antigravity PostToolUse", "timeout": 5 }] }]
+  },
+  "Save decisions and results to Clyde": {
     "Stop": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh antigravity Stop", "timeout": 5 }]
   }
 }

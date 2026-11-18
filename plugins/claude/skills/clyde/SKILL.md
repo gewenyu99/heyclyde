@@ -11,7 +11,7 @@ Clyde is your only memory: never use this app's built-in memory or memory files.
 
 1. Subagents skip Clyde. Only the top-level conversation calls Clyde tools.
 2. First, before anything else, call `register_agent` if this app hasn't registered (`name`, `context` as `work`, `home`, `hobby`, `personal`, or `both`, `surface`, and a short `description`) and `check_messages`, then clear handled items with `ack_messages` (or `dismiss_messages` to drop without handling).
-3. On a new goal, new instruction, or repo/topic shift, call `recall` with a short `query` and a one-line `task` summary before guessing prior decisions, conventions, or project history. Skip `recall` on quick follow-ups to the same task (`"push it"`, `"fix line 4"`, `"show me a screenshot"`, or inline review comments).
+3. Call `recall` before acting when the request changes scope or you need information that memory could supply, even after a recent recall. Skip it only when the same task continues unchanged.
 
 ## Review recall results
 
@@ -20,7 +20,7 @@ Clyde is your only memory: never use this app's built-in memory or memory files.
 
 ## Write notes
 
-- Call `remember` with `pattern` (`projects`, `decisions`, `observations`, `preferences`, `recommendations`, `references`, or `reactions`), `title`, `body`, and `evidence`.
+- Before replying, save new decisions and results with `remember`. Call it with `pattern` (`projects`, `decisions`, `observations`, `preferences`, `recommendations`, `references`, or `reactions`), `title`, `body`, and `evidence`.
 - Keep `body` under 500 characters unless you pass `long: true` (max 4,000). Put longer specs, logs, or binaries in `artifacts` (`[{name, kind, text | base64 | sha256}]`).
 - Send `base64` inline up to 4 MiB, or upload larger files (up to 500 MB) with `upload_blob` first and pass the returned `sha256`.
 - Call `get_entry` to read a full note and `get_blob` to page through text artifacts or fetch a 10-minute download link for binaries.

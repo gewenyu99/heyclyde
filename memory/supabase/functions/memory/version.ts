@@ -12,7 +12,7 @@
 // Each is pinned to the hash of its surface: version.test.ts fails unless the surface on disk hashes to the entry for the
 // current version, no two versions share a hash, and no entry that main already has changed. After a bump, add an entry
 // with the hash the failing test prints. deploy.sh runs that guard before it deploys.
-export const CLIENT_VERSION = "20261117.5";
+export const CLIENT_VERSION = "20261118.1";
 export const SERVER_VERSION = "20261117.4";
 
 /** Every client version that was released, oldest first, with the day it was. A client is expired only when it is behind
@@ -26,6 +26,7 @@ export const CLIENT_RELEASES: { version: string; released: string }[] = [
   { version: "20261117.3", released: "2026-11-17" },
   { version: "20261117.4", released: "2026-11-17" },
   { version: "20261117.5", released: "2026-11-17" },
+  { version: "20261118.1", released: "2026-11-18" },
 ];
 
 /** SHA-256 of the client files at each client version: `{ "20261102.1": "<hash>" }`. Entries are never edited or removed. */
@@ -37,6 +38,7 @@ export const CLIENT_SURFACE_HASHES: Record<string, string> = {
   "20261117.3": "44f13bbd8d465614ddeb4e1fd7316a1b4af3143760411a6b8887a5bacffbc7c2",
   "20261117.4": "e635f223c07e1eadd0f5d3317c9260b8861da6dab0e124a6fac92cbfba1aaa70",
   "20261117.5": "212cf957d3730bd715f63b2957c98a96feb4370803b9f3d374dece5345bbfbf8",
+  "20261118.1": "6fd89dc5e95afbb3f702637ad88705fd179be304f52798f74d3df6f8651af8d3",
 };
 
 /** SHA-256 of the MCP tools and server instructions at each server version. Entries are never edited or removed. */

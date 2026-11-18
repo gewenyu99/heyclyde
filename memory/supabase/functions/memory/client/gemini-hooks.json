@@ -1,9 +1,9 @@
 {
   "hooks": {
-    "SessionStart": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh gemini SessionStart", "timeout": 5000 }] }],
-    "BeforeAgent": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh gemini BeforeAgent", "timeout": 5000 }] }],
-    "BeforeTool": [{ "matcher": ".*", "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh gemini BeforeTool", "timeout": 5000 }] }],
-    "AfterTool": [{ "matcher": "mcp_+(clyde|memory)_.*|(clyde|memory)__.*", "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh gemini AfterTool", "timeout": 5000 }] }],
-    "AfterAgent": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh gemini AfterAgent", "timeout": 5000 }] }]
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh gemini SessionStart", "name": "Load Clyde session context", "timeout": 5000 }] }],
+    "BeforeAgent": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh gemini BeforeAgent", "name": "Check whether to recall from Clyde", "timeout": 5000 }] }],
+    "BeforeTool": [{ "matcher": ".*", "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh gemini BeforeTool", "name": "Check Clyde memory requirements", "timeout": 5000 }] }],
+    "AfterTool": [{ "matcher": "mcp_+(clyde|memory)_.*|(clyde|memory)__.*", "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh gemini AfterTool", "name": "Track Clyde memory calls", "timeout": 5000 }] }],
+    "AfterAgent": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh gemini AfterAgent", "name": "Save decisions and results to Clyde", "timeout": 5000 }] }]
   }
 }

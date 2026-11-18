@@ -1,19 +1,23 @@
 {
-  "clyde": {
+  "Load Clyde session context": {
     "SessionStart": [
       {
         "type": "command",
         "command": "sh ./scripts/clyde-hook.sh antigravity SessionStart",
         "timeout": 5
       }
-    ],
+    ]
+  },
+  "Check whether to recall from Clyde": {
     "PreInvocation": [
       {
         "type": "command",
         "command": "sh ./scripts/clyde-hook.sh antigravity PreInvocation",
         "timeout": 5
       }
-    ],
+    ]
+  },
+  "Check Clyde memory requirements": {
     "PreToolUse": [
       {
         "matcher": "invoke_subagent",
@@ -35,7 +39,9 @@
           }
         ]
       }
-    ],
+    ]
+  },
+  "Track Clyde memory calls": {
     "PostToolUse": [
       {
         "matcher": "^(mcp_+)?(clyde|memory)[_:\\.].*",
@@ -47,7 +53,9 @@
           }
         ]
       }
-    ],
+    ]
+  },
+  "Save decisions and results to Clyde": {
     "Stop": [
       {
         "type": "command",

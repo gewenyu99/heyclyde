@@ -1,9 +1,9 @@
 {
   "hooks": {
-    "SessionStart": [{ "matcher": "startup|resume", "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh codex SessionStart" }] }],
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh codex UserPromptSubmit" }] }],
-    "PreToolUse": [{ "matcher": ".*", "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh codex PreToolUse" }] }],
-    "PostToolUse": [{ "matcher": "mcp__.*", "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh codex PostToolUse" }] }],
-    "Stop": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh codex Stop" }] }]
+    "SessionStart": [{ "matcher": "startup|resume", "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh codex SessionStart", "statusMessage": "Load Clyde session context" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh codex UserPromptSubmit", "statusMessage": "Check whether to recall from Clyde" }] }],
+    "PreToolUse": [{ "matcher": ".*", "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh codex PreToolUse", "statusMessage": "Check Clyde memory requirements" }] }],
+    "PostToolUse": [{ "matcher": "mcp__.*", "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh codex PostToolUse", "statusMessage": "Track Clyde memory calls" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh codex Stop", "statusMessage": "Save decisions and results to Clyde" }] }]
   }
 }
