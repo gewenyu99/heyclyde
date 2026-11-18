@@ -6,6 +6,7 @@ import { DOMAIN } from "../auth.ts";
 import { setting, sql } from "../db.ts";
 import { chargeFor, includedCostMicroUsd, METERED_KINDS, type Plan as PlanCost } from "./cost.ts";
 import { geoBlocked, geoOf, refusal451 } from "./entitlement.ts";
+import { runLapseCleanup } from "./lapse.ts";
 import { paddle } from "./paddle.ts";
 import { polar } from "./polar.ts";
 import type { Provider } from "./provider.ts";
@@ -154,6 +155,11 @@ async function report(req: Request) {
 export async function handle(req: Request, path: string, url: URL, proxied: boolean): Promise<Response> {
   if (path === "/billing/usage/report") return req.method === "POST" ? report(req) : new Response(null, { status: 405, headers: { allow: "POST" } });
   if (path === "/billing/guard") return req.method === "POST" ? Response.json(await guard.run()) : new Response(null, { status: 405, headers: { allow: "POST" } });
+  if (path === "/billing/lapse") {
+    if (req.method !== "POST") return new Response(null, { status: 405, headers: { allow: "POST" } });
+    const out = await runLapseCleanup();
+    return Response.json(out, { status: out.errors ? 502 : 200 });
+  }
   if (path === "/billing/checkout") return req.method === "GET" ? checkout(req, url, proxied) : new Response(null, { status: 405, headers: { allow: "GET" } });
   if (path === "/billing/thanks") return text("thanks. Your Clyde subscription starts within a minute. Go back to your app.", 200);
   const m = /^\/billing\/([a-z]+)(\/webhook)?$/.exec(path);

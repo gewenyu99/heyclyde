@@ -9,12 +9,13 @@ import { request } from '../../src/request.ts'
 import { jwt } from './auth.ts'
 import { bearer, idOf, marker, nonce } from './bed.ts'
 import { exec, SKIP, sql, startRealMemory, type RealMemory } from './server.ts'
+import { OWNED_TABLES, seedEveryTable } from './tenants.ts'
 
 let memory: RealMemory
 
 before(async () => {
   if (SKIP) return
-  memory = await startRealMemory()
+  memory = await startRealMemory({}, { storage: true })
   exec(`update memory.allocation set param_set = 'hybrid.v1' where param_set <> 'index.v1'`)
 })
 
@@ -367,5 +368,137 @@ test('graph neighborhood', { skip: SKIP }, async () => {
   for (const e of g.edges) {
     assert.ok(nodeIds.has(e.src) && nodeIds.has(e.dst), `dangling edge ${e.src} -> ${e.dst}`)
   }
+})
+
+// ----------------------------------------------------------------------------------------------------- R65 (#70)
+
+test('revoke an app', { skip: SKIP }, async () => {
+  const a = createOwner('apps')
+  const app1 = `client-one-${nonce()}`
+  const app2 = `client-two-${nonce()}`
+  const t1 = jwt({ sub: a.id, email: a.email, client_id: app1, client_name: 'App One', jti: randomUUID() })
+  const t2 = jwt({ sub: a.id, email: a.email, client_id: app2, client_name: 'App Two', jti: randomUUID() })
+
+  for (const tok of [t1, t2]) {
+    const r = await request('POST', `${memory.url}/mcp`, {
+      headers: bearer(tok),
+      body: { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', clientInfo: { name: 'claude-ai' } } },
+      timeoutMs: 30_000,
+    })
+    assert.equal(r.status, 200, r.text)
+  }
+
+  const listed = await request('GET', `${memory.url}/me/apps`, { headers: bearer(a.signInJwt()), timeoutMs: 30_000 })
+  assert.equal(listed.status, 200, listed.text)
+  const appIds = (JSON.parse(listed.text).apps as { id: string }[]).map((x) => x.id)
+  assert.ok(appIds.includes(app1) && appIds.includes(app2), listed.text)
+
+  const rev = await request('DELETE', `${memory.url}/me/apps/${encodeURIComponent(app1)}`, {
+    headers: bearer(a.signInJwt()),
+    timeoutMs: 30_000,
+  })
+  assert.equal(rev.status, 200, rev.text)
+
+  const call1 = await request('POST', `${memory.url}/mcp`, {
+    headers: bearer(t1),
+    body: { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} },
+    timeoutMs: 30_000,
+  })
+  assert.equal(call1.status, 401, call1.text)
+
+  const call2 = await request('POST', `${memory.url}/mcp`, {
+    headers: bearer(t2),
+    body: { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} },
+    timeoutMs: 30_000,
+  })
+  assert.equal(call2.status, 200, call2.text)
+})
+
+test('export is complete and private', { skip: SKIP }, async () => {
+  const aId = randomUUID(), bId = randomUUID()
+  exec(`begin; select set_config('memory.owner', '${aId}', true); ${seedEveryTable('expa')} commit;
+    begin; select set_config('memory.owner', '${bId}', true); ${seedEveryTable('expb')} commit;
+    insert into memory.allowed_email (email, plan) values ('seed-expa@example.com', 'owner') on conflict (email) do nothing;
+    update memory.entitlement set state = 'paid', plan = 'owner' where owner_id = '${aId}';`)
+  const aJwt = jwt({ sub: aId, email: 'seed-expa@example.com', jti: randomUUID() })
+
+  const r = await request('GET', `${memory.url}/me/export`, { headers: bearer(aJwt), timeoutMs: 30_000 })
+  assert.equal(r.status, 200, r.text)
+  assert.match(String(r.headers['content-type']), /x-ndjson/)
+  const lines = r.text.trim().split('\n').filter(Boolean).map((l) => JSON.parse(l) as { table: string; row: Record<string, any> })
+  const seenTables = new Set<string>()
+  for (const item of lines) {
+    seenTables.add(item.table)
+    assert.notEqual(item.row.owner_id, bId, `leaked row from ${bId} in ${item.table}`)
+    assert.equal(item.row.owner_id, aId, `unexpected owner in ${item.table}`)
+  }
+  for (const table of OWNED_TABLES) {
+    assert.ok(seenTables.has(table), `export missing owned table ${table}`)
+  }
+})
+
+test('delete account', { skip: SKIP }, async () => {
+  const delId = randomUUID()
+  const email = 'seed-delacc@example.com'
+  exec(`begin; select set_config('memory.owner', '${delId}', true); ${seedEveryTable('delacc')} commit;
+    insert into memory.allowed_email (email, plan) values ('${email}', 'owner') on conflict (email) do nothing;
+    update memory.entitlement set state = 'paid', plan = 'owner', subscription_id = 'sub-delacc', customer_id = 'cus-delacc'
+      where owner_id = '${delId}';
+    delete from auth.users where email = '${email}';
+    insert into auth.users (id, email) values ('${delId}', '${email}');`)
+
+  const oauth = jwt({ sub: delId, email, client_id: 'del-client', jti: randomUUID() })
+  const init = await request('POST', `${memory.url}/mcp`, {
+    headers: bearer(oauth),
+    body: { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', clientInfo: { name: 'claude-ai' } } },
+    timeoutMs: 30_000,
+  })
+  assert.equal(init.status, 200, init.text)
+  const sid = String(init.headers['mcp-session-id'])
+  const png1 = randomBytes(512), png2 = randomBytes(512)
+  const storeNote = await request('POST', `${memory.url}/mcp`, {
+    headers: { ...bearer(oauth), 'mcp-session-id': sid },
+    body: {
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: {
+        name: 'remember',
+        arguments: {
+          pattern: 'observations',
+          title: `Account delete blobs ${nonce()}`,
+          body: 'Two binary blobs before delete.',
+          evidence: 'Test.',
+          artifacts: [
+            { name: 'one.png', kind: 'image', media_type: 'image/png', base64: png1.toString('base64') },
+            { name: 'two.png', kind: 'image', media_type: 'image/png', base64: png2.toString('base64') },
+          ],
+        },
+      },
+    },
+    timeoutMs: 30_000,
+  })
+  assert.equal(storeNote.status, 200, storeNote.text)
+  assert.equal(sql(`select count(*)::int as n from storage.objects where bucket_id = 'memory-blobs' and name like '${delId}/%'`)[0].n, 2)
+
+  const auditsBefore = sql(`select count(*)::int as n from memory.admin_audit where action = 'account_delete' and before is null and after is null`)[0].n
+
+  const delRes = await request('DELETE', `${memory.url}/me`, {
+    headers: bearer(jwt({ sub: delId, email, jti: randomUUID() })),
+    timeoutMs: 30_000,
+  })
+  assert.equal(delRes.status, 200, delRes.text)
+
+  for (const table of OWNED_TABLES) {
+    const n = sql(`select count(*)::int as n from memory.${table} where owner_id = '${delId}'`)[0].n
+    assert.equal(n, 0, `${table} still has ${n} rows for ${delId}`)
+  }
+  assert.equal(sql(`select count(*)::int as n from storage.objects where bucket_id = 'memory-blobs' and name like '${delId}/%'`)[0].n, 0)
+  const remainingObjects = [...(memory.storage?.objects.keys() ?? [])].filter((k) => k.startsWith(`${delId}/`) || k.startsWith(`incoming/${delId}/`))
+  assert.equal(remainingObjects.length, 0, JSON.stringify(remainingObjects))
+  assert.equal(sql(`select count(*)::int as n from auth.users where id = '${delId}'`)[0].n, 0)
+  assert.ok(memory.auth.deletedUsers.has(delId))
+  const auditsAfter = sql(`select count(*)::int as n from memory.admin_audit where action = 'account_delete' and before is null and after is null`)[0].n
+  assert.equal(auditsAfter, auditsBefore + 1)
 })
 

@@ -252,3 +252,43 @@ export async function quota(db: Sql = sql) {
   const [row] = await db`select coalesce(sum(size), 0)::bigint as used from memory.blob`;
   return { used: Number(row.used), cap: await quotaCap(db) };
 }
+
+async function deleteStoragePrefix(prefix: string): Promise<number> {
+  if (!storageOn() || !prefix) return 0;
+  let removed = 0;
+  for (;;) {
+    const r = await call(`/object/list/${BUCKET}`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prefix, limit: 100, offset: 0 }),
+    });
+    if (!r.ok) {
+      await r.body?.cancel().catch(() => {});
+      return removed;
+    }
+    const items: Row[] = await r.json();
+    if (!items.length) return removed;
+    const files: string[] = [];
+    for (const o of items) {
+      const name = String(o.name ?? "");
+      if (!name) continue;
+      if (o.id === null && o.created_at === null) {
+        removed += await deleteStoragePrefix(`${prefix}/${name}`);
+      } else {
+        files.push(`${prefix}/${name}`);
+      }
+    }
+    if (!files.length) return removed;
+    const del = await call(`/object/${BUCKET}`, {
+      method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ prefixes: files }),
+    });
+    await del.body?.cancel().catch(() => {});
+    removed += files.length;
+    if (items.length < 100) return removed;
+  }
+}
+
+/** Delete every Storage object held under this non-Wen owner's prefix (`<owner>/` and `incoming/<owner>/`). */
+export async function removeOwner(owner: string): Promise<number> {
+  if (!storageOn() || !owner || owner === await wen()) return 0;
+  return await deleteStoragePrefix(owner) + await deleteStoragePrefix(`incoming/${owner}`);
+}

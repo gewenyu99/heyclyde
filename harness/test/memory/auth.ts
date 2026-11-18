@@ -20,6 +20,7 @@ export type FakeAuth = {
   authorizations: Record<string, { redirect_uri: string; client: { id: string; name: string } }>
   /** When non-null, POST /auth/v1/otp replies with this status and JSON body instead of 200. */
   otpFailure: { status: number; body: unknown } | null
+  deletedUsers: Set<string>
   close: () => Promise<void>
 }
 
@@ -45,6 +46,7 @@ export async function startFakeAuth(extra?: (req: http.IncomingMessage, res: htt
   const signIns: FakeAuth['signIns'] = {}
   const passwords: FakeAuth['passwords'] = {}
   const authorizations: FakeAuth['authorizations'] = {}
+  const deletedUsers = new Set<string>()
   const state: FakeAuth = {
     url: '',
     calls,
@@ -52,6 +54,7 @@ export async function startFakeAuth(extra?: (req: http.IncomingMessage, res: htt
     passwords,
     authorizations,
     otpFailure: null,
+    deletedUsers,
     close: () => new Promise((resolve) => { server.closeAllConnections(); server.close(() => resolve()) }),
   }
   const server = http.createServer((req, res) => {
@@ -75,8 +78,15 @@ export async function startFakeAuth(extra?: (req: http.IncomingMessage, res: htt
       if (req.method === 'GET' && path === '/auth/v1/user') {
         const claims = claimsOf(req.headers.authorization ?? '')
         if (!claims?.email) return reply(401, { msg: 'invalid JWT' })
+        if (claims.sub && deletedUsers.has(String(claims.sub).toLowerCase())) return reply(401, { msg: 'user deleted' })
         // A token with unconfirmed: true is a user who never clicked their confirmation link.
         return reply(200, { id: claims.sub ?? 'fake-user', email: claims.email, email_confirmed_at: claims.unconfirmed ? null : '2026-11-01T00:00:00Z' })
+      }
+      const adminDel = /^\/auth\/v1\/admin\/users\/([^/]+)$/.exec(path)
+      if (req.method === 'DELETE' && adminDel) {
+        const uid = decodeURIComponent(adminDel[1]).toLowerCase()
+        deletedUsers.add(uid)
+        return reply(200, { id: uid, deleted: true })
       }
       if (req.method === 'POST' && path === '/auth/v1/otp') {
         if (state.otpFailure) return reply(state.otpFailure.status, state.otpFailure.body)

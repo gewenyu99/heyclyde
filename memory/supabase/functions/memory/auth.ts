@@ -37,12 +37,12 @@ export type Principal = {
 /** Which credential a path takes. /healthz and the console's files take none. Any path not named takes none of them
  * and gets 401. */
 export function credentialFor(path: string): Kind | null {
-  if (path === "/billing/usage/report" || path === "/billing/guard") return "cron";
+  if (path === "/billing/usage/report" || path === "/billing/guard" || path === "/billing/lapse") return "cron";
   if (isWebhook(path)) return "webhook";
   if (path === "/billing/checkout" || path === "/billing/thanks") return "open";
   if (path === "/healthz" || path === "/install" || path.startsWith("/install/")) return "open";
   if (path.startsWith("/oauth/") || path.startsWith("/.well-known/")) return "open";
-  if (path === "/devices/claim" || path.startsWith("/me/")) return "owner";
+  if (path === "/devices/claim" || path === "/me" || path.startsWith("/me/")) return "owner";
   if (path === "/" || path === "/api/v1" || path.startsWith("/api/v1/")) return "admin";
   if (["/mcp", "/mcp/", "/entries", "/recall"].includes(path)) return "agent";
   if (path === "/blobs/sweep") return "cron";
@@ -139,7 +139,21 @@ async function resolve(kind: Kind, token: string, seen: Seen): Promise<Principal
     // An OAuth client, like claude.ai, holds a Supabase Auth access token for the owner. No hooks run there.
     if (isJwt(token)) {
       const claims = await ownerOf(token);
-      return claims?.client_id ? { role: "device", device: `oauth:${claims.client_id}`, hooks: "metadata", ...(claims.sub ? { owner: String(claims.sub) } : {}) } : null;
+      if (!claims?.client_id) return null;
+      const cid = String(claims.client_id);
+      const uid = UUID.test(String(claims.sub ?? "")) ? String(claims.sub).toLowerCase() : null;
+      if (uid) {
+        const [acc] = await sql`select to_jsonb(a)->'oauth_apps' as apps from memory.account a where a.owner_id = ${uid}::uuid`;
+        const apps = acc?.apps as Record<string, { revoked_at?: string | null }> | null | undefined;
+        if (apps?.[cid]?.revoked_at) return null;
+        if (apps !== null && apps !== undefined && !apps[cid]) {
+          const cname = typeof claims.client_name === "string" && claims.client_name.trim() ? claims.client_name.trim() : cid;
+          const entry = { id: cid, name: cname, granted_at: new Date().toISOString(), revoked_at: null };
+          await sql`update memory.account set oauth_apps = coalesce(oauth_apps, '{}'::jsonb) || ${sql.json({ [cid]: entry })}
+            where owner_id = ${uid}::uuid`.catch(() => {});
+        }
+      }
+      return { role: "device", device: `oauth:${cid}`, hooks: "metadata", ...(uid ? { owner: uid } : {}) };
     }
     // A computer's token lapses after 90 days unused. Rerunning the installer signs it in again.
     // What a hook reports rides on the same write, so every computer's version is on its row.
@@ -205,6 +219,11 @@ function claimsOf(jwt: string): Record<string, unknown> {
 
 // Answers for a minute, so an MCP client's burst of calls asks Supabase Auth once.
 const owners = new Map<string, { until: number; claims: Record<string, unknown> | null }>();
+
+/** Clears the in-process token claims cache (used after app revocation or account deletion). */
+export function forgetOwners() {
+  owners.clear();
+}
 
 /** Whether anyone may sign in (R38), not just allowlisted emails. Off until tenancy (R25) gives each owner their own
  * memory: with it off, sign-in is exactly as before, so billing stays dormant. */
@@ -284,9 +303,13 @@ export async function authenticate(req: Request, path: string): Promise<Principa
     who.timing = `entitlement;dur=${v.ms.toFixed(2)};desc="${v.source}"`;
     if (!v.plan.open) {
       const refused = await refusal(v, geoOf(req, await viaProxy(req)));
-      refused.headers.set("server-timing", who.timing);
-      if (!path.startsWith("/mcp")) return refused;
-      who.denied = refused;
+      const meAllowed = refused.status !== 451 && (path === "/me" || path.startsWith("/me/")) &&
+        ["GET", "HEAD", "DELETE"].includes(req.method);
+      if (!meAllowed) {
+        refused.headers.set("server-timing", who.timing);
+        if (!path.startsWith("/mcp")) return refused;
+        who.denied = refused;
+      }
     }
   }
   return who;

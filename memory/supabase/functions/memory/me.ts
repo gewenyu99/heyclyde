@@ -1,10 +1,13 @@
 // The signed-in owner's own routes (R55 reviewer account, R51/R52 entries, R60 billing/usage, R61 agents/devices,
 // R62-R64 quests/graph). Every request runs inside the owner's tenant (R49), except PATCH /me/billing which updates
 // spend_limit_cents through rootSql scoped to owner_id (memory_tenant has SELECT-only on entitlement).
-import { entitlementOf } from "./auth.ts";
+import { encodeBase64 } from "jsr:@std/encoding@1/base64";
+import { entitlementOf, forgetOwners } from "./auth.ts";
 import { OverBudget } from "./budget.ts";
 import { chargeFor, includedCostMicroUsd, METERED_KINDS, PLANNED, SUPABASE_PRO } from "./billing/cost.ts";
 import { forget, type Plan } from "./billing/entitlement.ts";
+import { deleteOwnerAccount, OwnerProtectedError } from "./billing/lapse.ts";
+import { EXPORT_BLOB_MAX, get as getBlob, storageOn } from "./blobs.ts";
 import { root as rootSql, sql } from "./db.ts";
 import { screen } from "./judge.ts";
 import {
@@ -748,6 +751,117 @@ export async function handle(req: Request, path: string, owner: string): Promise
       return rows;
     });
     return json({ quest: created }, 201);
+  }
+
+  // ---------------------------------------------------------------- connected apps, export, account deletion (R65 #70)
+  if (path === "/me/apps" && req.method === "GET") {
+    const [acc] = await sql`select to_jsonb(a)->'oauth_apps' as apps from memory.account a where a.owner_id = ${owner}::uuid`;
+    const stored = (acc?.apps ?? {}) as Record<string, { id?: string; name?: string; granted_at?: string; revoked_at?: string | null }>;
+    const byId = new Map<string, { id: string; name: string; granted_at: string | null }>();
+    for (const [k, v] of Object.entries(stored)) {
+      if (v && !v.revoked_at) {
+        const id = String(v.id ?? k);
+        byId.set(id, { id, name: String(v.name ?? id), granted_at: v.granted_at ? String(v.granted_at) : null });
+      }
+    }
+    const [{ hasConsents }] = await rootSql`select to_regclass('auth.oauth_consents') is not null as "hasConsents"`;
+    if (hasConsents) {
+      const rows = await rootSql`select c.client_id::text as id,
+          coalesce(cl.client_name, c.client_id::text) as name,
+          c.granted_at
+        from auth.oauth_consents c
+        left join auth.oauth_clients cl on cl.id = c.client_id
+        where c.user_id = ${owner}::uuid and c.revoked_at is null
+        order by c.granted_at desc nulls last`.catch(() => []);
+      for (const r of rows) {
+        const id = String(r.id);
+        if (stored[id]?.revoked_at) continue;
+        byId.set(id, {
+          id,
+          name: String(r.name ?? id),
+          granted_at: r.granted_at ? new Date(r.granted_at).toISOString() : null,
+        });
+      }
+    }
+    return json({ apps: [...byId.values()] });
+  }
+
+  if ((m = /^\/me\/apps\/([^/]+)$/.exec(path)) && req.method === "DELETE") {
+    const appId = decodeURIComponent(m[1]).replace(CONTROL, "").trim();
+    if (!appId || appId.length > 200) return json({ error: "That isn't an app id." }, 400);
+    const [acc] = await sql`select to_jsonb(a)->'oauth_apps' as apps from memory.account a where a.owner_id = ${owner}::uuid`;
+    const stored = (acc?.apps ?? {}) as Record<string, { id?: string; name?: string; granted_at?: string; revoked_at?: string | null }>;
+    const cur = stored[appId];
+    let foundInAuth = false;
+    const [{ hasConsents }] = await rootSql`select to_regclass('auth.oauth_consents') is not null as "hasConsents"`;
+    if (hasConsents) {
+      const revoked = await rootSql`update auth.oauth_consents set revoked_at = now()
+        where user_id = ${owner}::uuid and client_id::text = ${appId} and revoked_at is null
+        returning client_id`.catch(() => []);
+      foundInAuth = revoked.length > 0;
+    }
+    if ((!cur || cur.revoked_at) && !foundInAuth) return json({ error: `No active app ${appId}.` }, 404);
+    const nowIso = new Date().toISOString();
+    const updated = { id: appId, name: cur?.name ?? appId, granted_at: cur?.granted_at ?? nowIso, revoked_at: nowIso };
+    await sql.begin(async (tx) => {
+      await tx`update memory.account
+        set oauth_apps = coalesce(oauth_apps, '{}'::jsonb) || ${tx.json({ [appId]: updated })}
+        where owner_id = ${owner}::uuid`;
+      await tx`delete from memory.mcp_client where principal = ${"oauth:" + appId}`;
+      await tx`insert into memory.admin_audit (action, target, before, after)
+        values ('app_revoke', ${"app:" + appId}, null, ${tx.json({ app_id: appId })})`;
+    });
+    forgetOwners();
+    return json({ revoked: appId, revoked_at: nowIso });
+  }
+
+  if (path === "/me/export" && req.method === "GET") {
+    const tables = [
+      "source", "device", "account", "entitlement", "agent", "agent_binding",
+      "blob", "entry", "entry_blob", "entry_provenance", "entry_embedding", "link", "co_use",
+      "confidence_log", "mcp_session", "mcp_client", "retrieval", "shadow_retrieval", "feedback",
+      "message", "message_delivery", "board_seen", "quest", "quest_note", "quest_blob",
+      "judge_cache", "upload", "event", "burst", "usage", "admin_audit",
+    ] as const;
+    const chunks: string[] = [];
+    for (const table of tables) {
+      const rows = await sql`select * from ${sql("memory." + table)} where owner_id = ${owner}::uuid`;
+      for (const r of rows) {
+        if (table === "blob") {
+          let bytes: Uint8Array | null = r.content instanceof Uint8Array ? r.content : null;
+          if (!bytes && r.stored === "storage" && Number(r.size ?? 0) <= EXPORT_BLOB_MAX && storageOn()) {
+            bytes = await getBlob(String(r.sha256), owner);
+          }
+          chunks.push(JSON.stringify({
+            table,
+            row: { ...r, content: bytes ? { base64: encodeBase64(new Uint8Array(bytes)) } : null },
+          }) + "\n");
+        } else {
+          const clean: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(r)) {
+            clean[k] = v instanceof Uint8Array ? { base64: encodeBase64(v) } : v;
+          }
+          chunks.push(JSON.stringify({ table, row: clean }) + "\n");
+        }
+      }
+    }
+    return new Response(chunks.join(""), {
+      headers: {
+        "content-type": "application/x-ndjson; charset=utf-8",
+        "content-disposition": 'attachment; filename="clyde-export.ndjson"',
+        "cache-control": "no-store",
+      },
+    });
+  }
+
+  if (path === "/me" && req.method === "DELETE") {
+    try {
+      await deleteOwnerAccount(owner, "owner");
+      return json({ deleted: owner });
+    } catch (e) {
+      if (e instanceof OwnerProtectedError) return json({ error: e.message }, 403);
+      throw e;
+    }
   }
 
   return json({ error: "No such endpoint." }, 404);

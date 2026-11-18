@@ -22,13 +22,14 @@ let POLAR: string
 before(async () => {
   if (SKIP) return
   providers = await startFakeProviders()
-  memory = await startRealMemory({ MEMORY_ENTITLEMENT_TTL_MS: String(TTL), POLAR_API_URL: providers.url }, { storage: true })
+  memory = await startRealMemory({ MEMORY_ENTITLEMENT_TTL_MS: String(TTL), POLAR_API_URL: providers.url, RESEND_API_URL: providers.url }, { storage: true })
   POLAR = newPolarSecret()
   setSetting('open_signup', 'on')
   setSetting('embed_budget_tokens', '1000000000')
   setSetting('judge_write_reserve_tokens', '1000000000')
   putSecret('polar_webhook_secret', POLAR)
   putSecret('polar_api_token', `test-polar-api-${nonce()}`)
+  putSecret('resend_api_key', `test-resend-${nonce()}`)
 })
 
 after(async () => {
@@ -253,4 +254,47 @@ test('blobs live under the owner', { skip: SKIP }, async () => {
   const objects = sql(`select name from storage.objects where bucket_id = 'memory-blobs' and name like '%/${sha}'`)
   assert.equal(objects.length, 1, JSON.stringify(objects))
   assert.ok(String(objects[0].name).startsWith(`${a.id}/`), `expected ${a.id}/..., got ${objects[0].name}`)
+})
+
+test('lapsed accounts after 90 days', { skip: SKIP }, async () => {
+  const { user: old } = await paid()
+  const { user: fresh } = await paid()
+  for (const [u, sub] of [[old, `sub_old_${nonce()}`], [fresh, `sub_fresh_${nonce()}`]] as const) {
+    const hookBody = polarSubscription('subscription.revoked', { owner: u.id, id: sub, status: 'canceled' })
+    assert.equal((await deliver(memory.url, '/billing/polar', hookBody, signPolar(POLAR, hookBody))).status, 200)
+    exec(`insert into memory.entry (owner_id, id, pattern, kind, title, body, authority, scope, evidence)
+      values ('${u.id}', 'lapse-note-${nonce()}', 'observations', 'observation', 'Lapse note', 'Hold on.', 'observed', 'global', 'Test.');`)
+  }
+  const runLapse = async () => {
+    const r = await request('POST', `${memory.url}/billing/lapse`, { headers: bearer(memory.cronSecret), body: {}, timeoutMs: 30_000 })
+    assert.equal(r.status, 200, r.text)
+    return JSON.parse(r.text)
+  }
+
+  // Day 60 for old, day 59 for fresh -> day-60 warning only for old.
+  exec(`update memory.entitlement set lapsed_at = now() - interval '60 days', lapse_emails_sent = '{}' where owner_id = '${old.id}';
+    update memory.entitlement set lapsed_at = now() - interval '59 days', lapse_emails_sent = '{}' where owner_id = '${fresh.id}';`)
+  await runLapse()
+  assert.equal(providers.emails.filter((e) => e.to.includes(old.email)).length, 1)
+  assert.equal(providers.emails.filter((e) => e.to.includes(fresh.email)).length, 0)
+  // Idempotent on re-run within same stage.
+  await runLapse()
+  assert.equal(providers.emails.filter((e) => e.to.includes(old.email)).length, 1)
+
+  // Day 83 for old, still day 59 for fresh -> day-83 warning for old.
+  exec(`update memory.entitlement set lapsed_at = now() - interval '83 days' where owner_id = '${old.id}';`)
+  await runLapse()
+  assert.equal(providers.emails.filter((e) => e.to.includes(old.email)).length, 2)
+  assert.equal(providers.emails.filter((e) => e.to.includes(fresh.email)).length, 0)
+  assert.equal(sql(`select count(*)::int as n from memory.account where owner_id = '${old.id}'`)[0].n, 1)
+
+  // Day 91 for old, still day 59 for fresh -> old deleted, fresh kept.
+  exec(`update memory.entitlement set lapsed_at = now() - interval '91 days' where owner_id = '${old.id}';`)
+  await runLapse()
+  assert.equal(providers.emails.filter((e) => e.to.includes(old.email)).length, 2)
+  assert.equal(sql(`select count(*)::int as n from memory.account where owner_id = '${old.id}'`)[0].n, 0)
+  assert.equal(sql(`select count(*)::int as n from memory.entry where owner_id = '${old.id}'`)[0].n, 0)
+  assert.equal(sql(`select count(*)::int as n from memory.entitlement where owner_id = '${old.id}'`)[0].n, 0)
+  assert.equal(sql(`select count(*)::int as n from memory.account where owner_id = '${fresh.id}'`)[0].n, 1)
+  assert.equal(sql(`select count(*)::int as n from memory.entry where owner_id = '${fresh.id}'`)[0].n, 1)
 })

@@ -69,27 +69,51 @@ async function planFor(tx: Sql, p: Provider, productId: string | null) {
   return (d?.value as string) || "clyde";
 }
 
-async function apply(tx: Sql, p: Provider, e: BillingEvent, owner: string, blocked: boolean) {
+async function apply(tx: Sql, p: Provider, e: BillingEvent, owner: string, blocked: boolean, hasLapse: boolean) {
   const s = e.subscription;
   if (s) {
     const state = blocked ? "blocked" : s.status;
     const plan = await planFor(tx, p, s.productId);
-    await tx`insert into memory.entitlement as en (owner_id, provider, customer_id, subscription_id, plan, state, current_period_end,
-        cancel_at_period_end, billing_country, billing_region, event_at)
-      values (${owner}, ${p.name}, ${s.customerId}, ${s.id}, ${plan}, ${state}, ${s.periodEnd}, ${s.cancelAtPeriodEnd},
-        ${s.country}, ${s.region}, ${e.at})
-      on conflict (owner_id) do update set
-        provider = excluded.provider, customer_id = coalesce(excluded.customer_id, en.customer_id),
-        subscription_id = excluded.subscription_id, plan = excluded.plan,
-        -- A refunded or blocked subscription stays that way; only a new subscription starts over.
-        state = case when en.subscription_id = excluded.subscription_id and en.state in ('refunded', 'blocked') then en.state
-                     else excluded.state end,
-        refunded = en.refunded and en.subscription_id = excluded.subscription_id,
-        current_period_end = excluded.current_period_end, cancel_at_period_end = excluded.cancel_at_period_end,
-        billing_country = coalesce(excluded.billing_country, en.billing_country),
-        billing_region = coalesce(excluded.billing_region, en.billing_region),
-        event_at = excluded.event_at, updated_at = now()
-      where en.event_at <= excluded.event_at`;
+    if (hasLapse) {
+      await tx`insert into memory.entitlement as en (owner_id, provider, customer_id, subscription_id, plan, state, current_period_end,
+          cancel_at_period_end, billing_country, billing_region, event_at, lapsed_at, lapse_emails_sent)
+        values (${owner}, ${p.name}, ${s.customerId}, ${s.id}, ${plan}, ${state}, ${s.periodEnd}, ${s.cancelAtPeriodEnd},
+          ${s.country}, ${s.region}, ${e.at}, ${state === "lapsed" ? e.at : null}, '{}'::int[])
+        on conflict (owner_id) do update set
+          provider = excluded.provider, customer_id = coalesce(excluded.customer_id, en.customer_id),
+          subscription_id = excluded.subscription_id, plan = excluded.plan,
+          -- A refunded or blocked subscription stays that way; only a new subscription starts over.
+          state = case when en.subscription_id = excluded.subscription_id and en.state in ('refunded', 'blocked') then en.state
+                       else excluded.state end,
+          refunded = en.refunded and en.subscription_id = excluded.subscription_id,
+          current_period_end = excluded.current_period_end, cancel_at_period_end = excluded.cancel_at_period_end,
+          billing_country = coalesce(excluded.billing_country, en.billing_country),
+          billing_region = coalesce(excluded.billing_region, en.billing_region),
+          lapsed_at = case when excluded.state = 'lapsed' then coalesce(en.lapsed_at, excluded.event_at)
+                           when excluded.state in ('paid', 'past_due', 'comp') then null
+                           else en.lapsed_at end,
+          lapse_emails_sent = case when excluded.state in ('paid', 'past_due', 'comp') then '{}'::int[]
+                                   else en.lapse_emails_sent end,
+          event_at = excluded.event_at, updated_at = now()
+        where en.event_at <= excluded.event_at`;
+    } else {
+      await tx`insert into memory.entitlement as en (owner_id, provider, customer_id, subscription_id, plan, state, current_period_end,
+          cancel_at_period_end, billing_country, billing_region, event_at)
+        values (${owner}, ${p.name}, ${s.customerId}, ${s.id}, ${plan}, ${state}, ${s.periodEnd}, ${s.cancelAtPeriodEnd},
+          ${s.country}, ${s.region}, ${e.at})
+        on conflict (owner_id) do update set
+          provider = excluded.provider, customer_id = coalesce(excluded.customer_id, en.customer_id),
+          subscription_id = excluded.subscription_id, plan = excluded.plan,
+          -- A refunded or blocked subscription stays that way; only a new subscription starts over.
+          state = case when en.subscription_id = excluded.subscription_id and en.state in ('refunded', 'blocked') then en.state
+                       else excluded.state end,
+          refunded = en.refunded and en.subscription_id = excluded.subscription_id,
+          current_period_end = excluded.current_period_end, cancel_at_period_end = excluded.cancel_at_period_end,
+          billing_country = coalesce(excluded.billing_country, en.billing_country),
+          billing_region = coalesce(excluded.billing_region, en.billing_region),
+          event_at = excluded.event_at, updated_at = now()
+        where en.event_at <= excluded.event_at`;
+    }
     if (blocked) {
       // Nothing of theirs stays: the account is marked with the billing country, and its computers lose their tokens.
       // Tenancy (R25) adds the owner's entries, blobs, messages, retrievals and events to this delete.
@@ -138,10 +162,14 @@ export async function receive(req: Request, p: Provider): Promise<Response> {
     const sub = r.subscriptionId;
     await once(p, "cancel", sub, () => p.cancel(sub));
   }
+  const [{ hasLapse }] = await sql`select exists (
+    select 1 from information_schema.columns
+    where table_schema = 'memory' and table_name = 'entitlement' and column_name = 'lapsed_at'
+  ) as "hasLapse"`;
   await sql.begin(async (tx) => {
     const [fresh] = await tx`insert into memory.billing_event (provider, event_id, type, owner_id) values (${p.name}, ${e.id}, ${e.type}, ${owner})
       on conflict do nothing returning 1`;
-    if (fresh) await apply(tx, p, e, owner, blocked);
+    if (fresh) await apply(tx, p, e, owner, blocked, Boolean(hasLapse));
   });
   // This instance answers the owner's next call from the new state at once; the others within the cache's minute.
   forget(owner);

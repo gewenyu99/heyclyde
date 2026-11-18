@@ -301,6 +301,13 @@ async function finish(p: Page, id: string, jwt: string, user: Record<string, any
     await sql`insert into memory.admin_audit (action, target, after)
       values (${`oauth_${action}`}, ${`client:${details.body.client?.id ?? details.body.client?.client_id ?? "?"}`},
         ${sql.json({ name, redirect_uri: target })})`;
+    const cid = String(details.body.client?.id ?? details.body.client?.client_id ?? "");
+    const uid = UUID.test(String(user?.id ?? "")) ? String(user.id).toLowerCase() : null;
+    if (action === "approve" && cid && uid) {
+      const entry = { id: cid, name: String(name || cid), granted_at: new Date().toISOString(), revoked_at: null };
+      await sql`update memory.account set oauth_apps = coalesce(oauth_apps, '{}'::jsonb) || ${sql.json({ [cid]: entry })}
+        where owner_id = ${uid}::uuid`.catch(() => {});
+    }
     if (action === "deny") {
       console.warn(`memory: oauth_deny for ${name}: redirect_uri ${target}`);
       if (!direct) await sql`update memory.oauth_consent set redirect_url = ${redirect!} where authorization_id = ${id}`;

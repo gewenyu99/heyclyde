@@ -75,6 +75,7 @@ export type ProviderCall = { method: string; path: string; body: any; status: nu
  * subscription's paid orders. */
 export async function startFakeProviders() {
   const calls: ProviderCall[] = []
+  const emails: { from: string; to: string[]; subject: string; text: string }[] = []
   const events = new Map<string, any>()
   const state = { failing: false, orders: new Map<string, { id: string; amount: number }[]>() }
   const server = http.createServer((req, res) => {
@@ -118,13 +119,22 @@ export async function startFakeProviders() {
       if (req.method === 'GET' && p === '/transactions') return reply(200, { data: [] })
       if (req.method === 'POST' && p === '/adjustments') return state.failing ? reply(500, {}) : reply(201, { data: { id: 'adj_test' } })
       if (req.method === 'POST' && p === '/transactions') return reply(201, { data: { checkout: { url: `https://sandbox.paddle.test/checkout/${body?.custom_data?.owner_id}` } } })
+      if (req.method === 'POST' && p === '/emails') {
+        emails.push({
+          from: String(body?.from ?? ''),
+          to: Array.isArray(body?.to) ? body.to.map(String) : [],
+          subject: String(body?.subject ?? ''),
+          text: String(body?.text ?? ''),
+        })
+        return reply(200, { id: `email_${randomUUID()}` })
+      }
       reply(404, { error: `fake providers have no ${req.method} ${p}` })
     })
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const { port } = server.address() as { port: number }
   return {
-    url: `http://127.0.0.1:${port}`, calls, events, state,
+    url: `http://127.0.0.1:${port}`, calls, emails, events, state,
     close: () => new Promise<void>((resolve) => { server.closeAllConnections(); server.close(() => resolve()) }),
   }
 }

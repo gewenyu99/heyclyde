@@ -300,7 +300,7 @@ async function route(req: Request, time: (entry: string) => void): Promise<Respo
       const res = tenant
         ? await asTenant(tenant.owner, () => serve(req, url, path, who), { console: tenant.console, timings })
         : await serve(req, url, path, who);
-      if (!who.denied && who.entitlement?.plan.open) {
+      if (!who.denied && who.entitlement?.plan.open && !(path === "/me" && req.method === "DELETE")) {
         const declared = res.headers.get("content-length");
         let bytes = declared !== null ? Number(declared) : 0;
         if (declared === null && res.body) bytes = (await res.clone().arrayBuffer()).byteLength;
@@ -347,7 +347,7 @@ async function serve(req: Request, url: URL, path: string, who: Principal): Prom
     return admin.claimDevice(data, who.owner ?? null);
   }
   // R55: the signed-in owner's own notes (the reviewer account; R51's site builds on these).
-  if (path.startsWith("/me/")) {
+  if (path === "/me" || path.startsWith("/me/")) {
     if (who.role !== "owner" || !who.owner) return json({ error: "Sign in to use /me." }, 403);
     return me.handle(req, path, who.owner);
   }
