@@ -333,7 +333,8 @@ for line in read_txt(cfg / "memory-hook").splitlines():
         ver = line[8:].strip() if isver(line[8:].strip()) else "dev"
         break
 failed_file = cfg / "update-failed"
-vheaders = {"x-memory-client-version": ver}
+# A User-Agent of its own: Cloudflare in front of memory.heyclyde.me refuses the default Python-urllib one (error 1010).
+vheaders = {"x-memory-client-version": ver, "User-Agent": f"clyde-hook/{ver}"}
 if failed_file.exists():
     vheaders["x-memory-update-failed"] = "1"
 
@@ -541,7 +542,7 @@ url = (os.environ.get("MEMORY_URL") or "https://memory.heyclyde.me").rstrip("/")
 sid = None
 def rpc(rid, method, params):
     global sid
-    hdrs = {"Authorization": f"Bearer {tok}", "Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
+    hdrs = {"Authorization": f"Bearer {tok}", "Content-Type": "application/json", "Accept": "application/json, text/event-stream", "User-Agent": "clyde-setup/1"}
     if sid: hdrs["Mcp-Session-Id"] = sid
     req = urllib.request.Request(url, data=json.dumps({"jsonrpc": "2.0", "id": rid, "method": method, "params": params}).encode(), headers=hdrs)
     with urllib.request.urlopen(req, timeout=15) as r:

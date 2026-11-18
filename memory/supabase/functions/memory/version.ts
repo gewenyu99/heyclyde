@@ -12,7 +12,7 @@
 // Each is pinned to the hash of its surface: version.test.ts fails unless the surface on disk hashes to the entry for the
 // current version, no two versions share a hash, and no entry that main already has changed. After a bump, add an entry
 // with the hash the failing test prints. deploy.sh runs that guard before it deploys.
-export const CLIENT_VERSION = "20261117.1";
+export const CLIENT_VERSION = "20261117.2";
 export const SERVER_VERSION = "20261117.2";
 
 /** Every client version that was released, oldest first, with the day it was. A client is expired only when it is behind
@@ -22,6 +22,7 @@ export const CLIENT_RELEASES: { version: string; released: string }[] = [
   { version: "20261102.1", released: "2026-11-02" },
   { version: "20261115.1", released: "2026-11-15" },
   { version: "20261117.1", released: "2026-11-17" },
+  { version: "20261117.2", released: "2026-11-17" },
 ];
 
 /** SHA-256 of the client files at each client version: `{ "20261102.1": "<hash>" }`. Entries are never edited or removed. */
@@ -29,6 +30,7 @@ export const CLIENT_SURFACE_HASHES: Record<string, string> = {
   "20261102.1": "70276f9bf6b6cc030f83e7e46afdc3b02abd42973615d249c433f40415ec89cb",
   "20261115.1": "e1224e98bff182a79adb223a3341793a8eabc0f980e963ba3605c5b1950b7ccb",
   "20261117.1": "28194dd98f0ec4cd38b26ccd8d1bf3d889173f3caafad014edecde5348067c5d",
+  "20261117.2": "fe076057a1a60d3f33b26fc236d5ac9183dce56aa8eea7975b37e95f4db1af56",
 };
 
 /** SHA-256 of the MCP tools and server instructions at each server version. Entries are never edited or removed. */
@@ -107,7 +109,7 @@ export function installerNote(status: ClientStatus, updateFailed: boolean): stri
   return status === "unknown" || (status === "expired" && updateFailed) ? UPDATE_NOTE : "";
 }
 
-/** True for a call from clyde-hook.sh, which sends its requests through Python's urllib. Copies from before 20261117.1 send
+/** True for a call from clyde-hook.sh: Python's urllib (copies from before 20261117.1) or clyde-hook/<version>. Old copies send
  * no version (they came from the docs, not the installer, and have no memory-hook to update them), so a missing version
  * from one of them is no reason to tell the person their client is out of date. */
-export const fromClydeHook = (userAgent: string | null | undefined): boolean => /^Python-urllib\//.test(userAgent ?? "");
+export const fromClydeHook = (userAgent: string | null | undefined): boolean => /^(Python-urllib|clyde-hook)\//.test(userAgent ?? "");

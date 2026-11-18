@@ -203,6 +203,7 @@ test('R78 an old clyde-hook hears no installer note', () => {
   const note = (ua: string, sent: string | null) => fromClydeHook(ua) && sent === null ? '' : installerNote(clientStatus(sent, 30), false)
   assert.equal(note('Python-urllib/3.9', null), '')
   assert.equal(note('Python-urllib/3.12', null), '')
+  assert.equal(note('clyde-hook/dev', null), '')
   assert.notEqual(note('curl/8.7.1', null), '')
   assert.equal(note('Python-urllib/3.9', CLIENT_VERSION), '')
   assert.equal(note('curl/8.7.1', CLIENT_VERSION), '')

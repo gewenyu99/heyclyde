@@ -24,11 +24,11 @@ const TOKEN = 'device-token-for-the-r78-test'
 const homes: string[] = []
 after(() => { for (const h of homes) rmSync(h, { recursive: true, force: true }) })
 
-type Fake = { url: string; hookLines: string[]; close: () => Promise<void> }
+type Fake = { url: string; hookLines: string[]; agents: string[]; close: () => Promise<void> }
 
 /** /mcp, /healthz, /hooks and /messages, answered the way the function answers them. */
 async function fakeServer(): Promise<Fake> {
-  const fake = { hookLines: [] } as unknown as Fake
+  const fake = { hookLines: [], agents: [] } as unknown as Fake
   const server = http.createServer((req, res) => {
     const chunks: Buffer[] = []
     req.on('data', (c) => chunks.push(c))
@@ -38,6 +38,7 @@ async function fakeServer(): Promise<Fake> {
       if (sent) res.setHeader('x-memory-client-status', clientStatus(sent, 30))
       if (req.method === 'POST' && req.url === '/mcp') return res.end('{"jsonrpc":"2.0","id":1,"result":{}}')
       if (req.url === '/healthz') return res.end(JSON.stringify({ ok: true, version: '20261117.2', client_version: CLIENT_VERSION }))
+      if (req.url?.startsWith('/hooks/') || req.url?.startsWith('/messages/')) fake.agents.push(String(req.headers['user-agent']))
       if (req.method === 'POST' && req.url?.startsWith('/hooks/')) {
         if (req.url.startsWith('/hooks/SessionStart')) res.setHeader('x-clyde-registered', '1')
         return res.end('')
@@ -336,6 +337,9 @@ test("R78 a fresh install's hooks print no out-of-date line", async () => {
     assert.match(all, /recall/, 'the hooks did run and nudge')
     assert.equal(all.split('\n').filter((l) => /out of date/i.test(l)).length, 0, all)
     assert.ok(!/^memory:/m.test(all))
+    // Cloudflare in front of memory.heyclyde.me refuses Python-urllib's own User-Agent, so the hook names itself.
+    assert.ok(fake.agents.length >= 6, String(fake.agents.length))
+    for (const ua of fake.agents) assert.match(ua, new RegExp(`^clyde-hook/${CLIENT_VERSION.replace('.', '\\.')}$`))
   } finally {
     await fake.close()
   }

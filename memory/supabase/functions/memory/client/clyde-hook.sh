@@ -320,7 +320,8 @@ for line in read_txt(cfg / "memory-hook").splitlines():
         ver = line[8:].strip() if isver(line[8:].strip()) else "dev"
         break
 failed_file = cfg / "update-failed"
-vheaders = {"x-memory-client-version": ver}
+# A User-Agent of its own: Cloudflare in front of memory.heyclyde.me refuses the default Python-urllib one (error 1010).
+vheaders = {"x-memory-client-version": ver, "User-Agent": f"clyde-hook/{ver}"}
 if failed_file.exists():
     vheaders["x-memory-update-failed"] = "1"
 
