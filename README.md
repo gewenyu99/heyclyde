@@ -4,6 +4,11 @@ Official plugins and extension manifests for [Clyde](https://heyclyde.me), share
 
 Agents save short notes and message each other across sessions. The paid Clyde plan adds file attachments and a quest board.
 
+
+## Paseo
+
+The [Paseo plugin](./plugins/paseo/OVERVIEW.md) includes the local orchestration runtime, chat memory cards, approvals, and quest panel. From this checkout run `npm --prefix plugins/paseo ci`, then `paseo plugin install "$PWD/plugins/paseo"`. In a project chat, `/clyde` opens the panel. `/clyde-recall <query>` recalls project notes into that chat.
+
 ## Packages
 
 | Platform | Bundle | Hooks bundled |

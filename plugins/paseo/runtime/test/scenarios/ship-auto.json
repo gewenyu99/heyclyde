@@ -1,0 +1,241 @@
+{
+  "turns": [
+    {
+      "match": "worker for stage plan of",
+      "reply": "Here is the plan.\n\n```json\n{\n  \"status\": \"done\",\n  \"summary\": \"Planned 1 slice(s).\",\n  \"evidence\": [],\n  \"plan\": {\n    \"intent\": \"Greet the user with a file.\",\n    \"slices\": [\n      {\n        \"id\": \"s1\",\n        \"title\": \"Write greet.txt\",\n        \"acceptance\": [\n          \"test -f greet.txt\"\n        ]\n      }\n    ]\n  }\n}\n```"
+    },
+    {
+      "match": "judge for stage plan of",
+      "json": {
+        "verdict": "pass",
+        "criteria": [
+          {
+            "criterion": "criterion 1",
+            "pass": true,
+            "evidence": "checked 1"
+          },
+          {
+            "criterion": "criterion 2",
+            "pass": true,
+            "evidence": "checked 2"
+          },
+          {
+            "criterion": "criterion 3",
+            "pass": true,
+            "evidence": "checked 3"
+          },
+          {
+            "criterion": "criterion 4",
+            "pass": true,
+            "evidence": "checked 4"
+          }
+        ],
+        "notes": "The plan is small and runnable."
+      }
+    },
+    {
+      "match": "worker for stage code-it-works:s1 of",
+      "reply": "Done with code-it-works:s1.",
+      "json": {
+        "status": "done",
+        "summary": "greet.txt exists",
+        "evidence": [
+          {
+            "criterion": "all",
+            "evidence": "greet.txt exists"
+          }
+        ]
+      },
+      "write": {
+        "greet.txt": "hi\n"
+      },
+      "commit": "greet"
+    },
+    {
+      "match": "judge for stage code-it-works:s1 of",
+      "json": {
+        "verdict": "pass",
+        "criteria": [
+          {
+            "criterion": "criterion 1",
+            "pass": true,
+            "evidence": "checked 1"
+          },
+          {
+            "criterion": "criterion 2",
+            "pass": true,
+            "evidence": "checked 2"
+          },
+          {
+            "criterion": "criterion 3",
+            "pass": true,
+            "evidence": "checked 3"
+          },
+          {
+            "criterion": "criterion 4",
+            "pass": true,
+            "evidence": "checked 4"
+          },
+          {
+            "criterion": "criterion 5",
+            "pass": true,
+            "evidence": "checked 5"
+          },
+          {
+            "criterion": "criterion 6",
+            "pass": true,
+            "evidence": "checked 6"
+          }
+        ],
+        "notes": "Red then green recorded."
+      }
+    },
+    {
+      "match": "worker for stage code-it-good:s1 of",
+      "reply": "Done with code-it-good:s1.",
+      "json": {
+        "status": "done",
+        "summary": "greet.txt is tested",
+        "evidence": [
+          {
+            "criterion": "all",
+            "evidence": "greet.txt is tested"
+          }
+        ]
+      },
+      "write": {
+        "greet.test.sh": "test -f greet.txt\n"
+      },
+      "commit": "test greet"
+    },
+    {
+      "match": "judge for stage code-it-good:s1 of",
+      "json": {
+        "verdict": "pass",
+        "criteria": [
+          {
+            "criterion": "criterion 1",
+            "pass": true,
+            "evidence": "checked 1"
+          },
+          {
+            "criterion": "criterion 2",
+            "pass": true,
+            "evidence": "checked 2"
+          },
+          {
+            "criterion": "criterion 3",
+            "pass": true,
+            "evidence": "checked 3"
+          },
+          {
+            "criterion": "criterion 4",
+            "pass": true,
+            "evidence": "checked 4"
+          },
+          {
+            "criterion": "criterion 5",
+            "pass": true,
+            "evidence": "checked 5"
+          },
+          {
+            "criterion": "criterion 6",
+            "pass": true,
+            "evidence": "checked 6"
+          },
+          {
+            "criterion": "criterion 7",
+            "pass": true,
+            "evidence": "checked 7"
+          },
+          {
+            "criterion": "criterion 8",
+            "pass": true,
+            "evidence": "checked 8"
+          }
+        ],
+        "notes": "Every addition proven."
+      }
+    },
+    {
+      "match": "worker for stage code-it-clean:s1 of",
+      "reply": "Done with code-it-clean:s1.",
+      "json": {
+        "status": "done",
+        "summary": "tidied greet.txt",
+        "evidence": [
+          {
+            "criterion": "all",
+            "evidence": "tidied greet.txt"
+          }
+        ]
+      },
+      "write": {
+        "greet.txt": "hi there\n"
+      },
+      "commit": "tidy greet"
+    },
+    {
+      "match": "judge for stage code-it-clean:s1 of",
+      "json": {
+        "verdict": "pass",
+        "criteria": [
+          {
+            "criterion": "criterion 1",
+            "pass": true,
+            "evidence": "checked 1"
+          },
+          {
+            "criterion": "criterion 2",
+            "pass": true,
+            "evidence": "checked 2"
+          },
+          {
+            "criterion": "criterion 3",
+            "pass": true,
+            "evidence": "checked 3"
+          },
+          {
+            "criterion": "criterion 4",
+            "pass": true,
+            "evidence": "checked 4"
+          },
+          {
+            "criterion": "criterion 5",
+            "pass": true,
+            "evidence": "checked 5"
+          }
+        ],
+        "notes": "Reads top down."
+      }
+    },
+    {
+      "match": "worker for stage review of",
+      "reply": "Reviewed.\n\n```json\n{\n  \"status\": \"done\",\n  \"summary\": \"REVIEW: 0 findings, 0 fixed, 0 open.\",\n  \"evidence\": []\n}\n```"
+    },
+    {
+      "match": "judge for stage review of",
+      "json": {
+        "verdict": "pass",
+        "criteria": [
+          {
+            "criterion": "criterion 1",
+            "pass": true,
+            "evidence": "checked 1"
+          },
+          {
+            "criterion": "criterion 2",
+            "pass": true,
+            "evidence": "checked 2"
+          },
+          {
+            "criterion": "criterion 3",
+            "pass": true,
+            "evidence": "checked 3"
+          }
+        ],
+        "notes": "Pinned and clean."
+      }
+    }
+  ]
+}

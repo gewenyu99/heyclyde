@@ -1,0 +1,67 @@
+#!/usr/bin/env node
+import { appendFileSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { join } from 'node:path'
+const dir = process.env.CLYDE_FAKE_STATE_DIR
+const args = process.argv.slice(2)
+appendFileSync(join(dir, 'paseo-argv.jsonl'), JSON.stringify(args) + '\n')
+const command = args[0]
+const config = JSON.parse(readFileSync(join(dir, 'paseo.json'), 'utf8'))
+if (command === 'import') {
+  if (config.failImport && !existsSync(join(dir, 'import-failed'))) {
+    writeFileSync(join(dir, 'import-failed'), '')
+    console.log(JSON.stringify({ error: { message: 'not on disk yet' } }))
+    process.exit(1)
+  }
+  await new Promise(r => setTimeout(r, config.importDelay ?? 0))
+  console.log(JSON.stringify({ agentId: 'fake-agent' }))
+} else if (command === 'send') {
+  // The real daemon never refuses a send to a running agent: without activeTurnBehavior it replaces the run (session.js:6172).
+  if (existsSync(join(dir, 'pointman-running'))) appendFileSync(join(dir, 'interrupted'), 'paseo send\n')
+  if (config.failSend) { console.log(JSON.stringify({ error: { message: 'send refused' } })); process.exit(1) }
+  const prompt = args[args.indexOf('--prompt') + 1]
+  writeFileSync(join(dir, 'sent-prompt'), prompt)
+  console.log('{}')
+} else if (command === 'wait') {
+  if (config.waitTimesOutWhileRunning && existsSync(join(dir, 'pointman-running'))) {
+    await new Promise(r => setTimeout(r, 20))
+    console.log(JSON.stringify({ error: { message: 'still running' } }))
+    process.exit(1)
+  }
+  while (existsSync(join(dir, 'pointman-running'))) await new Promise(r => setTimeout(r, 20))
+  if (config.hang) {
+    while (!existsSync(join(dir, 'stopped'))) await new Promise(r => setTimeout(r, 20))
+  }
+  if (config.report) {
+    const prompt = readFileSync(join(dir, 'sent-prompt'), 'utf8')
+    const env = { ...process.env, ...Object.fromEntries([...prompt.matchAll(/(CLYDE_\w+)='([^']*)'/g)].map(m => [m[1], m[2]])) }
+    for (const args of [['todo', 'start', '1', '--how', 'fake Paseo check'], ['todo', 'done', '1', '--evidence', 'fake Paseo verified'], ['result', '--status', 'done', '--summary', 'posted through Paseo']]) {
+      execFileSync(process.execPath, [env.CLYDE_BIN, ...args], { env })
+    }
+  }
+  if (config.file) {
+    for (const payload of [{ type: 'agent_message', message: 'progress' }, { type: 'task_complete', last_agent_message: config.reply }]) {
+      if (config.noCompletion && payload.type === 'task_complete') continue
+      appendFileSync(config.file, JSON.stringify({ type: 'event_msg', payload }) + '\n')
+    }
+  }
+  console.log('{}')
+} else if (command === 'stop') {
+  writeFileSync(join(dir, 'stopped'), '')
+  console.log('{}')
+} else if (command === 'inspect') {
+  const id = args[1]
+  const status = config.failed ? 'failed' : existsSync(join(dir, 'pointman-running')) ? 'running' : 'idle'
+  // A turn starts right after this idle report: the gap between the idle check and the send.
+  if (config.turnStartsAfterIdleCheck && status === 'idle' && !existsSync(join(dir, 'gap-turn-started'))) {
+    writeFileSync(join(dir, 'gap-turn-started'), '')
+    writeFileSync(join(dir, 'pointman-running'), '')
+  }
+  console.log(JSON.stringify({ Id: id, Status: status, Archived: existsSync(join(dir, `archived-${id}`)) }))
+} else if (command === 'archive') {
+  if (config.failArchive) { console.log(JSON.stringify({ error: { message: 'archive refused' } })); process.exit(1) }
+  writeFileSync(join(dir, `archived-${args[1]}`), '')
+  console.log('{}')
+}
+else if (command === 'logs') console.log(config.reply)
+else console.log('{}')

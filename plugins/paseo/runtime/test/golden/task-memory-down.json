@@ -1,0 +1,12 @@
+[
+  "run.started",
+  "run.ask",
+  "run.stage",
+  "thread.started",
+  "list.updated",
+  "thread.done",
+  "thread.started",
+  "thread.done",
+  "run.passed",
+  "run.done"
+]

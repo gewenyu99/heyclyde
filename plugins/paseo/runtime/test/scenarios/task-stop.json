@@ -1,0 +1,8 @@
+{
+  "turns": [
+    {
+      "match": "worker for stage task of",
+      "hang": true
+    }
+  ]
+}

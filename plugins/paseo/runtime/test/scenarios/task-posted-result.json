@@ -1,0 +1,27 @@
+{
+  "turns": [
+    {
+      "match": "worker for stage task of",
+      "delayMs": 1500,
+      "reply": "Done.\n\n```json\n{\"status\": \"done\", \"summary\": \"FROM-THE-BLOCK\", \"evidence\": []}\n```",
+      "write": {
+        "hello.txt": "hello\n"
+      },
+      "commit": "add hello"
+    },
+    {
+      "match": "judge for stage task of",
+      "json": {
+        "verdict": "pass",
+        "criteria": [
+          {
+            "criterion": "criterion 1",
+            "pass": true,
+            "evidence": "checked"
+          }
+        ],
+        "notes": "Fine."
+      }
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "turns": [
+    {
+      "match": "worker for stage task of",
+      "reply": "Reported with clyde result.",
+      "todo": [
+        [
+          "start",
+          "1",
+          "--how",
+          "write hello.txt and commit it"
+        ],
+        [
+          "done",
+          "1",
+          "--evidence",
+          "hello.txt holds hello, commit add hello"
+        ],
+        [
+          "done",
+          "2",
+          "--evidence",
+          "clyde result below"
+        ]
+      ],
+      "write": {
+        "hello.txt": "hello\n"
+      },
+      "commit": "add hello",
+      "clydeResult": {
+        "status": "done",
+        "summary": "FROM-LV-RESULT",
+        "evidence": [
+          {
+            "criterion": "A hello file.",
+            "evidence": "hello.txt"
+          }
+        ]
+      }
+    },
+    {
+      "match": "judge for stage task of",
+      "json": {
+        "verdict": "pass",
+        "criteria": [
+          {
+            "criterion": "criterion 1",
+            "pass": true,
+            "evidence": "checked"
+          }
+        ],
+        "notes": "Fine."
+      }
+    }
+  ]
+}

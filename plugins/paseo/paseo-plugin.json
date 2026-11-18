@@ -1,0 +1,8 @@
+{
+  "id": "clyde",
+  "name": "Clyde",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.16.2"
+  }
+}

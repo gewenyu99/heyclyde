@@ -1,0 +1,8 @@
+[
+  "run.started",
+  "run.stage",
+  "thread.started",
+  "list.updated",
+  "thread.stopped",
+  "run.stopped"
+]

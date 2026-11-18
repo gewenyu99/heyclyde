@@ -1,0 +1,74 @@
+{
+  "turns": [
+    {
+      "match": "worker for stage plan of",
+      "reply": "Here is the plan.\n\n```json\n{\n  \"status\": \"done\",\n  \"summary\": \"Planned 1 slice(s).\",\n  \"evidence\": [],\n  \"plan\": {\n    \"intent\": \"Greet the user with a file.\",\n    \"slices\": [\n      {\n        \"id\": \"s1\",\n        \"title\": \"Write greet.txt\",\n        \"acceptance\": [\n          \"test -f greet.txt\"\n        ]\n      }\n    ]\n  }\n}\n```"
+    },
+    {
+      "match": "judge for stage plan of",
+      "json": {
+        "verdict": "pass",
+        "criteria": [
+          {
+            "criterion": "criterion 1",
+            "pass": true,
+            "evidence": "checked 1"
+          },
+          {
+            "criterion": "criterion 2",
+            "pass": true,
+            "evidence": "checked 2"
+          },
+          {
+            "criterion": "criterion 3",
+            "pass": true,
+            "evidence": "checked 3"
+          },
+          {
+            "criterion": "criterion 4",
+            "pass": true,
+            "evidence": "checked 4"
+          }
+        ],
+        "notes": "Fine."
+      }
+    },
+    {
+      "match": "worker for stage plan-2 of",
+      "reply": "Here is the plan.\n\n```json\n{\n  \"status\": \"done\",\n  \"summary\": \"Planned 2 slice(s).\",\n  \"evidence\": [],\n  \"plan\": {\n    \"intent\": \"Greet and say goodbye.\",\n    \"slices\": [\n      {\n        \"id\": \"s1\",\n        \"title\": \"Write greet.txt\",\n        \"acceptance\": [\n          \"test -f greet.txt\"\n        ]\n      },\n      {\n        \"id\": \"s2\",\n        \"title\": \"Write bye.txt\",\n        \"acceptance\": [\n          \"test -f bye.txt\"\n        ]\n      }\n    ]\n  }\n}\n```"
+    },
+    {
+      "match": "judge for stage plan-2 of",
+      "json": {
+        "verdict": "pass",
+        "criteria": [
+          {
+            "criterion": "criterion 1",
+            "pass": true,
+            "evidence": "checked 1"
+          },
+          {
+            "criterion": "criterion 2",
+            "pass": true,
+            "evidence": "checked 2"
+          },
+          {
+            "criterion": "criterion 3",
+            "pass": true,
+            "evidence": "checked 3"
+          },
+          {
+            "criterion": "criterion 4",
+            "pass": true,
+            "evidence": "checked 4"
+          }
+        ],
+        "notes": "Fine again."
+      }
+    },
+    {
+      "match": "worker for stage code-it-works:s1 of",
+      "hang": true
+    }
+  ]
+}

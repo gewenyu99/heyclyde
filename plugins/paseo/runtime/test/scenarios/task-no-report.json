@@ -1,0 +1,49 @@
+{
+  "roles": {
+    "worker": [
+      {
+        "backend": "pi",
+        "model": "openai-codex/gpt-6.1-sol",
+        "effort": "medium"
+      }
+    ]
+  },
+  "turns": [
+    {
+      "match": "worker for stage task of",
+      "reply": "I did the work but forgot to report.",
+      "write": {
+        "hello.txt": "hello\n"
+      },
+      "commit": "add hello"
+    },
+    {
+      "match": "worker for stage task of",
+      "reply": "Done with task.",
+      "json": {
+        "status": "done",
+        "summary": "reported this time",
+        "evidence": [
+          {
+            "criterion": "all",
+            "evidence": "reported this time"
+          }
+        ]
+      }
+    },
+    {
+      "match": "judge for stage task of",
+      "json": {
+        "verdict": "pass",
+        "criteria": [
+          {
+            "criterion": "criterion 1",
+            "pass": true,
+            "evidence": "checked 1"
+          }
+        ],
+        "notes": "hello.txt is there."
+      }
+    }
+  ]
+}

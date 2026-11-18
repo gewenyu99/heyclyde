@@ -1,0 +1,19 @@
+{
+  "turns": [
+    { "match": "worker for stage task of", "error": "Usage limit reached for model" },
+    {
+      "match": "worker for stage task of",
+      "reply": "Done with task.",
+      "json": { "status": "done", "summary": "worked after limit", "evidence": [] },
+      "write": { "hello.txt": "hello\n" }
+    },
+    {
+      "match": "judge for stage task of",
+      "json": {
+        "verdict": "pass",
+        "criteria": [{ "criterion": "criterion 1", "pass": true, "evidence": "checked 1" }],
+        "notes": "hello.txt exists."
+      }
+    }
+  ]
+}

@@ -1,0 +1,121 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createServer } from "node:http";
+import { activity } from "../server/activity.ts";
+
+test("recall, user feedback and approvals stay in the origin chat; double spawn creates one local quest run", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clyde-chat-test-"));
+  const previous = { ...process.env };
+  Object.assign(process.env, { CLYDE_HOME: dir, CLYDE_CONFIG_DIR: dir, PASEO_HOME: dir });
+  const quest = {
+    id: 123,
+    title: "Document setup",
+    brief: "Clarify setup.",
+    done_when: "The setup is documented.",
+    priority: "normal",
+  };
+  const calls = [], runs = new Map(), timeline = [];
+  const server = createServer(async (req, res) => {
+    let raw = "";
+    for await (const chunk of req) raw += chunk;
+    const arg = raw ? JSON.parse(raw) : {};
+    res.setHeader("content-type", "application/json");
+    const send = (body) => res.end(JSON.stringify(body));
+    if (req.url === "/mcp") {
+      const tool = arg.params?.name;
+      if (arg.method === "initialize") {
+        res.setHeader("mcp-session-id", "mock-session");
+        return send({ result: {} });
+      }
+      calls.push(tool);
+      return send({ result: { content: [{ text: "OK" }], _meta: { "clyde/card": tool==="recall"?{retrieval_id:"task-retrieval",items:[{id:"note",title:"Recall on launch",body:"Visible evidence"}]}:{ quests: [quest] } } } });
+    }
+    if (req.method === "GET"){
+      if(req.url==="/runs")return send([...runs.values()]);
+      const run=runs.get(req.url.split("/").at(-1));if(run)return send(run);
+      res.statusCode=404;return send({error:"No run"});
+    }
+    if (req.url === "/runs") {
+      const id = "r-" + arg.assignment;
+      if (!runs.has(id)) {
+        runs.set(id, {
+          id,
+          title: quest.title,
+          status: "asking",
+          asks: [{ key: "plan", kind: "approve", question: "Approve the design?" }],
+          stages: [],
+        });
+      }
+      return send(runs.get(id));
+    }
+    const id = req.url.split("/")[2], run = runs.get(id);
+    assert.equal(arg.askKey, "plan");
+    run.asks[0].answer = arg.text;
+    return send(run);
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const port = server.address().port;
+  for (
+    const [file, value] of Object.entries({
+      url: "http://127.0.0.1:" + port,
+      token: "fixture",
+      "server-id": "host",
+      "daemon.json": JSON.stringify({ port, token: "fixture" }),
+    })
+  ) writeFileSync(join(dir, file), value);
+  const handlers = new Map(), plugin = { handle: (rpc, fn) => handlers.set(rpc.name, fn) };
+  const row = { id: "owner", role: "Docs", provider: "codex", project: "test/repo", cwd: dir };
+  const api = {
+    agents: {
+      ref: (id) => ({
+        timeline: {
+          append: async (item) => {
+            timeline.push({ id, item });
+          },
+        },
+      }),
+    },
+  };
+  const act = activity(plugin, (id) => id === row.id ? row : undefined);
+  const invoke = (name, args) => handlers.get("clyde." + name)(args, { paseo: api });
+  try {
+    await act.memory(
+      "owner",
+      "recall",
+      { retrieval_id: "retrieval-1", items: [{ id: "note", title: "A decision" }] },
+      api,
+      {},
+    );
+    assert.equal(timeline[0].id, "owner");
+    assert.equal(timeline[0].item.data.notes[0].title, "A decision");
+    await invoke("feedback", {
+      agent: "owner",
+      retrieval: "retrieval-1",
+      votes: [{ entry_id: "note", verdict: "used" }],
+    });
+    assert.equal(timeline.at(-1).item.data.rated, true);
+    assert.equal(timeline.at(-1).item.data.notes[0].title,"A decision");
+    assert.deepEqual(await invoke("quests", { agent: "owner" }), [quest]);
+    const first = await invoke("spawn-quest", { agent: "owner", quest: 123 });
+    const replay = await invoke("spawn-quest", { agent: "owner", quest: 123 });
+    assert.equal(first.id, replay.id);
+    assert.equal(runs.size, 1);
+    assert.equal(calls.filter(c=>c==="recall").length,1);
+    assert.ok(timeline.some(t=>t.item.data.kind==="recall" && t.item.data.notes[0]?.body==="Visible evidence"));
+    assert.equal(calls.filter((c) => c === "claim_quest").length, 1);
+    await assert.rejects(invoke("respond", { agent: "other", run: first.id, key: "plan", text: "approved" }));
+    await invoke("respond", { agent: "owner", run: first.id, key: "plan", text: "approved" });
+    assert.equal(timeline.at(-1).item.data.answer, "approved");
+  } finally {
+    act.close();
+    server.closeAllConnections();
+    await new Promise((r) => server.close(r));
+    for (const k of ["CLYDE_HOME", "CLYDE_CONFIG_DIR", "PASEO_HOME"]) {
+      if (previous[k] === undefined) delete process.env[k];
+      else process.env[k] = previous[k];
+    }
+  }
+});

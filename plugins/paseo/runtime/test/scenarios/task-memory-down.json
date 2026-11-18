@@ -1,0 +1,36 @@
+{
+  "turns": [
+    {
+      "match": "worker for stage task of",
+      "reply": "Done with task.",
+      "json": {
+        "status": "done",
+        "summary": "wrote hello",
+        "evidence": [
+          {
+            "criterion": "all",
+            "evidence": "wrote hello"
+          }
+        ]
+      },
+      "write": {
+        "hello.txt": "hello\n"
+      },
+      "commit": "add hello"
+    },
+    {
+      "match": "judge for stage task of",
+      "json": {
+        "verdict": "pass",
+        "criteria": [
+          {
+            "criterion": "criterion 1",
+            "pass": true,
+            "evidence": "checked 1"
+          }
+        ],
+        "notes": "hello.txt is there."
+      }
+    }
+  ]
+}

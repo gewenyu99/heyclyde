@@ -1,0 +1,68 @@
+{
+  "turns": [
+    {
+      "match": "worker for stage task of",
+      "reply": "WORKER-TRANSCRIPT-9 first try.",
+      "json": {
+        "status": "done",
+        "summary": "WORKER-SUMMARY-4 wrote hullo.txt",
+        "evidence": [
+          {
+            "criterion": "all",
+            "evidence": "WORKER-SUMMARY-4 wrote hullo.txt"
+          }
+        ]
+      },
+      "write": {
+        "hello.txt": "hullo\n"
+      },
+      "commit": "add hullo"
+    },
+    {
+      "match": "judge for stage task of",
+      "json": {
+        "verdict": "fail",
+        "criteria": [
+          {
+            "criterion": "criterion 1",
+            "pass": false,
+            "evidence": "checked 1"
+          }
+        ],
+        "notes": "NOTE-7731: hello.txt says hullo, not hello."
+      }
+    },
+    {
+      "match": "worker for stage task of",
+      "reply": "Done with task.",
+      "json": {
+        "status": "done",
+        "summary": "fixed the greeting",
+        "evidence": [
+          {
+            "criterion": "all",
+            "evidence": "fixed the greeting"
+          }
+        ]
+      },
+      "write": {
+        "hello.txt": "hello\n"
+      },
+      "commit": "fix greeting"
+    },
+    {
+      "match": "judge for stage task of",
+      "json": {
+        "verdict": "pass",
+        "criteria": [
+          {
+            "criterion": "criterion 1",
+            "pass": true,
+            "evidence": "checked 1"
+          }
+        ],
+        "notes": "hello.txt now says hello."
+      }
+    }
+  ]
+}

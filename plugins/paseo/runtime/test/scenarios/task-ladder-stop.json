@@ -1,0 +1,96 @@
+{
+  "roles": {
+    "worker": [
+      {
+        "backend": "pi",
+        "model": "openai-codex/gpt-6.1-sol",
+        "effort": "medium"
+      },
+      {
+        "backend": "pi",
+        "model": "openai-codex/gpt-6.1-sol",
+        "effort": "high",
+        "notes": true
+      }
+    ]
+  },
+  "turns": [
+    {
+      "match": "worker for stage task of",
+      "reply": "Done with task.",
+      "json": {
+        "status": "done",
+        "summary": "first try",
+        "evidence": [
+          {
+            "criterion": "all",
+            "evidence": "first try"
+          }
+        ]
+      },
+      "write": {
+        "a.txt": "a\n"
+      },
+      "commit": "a"
+    },
+    {
+      "match": "judge for stage task of",
+      "json": {
+        "verdict": "fail",
+        "criteria": [
+          {
+            "criterion": "criterion 1",
+            "pass": false,
+            "evidence": "checked 1"
+          }
+        ],
+        "notes": "Not good enough."
+      }
+    },
+    {
+      "match": "worker for stage task of",
+      "reply": "Done with task.",
+      "json": {
+        "status": "done",
+        "summary": "second try",
+        "evidence": [
+          {
+            "criterion": "all",
+            "evidence": "second try"
+          }
+        ]
+      },
+      "write": {
+        "b.txt": "b\n"
+      },
+      "commit": "b"
+    },
+    {
+      "match": "judge for stage task of",
+      "json": {
+        "verdict": "fail",
+        "criteria": [
+          {
+            "criterion": "criterion 1",
+            "pass": false,
+            "evidence": "checked 1"
+          }
+        ],
+        "notes": "Still not good enough."
+      }
+    },
+    {
+      "match": "worker for stage task of",
+      "reply": "Done with task.",
+      "json": { "status": "done", "summary": "third try", "evidence": [] }
+    },
+    {
+      "match": "judge for stage task of",
+      "json": {
+        "verdict": "pass",
+        "criteria": [{ "criterion": "criterion 1", "pass": true, "evidence": "checked 1" }],
+        "notes": "Good now."
+      }
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+[
+  "run.started",
+  "run.stage",
+  "thread.started",
+  "list.updated",
+  "thread.failed",
+  "run.limit",
+  "run.ask",
+  "run.ask",
+  "run.stopped"
+]

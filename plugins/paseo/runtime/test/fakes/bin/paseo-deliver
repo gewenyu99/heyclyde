@@ -1,0 +1,18 @@
+#!/usr/bin/env node
+// Stands in for src/paseo-deliver.mjs: the message is on stdin, the agent id is argv[2].
+import { appendFileSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
+const dir = process.env.CLYDE_FAKE_STATE_DIR
+const config = JSON.parse(readFileSync(join(dir, 'paseo.json'), 'utf8'))
+const text = readFileSync(0, 'utf8')
+const running = existsSync(join(dir, 'pointman-running'))
+// Like the daemon behind src/paseo-deliver.mjs: a running agent refuses the run, gets nothing, and the caller is told it is busy.
+if (running) {
+  appendFileSync(join(dir, 'deliver-busy.jsonl'), JSON.stringify({ id: process.argv[2], text }) + '\n')
+  console.log(JSON.stringify({ ok: false, busy: true, error: 'The agent already has an active run' }))
+  process.exit(1)
+}
+appendFileSync(join(dir, 'deliver-calls.jsonl'), JSON.stringify({ id: process.argv[2], text, running }) + '\n')
+if (config.failDeliver) { console.log(JSON.stringify({ ok: false, error: 'delivery refused' })); process.exit(1) }
+writeFileSync(join(dir, 'sent-prompt'), text)
+console.log(JSON.stringify({ ok: true }))
