@@ -2,6 +2,7 @@
 // Used by search.ts, deep.ts, service.ts, quests.ts, write.ts, mcp.ts, and ui/data.ts so SQL pre-filtering,
 // spreading graph filtering, JS post-checks, quests, and broadcasts enforce the exact same rules.
 import type { Sql } from "./db.ts";
+import { questMatches, scopeToQuestAgent } from "./quest.ts";
 
 export const AGENT_CONTEXTS = ["work", "home", "hobby", "personal", "both"] as const;
 export const ENTRY_CONTEXTS = ["general", "work", "home", "hobby", "personal"] as const;
@@ -172,49 +173,10 @@ export function accessDeniedReason(agent: AgentScope, entry: EntryMeta): string 
 /** Whether an agent may see or claim a quest. */
 export function questPermitted(
   agent: AgentScope,
-  quest: QuestMeta,
+  quest: QuestMeta & Record<string, any>,
   explicitFilter?: { project?: string | null },
 ): { ok: true } | { ok: false; reason: string } {
-  const fproj = explicitFilter?.project?.trim().toLowerCase();
-  if (fproj && (!quest.project || !projectMatches(quest.project, fproj))) {
-    return { ok: false, reason: `project filter ${fproj} does not match` };
-  }
-
-  const qc = (quest.context ?? "both").trim().toLowerCase();
-  if (qc !== "both" && agent) {
-    const realms = allowedRealms(agent.context);
-    if (realms !== null && !realms.has(qc)) {
-      return { ok: false, reason: `quest context ${qc} is outside ${agent.name}'s ${agent.context} realm` };
-    }
-  }
-
-  if (quest.project && agent) {
-    const mine = agentProjectsOf(agent);
-    if (agent.strictProjects) {
-      if (!mine.some((ap) => projectMatches(ap, quest.project))) {
-        return { ok: false, reason: `quest project ${quest.project} is outside ${agent.name}'s strict projects` };
-      }
-    } else if (mine.length > 0) {
-      if (!mine.some((ap) => projectMatches(ap, quest.project))) {
-        return { ok: false, reason: `quest project ${quest.project} is outside ${agent.name}'s projects` };
-      }
-    }
-  }
-
-  if (quest.computer && agent) {
-    const myComp = (agent.computer ?? agent.principal)?.trim().toLowerCase();
-    if (!myComp || quest.computer.trim().toLowerCase() !== myComp) {
-      return { ok: false, reason: `quest computer ${quest.computer} does not match ${agent.name}` };
-    }
-  }
-
-  if (quest.agent_type && agent?.agentType && agent.agentType !== "other") {
-    if (quest.agent_type.trim().toLowerCase() !== agent.agentType.trim().toLowerCase()) {
-      return { ok: false, reason: `quest is for ${quest.agent_type} agents, not ${agent.agentType}` };
-    }
-  }
-
-  return { ok: true };
+  return questMatches(scopeToQuestAgent(agent), quest, explicitFilter);
 }
 
 /** Whether a registered agent matches a scoped broadcast to 'all'. */

@@ -266,6 +266,7 @@ export const TOOLS = [
       "context: work, home, hobby, personal or both. Default: the agent's registered context.\n" +
       "for: who may claim it: any (default), claude, codex, or one agent's name.\n" +
       "project, computer, agent_type: optional restrictions on who can see and claim this quest.\n" +
+      "target: optional routing object {types, harness, device_id, device, repo, context}.\n" +
       "artifacts: [{name, sha256}] of files Clyde already holds, like a plan saved with remember. get_entry lists them.\n" +
       "Returns the quest's id. Every agent sees it at session start and in list_quests.",
     inputSchema: {
@@ -278,6 +279,18 @@ export const TOOLS = [
         for: str("any (default), claude, codex, or an agent's name"),
         project: str("Optional project slug"), computer: str("Optional computer restriction"),
         agent_type: { type: "string", enum: [...AGENT_TYPES], description: "Optional agent type restriction" },
+        target: {
+          type: "object",
+          description: "Optional routing target: {types, harness, device_id, device, repo, context}",
+          properties: {
+            types: { type: "array", items: { type: "string", enum: [...AGENT_TYPES] } },
+            harness: str("Required harness name"),
+            device_id: int("Required device id"),
+            device: str("Required device or machine name"),
+            repo: str("Required owner/repo or project slug"),
+            context: str("Required realm: work, home, hobby, personal or both"),
+          },
+        },
         artifacts: { type: "array", items: { type: "object" }, description: HELD },
       },
     },
@@ -378,7 +391,11 @@ type Profile = {
   surface: string;
   computer: string | null;
   projects: string[];
+  repos: string[];
   agent_type: string;
+  type: string;
+  harness: string | null;
+  device_id: number | null;
   strict_projects: boolean;
 };
 type Call = {
@@ -574,7 +591,9 @@ function mailboxes(c: Pick<Call, "agent" | "client">): string[] {
 const questor = (c: Call): quests.Who => ({
   name: nameOf(c), family: service.agentName(c.client), principal: c.principal, session: c.session,
   context: c.agent?.context ?? null, profile: c.agent ? `${c.agent.name}, a ${c.agent.context} agent on ${c.agent.surface}` : null,
-  computer: c.agent?.computer ?? null, projects: c.agent?.projects ?? [], agentType: c.agent?.agent_type ?? null,
+  computer: c.agent?.computer ?? null, projects: c.agent?.projects ?? [], repos: c.agent?.repos ?? c.agent?.projects ?? [],
+  agentType: c.agent?.type ?? c.agent?.agent_type ?? (c.agent ? "other" : null),
+  harness: c.agent?.harness ?? c.client ?? null, deviceId: c.agent?.device_id ?? null,
   strictProjects: c.agent?.strict_projects ?? false, sessionRepo: c.sessionRepo,
 });
 
@@ -651,7 +670,7 @@ async function sessionOf(
   if (!session) return { client: null, agent: null, sessionRepo: null, ui: false };
   const [row] = await sql`select c.client, c.principal, c.ui,
       c.session_context, c.session_projects, c.session_computer, c.session_strict_projects,
-      a.name, a.context, a.surface, a.computer, a.projects, a.agent_type, a.strict_projects,
+      a.name, a.context, a.surface, a.computer, a.projects, a.repos, a.agent_type, a.type, a.harness, a.device_id, a.strict_projects,
       s.repo as session_repo
     from memory.mcp_client c
     left join memory.agent a on a.owner_id = c.owner_id and a.name = c.agent
@@ -666,7 +685,11 @@ async function sessionOf(
       surface: row.surface,
       computer: row.session_computer ?? row.computer ?? null,
       projects: Array.isArray(row.session_projects) ? row.session_projects : (Array.isArray(row.projects) ? row.projects : []),
-      agent_type: row.agent_type ?? "other",
+      repos: Array.isArray(row.repos) ? row.repos : (Array.isArray(row.projects) ? row.projects : []),
+      agent_type: row.agent_type ?? row.type ?? "other",
+      type: row.type ?? row.agent_type ?? "other",
+      harness: row.harness ?? row.client ?? null,
+      device_id: row.device_id !== null && row.device_id !== undefined ? Number(row.device_id) : null,
       strict_projects: row.session_strict_projects ?? row.strict_projects ?? false,
     } : null,
     sessionRepo: (row?.principal === principal ? row?.session_repo : null) ?? null,

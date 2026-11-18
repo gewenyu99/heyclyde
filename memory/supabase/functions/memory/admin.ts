@@ -1023,7 +1023,7 @@ const IMPORTABLE = new Set(["source", "entry", "link", "co_use", "question", "qr
   "allocation", "openai_usage", "quest", "quest_note", "quest_blob"]);
 const SERIAL = ["event", "feedback", "message", "message_delivery", "admin_audit", "device", "quest", "quest_note"];
 // jsonb columns go in through sql.json, or a list of strings would be sent as text[].
-const JSONB = new Set(["payload", "candidates", "delivered", "rejected", "on_trial", "context", "before", "after", "params"]);
+const JSONB = new Set(["payload", "candidates", "delivered", "rejected", "on_trial", "context", "before", "after", "params", "target"]);
 const MAX_IMPORT = 8 * 1024 * 1024;
 
 /** Parameter sets never change, so a restore can't just overwrite one. A set that's there with the same params is skipped. A set

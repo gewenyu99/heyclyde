@@ -16,9 +16,8 @@ import {
   canReadEntry,
   normalizeComputer,
   normalizeProjectSlug,
-  questPermitted,
-  questWhereSql,
 } from "./permissions.ts";
+import { parseQuestTarget, type QuestAgent, questMatches } from "./quest.ts";
 
 /** The agent calling: the name it writes under, its client family (claude, codex or its own client name), its credential, its
  * MCP session, and its registered context and permission scope, if it has one. */
@@ -31,7 +30,10 @@ export type Who = {
   profile: string | null;
   computer?: string | null;
   projects?: string[];
+  repos?: string[];
   agentType?: string | null;
+  harness?: string | null;
+  deviceId?: number | null;
   strictProjects?: boolean;
   sessionRepo?: string | null;
 };
@@ -41,12 +43,28 @@ const whoToScope = (who: Who): AgentScope =>
     name: who.name,
     context: who.context,
     computer: who.computer ?? null,
-    projects: who.projects ?? [],
+    projects: who.repos?.length ? [...new Set([...who.repos, ...(who.projects ?? [])])] : (who.projects ?? []),
     agentType: who.agentType ?? "other",
     strictProjects: Boolean(who.strictProjects),
     sessionRepo: who.sessionRepo ?? null,
     principal: who.principal,
   };
+
+const whoToQuestAgent = (who: Who): QuestAgent => ({
+  name: who.name,
+  family: who.family,
+  context: who.context,
+  type: who.agentType ?? (who.context === null ? null : "other"),
+  agentType: who.agentType ?? (who.context === null ? null : "other"),
+  harness: who.harness ?? null,
+  deviceId: who.deviceId ?? null,
+  principal: who.principal,
+  computer: who.computer ?? null,
+  repos: who.repos ?? who.projects ?? [],
+  projects: who.projects ?? [],
+  strictProjects: Boolean(who.strictProjects),
+  sessionRepo: who.sessionRepo ?? null,
+});
 
 export const LEASE_MINUTES = 120;
 const LEASE_MIN = 15, LEASE_MAX = 480;
@@ -146,21 +164,23 @@ export async function postQuest(who: Who, args: Record<string, unknown>) {
   const doneWhen = field(errs, args.done_when, "done_when", 300);
   const priority = s(args.priority).trim().toLowerCase() || "normal";
   if (!PRIORITIES.includes(priority)) errs.push("priority must be high, normal or low.");
-  const context = s(args.context).trim().toLowerCase() || (who.context ?? "both");
+  const { target, errs: targetErrs } = parseQuestTarget(args.target);
+  errs.push(...targetErrs);
+  const context = s(args.context).trim().toLowerCase() || target.context || (who.context ?? "both");
   if (!CONTEXTS.includes(context)) errs.push("context must be work, home, hobby, personal or both.");
   const assignee = s(args.for ?? args.assignee).trim().toLowerCase() || "any";
   if (!NAME.test(assignee)) errs.push("for must be any, claude, codex or an agent's name.");
-  let project: string | null = null;
+  let project: string | null = target.repo ?? null;
   if (args.project !== undefined && args.project !== null && args.project !== "") {
     project = normalizeProjectSlug(args.project);
     if (!project) errs.push("project must be a valid project slug like clyde or owner/repo.");
   }
-  let computer: string | null = null;
+  let computer: string | null = target.device ?? null;
   if (args.computer !== undefined && args.computer !== null && args.computer !== "") {
     computer = normalizeComputer(args.computer);
     if (!computer) errs.push("computer must be 1 to 64 characters.");
   }
-  let agentType: string | null = null;
+  let agentType: string | null = target.types?.length === 1 ? target.types[0] : null;
   if (args.agent_type !== undefined && args.agent_type !== null && args.agent_type !== "") {
     const t = s(args.agent_type).trim().toLowerCase();
     if (!(AGENT_TYPES as readonly string[]).includes(t)) {
@@ -181,9 +201,9 @@ export async function postQuest(who: Who, args: Record<string, unknown>) {
   await judged([t, b, d].join("\n\n"), "posted");
   const id = await sql.begin(async (tx) => {
     const [q] = await tx`insert into memory.quest (title, brief, done_when, tags, priority, context, assignee, project, computer, agent_type,
-        posted_by, posted_device, posted_session)
+        target, posted_by, posted_device, posted_session)
       values (${t}, ${b}, ${d}, ${tags}::text[], ${priority}, ${context}, ${assignee}, ${project}, ${computer}, ${agentType},
-        ${who.name}, ${who.principal}, ${who.session})
+        ${tx.json(target)}, ${who.name}, ${who.principal}, ${who.session})
       returning id`;
     await tx`insert into memory.quest_note (quest_id, author, device, kind) values (${q.id}, ${who.name}, ${who.principal}, 'post')`;
     for (const f of files) await tx`insert into memory.quest_blob (quest_id, name, sha256, role) values (${q.id}, ${f.name}, ${f.sha256}, 'brief')`;
@@ -230,17 +250,20 @@ export async function listQuests(who: Who, args: Record<string, unknown>) {
   const limit = Math.min(Math.max(Number(args.limit) || 20, 1), 50);
   await reopenExpired();
   const states = show === "open" ? ["open"] : show === "done" ? ["done"] : ["open", "claimed", "done", "abandoned"];
-  const rows = await sql`select q.*, count(*) over () as total from memory.quest q
+  const rawRows = await sql`select q.* from memory.quest q
     where q.state = any(${states}::text[]) and q.context = any(${contexts}::text[])
       and (${tag}::text = '' or q.tags @> array[${tag}::text])
-      and (${show}::text <> 'open' or q.assignee = any(${claimants(who)}::text[]))
       and (${show}::text <> 'mine' or q.claimed_by = ${who.name}::text or q.posted_by = ${who.name}::text)
-      ${questWhereSql(sql, "q", scope, projectFilter)}
     order by case when ${show}::text = 'open' then array_position(array['high', 'normal', 'low'], q.priority) else 0 end,
       coalesce(q.closed_at, q.updated_at) desc, q.id desc
-    limit ${limit}`;
+    limit 500`;
+  const viewer = whoToQuestAgent(who);
+  const matched = show === "mine"
+    ? rawRows.filter((q) => !projectFilter || questMatches(null, q, { project: projectFilter }).ok)
+    : rawRows.filter((q) => questMatches(viewer, q, { project: projectFilter, checkAssignee: show === "open" }).ok);
+  const rows = matched.slice(0, limit);
   if (!rows.length) return show === "open" ? "No open quests for you. post_quest puts one on the board." : "No quests match.";
-  const total = Number(rows[0].total);
+  const total = matched.length;
   const where = show === "mine" ? "" : ` (${ctx ?? "every"} context${tag ? `, tag ${tag}` : ""})`;
   const head = `${plural(total, show === "open" ? "open quest" : show === "done" ? "done quest" : "quest")}${show === "mine" ? " you posted or claimed" : ""}${where}` +
     (total > rows.length ? `, newest ${rows.length} shown` : "") + ".";
@@ -280,8 +303,8 @@ export async function claimQuest(who: Who, args: Record<string, unknown>) {
     const mine = q.state === "claimed" && q.claimed_by === who.name && q.claimed_device === who.principal;
     if (q.state === "claimed" && !mine) throw new Refused(`Quest #${id} is already claimed by ${q.claimed_by} until ${hhmm(q.lease_until)}.`);
     if (!mayClaim(q, who)) throw new Refused(`Quest #${id} is for ${q.assignee}, so ${who.name} can't claim it.`);
-    const perm = questPermitted(whoToScope(who), q);
-    if (!perm.ok) throw new Refused(`Quest #${id} is outside ${who.name}'s permissions: ${perm.reason}.`);
+    const match = questMatches(whoToQuestAgent(who), q, { checkAssignee: true });
+    if (!match.ok) throw new Refused(`Quest #${id} doesn't match ${who.name}: ${match.reason}.`);
     const [c] = await tx`update memory.quest set state = 'claimed', claimed_by = ${who.name}, claimed_device = ${who.principal},
         claimed_session = ${who.session}, claimed_at = coalesce(case when ${mine} then claimed_at end, now()),
         lease_minutes = ${minutes}, lease_until = now() + make_interval(mins => ${minutes}::int), updated_at = now()
@@ -409,8 +432,8 @@ export async function abandonQuest(who: Who, args: Record<string, unknown>) {
 
 /** The scope of the agent a hook speaks for: the registered agent of that name, or the one this credential's client of
  * that family registered as. null when there is none, or more than one distinct agent. */
-async function hookAgent(principal: string, agent: string): Promise<AgentScope> {
-  const rows = await sql`select distinct a.name, a.context, a.computer, a.projects, a.agent_type, a.strict_projects
+async function hookAgent(principal: string, agent: string): Promise<QuestAgent> {
+  const rows = await sql`select distinct a.name, a.context, a.computer, a.projects, a.repos, a.type, a.agent_type, a.harness, a.device_id, a.strict_projects
     from memory.agent a
     where a.owner_id = memory.owner_default()
       and (a.name = ${agent} or exists (select 1 from memory.agent_binding b
@@ -419,10 +442,15 @@ async function hookAgent(principal: string, agent: string): Promise<AgentScope> 
   const r = rows[0];
   return {
     name: r.name,
+    family: agentName(r.harness ?? agent),
     context: r.context,
     computer: r.computer ?? null,
     projects: r.projects ?? [],
-    agentType: r.agent_type ?? "other",
+    repos: r.repos ?? r.projects ?? [],
+    type: r.type ?? r.agent_type ?? "other",
+    agentType: r.agent_type ?? r.type ?? "other",
+    harness: r.harness ?? null,
+    deviceId: r.device_id !== null && r.device_id !== undefined ? Number(r.device_id) : null,
     strictProjects: Boolean(r.strict_projects),
     principal,
   };
@@ -449,14 +477,16 @@ export async function board(principal: string, agent: string, mode: "start" | "p
   const [seen] = await sql`select last_quest from memory.board_seen where principal = ${principal} and agent = ${agent}`;
   const after = mode === "prompt" ? Number(seen?.last_quest ?? 0) : 0;
   const who = { name: agent, family: agentName(agent) };
-  const quests = await sql`select q.*, count(*) over () as total from memory.quest q
+  const matcher = scope ?? { name: who.name, family: who.family, principal };
+  const rawQuests = await sql`select q.* from memory.quest q
     where q.state = 'open' and q.id > ${after} and q.context = any(${contextsFor(ctx)}::text[]) and q.assignee = any(${claimants(who)}::text[])
-      ${questWhereSql(sql, "q", scope)}
-    order by array_position(array['high', 'normal', 'low'], q.priority), q.id desc limit ${BOARD_LINES}`;
+    order by array_position(array['high', 'normal', 'low'], q.priority), q.id desc limit 100`;
+  const matchedQuests = rawQuests.filter((q) => questMatches(matcher, q, { checkAssignee: true }).ok);
+  const quests = matchedQuests.slice(0, BOARD_LINES);
   const [{ n }] = await sql`select count(*)::int as n from memory.message_delivery d
     join memory.message m on m.owner_id = d.owner_id and m.id = d.message_id
     where d.recipient = ${agent} and d.acked_at is null and d.dropped_at is null and d.visible_after <= now() and m.expires_at > now()`;
-  const M = Number(n), Q = quests.length ? Number(quests[0].total) : 0;
+  const M = Number(n), Q = matchedQuests.length;
   const [{ top }] = await sql`select coalesce(max(id), 0) as top from memory.quest`;
   await sql`insert into memory.board_seen (principal, agent, last_quest) values (${principal}, ${agent}, ${top})
     on conflict (owner_id, principal, agent) do update set last_quest = greatest(memory.board_seen.last_quest, excluded.last_quest), seen_at = now()`;

@@ -13,7 +13,7 @@
 // current version, no two versions share a hash, and no entry that main already has changed. After a bump, add an entry
 // with the hash the failing test prints. deploy.sh runs that guard before it deploys.
 export const CLIENT_VERSION = "20261117.5";
-export const SERVER_VERSION = "20261117.3";
+export const SERVER_VERSION = "20261117.4";
 
 /** Every client version that was released, oldest first, with the day it was. A client is expired only when it is behind
  * a version released more than the cutoff ago, so a new release can never expire a client on the day it ships.
@@ -59,6 +59,7 @@ export const SERVER_SURFACE_HASHES: Record<string, string> = {
   "20261117.1": "e4b7811bc92dc400f89580000215d7569111eeb491c8ad710900d427f2af3ec5",
   "20261117.2": "b22f55adc013ff3cdc1dd9cb08b11340f350b6d9c7d5e176cb09053ad398d725",
   "20261117.3": "f7bfdd61b2914288d803570e7bd1f74ecf5ee38be6bda66973c33a9878db2620",
+  "20261117.4": "37008ee09b9b5503bf155b0ca46f4086a17182f0d90290c30e976eab6ab26a23",
 };
 
 /** What a rerun of the installer fixes: it replaces a hook too old to update itself or one that can't, and keeps the

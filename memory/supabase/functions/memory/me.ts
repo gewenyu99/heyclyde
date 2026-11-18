@@ -2,7 +2,10 @@
 // Each request runs inside the owner's tenant (R49), so every query here sees only that owner's rows.
 import { sql } from "./db.ts";
 import { AGENT_CONTEXTS, AGENT_TYPES, normalizeComputer, normalizeProjectSlug } from "./permissions.ts";
+import { questMatches } from "./quest.ts";
+import { reopenExpired } from "./quests.ts";
 import { forgetGraph } from "./search.ts";
+import { agentName } from "./service.ts";
 
 const json = (body: unknown, status = 200) => Response.json(body, { status });
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/;
@@ -209,6 +212,39 @@ export async function handle(req: Request, path: string, owner: string): Promise
     });
     if (!gone.length) return json({ error: `No active device ${rawId}.` }, 404);
     return json({ revoked: gone[0].id, name: gone[0].name, revoked_at: gone[0].revoked_at });
+  }
+
+  if (path === "/me/quests" && req.method === "GET") {
+    await reopenExpired();
+    const rawQuests = await sql`select * from memory.quest order by created_at desc, id desc limit 500`;
+    const agents = await sql`select a.name, a.type, a.agent_type, a.harness, a.device_id, a.computer, a.registered_by,
+        a.repos, a.projects, a.strict_projects, a.context, a.surface, d.name as device_name
+      from memory.agent a
+      left join memory.device d on d.owner_id = a.owner_id and d.id = a.device_id`;
+    const agentScopes = agents.map((a) => ({
+      name: a.name,
+      family: agentName(a.harness ?? a.surface ?? a.name),
+      context: a.context,
+      type: a.type ?? a.agent_type ?? "other",
+      agentType: a.agent_type ?? a.type ?? "other",
+      harness: a.harness ?? null,
+      deviceId: a.device_id !== null && a.device_id !== undefined ? Number(a.device_id) : null,
+      device: a.device_name ?? a.computer ?? a.registered_by ?? null,
+      principal: a.registered_by ?? null,
+      computer: a.computer ?? null,
+      repos: a.repos ?? [],
+      projects: a.projects ?? [],
+      strictProjects: Boolean(a.strict_projects),
+    }));
+    const now = Date.now();
+    const dayMs = 24 * 3600 * 1000;
+    const quests = rawQuests.map((q) => {
+      const matched = agentScopes.some((a) => questMatches(a, q, { checkAssignee: true }).ok);
+      const createdAt = q.created_at instanceof Date ? q.created_at.getTime() : new Date(String(q.created_at)).getTime();
+      const unmatched = q.state === "open" && !matched && Number.isFinite(createdAt) && (now - createdAt >= dayMs);
+      return { ...q, unmatched };
+    });
+    return json({ quests });
   }
 
   return json({ error: "No such endpoint." }, 404);
