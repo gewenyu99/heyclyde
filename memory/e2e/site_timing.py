@@ -13,6 +13,7 @@ never prints or persists any token or key). Python stdlib only.
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import math
 import os
@@ -74,22 +75,60 @@ def mint_jwt(email: str) -> str:
     return str(tok)
 
 
-def get_json(url: str, jwt: str) -> tuple[int, float, dict]:
-    req = urllib.request.Request(url, headers={"authorization": f"Bearer {jwt}", "accept": "application/json"})
-    t0 = time.perf_counter()
-    with urllib.request.urlopen(req, timeout=30) as r:
-        body = r.read()
-        ms = (time.perf_counter() - t0) * 1000.0
-        return r.status, ms, json.loads(body.decode("utf-8"))
+class KeepAliveClient:
+    """Persistent HTTP/HTTPS client so sequential calls measure server latency instead of 20 TLS handshakes."""
+
+    def __init__(self, base: str):
+        parsed = urllib.parse.urlsplit(base)
+        self.scheme = parsed.scheme
+        self.netloc = parsed.netloc
+        self.prefix = parsed.path.rstrip("/")
+        self.conn: http.client.HTTPConnection | None = None
+
+    def _connect(self) -> http.client.HTTPConnection:
+        if self.conn is None:
+            cls = http.client.HTTPSConnection if self.scheme == "https" else http.client.HTTPConnection
+            self.conn = cls(self.netloc, timeout=30)
+        return self.conn
+
+    def get_json(self, path_qs: str, jwt: str) -> tuple[int, float, dict]:
+        headers = {
+            "authorization": f"Bearer {jwt}",
+            "accept": "application/json",
+            "user-agent": "clyde-site-timing/1.0",
+            "connection": "keep-alive",
+        }
+        full_path = f"{self.prefix}{path_qs}"
+        t0 = time.perf_counter()
+        for attempt in range(2):
+            conn = self._connect()
+            try:
+                conn.request("GET", full_path, headers=headers)
+                resp = conn.getresponse()
+                body = resp.read()
+                ms = (time.perf_counter() - t0) * 1000.0
+                if resp.status >= 400:
+                    raise RuntimeError(f"GET {self.scheme}://{self.netloc}{full_path} returned {resp.status}: {body.decode('utf-8', 'replace')[:200]}")
+                return resp.status, ms, json.loads(body.decode("utf-8"))
+            except (http.client.HTTPException, OSError):
+                if self.conn:
+                    try:
+                        self.conn.close()
+                    except Exception:
+                        pass
+                    self.conn = None
+                if attempt == 1:
+                    raise
+        raise RuntimeError("unreachable")
 
 
-def bench_entries(base: str, jwt: str, query: str, runs: int, limit_ms: float) -> bool:
-    url = f"{base.rstrip('/')}/me/entries?q={urllib.parse.quote(query)}"
+def bench_entries(client: KeepAliveClient, jwt: str, query: str, runs: int, limit_ms: float) -> bool:
+    path_qs = f"/me/entries?q={urllib.parse.quote(query)}"
     times: list[float] = []
     totals: list[int] = []
     for _ in range(runs):
-        status, ms, data = get_json(url, jwt)
-        assert status == 200, f"GET {url} returned {status}"
+        status, ms, data = client.get_json(path_qs, jwt)
+        assert status == 200, f"GET {path_qs} returned {status}"
         times.append(ms)
         totals.append(int(data.get("total", len(data.get("entries", [])))))
     p50_v = sorted(times)[len(times) // 2]
@@ -100,20 +139,20 @@ def bench_entries(base: str, jwt: str, query: str, runs: int, limit_ms: float) -
     return ok
 
 
-def bench_graph(base: str, jwt: str, center: str | None, depth: int, runs: int, limit_ms: float) -> bool:
+def bench_graph(client: KeepAliveClient, jwt: str, center: str | None, depth: int, runs: int, limit_ms: float) -> bool:
     if not center:
-        _, _, seed = get_json(f"{base.rstrip('/')}/me/graph?depth=1", jwt)
+        _, _, seed = client.get_json("/me/graph?depth=1", jwt)
         center = seed.get("center")
     if not center:
         print("graph: no entries with links found -> FAIL")
         return False
-    url = f"{base.rstrip('/')}/me/graph?center={urllib.parse.quote(center)}&depth={depth}"
+    path_qs = f"/me/graph?center={urllib.parse.quote(center)}&depth={depth}"
     times: list[float] = []
     nodes_n = 0
     edges_n = 0
     for _ in range(runs):
-        status, ms, data = get_json(url, jwt)
-        assert status == 200, f"GET {url} returned {status}"
+        status, ms, data = client.get_json(path_qs, jwt)
+        assert status == 200, f"GET {path_qs} returned {status}"
         times.append(ms)
         nodes_n = len(data.get("nodes", []))
         edges_n = len(data.get("edges", []))
@@ -139,11 +178,12 @@ def main() -> int:
     if not jwt:
         jwt = mint_jwt(DEFAULT_EMAIL)
 
+    client = KeepAliveClient(args.base)
     ok = True
     if args.target in ("all", "entries"):
-        ok = bench_entries(args.base, jwt, args.query, args.runs, 800.0) and ok
+        ok = bench_entries(client, jwt, args.query, args.runs, 800.0) and ok
     if args.target in ("all", "graph"):
-        ok = bench_graph(args.base, jwt, args.center, args.depth, args.runs, 1000.0) and ok
+        ok = bench_graph(client, jwt, args.center, args.depth, args.runs, 1000.0) and ok
     return 0 if ok else 1
 
 
