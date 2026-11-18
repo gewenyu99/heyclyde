@@ -573,3 +573,26 @@ Deno.test('no byte caps', () => {
     assert.equal(/<=\s*`?[\d.,]+\s*(?:KB|bytes)|`<=\s*[\d.,]+`\s*bytes/.exec(doc)?.[0] ?? null, null, `${f} names a byte budget`)
   }
 })
+
+// R79 (like-vincent #84), Wen 2026-11-17: "memory, message board, agent coordination, all the keywords". Each phrase someone
+// might search sits in a page's <title> or h1, in llms.txt, and in the home page's SoftwareApplication keywords.
+const KEYWORDS = ['AI agent memory', 'shared memory', 'MCP memory server', 'message board', 'agent coordination', 'multi-agent',
+  'long-term memory', 'persistent memory', 'quest board', 'agent handoff', 'memory for Claude Code']
+Deno.test('keywords', async () => {
+  const heads: string[] = []
+  for (const path of INDEXED) {
+    const { html } = await get(`https://heyclyde.me${path}`)
+    heads.push(unescape([...attr(html, /<title>([^<]*)<\/title>/g), ...h1s(html)].join(' | ')).toLowerCase())
+  }
+  const llms = (await (await worker.fetch(new Request('https://heyclyde.me/llms.txt'), ENV)).text()).toLowerCase()
+  const home = (await get('https://heyclyde.me/')).html
+  const app = jsonld(home).find((b) => b['@type'] === 'SoftwareApplication')
+  const keys = String(app?.keywords ?? '').toLowerCase()
+  for (const k of KEYWORDS.map((x) => x.toLowerCase())) {
+    assert.ok(heads.some((h) => h.includes(k)), `"${k}" is in a page's title or h1`)
+    assert.ok(llms.includes(k), `llms.txt says "${k}"`)
+    assert.ok(keys.includes(k), `the home SoftwareApplication's keywords include "${k}"`)
+  }
+  const title = attr(home, /<title>([^<]*)<\/title>/g)[0].toLowerCase()
+  for (const k of ['memory', 'message board', 'coordination']) assert.ok(title.includes(k), `the home title says ${k}`)
+})
