@@ -5,7 +5,7 @@
  * grooming and messages.
  */
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -1070,5 +1070,108 @@ test('R53 tool text is neutral and says Clyde', { skip: SKIP }, async () => {
   for (const re of [/\bmemory\b/i, /\bWen\b/, /\balways\b/i, /\bbefore\b/i, /\bcall(s|ed|ing)?\b/i]) {
     const hits = texts.filter((s) => re.test(s))
     assert.equal(hits.length, 0, `${re} in: ${hits.map((s) => s.slice(0, 120)).join(' | ')}`)
+  }
+})
+
+// ---------------------------------------------------------------- R24, Resend SMTP from send.heyclyde.me (#28)
+
+function gitGrepLines(args: string[]): string[] {
+  try {
+    const out = execFileSync('git', ['grep', ...args], { cwd: repoRoot(), encoding: 'utf8' })
+    return out.trimEnd() ? out.trimEnd().split('\n') : []
+  } catch (err: any) {
+    if (err?.status === 1) return []
+    throw err
+  }
+}
+
+function parseToml(src: string): Record<string, Record<string, string | number | boolean>> {
+  const secs: Record<string, Record<string, string | number | boolean>> = {}
+  let cur = ''
+  for (const raw of src.split(/\r?\n/)) {
+    const line = raw.replace(/#(?=(?:[^"]*"[^"]*")*[^"]*$).*$/, '').trim()
+    if (!line) continue
+    const sec = /^\[([^\]]+)\]$/.exec(line)
+    if (sec) {
+      cur = sec[1].trim()
+      secs[cur] ??= {}
+      continue
+    }
+    const kv = /^([A-Za-z0-9_]+)\s*=\s*(.+)$/.exec(line)
+    if (!kv || !cur) continue
+    const val = kv[2].trim()
+    if (val.startsWith('"') && val.endsWith('"')) secs[cur][kv[1]] = val.slice(1, -1)
+    else if (val === 'true' || val === 'false') secs[cur][kv[1]] = val === 'true'
+    else if (/^\d+$/.test(val)) secs[cur][kv[1]] = Number(val)
+  }
+  return secs
+}
+
+test('the Accounts row of SUPABASE-PLAN.md requires 2FA on Resend', () => {
+  const plan = readFileSync(join(repoRoot(), 'memory', 'SUPABASE-PLAN.md'), 'utf8')
+  const matches = plan.split(/\r?\n/).filter((line) => /^\| Accounts \|.*Resend/.test(line))
+  assert.equal(matches.length, 1)
+})
+
+test('config.toml routes Auth email through Resend SMTP from send.heyclyde.me with no secret inline', () => {
+  const toml = parseToml(readFileSync(join(repoRoot(), 'memory', 'supabase', 'config.toml'), 'utf8'))
+  const smtp = toml['auth.email.smtp'] ?? {}
+  const rl = toml['auth.rate_limit'] ?? {}
+  assert.equal(smtp.enabled, true)
+  assert.equal(smtp.host, 'smtp.resend.com')
+  assert.equal(smtp.port, 465)
+  assert.equal(smtp.user, 'resend')
+  assert.equal(smtp.admin_email, 'clyde@send.heyclyde.me')
+  assert.equal(smtp.sender_name, 'Clyde')
+  assert.equal(smtp.pass, 'env(RESEND_SMTP_KEY)')
+  assert.ok(typeof rl.email_sent === 'number' && rl.email_sent >= 30 && rl.email_sent <= 100, `rate_limit.email_sent=${rl.email_sent}`)
+})
+
+test('no Resend key or SMTP password is tracked in the repo', () => {
+  assert.deepEqual(gitGrepLines(['-nE', 're_[A-Za-z0-9]{8}_[A-Za-z0-9]{20,}', '--', '.', ':!**/node_modules/**']), [])
+  assert.deepEqual(gitGrepLines(['-nE', 'pass *= *"re_|smtp_pass *[:=] *"re_', '--', 'memory']), [])
+})
+
+test('DEPLOY.md and config.toml name the Resend sender, not Supabase\'s built-in email', () => {
+  assert.deepEqual(gitGrepLines(['-n', 'about two an hour', 'memory/DEPLOY.md', 'memory/supabase/config.toml']), [])
+  assert.deepEqual(gitGrepLines(['-n', 'members of the Supabase organization', 'memory/DEPLOY.md']), [])
+  assert.deepEqual(gitGrepLines(['-n', 'default sign-in email', 'memory/supabase/config.toml']), [])
+  assert.ok(gitGrepLines(['-n', 'clyde@send.heyclyde.me', 'memory/DEPLOY.md']).length >= 1)
+})
+
+test('/oauth/consent returns 502 and keeps no consent row when Auth\'s email limit refuses the send', { skip: SKIP }, async () => {
+  sql('delete from memory.oauth_consent')
+  try {
+    memory.auth.otpFailure = { status: 429, body: { msg: 'email rate limit exceeded' } }
+    const failed = await call('GET', '/oauth/consent?authorization_id=smtp-fail-0001')
+    assert.equal(failed.status, 502, failed.text)
+    assert.match(failed.text, /email rate limit exceeded/)
+    assert.equal(sql(`select count(*)::int as n from memory.oauth_consent where authorization_id = 'smtp-fail-0001'`)[0].n, 0)
+
+    // The refused send spent 0 of the 3 per 15 minutes window.
+    memory.auth.otpFailure = null
+    for (let i = 1; i <= 3; i++) {
+      const ok = await call('GET', `/oauth/consent?authorization_id=smtp-ok-000${i}`)
+      assert.equal(ok.status, 200, ok.text)
+    }
+    const fourth = await call('GET', '/oauth/consent?authorization_id=smtp-ok-0004')
+    assert.equal(fourth.status, 429, fourth.text)
+  } finally {
+    memory.auth.otpFailure = null
+    sql('delete from memory.oauth_consent')
+  }
+})
+
+test('/oauth/consent returns 502 and keeps no consent row when the SMTP send fails', { skip: SKIP }, async () => {
+  sql('delete from memory.oauth_consent')
+  try {
+    memory.auth.otpFailure = { status: 500, body: { code: 500, msg: 'Error sending magic link email' } }
+    const failed = await call('GET', '/oauth/consent?authorization_id=smtp-down-0001')
+    assert.equal(failed.status, 502, failed.text)
+    assert.match(failed.text, /Error sending magic link email/)
+    assert.equal(sql('select count(*)::int as n from memory.oauth_consent')[0].n, 0)
+  } finally {
+    memory.auth.otpFailure = null
+    sql('delete from memory.oauth_consent')
   }
 })

@@ -6,7 +6,7 @@ project_id = "memory"
 verify_jwt = false
 
 
-# The installer signs a new computer in through Supabase's default sign-in email. The link lands on the function's
+# The installer signs a new computer in through Clyde's sign-in email (clyde@send.heyclyde.me via Resend SMTP). The link lands on the function's
 # /install/approve, and the installer finishes the PKCE exchange itself, so the link alone signs nobody in. The function
 # mints a device token only for an email in memory.allowed_email. Sign-ups are off: Clyde is allowlist only, and the
 # accounts that exist were added on purpose.
@@ -29,6 +29,18 @@ authorization_url_path = "/oauth/consent"
 allow_dynamic_registration = true
 
 # R76 (#81): Carbon copy templates hosted with brand assets on heyclyde.me and verify links on memory.heyclyde.me.
+[auth.email.smtp]
+enabled = true
+host = "smtp.resend.com"
+port = 465
+user = "resend"
+admin_email = "clyde@send.heyclyde.me"
+sender_name = "Clyde"
+pass = "env(RESEND_SMTP_KEY)"
+
+[auth.rate_limit]
+email_sent = 30
+
 [auth.email.template.magic_link]
 subject = "Your Clyde sign-in link"
 content_path = "./supabase/templates/magic_link.html"

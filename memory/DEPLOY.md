@@ -25,7 +25,7 @@ memory is allowlist only. An email outside `memory.allowed_email` stops at the f
 - **Gemini CLI and Antigravity**, when they're here. See [Connect your apps](#connect-your-apps).
 - **Old entries go.** A rerun replaces earlier `memory` and `kb` entries. Your own hooks stay.
 
-It needs `curl`, `python3` and Claude Code, on macOS or Linux. Supabase's built-in email only sends to members of the Supabase organization, and about two an hour.
+It needs `curl`, `python3` and Claude Code, on macOS or Linux. Supabase Auth sends sign-in emails from `clyde@send.heyclyde.me` through Resend SMTP.
 
 Cloud sessions on this repo read `.mcp.json` and `.claude/settings.json`. Give the cloud environment a `MEMORY_TOKEN`.
 

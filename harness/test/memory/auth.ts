@@ -18,6 +18,8 @@ export type FakeAuth = {
   passwords: Record<string, string>
   /** An authorization request by id: where its code goes and the client that asked. */
   authorizations: Record<string, { redirect_uri: string; client: { id: string; name: string } }>
+  /** When non-null, POST /auth/v1/otp replies with this status and JSON body instead of 200. */
+  otpFailure: { status: number; body: unknown } | null
   close: () => Promise<void>
 }
 
@@ -43,6 +45,15 @@ export async function startFakeAuth(extra?: (req: http.IncomingMessage, res: htt
   const signIns: FakeAuth['signIns'] = {}
   const passwords: FakeAuth['passwords'] = {}
   const authorizations: FakeAuth['authorizations'] = {}
+  const state: FakeAuth = {
+    url: '',
+    calls,
+    signIns,
+    passwords,
+    authorizations,
+    otpFailure: null,
+    close: () => new Promise((resolve) => { server.closeAllConnections(); server.close(() => resolve()) }),
+  }
   const server = http.createServer((req, res) => {
     const chunks: Buffer[] = []
     req.on('data', (c) => chunks.push(c))
@@ -67,7 +78,10 @@ export async function startFakeAuth(extra?: (req: http.IncomingMessage, res: htt
         // A token with unconfirmed: true is a user who never clicked their confirmation link.
         return reply(200, { id: claims.sub ?? 'fake-user', email: claims.email, email_confirmed_at: claims.unconfirmed ? null : '2026-11-01T00:00:00Z' })
       }
-      if (req.method === 'POST' && path === '/auth/v1/otp') return reply(200, {})
+      if (req.method === 'POST' && path === '/auth/v1/otp') {
+        if (state.otpFailure) return reply(state.otpFailure.status, state.otpFailure.body)
+        return reply(200, {})
+      }
       if (req.method === 'POST' && path === '/auth/v1/token' && new URL(req.url ?? '/', 'http://fake').searchParams.get('grant_type') === 'password') {
         const email = String(body?.email ?? '')
         if (!email || passwords[email] === undefined || passwords[email] !== body?.password) return reply(400, { msg: 'Invalid login credentials' })
@@ -101,5 +115,6 @@ export async function startFakeAuth(extra?: (req: http.IncomingMessage, res: htt
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const { port } = server.address() as { port: number }
-  return { url: `http://127.0.0.1:${port}`, calls, signIns, passwords, authorizations, close: () => new Promise((resolve) => { server.closeAllConnections(); server.close(() => resolve()) }) }
+  state.url = `http://127.0.0.1:${port}`
+  return state
 }

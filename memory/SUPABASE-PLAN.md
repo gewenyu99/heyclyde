@@ -106,7 +106,7 @@ What guards the store today, and what comes next.
 | Layer | Today | Next |
 |---|---|---|
 | Who connects | Allowlist of one email, Supabase sign-ups off, a per-computer token minted only after an email sign-in. Every new computer posts a board message all agents relay to Wen. Tokens unused for 90 days stop working | Recall logs which computer asked |
-| Accounts | Supabase, GitHub and OpenAI logins hold everything | 2FA on all three, and on the Google account the sign-in emails reach |
+| Accounts | Supabase, GitHub, OpenAI and Resend logins hold everything | 2FA on all four, and on the Google account the sign-in emails reach |
 | What gets in | Secrets, card numbers, SSNs and SINs redacted on every write. gpt-6-luna refuses notes and messages with sensitive personal data, attempts to steer the assistants, or harmful content, and fails closed. Work computers installed with `MEMORY_HOOKS=metadata` keep no prompts or tool output | |
 | What gets out | Private entries reach agents and OpenAI by title only. Confidential entries reach agents in full and OpenAI by title only. Recall filters out irrelevant items before an agent sees them | |
 | Backups | Nightly encrypted export to GitHub, 30 days, and each night proves its copy decrypts back to the same rows | |

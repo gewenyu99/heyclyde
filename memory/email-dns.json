@@ -1,0 +1,23 @@
+[
+  {
+    "type": "CNAME",
+    "name": "rsend.send.heyclyde.me",
+    "value": "rsend.forge.rmta.net",
+    "priority": null,
+    "record": "SPF"
+  },
+  {
+    "type": "CNAME",
+    "name": "send.send.heyclyde.me",
+    "value": "send.forge.rmta.net",
+    "priority": null,
+    "record": "SPF"
+  },
+  {
+    "type": "TXT",
+    "name": "resend._domainkey.send.heyclyde.me",
+    "value": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC2OfgDJAjOYQMFv4kmZgSD8X32u7QG3H3BFGM7OwmnBu57cWHaX3Xz4f3j5u91apTfgSaKycWBVxDUq6ILIPwPgBfm/wrxrR0cLpsu03NX4+bvY0AwhdMX/UzkGkKYnK4zfRNFImDiS52ADLJT5nodjMUqzqCffzNyDXOMrs9RaQIDAQAB",
+    "priority": null,
+    "record": "DKIM"
+  }
+]

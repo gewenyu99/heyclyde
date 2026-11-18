@@ -1,0 +1,27 @@
+name: email dns check
+
+on:
+  schedule:
+    - cron: '23 6 * * *'
+  workflow_dispatch:
+  push:
+    paths:
+      - 'memory/email-*'
+      - '.github/workflows/memory-email-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  dns:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dig and jq
+        run: |
+          if ! command -v dig >/dev/null || ! command -v jq >/dev/null; then
+            sudo apt-get update && sudo apt-get install -y --no-install-recommends bind9-dnsutils jq
+          fi
+      - name: Verify public email DNS records
+        run: ./memory/email-check.sh dns
