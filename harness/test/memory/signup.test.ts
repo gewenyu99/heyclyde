@@ -73,6 +73,25 @@ test('R54: slot 1,000 is taken once', { skip: SKIP }, async () => {
   }
 })
 
+// R80 (like-vincent #85): a failed check puts the form back, with the address and an error, and sends nothing.
+test('R80: a failed check asks again', { skip: SKIP }, async () => {
+  const n = otps()
+  const plain = await request('GET', `${memory.url}/oauth/consent?authorization_id=auth-${nonce()}`, { headers: { ...proxied('US'), accept: 'application/json' }, timeoutMs: 30_000 })
+  const key = JSON.parse(plain.text).turnstile_site_key
+  for (const form of [{ email: email(), 'cf-turnstile-response': 'bot' }, { email: email() }]) {
+    const r = await request('POST', `${memory.url}/oauth/consent?authorization_id=auth-${nonce()}`, {
+      headers: { ...proxied('US'), accept: 'application/json', 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(form).toString(), timeoutMs: 30_000,
+    })
+    assert.equal(r.status, 400, r.text)
+    const body = JSON.parse(r.text)
+    assert.equal(body.state, 'ask_email', r.text)
+    assert.equal(body.email, form.email)
+    assert.ok(typeof body.error === 'string' && body.error.length > 0, r.text)
+    assert.equal(body.turnstile_site_key, key)
+  }
+  assert.equal(otps(), n)
+})
+
 test('R54: turnstile required', { skip: SKIP }, async () => {
   const n = otps()
   const missing = await signUp(proxied('US'), { email: email() })

@@ -43,3 +43,34 @@ Deno.test('R54: the sign-in page asks Turnstile', async () => {
   assert.ok(googleOnly.html.includes('Continue with Google') && !googleOnly.html.includes('Continue with GitHub'), googleOnly.html)
   assert.ok(googleOnly.html.includes('Sign in with Google, or enter your email'), googleOnly.html)
 })
+
+// ---- R80 (like-vincent #85): the form waits for Turnstile, and a failed check keeps what you typed ----
+
+Deno.test('R80: the form waits for Turnstile', async () => {
+  const { csp, html } = await askEmail({ turnstile_site_key: '0x4AAAAAAATESTKEY' })
+  const widget = /<div class="cf-turnstile"[^>]*>/.exec(html)?.[0] ?? ''
+  for (const a of ['data-callback="', 'data-expired-callback="', 'data-error-callback="', 'data-refresh-expired="auto"']) assert.ok(widget.includes(a), `widget has ${a}: ${widget}`)
+  const button = /<button[^>]*type="submit"[^>]*>/.exec(html)?.[0] ?? ''
+  assert.match(button, /\sdisabled(\s|>|=)/, `the button starts disabled: ${button}`)
+  const status = [...html.matchAll(/<[^>]+role="status"[^>]*>([^<]*)</g)].map((m) => m[1])
+  assert.equal(status.length, 1, html)
+  assert.ok(status[0].includes("Checking you're a person") || status[0].includes('Checking you&#39;re a person'), status[0])
+  const nonce = /script-src 'nonce-([^']+)'/.exec(csp)?.[1]
+  const inline = [...html.matchAll(/<script nonce="([^"]+)">([\s\S]*?)<\/script>/g)].filter((m) => m[1] === nonce).map((m) => m[2]).join('\n')
+  for (const name of ['data-callback', 'data-expired-callback', 'data-error-callback']) {
+    const fn = new RegExp(`${name}="([A-Za-z_$][\\w$]*)"`).exec(widget)?.[1]
+    assert.ok(fn && new RegExp(`window\\.${fn}\\s*=`).test(inline), `${name} ${fn} is defined in a nonce'd script`)
+  }
+  const plain = await askEmail({})
+  const plainButton = /<button[^>]*type="submit"[^>]*>/.exec(plain.html)?.[0] ?? ''
+  assert.doesNotMatch(plainButton, /\sdisabled/, 'no Turnstile, no wait')
+  assert.ok(!plain.html.includes('data-callback'), 'no callbacks without Turnstile')
+})
+
+Deno.test('R80: a failed check keeps the email', async () => {
+  const error = "Clyde couldn't tell a person sent that. Try again."
+  const { html } = await askEmail({ turnstile_site_key: '0x4AAAAAAATESTKEY', email: 'a@example.com', error })
+  const alerts = [...html.matchAll(/<[^>]+role="alert"[^>]*>([\s\S]*?)<\/[a-z]+>/g)].map((m) => m[1].replace(/&#39;/g, "'"))
+  assert.deepEqual(alerts, [error])
+  assert.match(html, /<input[^>]*id="email"[^>]*value="a@example\.com"/)
+})
