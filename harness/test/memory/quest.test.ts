@@ -195,3 +195,20 @@ test('unmatched after 24 hours', { skip: SKIP }, async () => {
   assert.equal(qOld.unmatched, true)
   assert.equal(qNew.unmatched, false)
 })
+
+test('site quests pass the judge', { skip: SKIP }, async () => {
+  const o = createOwner('sitequest')
+  const before = sql(`select count(*)::int as n from memory.quest where owner_id = '${o.id}'`)[0].n
+  const res = await request('POST', `${memory.url}/me/quests`, {
+    headers: bearer(o.signInJwt()),
+    body: {
+      title: 'Rotate credentials',
+      brief: 'Use key AKIAIOSFODNN7EXAMPLE in production.',
+      done_when: 'Rotated.',
+    },
+    timeoutMs: 30_000,
+  })
+  assert.equal(res.status, 422, res.text)
+  const afterCount = sql(`select count(*)::int as n from memory.quest where owner_id = '${o.id}'`)[0].n
+  assert.equal(afterCount, before)
+})

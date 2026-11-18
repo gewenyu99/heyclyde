@@ -433,20 +433,20 @@ export async function abandonQuest(who: Who, args: Record<string, unknown>) {
 /** The scope of the agent a hook speaks for: the registered agent of that name, or the one this credential's client of
  * that family registered as. null when there is none, or more than one distinct agent. */
 async function hookAgent(principal: string, agent: string): Promise<QuestAgent> {
-  const rows = await sql`select distinct a.name, a.context, a.computer, a.projects, a.repos, a.type, a.agent_type, a.harness, a.device_id, a.strict_projects
+  const rows = await sql`select distinct on (a.name) to_jsonb(a) as aj
     from memory.agent a
     where a.owner_id = memory.owner_default()
       and (a.name = ${agent} or exists (select 1 from memory.agent_binding b
         where b.owner_id = a.owner_id and b.principal = ${principal} and b.agent = a.name and memory.agent_name(b.client) = ${agent}))`;
   if (rows.length !== 1) return null;
-  const r = rows[0];
+  const r = (rows[0].aj ?? {}) as Record<string, any>;
   return {
-    name: r.name,
-    family: agentName(r.harness ?? agent),
-    context: r.context,
+    name: String(r.name),
+    family: agentName(String(r.harness ?? agent)),
+    context: String(r.context ?? "both"),
     computer: r.computer ?? null,
-    projects: r.projects ?? [],
-    repos: r.repos ?? r.projects ?? [],
+    projects: Array.isArray(r.projects) ? r.projects : [],
+    repos: Array.isArray(r.repos) ? r.repos : (Array.isArray(r.projects) ? r.projects : []),
     type: r.type ?? r.agent_type ?? "other",
     agentType: r.agent_type ?? r.type ?? "other",
     harness: r.harness ?? null,

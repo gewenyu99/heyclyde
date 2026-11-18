@@ -670,27 +670,28 @@ async function sessionOf(
   if (!session) return { client: null, agent: null, sessionRepo: null, ui: false };
   const [row] = await sql`select c.client, c.principal, c.ui,
       c.session_context, c.session_projects, c.session_computer, c.session_strict_projects,
-      a.name, a.context, a.surface, a.computer, a.projects, a.repos, a.agent_type, a.type, a.harness, a.device_id, a.strict_projects,
+      to_jsonb(a) as aj,
       s.repo as session_repo
     from memory.mcp_client c
     left join memory.agent a on a.owner_id = c.owner_id and a.name = c.agent
     left join memory.mcp_session s on s.owner_id = c.owner_id and s.id = c.session_id
     where c.session_id = ${session}`;
-  const mine = row?.principal === principal && row?.name;
+  const aj = (row?.aj ?? null) as Record<string, any> | null;
+  const mine = row?.principal === principal && aj?.name;
   return {
     client: row?.client ?? null,
     agent: mine ? {
-      name: row.name,
-      context: row.session_context ?? row.context,
-      surface: row.surface,
-      computer: row.session_computer ?? row.computer ?? null,
-      projects: Array.isArray(row.session_projects) ? row.session_projects : (Array.isArray(row.projects) ? row.projects : []),
-      repos: Array.isArray(row.repos) ? row.repos : (Array.isArray(row.projects) ? row.projects : []),
-      agent_type: row.agent_type ?? row.type ?? "other",
-      type: row.type ?? row.agent_type ?? "other",
-      harness: row.harness ?? row.client ?? null,
-      device_id: row.device_id !== null && row.device_id !== undefined ? Number(row.device_id) : null,
-      strict_projects: row.session_strict_projects ?? row.strict_projects ?? false,
+      name: aj!.name,
+      context: row.session_context ?? aj!.context,
+      surface: aj!.surface,
+      computer: row.session_computer ?? aj!.computer ?? null,
+      projects: Array.isArray(row.session_projects) ? row.session_projects : (Array.isArray(aj!.projects) ? aj!.projects : []),
+      repos: Array.isArray(aj!.repos) ? aj!.repos : (Array.isArray(aj!.projects) ? aj!.projects : []),
+      agent_type: aj!.agent_type ?? aj!.type ?? "other",
+      type: aj!.type ?? aj!.agent_type ?? "other",
+      harness: aj!.harness ?? row.client ?? null,
+      device_id: aj!.device_id !== null && aj!.device_id !== undefined ? Number(aj!.device_id) : null,
+      strict_projects: row.session_strict_projects ?? aj!.strict_projects ?? false,
     } : null,
     sessionRepo: (row?.principal === principal ? row?.session_repo : null) ?? null,
     ui: row?.principal === principal && row?.ui === true,
