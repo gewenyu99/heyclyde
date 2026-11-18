@@ -561,12 +561,15 @@ Deno.test('guides link each other', async () => {
   }
 })
 
-Deno.test('no page byte caps', () => {
-  const caps = new RegExp(['PAGE', 'HOME'].map((w) => `${w}_MAX`).join('|') + '|encode\\(html\\)\\.length\\s*<' + '=')
-  for (const f of ['site_test.ts', 'proxy_test.ts']) {
+Deno.test('no byte caps', () => {
+  // Wen, 2026-11-17: "no cap". No page, chat card or logo has a byte budget (R79, like-vincent #84).
+  const caps = new RegExp(['PAGE', 'HOME'].map((w) => `${w}_MAX`).join('|') + '|(?:byteLength\\([^)]*\\)|encode\\([^)]*\\)\\.length)\\s*<' + '=')
+  for (const f of ['site_test.ts', 'proxy_test.ts', 'ui.test.ts', 'design_test.ts']) {
     const src = Deno.readTextFileSync(new URL(`./${f}`, import.meta.url))
-    assert.equal(caps.exec(src)?.[0] ?? null, null, `${f} caps a page's bytes`)
+    assert.equal(caps.exec(src)?.[0] ?? null, null, `${f} caps something's bytes`)
   }
-  const brand = Deno.readTextFileSync(new URL('../../../memory/design/BRAND.md', import.meta.url))
-  assert.ok(!/heyclyde\.me\/`?\s*<=/.test(brand), 'BRAND.md names no page byte budget')
+  for (const f of ['BRAND.md', 'ASSETS.md']) {
+    const doc = Deno.readTextFileSync(new URL(`../../../memory/design/${f}`, import.meta.url))
+    assert.equal(/<=\s*`?[\d.,]+\s*(?:KB|bytes)|`<=\s*[\d.,]+`\s*bytes/.exec(doc)?.[0] ?? null, null, `${f} names a byte budget`)
+  }
 })
