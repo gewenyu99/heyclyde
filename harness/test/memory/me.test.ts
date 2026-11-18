@@ -171,6 +171,20 @@ test('spend limit bounds', { skip: SKIP }, async () => {
   assert.equal(ok.status, 200, ok.text)
   const [row] = sql(`select spend_limit_cents from memory.entitlement where owner_id = '${o.id}'`)
   assert.equal(Number(row?.spend_limit_cents), 2000)
+  const afterPaid = await request('GET', `${memory.url}/me/usage`, { headers: bearer(o.signInJwt()), timeoutMs: 30_000 })
+  assert.equal(afterPaid.status, 200, afterPaid.text)
+  assert.equal(JSON.parse(afterPaid.text).spend_limit_cents, 2000)
+
+  const comp = createOwner('comp-spend')
+  const compSet = await request('PATCH', `${memory.url}/me/billing`, {
+    headers: bearer(comp.signInJwt()),
+    body: { spend_limit_cents: 1000 },
+    timeoutMs: 30_000,
+  })
+  assert.equal(compSet.status, 200, compSet.text)
+  const afterComp = await request('GET', `${memory.url}/me/usage`, { headers: bearer(comp.signInJwt()), timeoutMs: 30_000 })
+  assert.equal(afterComp.status, 200, afterComp.text)
+  assert.equal(JSON.parse(afterComp.text).spend_limit_cents, 1000)
 })
 
 // ----------------------------------------------------------------------------------------------------- R51 (#56), R52 (#57), R63 (#68)

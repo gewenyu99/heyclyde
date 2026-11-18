@@ -106,10 +106,15 @@ export async function handle(req: Request, path: string, owner: string): Promise
         overage_cents: overageCents,
       };
     });
+    const [ent] = await rootSql`select (to_jsonb(e)->>'spend_limit_cents')::int as spend_limit_cents
+      from memory.entitlement e where e.owner_id = ${owner}::uuid`;
+    const spendLimitCents = ent?.spend_limit_cents === null || ent?.spend_limit_cents === undefined
+      ? v.spendLimitCents
+      : Number(ent.spend_limit_cents);
     return json({
       plan: v.plan.id,
       state: v.state,
-      spend_limit_cents: v.spendLimitCents,
+      spend_limit_cents: spendLimitCents,
       period,
       meters,
     });
