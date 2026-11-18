@@ -35,7 +35,7 @@ PROBE_OWNERS = int(os.environ.get("E2E_PROBE_OWNERS", "50"))
 PROBE_RECALLS = int(os.environ.get("E2E_PROBE_RECALLS", "200"))
 MAX_DB_BYTES = int(os.environ.get("E2E_MAX_DB_BYTES", "5000000000"))
 P95_MS = float(os.environ.get("E2E_FREE_P95_MS", "1500"))
-BATCH_OWNERS = int(os.environ.get("E2E_BATCH_OWNERS", "100"))
+BATCH_OWNERS = int(os.environ.get("E2E_BATCH_OWNERS", "50"))
 
 WEN_TARGET = {
     "entries": 1477,
@@ -58,7 +58,8 @@ def sql(statement: str, timeout: int = 900):
         timeout=timeout,
     )
     if r.returncode != 0:
-        raise SystemExit(f"SQL on branch {REF} failed: {r.stderr.strip()[-500:]}")
+        combined = (r.stdout + "\n" + r.stderr).replace("\r", "\n").strip()
+        raise SystemExit(f"SQL on branch {REF} failed:\n{combined[-1200:]}")
     out = r.stdout
     return json.JSONDecoder().raw_decode(out[out.index("{"):])[0].get("rows", []) if "{" in out else []
 
@@ -70,6 +71,8 @@ def prepare_basis() -> None:
       delete from memory.usage
         where owner_id = '00000000-0000-0000-0000-00000000f4ee'::uuid
           and kind = 'free_pool_micro_usd_month';
+      drop table if exists memory._r66_batch;
+      create table memory._r66_batch (idx integer primary key, oid uuid not null, email text not null);
       drop table if exists memory._r66_vecs;
       create table memory._r66_vecs (idx integer primary key, v extensions.halfvec(1024) not null);
       insert into memory._r66_vecs (idx, v)
@@ -125,6 +128,7 @@ def ensure_wen_rows() -> None:
             '{{"tool_name":"recall","ok":true}}'::jsonb, 'claude'
           from generate_series(1, {need_events}) g;
         """)
+    log("seeded Wen rows")
 
 
 def seed_free_owners() -> list[tuple[str, str]]:
@@ -138,7 +142,8 @@ def seed_free_owners() -> list[tuple[str, str]]:
     for start in range(0, FREE_OWNERS, BATCH_OWNERS):
         end = min(FREE_OWNERS, start + BATCH_OWNERS)
         owner_values = []
-        probe_sql = []
+        probe_dev_sql = []
+        probe_sess_sql = []
         usage_values = []
         for idx in range(start, end):
             oid = str(uuid.uuid4())
@@ -147,10 +152,13 @@ def seed_free_owners() -> list[tuple[str, str]]:
             if idx < PROBE_OWNERS:
                 tok, thash = tokens_by_idx[idx]
                 probed.append((oid, tok))
-                probe_sql.append(
-                    f"('{oid}'::uuid, 'free-box-{idx}', '{thash}', 'none')"
+                probe_dev_sql.append(
+                    f"('{oid}'::uuid, 'free-box-{idx}', '{thash}', 'metadata')"
                 )
-                probe_recall_usage = max(0, RECALLS_PER_OWNER - (PROBE_RECALLS // PROBE_OWNERS + 1))
+                probe_sess_sql.append(
+                    f"('{oid}'::uuid, 'http-global', 'hybrid', 'hybrid.v1', 'global')"
+                )
+                probe_recall_usage = max(0, RECALLS_PER_OWNER - 10)
                 usage_values.append(f"('{oid}'::uuid, date_trunc('month', now() at time zone 'utc')::date, 'recalls_month', {probe_recall_usage})")
                 usage_values.append(f"('{oid}'::uuid, date_trunc('month', now() at time zone 'utc')::date, 'remembers_month', {WRITES_PER_OWNER})")
             else:
@@ -158,52 +166,45 @@ def seed_free_owners() -> list[tuple[str, str]]:
                 usage_values.append(f"('{oid}'::uuid, date_trunc('month', now() at time zone 'utc')::date, 'remembers_month', {WRITES_PER_OWNER})")
 
         probe_block = ""
-        if probe_sql:
+        if probe_dev_sql:
             probe_block = f"""
-              insert into memory.device (owner_id, name, token_sha256, hooks) values {", ".join(probe_sql)};
-              insert into memory.mcp_session (owner_id, id, arm, param_set, unit)
-              select oid, 'http-global', 'hybrid', 'hybrid.v1', 'global'
-              from owners where idx < {PROBE_OWNERS};
+              insert into memory.device (owner_id, name, token_sha256, hooks) values {", ".join(probe_dev_sql)};
+              insert into memory.mcp_session (owner_id, id, arm, param_set, unit) values {", ".join(probe_sess_sql)}
+                on conflict (owner_id, id) do nothing;
             """
 
         sql(f"""
-          with owners(idx, oid, email) as (values {", ".join(owner_values)}),
-          ins_acc as (
-            insert into memory.account (owner_id, email, email_confirmed, free_slot)
-            select oid, email, true, true from owners
-            on conflict (owner_id) do update set free_slot = true
-          ),
-          ins_entry as (
-            insert into memory.entry (owner_id, id, pattern, title, body, authority, scope, sensitivity, lang, evidence_kind, evidence, kind)
+          begin;
+          set local statement_timeout = '180s';
+          truncate memory._r66_batch;
+          insert into memory._r66_batch (idx, oid, email) values {", ".join(owner_values)};
+          insert into memory.account (owner_id, email, email_confirmed, free_slot)
+            select oid, email, true, true from memory._r66_batch
+            on conflict (owner_id) do update set free_slot = true;
+          insert into memory.entry (owner_id, id, pattern, title, body, authority, scope, sensitivity, lang, evidence_kind, evidence, kind)
             select o.oid, 'free-' || g, 'observations',
               'Free note ' || g || ' oolong deploy flight garden',
               'Details ' || g || ' about coffee, deploy pipeline, vector scan and notes.',
               'observed', 'global', 'normal', 'en', 'summary', 'free seed', 'observation'
-            from owners o cross join generate_series(1, {ENTRIES_PER_OWNER}) g
-          ),
-          ins_emb as (
-            insert into memory.entry_embedding (owner_id, entry_id, model, content_sha256, embedding)
+            from memory._r66_batch o cross join generate_series(1, {ENTRIES_PER_OWNER}) g;
+          insert into memory.entry_embedding (owner_id, entry_id, model, content_sha256, embedding)
             select o.oid, 'free-' || g, 'text-embedding-3-large', 'r66', v.v
-            from owners o
+            from memory._r66_batch o
             cross join generate_series(1, {ENTRIES_PER_OWNER}) g
-            join memory._r66_vecs v on v.idx = ((o.idx + g) % 256)
-          ),
-          ins_ret as (
-            insert into memory.retrieval (owner_id, id, arm, query, candidates, delivered, rejected, latency_ms)
+            join memory._r66_vecs v on v.idx = ((o.idx + g) % 256);
+          insert into memory.retrieval (owner_id, id, arm, query, candidates, delivered, rejected, latency_ms)
             select o.oid, gen_random_uuid(), 'hybrid', 'free query ' || g,
               '[{{"id":"free-1","score":0.7}}]'::jsonb, '["free-1"]'::jsonb, '[]'::jsonb, 95
-            from owners o cross join generate_series(1, {RECALLS_PER_OWNER}) g
-          ),
-          ins_evt as (
-            insert into memory.event (owner_id, session_id, event, payload, agent)
+            from memory._r66_batch o cross join generate_series(1, {RECALLS_PER_OWNER}) g;
+          insert into memory.event (owner_id, session_id, event, payload, agent)
             select o.oid, 'free-sess-' || (g % 5), 'remember',
               '{{"tool_name":"remember"}}'::jsonb, 'claude'
-            from owners o cross join generate_series(1, {WRITES_PER_OWNER}) g
-          )
+            from memory._r66_batch o cross join generate_series(1, {WRITES_PER_OWNER}) g;
           insert into memory.usage (owner_id, period, kind, amount)
-          values {", ".join(usage_values)}
-          on conflict (owner_id, period, kind) do update set amount = excluded.amount;
+            values {", ".join(usage_values)}
+            on conflict (owner_id, period, kind) do update set amount = excluded.amount;
           {probe_block}
+          commit;
         """)
         log(f"seeded free owners {start + 1}..{end}")
     return probed
@@ -233,7 +234,7 @@ def main() -> int:
     prepare_basis()
     ensure_wen_rows()
     probed = seed_free_owners()
-    sql("drop table if exists memory._r66_vecs;")
+    sql("drop table if exists memory._r66_batch; drop table if exists memory._r66_vecs;")
     sql("analyze memory.entry; analyze memory.entry_embedding; analyze memory.retrieval; analyze memory.event;")
 
     stats = sql("""
