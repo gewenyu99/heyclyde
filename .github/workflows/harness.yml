@@ -67,7 +67,7 @@ jobs:
         run: deno test --allow-env --allow-read --allow-write --allow-run --allow-net=127.0.0.1 --node-modules-dir=none harness/test/memory/*_test.ts
       - name: The eval and research scripts' unit tests
         if: inputs.only == ''
-        run: python3 -m unittest memory/eval/test_retrieval_eval.py memory/research/test_research.py
+        run: python3 -m unittest memory/eval/test_retrieval_eval.py memory/eval/test_margin_check.py memory/research/test_research.py
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
