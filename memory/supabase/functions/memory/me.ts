@@ -246,7 +246,7 @@ export async function handle(req: Request, path: string, owner: string): Promise
       where x.entry_id = ${id} order by x.name`;
     const linksOut = await sql`select src, dst, type, weight from memory.link where src = ${id} order by type, dst`;
     const linksIn = await sql`select src, dst, type, weight from memory.link where dst = ${id} order by type, src`;
-    const [provenance] = await sql`select device, agent, agent_context, session, cwd, repo, recorded_at
+    const [provenance] = await sql`select device, agent, agent_context, session, cwd, repo, created_at
       from memory.entry_provenance where entry_id = ${id}`;
     const confidenceHistory = await sql`select id, at, before, after, reason, retrieval_id, event_id
       from memory.confidence_log where target = ${"entry:" + id} order by at desc, id desc limit 100`;
