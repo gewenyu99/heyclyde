@@ -23,6 +23,8 @@ export type Verdict = {
   allowlisted: boolean;
   /** The provider's state for this owner, or null with no subscription. */
   state: string | null;
+  /** Monthly overage spend cap in cents for paid/past_due accounts, or null when unset. */
+  spendLimitCents: number | null;
   /** The owner's account was refused for its billing country (a VPN at sign-up, caught at the webhook). */
   blockedAccount: boolean;
   /** Where the answer came from, for the Server-Timing header: db on a lookup, cache on a hit. */
@@ -55,7 +57,8 @@ export async function entitled(owner: string): Promise<Verdict> {
     with o as (select ${owner}::uuid as id),
     who as (
       select a.country, a.region, a.free_slot, case when e.state = 'comp' then e.plan end as allow_plan, e.state, e.plan as paid_plan,
-        e.state = 'paid' and (not e.cancel_at_period_end or e.current_period_end is null or e.current_period_end > now()) as paid
+        e.spend_limit_cents,
+        e.state in ('paid', 'past_due') and (not e.cancel_at_period_end or e.current_period_end is null or e.current_period_end > now()) as paid
       from o
       left join memory.account a on a.owner_id = o.id
       left join memory.entitlement e on e.owner_id = o.id)
@@ -70,6 +73,7 @@ export async function entitled(owner: string): Promise<Verdict> {
     : CLOSED;
   const v = {
     owner, plan, allowlisted: Boolean(row?.allow_plan), state: row?.state ?? null,
+    spendLimitCents: row?.state === "paid" || row?.state === "past_due" ? num(row?.spend_limit_cents) : null,
     blockedAccount: row?.state === "blocked" || isBlocked(row?.country, row?.region),
   };
   if (cache.size > 10_000) cache.clear();

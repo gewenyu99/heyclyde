@@ -22,9 +22,39 @@ export class FakeStorage {
   mode: { status?: number; hang?: boolean; writeDelayMs?: number } = {}
 
   serviceKey: string
+  syncDb?: (sqlText: string) => void
 
-  constructor(serviceKey: string) {
+  constructor(serviceKey: string, syncDb?: (sqlText: string) => void) {
     this.serviceKey = serviceKey
+    this.syncDb = syncDb
+  }
+
+  private sqlLiteral = (s: string) => `'${s.replace(/'/g, "''")}'`
+
+  private dbPut(name: string, size: number, contentType: string) {
+    if (!this.syncDb) return
+    const n = this.sqlLiteral(name), m = this.sqlLiteral(contentType)
+    this.syncDb(`do $$ begin if to_regclass('storage.objects') is not null then
+      delete from storage.objects where bucket_id = 'memory-blobs' and name = ${n};
+      insert into storage.objects (bucket_id, name, metadata)
+        values ('memory-blobs', ${n}, jsonb_build_object('size', ${Math.trunc(size)}, 'mimetype', ${m}));
+    end if; end $$;`)
+  }
+
+  private dbMove(sourceKey: string, destinationKey: string) {
+    if (!this.syncDb) return
+    const src = this.sqlLiteral(sourceKey), dst = this.sqlLiteral(destinationKey)
+    this.syncDb(`do $$ begin if to_regclass('storage.objects') is not null then
+      update storage.objects set name = ${dst} where bucket_id = 'memory-blobs' and name = ${src};
+    end if; end $$;`)
+  }
+
+  private dbDelete(prefixes: string[]) {
+    if (!this.syncDb || !prefixes.length) return
+    const list = prefixes.map(this.sqlLiteral).join(', ')
+    this.syncDb(`do $$ begin if to_regclass('storage.objects') is not null then
+      delete from storage.objects where bucket_id = 'memory-blobs' and name in (${list});
+    end if; end $$;`)
   }
 
   /** Puts an object directly. size is what its info reports, for an object too big to send. */
@@ -61,6 +91,7 @@ export class FakeStorage {
     const store = (name: string, contentType: string) => {
       const write = () => {
         this.put(name, body, { contentType })
+        this.dbPut(name, body.length, contentType)
         reply(200, { Key: `${BUCKET}/${name}` })
       }
       if (this.mode.writeDelayMs) setTimeout(write, this.mode.writeDelayMs)
@@ -100,10 +131,13 @@ export class FakeStorage {
       if (this.objects.has(destinationKey)) return reply(409, { error: 'Duplicate' }), true
       this.objects.delete(sourceKey)
       this.objects.set(destinationKey, o)
+      this.dbMove(sourceKey, destinationKey)
       return reply(200, { message: 'Successfully moved' }), true
     }
     if (method === 'DELETE' && rest === `/object/${BUCKET}`) {
-      for (const p of JSON.parse(body.toString('utf8')).prefixes as string[]) this.objects.delete(p)
+      const prefixes = JSON.parse(body.toString('utf8')).prefixes as string[]
+      for (const p of prefixes) this.objects.delete(p)
+      this.dbDelete(prefixes)
       return reply(200, []), true
     }
     if (method === 'POST' && rest === `/object/list/${BUCKET}`) {

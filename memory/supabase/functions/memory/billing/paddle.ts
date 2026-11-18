@@ -38,7 +38,8 @@ async function verify(headers: Headers, body: Uint8Array, key: string, now: numb
 
 function status(type: string, s: Record<string, any>): SubscriptionStatus {
   if (type === "subscription.canceled" || s.status === "canceled" || s.status === "paused") return "lapsed";
-  if (["active", "trialing", "past_due"].includes(s.status)) return "paid";
+  if (type === "subscription.past_due" || s.status === "past_due") return "past_due";
+  if (["active", "trialing"].includes(s.status)) return "paid";
   return "pending";
 }
 

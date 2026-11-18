@@ -7,6 +7,7 @@ import { credentialFor } from '../../../memory/supabase/functions/memory/auth.ts
 import { config } from '../../../memory/supabase/functions/memory/config.ts'
 import { paddle } from '../../../memory/supabase/functions/memory/billing/paddle.ts'
 import { polar } from '../../../memory/supabase/functions/memory/billing/polar.ts'
+import { chargeFor, includedCostMicroUsd } from '../../../memory/supabase/functions/memory/billing/cost.ts'
 import { BLOCKED_REGIONS, isBlocked } from '../../../memory/supabase/functions/memory/billing/regions.ts'
 
 const enc = new TextEncoder()
@@ -71,7 +72,7 @@ Deno.test('polar: subscription and refund events map to access', () => {
   assert.equal(active.subscription!.status, 'paid')
   assert.equal(active.subscription!.country, 'CA')
   assert.equal(active.subscription!.region, 'QC')
-  assert.equal(sub('subscription.past_due', { status: 'past_due' }).subscription!.status, 'paid')
+  assert.equal(sub('subscription.past_due', { status: 'past_due' }).subscription!.status, 'past_due')
   assert.equal(sub('subscription.revoked', { status: 'canceled' }).subscription!.status, 'lapsed')
   assert.equal(sub('subscription.canceled', { status: 'active', cancel_at_period_end: true }).subscription!.cancelAtPeriodEnd, true)
   assert.equal(sub('subscription.uncanceled', { status: 'active', cancel_at_period_end: true }).subscription!.cancelAtPeriodEnd, false)
@@ -100,6 +101,13 @@ Deno.test('paddle: Paddle-Signature ts;h1 verifies, and events map to access', a
   const partial = paddle.parse(enc.encode(JSON.stringify({ event_id: 'evt_3', event_type: 'adjustment.updated', data: { action: 'refund', type: 'partial', status: 'approved', transaction_id: 'txn_1', subscription_id: 'sub_1', totals: { total: '500' } } })), new Headers())!
   assert.ok(partial.refund!.refunded < partial.refund!.total)
   assert.equal(paddle.parse(enc.encode(JSON.stringify({ event_id: 'evt_4', event_type: 'adjustment.created', data: { action: 'refund', status: 'pending_approval' } })), new Headers()), null)
+  assert.equal(paddle.parse(enc.encode(JSON.stringify({ event_id: 'evt_5', event_type: 'subscription.past_due', data: { id: 'sub_1', status: 'past_due', custom_data: { owner_id: owner } } })), new Headers())!.subscription!.status, 'past_due')
+})
+
+Deno.test('cost: overage is 2.3x cost and includedCostMicroUsd matches clyde included limits', () => {
+  assert.equal(chargeFor(100_000), 230_000)
+  const clyde = { price_micro_usd_month: 12_990_000, openai_tokens_month: 1_500_000, blob_bytes_total: 5_368_709_120 }
+  assert.equal(includedCostMicroUsd(clyde, 'ai'), 195_000)
 })
 
 Deno.test('entitlement: webhooks take no bearer token, checkout is open, and the cache lasts 60 s by default', () => {

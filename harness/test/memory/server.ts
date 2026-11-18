@@ -132,7 +132,7 @@ export async function startRealMemory(extraEnv: Record<string, string> = {}, opt
   // With storage, a fake Supabase Storage answers under /storage/v1 on the same origin as SUPABASE_URL, and the function is
   // given a service role key, which is what switches its Storage on.
   const serviceKey = options.storage ? randomBytes(20).toString('hex') : undefined
-  const storage = serviceKey ? new FakeStorage(serviceKey) : undefined
+  const storage = serviceKey ? new FakeStorage(serviceKey, exec) : undefined
   const auth = await startFakeAuth(storage?.handle)
   // Cloudflare Turnstile's siteverify (R54): the token "pass" with the test secret (database.ts puts it in Vault) is a person.
   const turnstile = await startFakeTurnstile()

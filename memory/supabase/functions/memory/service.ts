@@ -1,6 +1,7 @@
 // What the MCP tools and hook endpoints do, independent of transport, so tests can call it directly.
 import { sessionSet, unitOf } from "./allocation.ts";
 import { tallied } from "./budget.ts";
+import { meterSignedEgress } from "./billing/limits.ts";
 import { attempt, later, type Row, type Sql, sql } from "./db.ts";
 import { sha256 } from "./embed.ts";
 import { type Clocked, clocked, features, finalScore, relevanceOf } from "./features.ts";
@@ -409,7 +410,9 @@ export async function getBlob(sha: string, offset = 0, limit = 20000, agentScope
     if (!store.storageOn()) return notInBackup(sha);
     if (!store.isText(row.media_type)) {
       try {
-        return `Blob ${sha}: ${row.media_type}, ${row.size} bytes. Download it within 10 minutes: ${await store.signDownload(sha)}`;
+        const signed = await store.signDownload(sha);
+        await meterSignedEgress(Number(row.size ?? 0));
+        return `Blob ${sha}: ${row.media_type}, ${row.size} bytes. Download it within 10 minutes: ${signed}`;
       } catch (e) {
         if (e instanceof store.NotStored) return notInBackup(sha);
         throw e;

@@ -2,8 +2,8 @@
 // into a BillingEvent and carries out cancels, refunds and checkouts against its API. webhooks.ts and entitlement.ts never
 // learn which provider they talk to.
 
-/** What a subscription event says about access. pending: started, not paid yet. paid: access. lapsed: no access. */
-export type SubscriptionStatus = "pending" | "paid" | "lapsed";
+/** What a subscription event says about access. pending: started, not paid yet. paid: access. past_due: included limits only. lapsed: no access. */
+export type SubscriptionStatus = "pending" | "paid" | "past_due" | "lapsed";
 
 export type SubscriptionChange = {
   id: string;
@@ -56,7 +56,7 @@ export interface Provider {
   checkout(owner: string, productId: string, email: string | null, successUrl: string): Promise<string>;
   /** Report an owner's overage to the provider's usage meter: what to bill (charge) and what it cost memory, both in
    * micro-USD. Resolves once the provider has it. */
-  reportUsage(owner: string, chargeMicroUsd: number, costMicroUsd: number, period: string): Promise<void>;
+  reportUsage(owner: string, chargeMicroUsd: number, costMicroUsd: number, period: string, kind?: string, hour?: string): Promise<void>;
   /** Whether its API token is in Vault, so checkout, cancel and refund can run. */
   configured(): Promise<boolean>;
 }

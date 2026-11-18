@@ -83,11 +83,11 @@ export function tallied<T>(work: (spent: { tokens: number }) => Promise<T>): Pro
   return tally.run(spent, () => work(spent));
 }
 
-export async function meter(kind: Kind, tokens: number, _model?: string) {
+export async function meter(kind: Kind, tokens: number, model?: string) {
   if (!tokens) return;
   const spent = kind === "shadow" || kind === "research" ? undefined : tally.getStore();
   if (spent) spent.tokens += tokens;
-  if (kind !== "shadow" && kind !== "research") await meterOwner(tokens);
+  if (kind !== "shadow" && kind !== "research") await meterOwner(tokens, model);
   await sql`insert into memory.openai_usage (month, kind, tokens) values (date_trunc('month', now())::date, ${kind}, ${tokens})
     on conflict (month, kind) do update set tokens = memory.openai_usage.tokens + excluded.tokens`;
 }

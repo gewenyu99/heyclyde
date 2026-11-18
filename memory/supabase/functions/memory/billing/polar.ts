@@ -46,12 +46,13 @@ async function verify(headers: Headers, body: Uint8Array, whsec: string, now: nu
   return "bad";
 }
 
-const PAID = new Set(["active", "trialing", "past_due"]);
+const PAID = new Set(["active", "trialing"]);
 
-/** What a subscription's status means for access. past_due keeps it while Polar retries the card (dunning); Polar ends
- * it with subscription.revoked. A cancel at period end stays active until the period ends. */
+/** What a subscription's status means for access. past_due keeps included limits without overage while Polar retries
+ * the card (dunning); Polar ends it with subscription.revoked. A cancel at period end stays active until period end. */
 function status(type: string, s: Record<string, any>): SubscriptionStatus {
   if (type === "subscription.revoked") return "lapsed";
+  if (type === "subscription.past_due" || s.status === "past_due") return "past_due";
   if (PAID.has(s.status)) return "paid";
   if (s.status === "canceled" && !s.ended_at && s.cancel_at_period_end && when(s.current_period_end ?? s.ends_at)) return "paid";
   if (s.status === "incomplete") return "pending";
@@ -136,10 +137,15 @@ export const polar: Provider = {
     if (!r.ok || typeof r.body.url !== "string") throw new ProviderError(`Polar didn't make a checkout (${r.status})`);
     return r.body.url;
   },
-  async reportUsage(owner, charge, cost, period) {
-    // One event per report; a Polar meter named clyde_overage sums metadata.charge_micro_usd (BILLING.md).
+  async reportUsage(owner, charge, cost, period, kind = "ai", hour = new Date().toISOString().slice(0, 13)) {
+    // One event per owner, period, kind and UTC hour, idempotent via external_id; metadata.amount is charge_micro_usd.
     const r = await api("POST", "/v1/events/ingest", {
-      events: [{ name: "clyde_overage", external_customer_id: owner, metadata: { charge_micro_usd: charge, cost_micro_usd: cost, period } }],
+      events: [{
+        name: "clyde_overage",
+        external_id: `${owner}:${period}:${kind}:${hour}`,
+        external_customer_id: owner,
+        metadata: { kind, amount: charge, hour, charge_micro_usd: charge, cost_micro_usd: cost, period },
+      }],
     });
     if (!r.ok) throw new ProviderError(`Polar didn't take the usage event (${r.status})`);
   },

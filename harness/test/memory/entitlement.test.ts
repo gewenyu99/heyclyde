@@ -306,7 +306,7 @@ test('entitlement: past_due keeps access until the provider revokes', { skip: SK
   await signIn(u)
   const sub = await pay(u)
   assert.equal((await polarDeliver(polarSubscription('subscription.past_due', { owner: u.id, id: sub, status: 'past_due' }))).status, 200)
-  assert.equal(stateOf(u), 'paid')
+  assert.equal(stateOf(u), 'past_due')
   assert.equal((await recall(u.oauth)).status, 200)
   assert.equal((await polarDeliver(polarSubscription('subscription.revoked', { owner: u.id, id: sub, status: 'canceled' }))).status, 200)
   assert.equal((await recall(u.oauth)).status, 402)

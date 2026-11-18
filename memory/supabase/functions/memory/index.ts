@@ -297,9 +297,16 @@ async function route(req: Request, time: (entry: string) => void): Promise<Respo
     // Every OpenAI token this request spends counts against its owner's plan (R38).
     return await limits.within(who.entitlement, async () => {
       const tenant = await tenantOf(who, path);
-      return tenant
+      const res = tenant
         ? await asTenant(tenant.owner, () => serve(req, url, path, who), { console: tenant.console, timings })
         : await serve(req, url, path, who);
+      if (!who.denied && who.entitlement?.plan.open) {
+        const declared = res.headers.get("content-length");
+        let bytes = declared !== null ? Number(declared) : 0;
+        if (declared === null && res.body) bytes = (await res.clone().arrayBuffer()).byteLength;
+        await limits.meterRequest(who.entitlement, bytes).catch((e) => console.error("meterRequest:", e));
+      }
+      return res;
     });
   } finally {
     for (const t of timings) time(t);
@@ -376,7 +383,9 @@ async function serve(req: Request, url: URL, path: string, who: Principal): Prom
       // A link that works for 10 minutes. A restored blob whose file wasn't in the backup is a 404.
       if (!store.storageOn()) return json({ error: service.notInBackup(match[1]) }, 404);
       try {
-        return new Response(null, { status: 302, headers: { location: await store.signDownload(match[1].toLowerCase()) } });
+        const signed = await store.signDownload(match[1].toLowerCase());
+        await limits.meterSignedEgress(Number(blob.size ?? 0));
+        return new Response(null, { status: 302, headers: { location: signed } });
       } catch (e) {
         if (e instanceof store.NotStored) return json({ error: service.notInBackup(match[1]) }, 404);
         throw e;

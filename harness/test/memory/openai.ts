@@ -21,7 +21,7 @@ export type FakeOpenAI = { url: string; geminiUrl: string; calls: FakeCall[]; op
 /** delayMs holds every /decisions answer that long. failShadow answers 500 to every call the shadow runner tags with
  * x-memory-purpose: shadow. Both are the fake's options, so the function itself has no fault switch, and a test may change
  * them on the running fake through its `options`. */
-export type FakeOptions = { delayMs?: number; failShadow?: boolean }
+export type FakeOptions = { delayMs?: number; failShadow?: boolean; tokens?: number }
 
 function vector(text: string): number[] {
   const v = new Array<number>(DIM).fill(0)
@@ -33,8 +33,8 @@ function vector(text: string): number[] {
   return v.map((x) => x / norm)
 }
 
-function answer(path: string, body: any, gemini: boolean): unknown {
-  const tokens = JSON.stringify(body).length
+function answer(path: string, body: any, gemini: boolean, fixedTokens?: number): unknown {
+  const tokens = fixedTokens ?? JSON.stringify(body).length
   if (path === '/embeddings' && !gemini) {
     return { data: body.input.map((t: string, index: number) => ({ index, embedding: vector(t) })), usage: { total_tokens: tokens } }
   }
@@ -87,7 +87,7 @@ export async function startFakeOpenAI(options: FakeOptions = {}): Promise<FakeOp
       const down = JSON.stringify(body ?? '').includes(FAKE_DOWN) || (shadow && options.failShadow)
       const safety = gemini && path === '/decisions' && JSON.stringify(body ?? '').includes(FAKE_SAFETY)
       const authOk = gemini ? Boolean(req.headers['x-goog-api-key']) && !req.headers.authorization : Boolean(req.headers.authorization)
-      const out = !down && !safety && req.method === 'POST' && body && authOk ? answer(path, body, gemini) as any : null
+      const out = !down && !safety && req.method === 'POST' && body && authOk ? answer(path, body, gemini, options.tokens) as any : null
       // The tokens this call is charged, as the function reads them from usage.
       calls.push({
         path,

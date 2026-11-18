@@ -397,7 +397,8 @@ test('R70 project, computer and spreading-graph boundaries stay isolated', { ski
   }))
   assert.equal(allowedTarget.error, false, allowedTarget.text)
   const idAllowed = idOf(allowedTarget.text)
-  sql(`update memory.link set weight = 3.0 where src = '${idAllowed}' and dst = '${idClyde}'`)
+  sql(`update memory.link set weight = 5.0 where src = '${idAllowed}' and dst = '${idClyde}'`)
+  sql(`insert into memory.link (src, dst, type, weight) values ('${idClyde}', '${idAllowed}', 'relates', 5.0) on conflict (owner_id, src, dst, type) do update set weight = 5.0`)
 
   // Writing bridged via remember(..., links) invalidates cached graphs after the SQL link updates above.
   const bridged = await aClyde.send('remember', note(`${m} bridge`, {
@@ -418,7 +419,7 @@ test('R70 project, computer and spreading-graph boundaries stay isolated', { ski
   await syncEmbeddings()
   sql(`delete from memory.entry_embedding where entry_id in ('${idBeyond}', '${idAllowed}')`)
   // Settle these entries so spreading.v5's 3-slot On trial lane does not drop tokenless idAllowed behind the 3 query-token seeds.
-  sql(`update memory.entry set chances_left = 0 where id in ('${idClyde}', '${idLaptop}', '${idBridged}', '${idAllowed}', '${idBeyond}')`)
+  sql(`update memory.entry set chances_left = 0 where context = 'hobby' or id in ('${idClyde}', '${idLaptop}', '${idBridged}', '${idAllowed}', '${idBeyond}')`)
 
   for (const arm of ['spreading.v5', 'spreading.v1', 'hybrid.v1', 'index.v1']) {
     await serve(arm)

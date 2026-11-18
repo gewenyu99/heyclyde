@@ -41,7 +41,7 @@ export async function embed(texts: string[]): Promise<number[][]> {
   });
   if (!r.ok) throw new Error(`OpenAI embeddings ${r.status}: ${(await r.text()).slice(0, 200)}`);
   const body = await r.json();
-  await meter("embed", body.usage.total_tokens);
+  await meter("embed", body.usage.total_tokens, config.embedModel);
   const vecs = body.data.sort((a: Row, b: Row) => a.index - b.index).map((d: Row) => d.embedding);
   if (vecs.length !== texts.length || vecs.some((v: number[]) => v.length !== config.embedDim)) {
     throw new Error(`${config.embedModel} returned ${vecs.length} vectors, expected ${texts.length} of ${config.embedDim}`);

@@ -76,12 +76,42 @@ export const STORAGE_MICRO_USD_PER_GB_MONTH = SUPABASE_PRO.storage_bytes.usd_per
 /** The highest OpenAI price per token, in micro-USD: what an overage token costs. */
 export const TOKEN_MICRO_USD = Math.max(...Object.values(OPENAI_PRICES_MICRO_USD_PER_M)) / 1e6;
 
-/** Overage's gross margin, and the provider's cut of what it bills (Polar: 5% + 1.5% on non-US cards). */
+/** Overage's gross margin, multiplier (2.3 x cost), and the provider's cut of what it bills (Polar: 5% + 1.5% on non-US cards). */
 export const OVERAGE_MARGIN = 0.5;
+export const OVERAGE_MULTIPLIER = 2.3;
 export const PROVIDER_RATE = FEE_RATE + NON_US_RATE;
 
-/** What to bill for `cost` micro-USD of overage, so that after the provider's cut the margin is OVERAGE_MARGIN:
- * charge - charge * PROVIDER_RATE - cost = charge * OVERAGE_MARGIN. */
+export const METERED_KINDS = ["ai", "storage_gb_hours", "egress_bytes", "requests", "db_bytes"] as const;
+export type MeteredKind = typeof METERED_KINDS[number];
+export const EGRESS_MICRO_USD_PER_GB = SUPABASE_PRO.egress_bytes.usd_per_unit * 1e9 * MICRO_USD;
+export const DB_MICRO_USD_PER_GB_MONTH = SUPABASE_PRO.db_bytes.usd_per_unit * 1e9 * MICRO_USD;
+
+/** Included monthly cost in micro-USD for a plan and metered kind before overage begins. */
+export function includedCostMicroUsd(plan: Plan, kind: MeteredKind): number {
+  switch (kind) {
+    case "ai": {
+      if (plan.openai_tokens_month === null) return Infinity;
+      const highestMicroPerM = Math.max(...Object.values(OPENAI_PRICES_MICRO_USD_PER_M));
+      return Math.round((plan.openai_tokens_month / 1e6) * highestMicroPerM);
+    }
+    case "storage_gb_hours":
+      return plan.blob_bytes_total === null ? Infinity : Math.round((plan.blob_bytes_total / 1e9) * STORAGE_MICRO_USD_PER_GB_MONTH);
+    case "egress_bytes":
+      return plan.price_micro_usd_month > 0
+        ? Math.round((SUPABASE_PRO.egress_bytes.included / PLANNED.supabaseUsers) * SUPABASE_PRO.egress_bytes.usd_per_unit * MICRO_USD)
+        : 0;
+    case "requests":
+      return plan.price_micro_usd_month > 0
+        ? Math.round((SUPABASE_PRO.invocations.included / PLANNED.supabaseUsers) * INVOCATION_MICRO_USD)
+        : 0;
+    case "db_bytes":
+      return plan.price_micro_usd_month > 0
+        ? Math.round((SUPABASE_PRO.db_bytes.included / PLANNED.supabaseUsers) * SUPABASE_PRO.db_bytes.usd_per_unit * MICRO_USD)
+        : 0;
+  }
+}
+
+/** What to bill for `cost` micro-USD of overage (2.3 x cost), keeping >= 50% gross margin net of the provider's 6.5% fee. */
 export function chargeFor(costMicroUsd: number) {
-  return Math.ceil(costMicroUsd / (1 - OVERAGE_MARGIN - PROVIDER_RATE));
+  return Math.ceil(costMicroUsd * OVERAGE_MULTIPLIER);
 }

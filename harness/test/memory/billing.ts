@@ -75,6 +75,7 @@ export type ProviderCall = { method: string; path: string; body: any; status: nu
  * subscription's paid orders. */
 export async function startFakeProviders() {
   const calls: ProviderCall[] = []
+  const events = new Map<string, any>()
   const state = { failing: false, orders: new Map<string, { id: string; amount: number }[]>() }
   const server = http.createServer((req, res) => {
     const chunks: Buffer[] = []
@@ -100,7 +101,18 @@ export async function startFakeProviders() {
         return reply(200, { items, pagination: { total_count: items.length, max_page: 1 } })
       }
       if (req.method === 'POST' && p === '/v1/refunds/') return state.failing ? reply(500, {}) : reply(201, { id: `ref_${randomUUID()}`, order_id: body?.order_id, amount: body?.amount })
-      if (req.method === 'POST' && p === '/v1/events/ingest') return state.failing ? reply(500, {}) : reply(200, { inserted: body?.events?.length ?? 0 })
+      if (req.method === 'POST' && p === '/v1/events/ingest') {
+        if (state.failing) return reply(500, {})
+        let inserted = 0
+        for (const ev of (body?.events ?? []) as Record<string, any>[]) {
+          const key = typeof ev?.external_id === 'string' && ev.external_id ? ev.external_id : randomUUID()
+          if (!events.has(key)) {
+            events.set(key, ev)
+            inserted++
+          }
+        }
+        return reply(200, { inserted })
+      }
       if (req.method === 'POST' && p === '/v1/checkouts/') return reply(201, { id: 'chk_test', url: `https://sandbox.polar.test/checkout/${body?.external_customer_id}` })
       if (req.method === 'POST' && /^\/subscriptions\/[^/]+\/cancel$/.test(p)) return state.failing ? reply(500, {}) : reply(200, { data: { status: 'canceled' } })
       if (req.method === 'GET' && p === '/transactions') return reply(200, { data: [] })
@@ -112,7 +124,7 @@ export async function startFakeProviders() {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const { port } = server.address() as { port: number }
   return {
-    url: `http://127.0.0.1:${port}`, calls, state,
+    url: `http://127.0.0.1:${port}`, calls, events, state,
     close: () => new Promise<void>((resolve) => { server.closeAllConnections(); server.close(() => resolve()) }),
   }
 }
