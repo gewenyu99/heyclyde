@@ -1,10 +1,11 @@
 -- R66 (#71), Clyde slice C19: expire raw hook events after 180 days so Wen's event log stays bounded.
 --
--- Adds an index on memory.event(received_at), defines memory.purge_events(retention), locks execution to postgres,
--- and schedules a daily pg_cron job (memory-event-retention at 04:29 UTC). Idempotent: safe to rerun.
+-- Drops any duplicate index if previously applied (20261103000000_message_queue already indexes memory.event(received_at)),
+-- defines memory.purge_events(retention), locks execution to postgres, and schedules a daily pg_cron job
+-- (memory-event-retention at 04:29 UTC). Idempotent: safe to rerun.
 set search_path = memory, extensions, public;
 
-create index if not exists event_received_at on memory.event (received_at);
+drop index if exists memory.event_received_at;
 
 create or replace function memory.purge_events(retention interval default interval '180 days')
 returns jsonb language plpgsql security definer set search_path = memory, pg_temp as $$
