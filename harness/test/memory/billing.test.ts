@@ -25,6 +25,8 @@ before(async () => {
   memory = await startRealMemory({ MEMORY_ENTITLEMENT_TTL_MS: String(TTL), POLAR_API_URL: providers.url }, { storage: true })
   POLAR = newPolarSecret()
   setSetting('open_signup', 'on')
+  setSetting('embed_budget_tokens', '1000000000')
+  setSetting('judge_write_reserve_tokens', '1000000000')
   putSecret('polar_webhook_secret', POLAR)
   putSecret('polar_api_token', `test-polar-api-${nonce()}`)
 })
@@ -65,6 +67,11 @@ async function rpc(token: string, method: string, params: Record<string, unknown
 const tool = (token: string, name: string, args: Record<string, unknown>) => rpc(token, 'tools/call', { name, arguments: args })
 const recall = (token: string) => tool(token, 'recall', { query: 'oolong temperature' })
 const remember = (token: string, extra: Record<string, unknown> = {}) => tool(token, 'remember', note(`r59 ${nonce()}`, extra))
+function assertRemembered(r: { status: number; text: string }) {
+  assert.equal(r.status, 200, r.text)
+  const out = JSON.parse(r.text).result
+  assert.ok(out && !out.isError, r.text)
+}
 
 async function paid(): Promise<{ user: User; subId: string }> {
   const u = user()
@@ -138,13 +145,13 @@ test('overage at 2.3 times cost', { skip: SKIP }, async () => {
   try {
     // Owner starts at $0.50 (500,000 micro-USD) of AI spend, settled in an earlier hour.
     memory.openai.options.tokens = 5_000_000
-    assert.equal((await remember(u.oauth)).status, 200)
+    assertRemembered(await remember(u.oauth))
     await reportHour('2026-11-18T01')
 
     const from = providers.calls.length
     // Then spends $0.10 (100,000 micro-USD) more on AI.
     memory.openai.options.tokens = 1_000_000
-    assert.equal((await remember(u.oauth)).status, 200)
+    assertRemembered(await remember(u.oauth))
     await reportHour('2026-11-18T02')
 
     const sent = providers.calls
@@ -164,11 +171,11 @@ test('ingest is idempotent', { skip: SKIP }, async () => {
   const { user: u } = await paid()
   try {
     memory.openai.options.tokens = 5_000_000
-    assert.equal((await remember(u.oauth)).status, 200)
+    assertRemembered(await remember(u.oauth))
     await reportHour('2026-11-18T03')
 
     memory.openai.options.tokens = 1_000_000
-    assert.equal((await remember(u.oauth)).status, 200)
+    assertRemembered(await remember(u.oauth))
     await reportHour('2026-11-18T04')
     await reportHour('2026-11-18T04')
 
@@ -190,7 +197,7 @@ test('the spend limit stops metered calls', { skip: SKIP }, async () => {
 
     // $0.635 total AI cost ($0.44 overage cost -> $1.012 billed at 2.3x >= $1.00).
     memory.openai.options.tokens = 6_350_000
-    assert.equal((await remember(u.oauth)).status, 200)
+    assertRemembered(await remember(u.oauth))
     await reportHour('2026-11-18T05')
 
     memory.openai.options.tokens = 100

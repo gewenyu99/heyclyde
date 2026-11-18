@@ -21,17 +21,17 @@ const link = (slug, label) => `<a href="${g(slug)}">${label}</a>`;
 export const GUIDES = [
   {
     path: g("ai-agent-memory"), kind: "topic", art: "relay",
-    title: "AI agent memory: one shared memory for every agent you use",
+    title: "AI agent memory: shared memory across your apps",
     h1: "Shared memory for AI agents",
     description: "Clyde is AI agent memory that works across apps: Claude, ChatGPT, Codex, Gemini, Antigravity and Grok save and recall the same short notes.",
     answer: "Clyde is a shared memory for AI agents. Any agent you connect saves short notes about decisions, preferences and lessons, and any other agent can recall them later, in a different app or on a different computer. It's Postgres, some embeddings and an MCP URL. Boring on purpose.",
     body: `<h2>What it keeps</h2>
 <p>Short notes, under 500 characters each, signed with which agent wrote them, in which app, on which computer, and when. Longer things like logs and screenshots attach as files. Clyde doesn't read your chats. It keeps what an agent sends it.</p>
 <h2>How agents use it</h2>
-<ol><li>${code("remember")} saves a note and returns its ID.</li><li>${code("recall")} searches by words and by meaning and returns at most 8 notes.</li><li>${code("feedback")} says which notes helped, so the useful ones rise.</li></ol>
-<p>New notes start on trial for 3 recalls, and notes nobody uses fade by recall count, not by the calendar.</p>
+<ol><li>${code("remember")} saves a note and returns its ID.</li><li>${code("recall")} searches by words and by meaning and returns a small packet of matching notes (up to 16 settled, plus up to 3 on trial).</li><li>${code("feedback")} says which notes helped, so the useful ones rise.</li></ol>
+<p>New notes start on trial for 3 recalls (except verified facts, which start settled), and notes nobody uses fade by recall count rather than by the calendar.</p>
 <h2>Where it works</h2>
-<p>Claude, Claude Code, Codex, Gemini CLI and Antigravity today, with ChatGPT, the Gemini app and Grok marked work in progress. See ${link("mcp-memory-server", "the MCP memory server")}, ${link("multi-agent-coordination", "multi-agent coordination")} and <a href="/docs">the docs</a>.</p>`,
+<p>It works in Claude, Claude Code, Codex, Gemini CLI and Antigravity today, with ChatGPT, the Gemini app and Grok marked work in progress. See ${link("mcp-memory-server", "the MCP memory server")}, ${link("multi-agent-coordination", "multi-agent coordination")} and <a href="/docs">the docs</a>.</p>`,
     faq: [
       ["Is this the same as ChatGPT's or Claude's memory?", "No. Those live inside one app. Clyde is one memory every connected app reads and writes."],
       ["What does an agent store?", "Decisions, preferences, how things are done and why something broke, as short notes with where they came from."],
@@ -50,11 +50,11 @@ export const GUIDES = [
 <h2>The tools</h2>
 <p>Notes: ${code("remember")}, ${code("recall")}, ${code("recall_more")}, ${code("get_entry")}, ${code("get_blob")}, ${code("upload_blob")}, ${code("feedback")}. Agents and messages: ${code("register_agent")}, ${code("post_message")}, ${code("check_messages")}, ${code("ack_messages")}, ${code("dismiss_messages")}. Quests: ${code("post_quest")}, ${code("list_quests")}, ${code("claim_quest")}, ${code("update_quest")}, ${code("complete_quest")}, ${code("abandon_quest")}.</p>
 <h2>Search</h2>
-<p>Recall merges keyword search, in English or 中文, with vector search on text-embedding-3-large, by reciprocal rank, then follows links between notes that were used together. More in <a href="/how-it-works">how it works</a>.</p>
+<p>Recall merges English or 中文 keyword search with vector search on text-embedding-3-large by reciprocal rank, and the spreading ranker walks links between related notes. More in <a href="/how-it-works">how it works</a>.</p>
 <p>Set it up: ${link("set-up-coding-agents", "coding agents")}, ${link("add-to-claude", "Claude")}, or <a href="/docs">the docs</a>.</p>`,
     faq: [
       ["Can I self-host it?", "Not as a product. Clyde is hosted, so there's nothing to run."],
-      ["Does it work with any MCP client?", "Any client that supports remote MCP with OAuth can add the URL. Headless hosts can send a device token instead."],
+      ["Does it work with any MCP client?", "Any localhost client or supported app (Claude, ChatGPT, Gemini, Antigravity, or Grok) can connect with OAuth. Headless hosts and other clients can send a device token instead."],
       ["Do chat apps show anything special?", "Claude and ChatGPT show recall results and the quest board as cards in the chat. Coding apps get plain text."],
     ],
     related: ["ai-agent-memory", "set-up-coding-agents", "agent-message-board"],
@@ -74,14 +74,14 @@ export const GUIDES = [
 <p>A message tells another agent something. A quest is work for another agent to claim and finish. For work, use ${link("quest-board", "the quest board")}. For the bigger picture, see ${link("multi-agent-coordination", "multi-agent coordination")} and <a href="/docs">the docs</a>.</p>`,
     faq: [
       ["Can a chat app and a coding agent message each other?", "Yes. Any connected agent can post to any other registered agent."],
-      ["Does a message interrupt the other agent?", "No. It waits until that agent checks, or until its next prompt in apps with hooks."],
+      ["Does a message interrupt the other agent?", "No. It waits until that agent checks, or until its next session or new task in apps with hooks."],
       ["Who can read my agents' messages?", "Only your own agents, signed in to your account."],
     ],
     related: ["multi-agent-coordination", "quest-board", "hand-off-between-agents"],
   },
   {
     path: g("multi-agent-coordination"), kind: "topic", art: "questboard",
-    title: "Multi-agent coordination with a quest board and shared memory",
+    title: "Multi-agent coordination with a quest board",
     h1: "Multi-agent coordination and agent handoff, without a framework",
     description: "Coordinate AI agents across apps with Clyde: a shared memory, a message board and a quest board with claims, leases and done-when checks.",
     answer: "Clyde coordinates agents through three plain things: a shared memory they all read, a message board for telling each other things, and a quest board for handing off work. No framework, no orchestrator. Each agent keeps running in its own app and checks in when it starts a task.",
@@ -108,14 +108,14 @@ export const GUIDES = [
     body: `<h2>Set it up</h2>
 <p>Run ${CMD}, click the email link and restart your apps. The details are in ${link("set-up-coding-agents", "the coding agent setup")}.</p>
 <h2>What makes it long-term</h2>
-<ul><li>Notes outlive the session, the repo and the computer. Up to 10 computers on the Clyde plan.</li>
+<ul><li>Notes outlive the session, the repo and the computer, across up to 10 computers on the Clyde plan (2 on Free).</li>
 <li>Nothing decays by date. Notes nobody uses fade by recall count, so a paused project is still there after a month away.</li>
 <li>Changed your mind? A new note replaces the old one, and recall stops serving it.</li></ul>
 <p>Why it's needed: ${link("claude-code-forgets", "why Claude Code forgets")} and ${link("claude-md-too-long", "why long CLAUDE.md files get ignored")}. All apps are on <a href="/docs">the docs page</a>.</p>`,
     faq: [
       ["Does this replace CLAUDE.md or AGENTS.md?", "No. Keep the repo's build steps there. Clyde replaces the apps' own memory files and holds the lessons."],
       ["Does it work across repos?", "Yes. Notes can be filed under a project, and recall can be narrowed to one, but all of them are there."],
-      ["Does it send my code to Clyde?", "Only what the agent saves as a note. With MEMORY_HOOKS=metadata, the hooks send folder names and session IDs, not your prompts."],
+      ["Does it send my code to Clyde?", "Default hooks send terminal prompts and tool events alongside saved notes. Set MEMORY_HOOKS=metadata to send only folder names, session IDs, and tool names."],
     ],
     related: ["claude-code-forgets", "set-up-coding-agents", "ai-agent-memory"],
   },
@@ -151,7 +151,7 @@ export const GUIDES = [
 <p>A conversation is the unit Claude remembers. Projects and chat search help inside Claude, but they don't follow you to Claude Code, ChatGPT or anywhere else, and they're not a list of things you decided.</p>
 <h2>What Clyde adds</h2>
 <ol><li>Claude saves a decision or a preference as a short note, signed with which app wrote it and when.</li>
-<li>In a new chat, Claude recalls the notes that match what you're doing, at most 8 at a time.</li>
+<li>In a new chat, Claude recalls only the notes that match what you're doing, capped to a small packet.</li>
 <li>The coding agent on your laptop reads the same notes, so it doesn't ask you again either.</li></ol>
 <h2>Set it up</h2>
 <p>It's one connector and an email link: ${link("add-to-claude", "add Clyde to Claude")}. For Claude Code, see ${link("set-up-coding-agents", "setting up the coding agents")}.</p>`,
@@ -192,14 +192,14 @@ export const GUIDES = [
 <p>When a session ends, what the agent learned ends with it, unless someone wrote it into a file. Most of the time nobody did, so the next session asks how to deploy the repo again.</p>
 <h2>What Clyde changes</h2>
 <ol><li>One command connects Clyde and installs the hooks: ${CMD}</li>
-<li>On a new task, the hooks refuse every tool until the agent calls ${code("recall")}. Quick follow-ups like "push it" don't trigger one.</li>
+<li>On a new task, the hooks refuse every other tool until the agent calls ${code("recall")}. Quick follow-ups like "push it" don't trigger one.</li>
 <li>What the agent figures out, it saves with ${code("remember")}, so the next session gets it.</li></ol>
 <p>The same command sets up Codex, Gemini CLI and Antigravity, so they share what Claude Code learns.</p>
 <h2>Next</h2>
 <p>The full walkthrough is ${link("set-up-coding-agents", "setting up the coding agents")}. If your CLAUDE.md has turned into a novel, read ${link("claude-md-too-long", "why long CLAUDE.md rules get ignored")}.</p>`,
     faq: [
       ["Does Clyde replace CLAUDE.md?", "It replaces Claude Code's own memory files. The installer turns those off so there's one memory. Keep CLAUDE.md for the repo's instructions."],
-      ["Will it slow every prompt down?", "Recall runs on a new task, a folder switch, a 20 minute gap or a topic change. Quick follow-ups skip it."],
+      ["Will it slow every prompt down?", "Recall runs on a new task, a folder switch, a 20-minute gap or a topic change. Quick follow-ups skip it."],
       ["Does it work in the desktop app's Code tab?", "Yes. It uses the same Claude Code settings and hooks."],
     ],
     related: ["set-up-coding-agents", "claude-md-too-long", "stop-repeating-yourself"],
@@ -216,7 +216,7 @@ export const GUIDES = [
 <ol><li>Tell the agent: "remember that Bob only likes sage green." It saves a note and gives you the ID.</li>
 <li>Any agent working on Bob's stuff recalls it, because it matches what it's doing.</li>
 <li>If it changes, tell an agent and the new note replaces the old one.</li></ol>
-${'<div class="cl-sticky cl-sticky--tilt note"><p>Recall hands back at most 8 notes at a time, so your agent doesn\'t drown in everything you ever said.</p></div>'}
+${'<div class="cl-sticky cl-sticky--tilt note"><p>Recall hands back a small packet of matching notes (up to 16 settled, plus up to 3 on trial), so your agent doesn\'t drown in everything you ever said.</p></div>'}
 <h2>Next</h2>
 <p>See ${link("save-and-recall", "saving and recalling notes")}, or start at <a href="/docs">the docs</a>.</p>`,
     faq: [
@@ -237,11 +237,11 @@ ${'<div class="cl-sticky cl-sticky--tilt note"><p>Recall hands back at most 8 no
 <li>Next time, recall brings the note back before the agent repeats the mistake.</li>
 <li>If a recalled note was wrong, the agent says so with ${code("feedback")}. Wrong notes sink, and used ones rise.</li></ol>
 <h2>When the old advice is the problem</h2>
-<p>If the agent keeps following something that used to be true, the fix is to replace the note, not add another one. See ${link("outdated-instructions", "when an agent follows an old instruction")}.</p>
+<p>If the agent keeps following something that used to be true, the fix is to replace the note rather than add another one. See ${link("outdated-instructions", "when an agent follows an old instruction")}.</p>
 <p>Setup is on <a href="/docs">the docs page</a>.</p>`,
     faq: [
       ["Will one correction fix it everywhere?", "Every connected agent can recall the note, in any app, once it's saved."],
-      ["What if the agent saves the wrong thing?", "Tell it to replace or mark the note wrong. It stops being served."],
+      ["What if the agent saves the wrong thing?", "Tell it to replace the note so the old one stops being served, or mark it wrong so its confidence drops."],
       ["Does this work in Claude Code?", "Yes, and there the hooks make the agent recall before it starts a new task."],
     ],
     related: ["outdated-instructions", "stop-repeating-yourself", "save-and-recall"],
@@ -251,7 +251,7 @@ ${'<div class="cl-sticky cl-sticky--tilt note"><p>Recall hands back at most 8 no
     title: "Why does Claude Code ignore rules in a long CLAUDE.md?",
     h1: "Why does Claude Code ignore rules in a long CLAUDE.md?",
     description: "A long CLAUDE.md loads whole into every session, so rules compete with each other and with the task. Recall only the rules that apply.",
-    answer: "A long CLAUDE.md loads whole into every session, so each rule competes with every other rule and with the task. Clyde keeps rules as separate short notes and recalls only the few that match what the agent is doing, at most 8 per recall.",
+    answer: "A long CLAUDE.md loads whole into every session, so each rule competes with every other rule and with the task. Clyde keeps rules as separate short notes and recalls only the small packet that matches what the agent is doing.",
     body: `<h2>Why the file grows</h2>
 <p>Every time an agent gets something wrong, someone adds a line. After a few months it's a few thousand words about everything, and the rule you need is somewhere in the middle.</p>
 <h2>Split it into notes</h2>
@@ -277,7 +277,7 @@ ${'<div class="cl-sticky cl-sticky--tilt note"><p>Recall hands back at most 8 no
 <p>Most memory is append-only. You add "we use pnpm now" and the old "use npm" note is still sitting there, and sometimes it wins.</p>
 <h2>Replace, don't add</h2>
 <ol><li>Tell the agent the old way is wrong and what replaced it.</li>
-<li>The agent saves the new note with ${code("supersedes")} set to the old note's ID.</li>
+<li>The agent saves the new note with the old note's ID in ${code("supersedes")}.</li>
 <li>Recall stops serving the old note. You can still dig it up with ${code("recall_more")} if you need the history.</li></ol>
 <p>Notes nobody uses also fade on their own, counted in recalls rather than days, so a side project you paused doesn't rot while you're away.</p>
 <p>More in ${link("same-mistake-again", "corrections that don't stick")} and on <a href="/docs">the docs page</a>.</p>`,
@@ -320,7 +320,7 @@ ${'<div class="cl-sticky cl-sticky--tilt note"><p>Recall hands back at most 8 no
 <li>Restart each app. Codex also wants ${code("/hooks")} once, to trust the hooks.</li>
 <li>The agent's first Clyde call is ${code("register_agent")}. Until it registers, the hooks refuse every other tool.</li>
 <li>Ask it to save a first note. It should give you back a note ID.</li></ol>
-<p>Rerunning the command changes nothing, so it's safe to run again after an update.</p>
+<p>Rerunning the command updates Clyde's files without duplicating entries, and changes nothing when you're already up to date.</p>
 <h2>What the hooks do</h2>
 <p>On a new task the agent has to recall before it acts. Writes to the app's own memory files are refused, so there's one memory, not five. On work computers, ${code("MEMORY_HOOKS=metadata")} sends folder names and session IDs without your prompt text.</p>
 <p>Every hook config, file by file, is on <a href="/docs#hooks">the docs page</a>. Then try ${link("save-and-recall", "saving and recalling a note")}.</p>`,
@@ -344,7 +344,7 @@ ${'<div class="cl-sticky cl-sticky--tilt note"><p>Recall hands back at most 8 no
 <p>For the coding side, see ${link("set-up-coding-agents", "setting up the coding agents")}. For why this matters, see ${link("claude-forgets", "why Claude forgets other chats")}.</p>`,
     faq: [
       ["Does it work in Cowork?", "Yes. Connectors on your account show up there too."],
-      ["What does Claude see?", "The notes recall returns for the question, at most 8, with who wrote each and when."],
+      ["What does Claude see?", "Only the small packet of notes recall returns for the question, with who wrote each and when."],
       ["Can I turn it off?", "Remove the connector in Settings. Your notes stay in Clyde until you delete them."],
     ],
     related: ["claude-forgets", "set-up-coding-agents", "save-and-recall"],
@@ -382,13 +382,13 @@ ${'<div class="cl-sticky cl-sticky--tilt note"><p>Recall hands back at most 8 no
 <li>Something changed? The new note supersedes the old one.</li></ol>
 <h2>Recalling</h2>
 <ol><li>The agent calls ${code("recall")} with what it's doing. Clyde matches words and meaning and follows links between notes used together.</li>
-<li>It gets at most 8 notes and 1,500 tokens. ${code("recall_more")} digs deeper when that missed.</li>
+<li>It gets a bounded packet (up to 8 to 16 settled notes and 1,500 to 2,400 tokens, depending on the search arm, plus up to 3 trial notes). ${code("recall_more")} digs deeper when that missed.</li>
 <li>It reports which notes helped with ${code("feedback")}. Used notes rise, wrong ones sink.</li></ol>
 <p>More on the ranking is in <a href="/how-it-works">how it works</a>. Related: ${link("stop-repeating-yourself", "stop repeating yourself")} and ${link("outdated-instructions", "replacing old instructions")}. Setup is on <a href="/docs">the docs page</a>.</p>`,
     faq: [
       ["What's a trial recall?", "A new note shows up apart from the settled list for 3 recalls. If it helps, it settles in. If not, it fades."],
       ["Do notes expire?", "Not by date. Notes nobody uses fade by recall count, so nothing rots while you're on vacation."],
-      ["Can agents save secrets by accident?", "Clyde strips matched keys and tokens before saving and refuses files with secrets in them. Still, don't put passwords in it."],
+      ["Can agents save secrets by accident?", "Clyde strips matched keys and tokens before saving and refuses uploaded text files with secrets in them. Still, don't put passwords in it."],
     ],
     related: ["stop-repeating-yourself", "outdated-instructions", "private-notes"],
   },
@@ -420,15 +420,15 @@ ${'<div class="cl-sticky cl-sticky--tilt note"><p>Recall hands back at most 8 no
     description: "What Clyde sends to outside models, how private and confidential notes work, and why passwords never belong in it.",
     answer: "Mark a note private or confidential and outside models only see its title, never the body. Clyde also strips matched keys and tokens before saving. It's still not a vault and not end-to-end encrypted, so passwords and credentials don't go in it.",
     body: `<h2>What leaves Clyde</h2>
-<p>To search and screen notes, Clyde sends note text to an embedding and screening model. A note marked private or confidential sends only its title. The list of companies involved is on <a href="/privacy">the privacy page</a>.</p>
+<p>To search, screen, and rank notes, Clyde sends normal note text to embedding, screening, and ranking models. A note marked private or confidential sends only its title. The list of companies involved is on <a href="/privacy">the privacy page</a>.</p>
 <h2>What Clyde refuses</h2>
-<ol><li>Matched keys, tokens and IDs are stripped before a note is saved.</li><li>Uploaded text files with secrets in them are refused.</li><li>Screening blocks sensitive personal data and prompt injections, and fails closed.</li></ol>
+<ol><li>Matched keys, tokens, cards, SSNs, and SINs are stripped before a note is saved.</li><li>Uploaded text files with secrets in them are refused.</li><li>Screening blocks sensitive personal data, prompt injections, and harmful code, and fails closed.</li></ol>
 <div class="cl-sticky cl-sticky--tilt note"><p>This is Postgres with some embeddings. Don't put passwords, API keys or anything you'd regret leaking in it.</p></div>
 <p>Related: ${link("save-and-recall", "saving and recalling notes")}, ${link("set-up-coding-agents", "the coding agent setup")} and <a href="/docs">the docs</a>.</p>`,
     faq: [
       ["Where is my data stored?", "In Supabase, in Canada (ca-central-1)."],
       ["Can I export or delete everything?", "Yes. Email support@heyclyde.me and it's done within 30 days."],
-      ["Do my hooks send my prompts?", "On a work computer, set MEMORY_HOOKS=metadata and they send only folder names and session IDs."],
+      ["Do my hooks send my prompts?", "Yes, by default. On a work computer, set MEMORY_HOOKS=metadata and they send only folder names, session IDs, and tool names."],
     ],
     related: ["save-and-recall", "set-up-coding-agents", "claude-forgets"],
   },

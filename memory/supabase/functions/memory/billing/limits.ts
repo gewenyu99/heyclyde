@@ -69,6 +69,10 @@ async function over(v: Verdict, kind: Metered, cap: number) {
 
 async function isPastIncludedAi(v: Verdict): Promise<boolean> {
   const capTokens = v.plan.openai_tokens_month;
+  if (!v.metered) {
+    if (capTokens === null) return false;
+    return await used(v.owner, "openai_tokens_month") >= capTokens;
+  }
   const incAiCost = includedCostMicroUsd(v.plan, "ai");
   const rows = await sql`select kind, amount, cost_micro_usd from memory.usage
     where owner_id = ${v.owner} and period = date_trunc('month', now() at time zone 'utc')::date
@@ -95,16 +99,21 @@ async function assertPastDueAi(v: Verdict) {
 async function assertCeiling(v: Verdict, pastIncluded = false) {
   const limitMicroUsd = v.spendLimitCents !== null ? v.spendLimitCents * 10_000 : v.plan.overage_ceiling_micro_usd_month;
   if (limitMicroUsd === null) return;
-  const rows = await sql`select kind, amount, cost_micro_usd, reported_cost_micro_usd from memory.usage
-    where owner_id = ${v.owner} and period = date_trunc('month', now() at time zone 'utc')::date`;
+  const rows = v.metered
+    ? await sql`select kind, amount, cost_micro_usd, reported_cost_micro_usd from memory.usage
+        where owner_id = ${v.owner} and period = date_trunc('month', now() at time zone 'utc')::date`
+    : await sql`select kind, amount from memory.usage
+        where owner_id = ${v.owner} and period = date_trunc('month', now() at time zone 'utc')::date`;
   const byKind = new Map(rows.map((r) => [String(r.kind), r]));
   let perKindOverageCost = 0;
   let perKindReportedBilled = 0;
-  for (const kind of METERED_KINDS) {
-    const r = byKind.get(kind);
-    if (!r) continue;
-    perKindOverageCost += Math.max(0, Number(r.cost_micro_usd ?? 0) - includedCostMicroUsd(v.plan, kind));
-    perKindReportedBilled += chargeFor(Number(r.reported_cost_micro_usd ?? 0));
+  if (v.metered) {
+    for (const kind of METERED_KINDS) {
+      const r = byKind.get(kind);
+      if (!r) continue;
+      perKindOverageCost += Math.max(0, Number(r.cost_micro_usd ?? 0) - includedCostMicroUsd(v.plan, kind));
+      perKindReportedBilled += chargeFor(Number(r.reported_cost_micro_usd ?? 0));
+    }
   }
   const legacyOverageCost = Number(byKind.get("overage_micro_usd_month")?.amount ?? 0);
   const legacyReportedBilled = chargeFor(Number(byKind.get("overage_reported_micro_usd_month")?.amount ?? 0));
@@ -212,20 +221,23 @@ export async function meterOwner(tokens: number, model?: string) {
   const pricePerM = (model ? OPENAI_PRICES_MICRO_USD_PER_M[model] : undefined) ?? Math.max(...Object.values(OPENAI_PRICES_MICRO_USD_PER_M));
   const callCost = Math.ceil((tokens * pricePerM) / 1_000_000);
   await chargeFreePool(v, callCost);
-  const [aiRow] = await sql`insert into memory.usage as u (owner_id, period, kind, amount, quantity, cost_micro_usd)
-    values (${v.owner}, date_trunc('month', now() at time zone 'utc')::date, 'ai', ${callCost}, ${tokens}, ${callCost})
-    on conflict (owner_id, period, kind) do update set
-      amount = u.amount + excluded.amount,
-      quantity = u.quantity + excluded.quantity,
-      cost_micro_usd = u.cost_micro_usd + excluded.cost_micro_usd
-    returning cost_micro_usd`;
+  let newAiCost = 0;
+  if (v.metered) {
+    const [aiRow] = await sql`insert into memory.usage as u (owner_id, period, kind, amount, quantity, cost_micro_usd)
+      values (${v.owner}, date_trunc('month', now() at time zone 'utc')::date, 'ai', ${callCost}, ${tokens}, ${callCost})
+      on conflict (owner_id, period, kind) do update set
+        amount = u.amount + excluded.amount,
+        quantity = u.quantity + excluded.quantity,
+        cost_micro_usd = u.cost_micro_usd + excluded.cost_micro_usd
+      returning cost_micro_usd`;
+    newAiCost = Number(aiRow?.cost_micro_usd ?? 0);
+  }
   if (v.plan.openai_tokens_month === null) return;
   const totalTokens = await add(v.owner, "openai_tokens_month", tokens);
   if (billsOverage(v)) {
-    const newAiCost = Number(aiRow?.cost_micro_usd ?? 0);
     const prevAiCost = Math.max(0, newAiCost - callCost);
     const incCost = includedCostMicroUsd(v.plan, "ai");
-    const costDelta = Math.max(0, newAiCost - incCost) - Math.max(0, prevAiCost - incCost);
+    const costDelta = v.metered ? Math.max(0, newAiCost - incCost) - Math.max(0, prevAiCost - incCost) : 0;
     const tokenDelta = Math.max(0, Math.min(tokens, totalTokens - v.plan.openai_tokens_month)) * (pricePerM / 1_000_000);
     await overage(v, Math.max(costDelta, tokenDelta));
   }
@@ -244,7 +256,7 @@ async function addEgressBytes(owner: string, bytes: number) {
 
 /** Records one request and any HTTP response body egress for the owner outside the tenant transaction. */
 export async function meterRequest(v: Verdict | undefined, egressBytes: number) {
-  if (!v || !v.plan.open || v.plan.id === "owner") return;
+  if (!v || !v.metered || !v.plan.open || v.plan.id === "owner") return;
   const reqCost = Math.ceil(INVOCATION_MICRO_USD);
   await root`insert into memory.usage as u (owner_id, period, kind, amount, quantity, cost_micro_usd)
     values (${v.owner}, date_trunc('month', now() at time zone 'utc')::date, 'requests', 1, 1, ${reqCost})
@@ -258,7 +270,7 @@ export async function meterRequest(v: Verdict | undefined, egressBytes: number) 
 /** Records blob bytes served through a signed Storage URL for the active request owner. */
 export async function meterSignedEgress(bytes: number) {
   const v = current.getStore()?.v;
-  if (!v || !v.plan.open || v.plan.id === "owner" || bytes <= 0) return;
+  if (!v || !v.metered || !v.plan.open || v.plan.id === "owner" || bytes <= 0) return;
   await addEgressBytes(v.owner, Math.ceil(bytes));
 }
 

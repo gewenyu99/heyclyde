@@ -168,7 +168,10 @@ test('R74: the guard runs hourly', { skip: SKIP }, () => {
     assert.match(job?.schedule ?? '', /^\d{1,2} \* \* \* \*$/)
   } finally {
     sql(`select cron.unschedule('memory-cost-guard')`)
+    exec(`delete from memory.usage where kind in ('ai', 'storage_gb_hours', 'egress_bytes', 'requests', 'db_bytes');`)
     apply('20261116050000_free_ratio_and_spend_cap.sql')
+    apply('20261117000000_metering_r59.sql')
+    sql(`select cron.unschedule('memory-usage-sample') where exists (select 1 from cron.job where jobname = 'memory-usage-sample')`)
   }
 })
 

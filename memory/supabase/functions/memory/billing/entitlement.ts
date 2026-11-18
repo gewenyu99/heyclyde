@@ -25,6 +25,8 @@ export type Verdict = {
   state: string | null;
   /** Monthly overage spend cap in cents for paid/past_due accounts, or null when unset. */
   spendLimitCents: number | null;
+  /** False on pre-R59 schemas that lack per-owner metering columns and kinds. */
+  metered: boolean;
   /** The owner's account was refused for its billing country (a VPN at sign-up, caught at the webhook). */
   blockedAccount: boolean;
   /** Where the answer came from, for the Server-Timing header: db on a lookup, cache on a hit. */
@@ -57,12 +59,13 @@ export async function entitled(owner: string): Promise<Verdict> {
     with o as (select ${owner}::uuid as id),
     who as (
       select a.country, a.region, a.free_slot, case when e.state = 'comp' then e.plan end as allow_plan, e.state, e.plan as paid_plan,
-        e.spend_limit_cents,
+        (to_jsonb(e)->>'spend_limit_cents')::int as spend_limit_cents,
         e.state in ('paid', 'past_due') and (not e.cancel_at_period_end or e.current_period_end is null or e.current_period_end > now()) as paid
       from o
       left join memory.account a on a.owner_id = o.id
       left join memory.entitlement e on e.owner_id = o.id)
-    select who.*, to_jsonb(p) as plan
+    select who.*, to_jsonb(p) as plan,
+      exists (select 1 from information_schema.columns where table_schema = 'memory' and table_name = 'usage' and column_name = 'cost_micro_usd') as metered
     from who left join memory.plan p
       on p.id = coalesce(who.allow_plan, case when who.paid then who.paid_plan end, case when who.free_slot then 'free' end)`;
   const plan = row?.plan
@@ -74,6 +77,7 @@ export async function entitled(owner: string): Promise<Verdict> {
   const v = {
     owner, plan, allowlisted: Boolean(row?.allow_plan), state: row?.state ?? null,
     spendLimitCents: row?.state === "paid" || row?.state === "past_due" ? num(row?.spend_limit_cents) : null,
+    metered: Boolean(row?.metered),
     blockedAccount: row?.state === "blocked" || isBlocked(row?.country, row?.region),
   };
   if (cache.size > 10_000) cache.clear();

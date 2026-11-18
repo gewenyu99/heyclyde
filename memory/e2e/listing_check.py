@@ -496,7 +496,12 @@ def openai_plugin_release(errs):
                 errs.append("clyde.tar.gz missing root gemini-extension.json")
 
 
-INDEXED = ["/", "/docs", "/how-it-works", "/faq", "/privacy", "/terms"]
+def guide_paths():
+    src = (ROOT / "proxy" / "guides.js").read_text(encoding="utf-8")
+    return [f"/guides/{s}" for s in re.findall(r'path:\s*g\("([a-z0-9-]+)"\)', src)]
+
+
+INDEXED = ["/", "/docs", "/how-it-works", "/faq", "/privacy", "/terms", "/guides", *guide_paths()]
 
 
 def site_seo(errs):
@@ -571,15 +576,16 @@ CRAWLERS = {
 
 def crawlers(errs):
     """R79 (like-vincent #84): search and AI crawlers can read the guides. Cloudflare refuses some user agents (error 1010)."""
-    for name, ua in CRAWLERS.items():
-        req = urllib.request.Request(BASE + "/guides", headers={"accept": "text/html", "user-agent": ua})
-        try:
-            with urllib.request.urlopen(req, timeout=20) as r:
-                status = r.status
-        except urllib.error.HTTPError as e:
-            status = e.code
-        if status != 200:
-            errs.append(f"{name}: /guides answered {status}")
+    for path in ("/guides", "/guides/ai-agent-memory"):
+        for name, ua in CRAWLERS.items():
+            req = urllib.request.Request(BASE + path, headers={"accept": "text/html", "user-agent": ua})
+            try:
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    status = r.status
+            except urllib.error.HTTPError as e:
+                status = e.code
+            if status != 200:
+                errs.append(f"{name}: {path} answered {status}")
 
 
 SECTIONS = {
