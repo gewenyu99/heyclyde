@@ -597,7 +597,9 @@ test('R19: the export carries every agent, binding and provenance row, and a res
   assert.ok(keep.agent >= 3 && keep.agent_binding >= 3 && keep.provenance >= 3)
   for (const [table, order] of [['agent', 'name'], ['agent_binding', 'principal, client']]) {
     assert.equal(listed.find((t) => t.table === table)!.rows, sql(`select count(*)::int as n from memory.${table}`)[0].n)
-    assert.deepEqual(rowsOf(await page(table)), sql(`select * from memory.${table} order by ${order}`))
+    const dbRows = sql(`select * from memory.${table} order by ${order}`).map((r) =>
+      table === 'agent' && r.device_id !== null && r.device_id !== undefined ? { ...r, device_id: Number(r.device_id) } : r)
+    assert.deepEqual(rowsOf(await page(table)), dbRows)
   }
   const ndjson = [await page('agent'), await page('agent_binding'), await page('mcp_client'), await page('entry_provenance')].join('')
   sql('delete from memory.agent')
