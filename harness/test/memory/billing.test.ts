@@ -12,7 +12,7 @@ import {
 import { jwt } from './auth.ts'
 import { bearer, nonce, note } from './bed.ts'
 import { deliver, newPolarSecret, polarSubscription, putSecret, setSetting, signPolar, startFakeProviders } from './billing.ts'
-import { SKIP, sql, startRealMemory, type RealMemory } from './server.ts'
+import { exec, SKIP, sql, startRealMemory, type RealMemory } from './server.ts'
 
 const TTL = 1500
 let memory: RealMemory

@@ -8,9 +8,25 @@ import { homePage, statePage } from "./pages.js";
 import { MOVED, siteFile, sitePage } from "./site.js";
 
 const ORIGIN = "https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory";
-const AUTH_VERIFY = "https://wlhlncmgjqyidosunugv.supabase.co/auth/v1/verify";
+const AUTH_ORIGIN = "https://wlhlncmgjqyidosunugv.supabase.co";
+const AUTH_VERIFY = `${AUTH_ORIGIN}/auth/v1/verify`;
 const SIGN_IN = new Set(["/oauth/consent", "/oauth/provider", "/oauth/wait", "/oauth/approve"]);
+const SITE_AUTH = new Set(["/auth/v1/otp", "/auth/v1/verify", "/auth/v1/token", "/auth/v1/user", "/auth/v1/logout"]);
 const ID = /^[A-Za-z0-9_-]{8,100}$/;
+let cachedAnonKey = "";
+
+async function getAnonKey(env) {
+  if (env?.SUPABASE_ANON_KEY) return env.SUPABASE_ANON_KEY;
+  if (cachedAnonKey) return cachedAnonKey;
+  try {
+    const r = await fetch(`${ORIGIN}/install/config`, { headers: { "x-memory-proxy": env.PROXY_SECRET } });
+    if (r.ok) {
+      const cfg = await r.json();
+      if (typeof cfg?.key === "string" && cfg.key) cachedAnonKey = cfg.key;
+    }
+  } catch { /* fall back to empty key if config lookup fails */ }
+  return cachedAnonKey;
+}
 
 async function pass(req, url, env, extra = {}) {
   const headers = new Headers(req.headers);
@@ -57,6 +73,7 @@ function failed(url, message) {
 // verification file, and since R78 the one-command installer and its files (`curl -fsSL https://heyclyde.me/install | sh`).
 // Every other path there is the site.
 const SITE_API = (path) => path === "/mcp" || path === "/mcp/" || path === "/install" || path.startsWith("/install/files/") ||
+  path === "/me" || path.startsWith("/me/") || path === "/billing/checkout" ||
   path.startsWith("/.well-known/oauth-protected-resource") ||
   path === "/.well-known/google-connected-apps" || path === "/.well-known/openai-apps-challenge";
 
@@ -120,12 +137,39 @@ export default {
     const file = (req.method === "GET" || req.method === "HEAD") && siteFile(url.hostname, url.pathname);
     if (file) return new Response(file.body, { headers: { "content-type": file.type, "cache-control": "public, max-age=3600" } });
     if (url.hostname === "heyclyde.me" && SITE_API(url.pathname)) return pass(req, url, env, { "x-memory-host": "heyclyde.me" });
+    if (url.hostname === "heyclyde.me" && SITE_AUTH.has(url.pathname)) {
+      const headers = new Headers(req.headers);
+      headers.delete("host");
+      headers.delete("x-memory-proxy");
+      if (url.pathname === "/auth/v1/verify" && req.method === "GET") {
+        try {
+          return await fetch(AUTH_VERIFY + url.search, { method: "GET", headers, redirect: "manual" });
+        } catch (e) {
+          return failed(url, `Clyde's sign-in server couldn't be reached (${e?.message ?? e}). Try again in a minute.`);
+        }
+      }
+      if (!headers.get("apikey")) {
+        const key = await getAnonKey(env);
+        if (key) headers.set("apikey", key);
+      }
+      const hasBody = !["GET", "HEAD"].includes(req.method);
+      try {
+        return await fetch(AUTH_ORIGIN + url.pathname + url.search, {
+          method: req.method,
+          headers,
+          body: hasBody ? req.body : undefined,
+          redirect: "manual",
+        });
+      } catch (e) {
+        return failed(url, `Clyde's sign-in server couldn't be reached (${e?.message ?? e}). Try again in a minute.`);
+      }
+    }
     if (url.hostname === "heyclyde.me") {
       if (req.method !== "GET" && req.method !== "HEAD") return new Response("Method not allowed", { status: 405, headers: { allow: "GET, HEAD" } });
       if (MOVED[url.pathname]) return Response.redirect(`https://heyclyde.me${MOVED[url.pathname]}`, 301);
       const n = nonce();
       const page = sitePage(url.pathname, n);
-      return new Response(page.html, { status: page.status, headers: locked(n, { "cache-control": "public, max-age=300" }) });
+      return new Response(page.html, { status: page.status, headers: locked(n, { "cache-control": page.cacheControl ?? "public, max-age=300" }) });
     }
     const read = req.method === "GET" || req.method === "HEAD";
     // R76 (#81): sign-in email links live on Clyde's host; forward GET /auth/v1/verify to Supabase Auth unchanged.

@@ -2,6 +2,7 @@
 // sign-in, a 404, robots.txt and the sitemap. Served by the same Worker as memory.heyclyde.me, in Sticky-Note Forehead
 // Clyde's doodle and sticky-note design system, in Clyde's deadpan voice (R72, #77; memory/design/BRAND.md).
 // Pricing matches memory.plan (memory/supabase/migrations/20261115120000_billing.sql); site_test.ts checks it.
+import { appPage } from "./app.js";
 import { ANTIGRAVITY_HOOKS_JSON, ANTIGRAVITY_RULE, CLAUDE_HOOKS_JSON, CLYDE_GATE_SH, CLYDE_HOOK_SH, CLYDE_RULE, CODEX_CONFIG_TOML, CODEX_HOOKS_JSON, GATE_URL, GEMINI_HOOKS_JSON, HOOK_APPS, HOOK_INSTALL, HOOK_PATH, HOOK_URL, hookSetupText, REGISTER_STEP } from "./hook.js";
 import { GUIDES, GUIDES_UPDATED } from "./guides.js";
 import { SOON, SOON_NOTE, APP_STEPS_CSS, appCards, appLogo, appSteps, APP_LOGO, CONNECT_CSS, COPY_JS, copyBox, copyPre, DESIGN_URL, esc, HERO_CSS, INSTALL, LEGAL, LOGO, MARK, MASCOT, MCP_URL, SCENE, SCENE_CSS, SCENE_IMG, shell, SITE, WORKS } from "./pages.js";
@@ -835,6 +836,8 @@ export const INDEXED = Object.keys(PAGES);
 
 export function sitePage(path, nonce) {
   if (PAGES[path]) return PAGES[path](nonce);
+  const app = appPage(path, nonce);
+  if (app) return app;
   return page(nonce, { title: "Not found · Clyde", status: 404, css: DOC_CSS, main: `<main class="doc wrap">${hero("404", "Page not found", "",
     `${MASCOT(148)}${SCENE_IMG("goldfish", "Clyde staring eye-to-eye at a goldfish in a bowl", 142, 165)}`, "")}
 <span class="cl-stamp cl-stamp--bad">404 · Not found</span><p>No page at <code>${esc(path)}</code>.</p>

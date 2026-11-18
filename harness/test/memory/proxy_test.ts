@@ -297,3 +297,50 @@ Deno.test('verify passes through, GET only', async () => {
   assert.equal(post.headers.get('allow'), 'GET')
   assert.equal(sent.length, 0)
 })
+
+Deno.test('site pages say Clyde', async () => {
+  const stripVisible = (html: string) =>
+    html.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ')
+
+  stub(json({ ok: true }))
+  const home = await at('https://heyclyde.me/')
+  assert.equal(home.status, 200)
+  assert.match(String(home.headers.get('content-type')), /^text\/html/)
+  const homeHtml = await home.text()
+  const homeTitle = /<title>([^<]*)<\/title>/i.exec(homeHtml)?.[1] ?? ''
+  assert.ok(homeTitle.includes('Clyde'), homeTitle)
+
+  for (const path of ['/memories', '/entries/note-1', '/graph', '/quests', '/agents', '/apps', '/usage', '/settings']) {
+    stub(json({ ok: true }))
+    const r = await at(`https://heyclyde.me${path}`)
+    assert.equal(r.status, 200, path)
+    assert.match(String(r.headers.get('content-type')), /^text\/html/, path)
+    assert.match(String(r.headers.get('cache-control')), /\bno-store\b/, path)
+    assert.equal(sent.length, 0, path)
+    const html = await r.text()
+    const title = /<title>([^<]*)<\/title>/i.exec(html)?.[1] ?? ''
+    assert.ok(title.includes('Clyde'), `${path}: title ${title}`)
+    assert.ok(!/\bstyle\s*=/i.test(html), `${path}: unexpected inline style attr`)
+    const text = stripVisible(html)
+    assert.equal(text.match(/\bmemory\b/i), null, `${path}: visible text matched /\\bmemory\\b/i`)
+  }
+
+  stub(json({ entries: [] }))
+  const me = await at('https://heyclyde.me/me/entries', { headers: { authorization: 'Bearer jwt-1' } })
+  assert.equal(me.status, 200)
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].url, `${ORIGIN}/me/entries`)
+  assert.equal(sent[0].headers.get('x-memory-host'), 'heyclyde.me')
+
+  stub(json({ access_token: 'tok-1' }))
+  const tok = await at('https://heyclyde.me/auth/v1/token?grant_type=password', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', apikey: 'anon-test' },
+    body: JSON.stringify({ email: 'a@example.com', password: 'pw' }),
+  })
+  assert.equal(tok.status, 200)
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].url, 'https://wlhlncmgjqyidosunugv.supabase.co/auth/v1/token?grant_type=password')
+  assert.equal(sent[0].headers.get('x-memory-proxy'), null)
+  assert.equal(sent[0].headers.get('apikey'), 'anon-test')
+})

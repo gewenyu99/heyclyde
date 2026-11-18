@@ -255,12 +255,17 @@ test('prune hides a note from recall', { skip: SKIP }, async () => {
 test('supersede keeps links', { skip: SKIP }, async () => {
   const o = createOwner('super')
   const e = `sup-e-${nonce()}`, f = `sup-f-${nonce()}`, x1 = `sup-x1-${nonce()}`, x2 = `sup-x2-${nonce()}`
-  const uniq = `kettlezap${nonce()}`
-  exec(`insert into memory.entry (owner_id, id, pattern, kind, title, body, authority, scope, evidence, confidence) values
-    ('${o.id}', '${e}', 'decisions', 'observation', 'Old ${uniq}', 'Old ${uniq} rule.', 'observed', 'global', 'Test.', 0.9),
-    ('${o.id}', '${f}', 'decisions', 'observation', 'New ${uniq}', 'New ${uniq} rule.', 'approved', 'global', 'Test.', 0.95),
-    ('${o.id}', '${x1}', 'observations', 'observation', 'Rel 1', 'Rel 1.', 'observed', 'global', 'Test.', 0.8),
-    ('${o.id}', '${x2}', 'observations', 'observation', 'Rel 2', 'Rel 2.', 'observed', 'global', 'Test.', 0.8);
+  const w1 = `kettle${nonce()}`, w2 = `zap${nonce()}`
+  const fillers = Array.from({ length: 8 }, (_, i) => `sup-fill-${i}-${nonce()}`)
+  const fillerSql = fillers.map((id, i) =>
+    `('${o.id}', '${id}', 'observations', 'observation', 'Rule ${i} ${w1} ${w2}', 'Body ${i} ${w1} ${w2}.', 'approved', 'global', 'Test.', 0.95, 0)`
+  ).join(',\n    ')
+  exec(`insert into memory.entry (owner_id, id, pattern, kind, title, body, authority, scope, evidence, confidence, chances_left) values
+    ('${o.id}', '${e}', 'decisions', 'observation', 'Old ${w1}', 'Old ${w1} rule.', 'observed', 'global', 'Test.', 0.9, 0),
+    ('${o.id}', '${f}', 'decisions', 'observation', 'New ${w1} ${w2}', 'New ${w1} ${w2} rule.', 'approved', 'global', 'Test.', 0.95, 0),
+    ${fillerSql},
+    ('${o.id}', '${x1}', 'observations', 'observation', 'Rel 1', 'Rel 1.', 'observed', 'global', 'Test.', 0.8, 0),
+    ('${o.id}', '${x2}', 'observations', 'observation', 'Rel 2', 'Rel 2.', 'observed', 'global', 'Test.', 0.8, 0);
     insert into memory.link (owner_id, src, dst, type) values
     ('${o.id}', '${e}', '${x1}', 'relates'),
     ('${o.id}', '${e}', '${x2}', 'relates');`)
@@ -287,18 +292,25 @@ test('supersede keeps links', { skip: SKIP }, async () => {
   const sid = String(init.headers['mcp-session-id'])
   const rec = await request('POST', `${memory.url}/mcp`, {
     headers: { ...bearer(o.deviceToken), 'mcp-session-id': sid },
-    body: { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'recall', arguments: { query: uniq } } },
+    body: { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'recall', arguments: { query: `${w1} ${w2}` } } },
     timeoutMs: 30_000,
   })
   const recText = JSON.parse(rec.text).result.content[0].text as string
-  const rid = /^retrieval ([0-9a-f-]{36})/.exec(recText)![1]
-  const more = await request('POST', `${memory.url}/mcp`, {
-    headers: { ...bearer(o.deviceToken), 'mcp-session-id': sid },
-    body: { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'recall_more', arguments: { retrieval_id: rid } } },
-    timeoutMs: 30_000,
-  })
-  const moreText = JSON.parse(more.text).result.content[0].text as string
-  assert.ok(moreText.includes(e) && moreText.includes(`superseded by ${f}`), moreText)
+  let rid = /^retrieval ([0-9a-f-]{36})/.exec(recText)![1]
+  let combined = ''
+  for (let page = 0; page < 3; page++) {
+    const more = await request('POST', `${memory.url}/mcp`, {
+      headers: { ...bearer(o.deviceToken), 'mcp-session-id': sid },
+      body: { jsonrpc: '2.0', id: 3 + page, method: 'tools/call', params: { name: 'recall_more', arguments: { retrieval_id: rid } } },
+      timeoutMs: 30_000,
+    })
+    const moreText = JSON.parse(more.text).result.content[0].text as string
+    combined += `\n${moreText}`
+    const next = /More past these: recall_more\(retrieval_id="([0-9a-f-]{36})"\)/.exec(moreText)
+    if (!next) break
+    rid = next[1]
+  }
+  assert.ok(combined.includes(e) && combined.includes(`superseded by ${f}`), combined)
 })
 
 test('delete removes the note and keeps shared blobs', { skip: SKIP }, async () => {
