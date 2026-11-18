@@ -7,6 +7,9 @@ import worker from '../../../memory/proxy/worker.js'
 import { CLYDE_HOOK_SH } from '../../../memory/proxy/hook.js'
 import { APP_LOGO, appCards, appSteps, DESIGN_URL, homePage, SOON, statePage } from '../../../memory/proxy/pages.js'
 import { INDEXED as SITE_INDEXED, INDEXNOW_KEY, MOVED } from '../../../memory/proxy/site.js'
+// R79 (like-vincent #84): the guides. Imported loosely, so the rest of this file still runs before guides.js exists.
+type Guide = { path: string; kind: 'woe' | 'howto'; title: string; h1: string; faq: [string, string][] }
+const { GUIDES } = (await import('../../../memory/proxy/guides.js').catch(() => ({ GUIDES: [] }))) as { GUIDES: Guide[] }
 
 const ENV = { PROXY_SECRET: 'test-proxy-secret' }
 let calls = 0
@@ -21,15 +24,12 @@ async function get(url: string) {
   return { r, html: r.headers.get('content-type')?.startsWith('text/html') ? await r.text() : '' }
 }
 // R72 (#77): the pages a search engine should index, in the order the sitemap lists them.
-const INDEXED = ['/', '/docs', '/how-it-works', '/faq', '/privacy', '/terms']
+const BASE = ['/', '/docs', '/how-it-works', '/faq', '/privacy', '/terms']
+const INDEXED = [...BASE, '/guides', ...GUIDES.map((g) => g.path)]
 // Pages the site dropped when it shrank, and where each one went.
 const REDIRECTS: Record<string, string> = { '/research': '/how-it-works', '/support': '/docs#support', '/docs/grok': '/docs#grok', '/signin': '/docs' }
 const SUPPORT = 'support@heyclyde.me'
-// One ceiling for every page (Wen, 2026-11-16: the old 40 to 75 KB budgets were arbitrary). It still catches real bloat,
-// like an image inlined by accident.
-// R78 (like-vincent #83) put every coding app's full hook config on its own card, so /docs grew past 150 KB of plain text.
-const PAGE_MAX = 200_000
-const HOME_MAX = PAGE_MAX
+// No page has a byte cap (R79, like-vincent #84). Wen, 2026-11-17: the size of the site doesn't matter.
 const h1s = (html: string) => [...html.matchAll(/<h1[^>]*>([\s\S]*?)<\/h1>/g)].map((m) => m[1].replace(/<[^>]+>/g, '').trim())
 const text = (html: string) => html.replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
 
@@ -55,7 +55,6 @@ Deno.test('the home page has the logo, pricing and its links', async () => {
   assert.equal((html.match(/<article class="cl-quest">/g) ?? []).length, 1, 'one quest card')
   assert.ok(!html.includes('FAQPage') && !/<div class="faq">/.test(html), 'the FAQ lives on /faq, not the home page')
   assert.ok(html.includes('@media (max-width:960px){.site-hero{grid-template-columns:minmax(0,1fr)'), 'the hero is one column on a phone')
-  assert.ok(new TextEncoder().encode(html).length <= HOME_MAX, `${html.length} bytes`)
 })
 
 // Structure only: which parts are there and how they're wired. The wording is Wen's and isn't pinned here.
@@ -213,8 +212,6 @@ Deno.test('the store pages', async () => {
     assert.equal(r.status, 200, path)
     assert.deepEqual(h1s(html), [title], path)
     assert.equal(calls, 0, `${path} needs nothing from the function`)
-    const bytes = new TextEncoder().encode(html).length
-    assert.ok(bytes <= PAGE_MAX, `${path}: ${bytes} bytes`)
     const t = text(html)
     for (const w of words) assert.ok(t.includes(w), `${path} mentions ${w}`)
   }
@@ -331,14 +328,12 @@ Deno.test('every page has the same header nav and footer', async () => {
   for (const path of [...INDEXED, '/nope']) {
     const { html } = await get(`https://heyclyde.me${path}`)
     const nav = /<nav class="topnav">([\s\S]*?)<\/nav>/.exec(html)?.[1] ?? ''
-    assert.deepEqual(attr(nav, /href="([^"]+)"/g), ['/docs', '/how-it-works', '/faq'], `${path}: header nav`)
-    assert.deepEqual(h1s(`<h1>${nav}</h1>`), ['DocsHow it worksFAQ'], `${path}: header nav labels`)
+    assert.deepEqual(attr(nav, /href="([^"]+)"/g), ['/docs', '/how-it-works', '/guides', '/faq'], `${path}: header nav`)
+    assert.deepEqual(h1s(`<h1>${nav}</h1>`), ['DocsHow it worksGuidesFAQ'], `${path}: header nav labels`)
     const bar = /<header class="bar[\s\S]*?<\/header>/.exec(html)?.[0] ?? ''
     assert.ok(/<a class="cl-btn cl-btn--primary" href="\/docs">Get Clyde<\/a>/.test(bar), `${path}: a Get Clyde button to /docs`)
     const foot = /<footer[\s\S]*?<\/footer>/.exec(html)?.[0] ?? ''
-    assert.deepEqual(attr(foot, /href="([^"]+)"/g), ['/docs', '/how-it-works', '/faq', `mailto:${SUPPORT}`, '/privacy', '/terms', DESIGN_URL], `${path}: footer links`)
-    const bytes = new TextEncoder().encode(html).length
-    assert.ok(bytes <= PAGE_MAX, `${path}: ${bytes} bytes`)
+    assert.deepEqual(attr(foot, /href="([^"]+)"/g), ['/docs', '/how-it-works', '/guides', '/faq', `mailto:${SUPPORT}`, '/privacy', '/terms', DESIGN_URL], `${path}: footer links`)
   }
 })
 
@@ -355,9 +350,12 @@ Deno.test('every page has its own SEO tags', async () => {
     for (const k of ['og:title', 'og:description', 'og:url']) assert.equal(meta(html, k).length, 1, `${path}: ${k}`)
     assert.deepEqual(meta(html, 'og:image'), ['https://heyclyde.me/brand/og-banner.png'], `${path}: og:image`)
     assert.deepEqual(meta(html, 'twitter:card'), ['summary_large_image'], `${path}: twitter:card`)
-    const bytes = new TextEncoder().encode(html).length
-    assert.ok(bytes <= PAGE_MAX, `${path}: ${bytes} bytes`)
   }
+  for (const g of GUIDES.filter((x) => x.kind === 'woe')) {
+    assert.ok(g.title.endsWith('?') && g.title.length <= 65, `${g.path}: a woe's title is the question, under 66 characters: ${g.title}`)
+    assert.ok((await get(`https://heyclyde.me${g.path}`)).html.includes(`<title>${g.title.replace(/'/g, '&#39;')}</title>`), `${g.path}: <title> is the woe's title`)
+  }
+  assert.ok(GUIDES.filter((x) => x.kind === 'woe').length >= 8, 'at least 8 woe guides')
   assert.equal(titles.size, INDEXED.length, 'every title is different')
   assert.equal(descs.size, INDEXED.length, 'every description is different')
   assert.ok(Deno.statSync(new URL('../../../memory/proxy/public/brand/og-banner.png', import.meta.url)).isFile, 'the OG image ships')
@@ -389,7 +387,7 @@ Deno.test('structured data', async () => {
     assert.ok(shown.includes(q.name), `${q.name}: the question is on the page`)
   }
 
-  for (const path of INDEXED.filter((p) => p !== '/')) {
+  for (const path of BASE.filter((p) => p !== '/')) {
     const b = jsonld((await get(`https://heyclyde.me${path}`)).html)
     const crumbs = b.find((x) => x['@type'] === 'BreadcrumbList')
     assert.ok(crumbs, `${path}: a BreadcrumbList`)
@@ -486,7 +484,7 @@ Deno.test('complaints wall', async () => {
   const items = [...wall.matchAll(/<article class="complaint"[^>]*>([\s\S]*?)<\/article>/g)].map((m) => m[1])
   assert.ok(items.length >= 6, `${items.length} complaints on the wall`)
   for (const it of items) {
-    const links = [...it.matchAll(/<a\s[^>]*>/g)].map((m) => m[0])
+    const links = [...it.matchAll(/<a\s[^>]*>/g)].map((m) => m[0]).filter((a) => /href="https?:/.test(a))
     assert.equal(links.length, 1, 'exactly one source link')
     assert.match(links[0], /href="https:\/\//, 'the source is https')
     assert.match(links[0], /rel="[^"]*\bnofollow\b[^"]*"/, 'nofollow')
@@ -495,4 +493,80 @@ Deno.test('complaints wall', async () => {
     for (const q of text(it).matchAll(/["“]([^"”]+)["”]/g)) assert.ok(q[1].trim().split(/\s+/).length <= 14, `quote over 14 words: ${q[1]}`)
   }
   assert.ok(!/\sstyle="/.test(wall), 'no style attributes')
+})
+
+// ---- R79 (like-vincent #84): guides people find by searching what went wrong, and no byte caps ----
+
+const words = (s: string) => s.trim().split(/\s+/).filter(Boolean).length
+const unescape = (s: string) => s.replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/&quot;/g, '"')
+
+Deno.test('guides', async () => {
+  assert.ok(GUIDES.length >= 14, `${GUIDES.length} guides`)
+  const index = await get('https://heyclyde.me/guides')
+  assert.equal(index.r.status, 200)
+  assert.equal(h1s(index.html).length, 1, '/guides: one h1')
+  for (const g of GUIDES) {
+    assert.match(g.path, /^\/guides\/[a-z0-9-]+$/)
+    assert.ok(index.html.includes(`href="${g.path}"`), `/guides links ${g.path}`)
+    const { r, html } = await get(`https://heyclyde.me${g.path}`)
+    assert.equal(r.status, 200, g.path)
+    assert.match(String(r.headers.get('content-type')), /^text\/html/)
+    assert.deepEqual(h1s(html), [unescape(g.h1).replace(/<[^>]+>/g, '')], `${g.path}: one h1`)
+  }
+  const xml = await (await worker.fetch(new Request('https://heyclyde.me/sitemap.xml'), ENV)).text()
+  const llms = await (await worker.fetch(new Request('https://heyclyde.me/llms.txt'), ENV)).text()
+  for (const p of ['/guides', ...GUIDES.map((g) => g.path)]) {
+    assert.ok(xml.includes(`<loc>https://heyclyde.me${p}</loc>`), `sitemap lists ${p}`)
+    assert.ok(llms.includes(`https://heyclyde.me${p})`), `llms.txt lists ${p}`)
+  }
+})
+
+Deno.test('guides answer first', async () => {
+  for (const g of GUIDES) {
+    const { html } = await get(`https://heyclyde.me${g.path}`)
+    const answer = /<p class="answer">([\s\S]*?)<\/p>/.exec(html)?.[1]
+    assert.ok(answer, `${g.path}: a p.answer`)
+    assert.ok(html.indexOf('<p class="answer">') > html.indexOf('</h1>'), `${g.path}: the answer comes after the h1`)
+    assert.ok(words(text(answer!)) <= 60, `${g.path}: the answer is ${words(text(answer!))} words`)
+    const shown = attr(html, /<h3 class="q">([^<]*)<\/h3>/g).map(unescape)
+    assert.ok(shown.length >= 3, `${g.path}: ${shown.length} visible questions`)
+    const blocks = jsonld(html)
+    const art = blocks.find((b) => b['@type'] === 'Article')
+    assert.ok(art, `${g.path}: an Article`)
+    assert.equal(art.headline, h1s(html)[0], `${g.path}: headline is the h1`)
+    assert.match(art.dateModified, /^\d{4}-\d{2}-\d{2}$/)
+    assert.equal(art.publisher?.name, 'Pennywhistle software')
+    const crumbs = blocks.find((b) => b['@type'] === 'BreadcrumbList')
+    assert.deepEqual(crumbs?.itemListElement.map((e: { item: string }) => e.item), ['https://heyclyde.me', 'https://heyclyde.me/guides', `https://heyclyde.me${g.path}`], `${g.path}: crumbs`)
+    const faq = blocks.find((b) => b['@type'] === 'FAQPage')
+    assert.deepEqual(faq?.mainEntity.map((q: { name: string }) => q.name), shown, `${g.path}: FAQPage matches the visible questions`)
+  }
+})
+
+Deno.test('guides link each other', async () => {
+  for (const g of GUIDES) {
+    const { html } = await get(`https://heyclyde.me${g.path}`)
+    const main = /<main[\s\S]*?<\/main>/.exec(html)?.[0] ?? ''
+    const others = new Set(attr(main, /href="(\/guides\/[a-z0-9-]+)"/g).filter((p) => p !== g.path))
+    assert.ok(others.size >= 2, `${g.path} links ${others.size} other guides`)
+    assert.ok(/href="\/docs(#[^"]*)?"/.test(main), `${g.path} links /docs`)
+  }
+  const { html } = await get('https://heyclyde.me/')
+  const wall = /<section[^>]*id="complaints"[^>]*>([\s\S]*?)<\/section>/.exec(html)?.[1] ?? ''
+  const items = [...wall.matchAll(/<article class="complaint"([^>]*)>([\s\S]*?)<\/article>/g)]
+  for (const [, head, body] of items) {
+    const guide = /data-guide="([^"]+)"/.exec(head)?.[1]
+    assert.ok(guide && GUIDES.some((g) => g.path === guide), `a complaint names a real guide: ${guide}`)
+    assert.ok(body.includes(`href="${guide}"`), `the complaint links ${guide}`)
+  }
+})
+
+Deno.test('no page byte caps', () => {
+  const caps = new RegExp(['PAGE', 'HOME'].map((w) => `${w}_MAX`).join('|') + '|encode\\(html\\)\\.length\\s*<' + '=')
+  for (const f of ['site_test.ts', 'proxy_test.ts']) {
+    const src = Deno.readTextFileSync(new URL(`./${f}`, import.meta.url))
+    assert.equal(caps.exec(src)?.[0] ?? null, null, `${f} caps a page's bytes`)
+  }
+  const brand = Deno.readTextFileSync(new URL('../../../memory/design/BRAND.md', import.meta.url))
+  assert.ok(!/heyclyde\.me\/`?\s*<=/.test(brand), 'BRAND.md names no page byte budget')
 })

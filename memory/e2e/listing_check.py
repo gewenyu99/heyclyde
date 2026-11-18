@@ -559,6 +559,29 @@ def email_images(errs):
             errs.append(f"{name}: not a valid PNG")
 
 
+CRAWLERS = {
+    "Googlebot": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+    "bingbot": "Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)",
+    "GPTBot": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; GPTBot/1.2; +https://openai.com/gptbot",
+    "OAI-SearchBot": "Mozilla/5.0 (compatible; OAI-SearchBot/1.0; +https://openai.com/searchbot)",
+    "ClaudeBot": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; ClaudeBot/1.0; +claudebot@anthropic.com)",
+    "PerplexityBot": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot)",
+}
+
+
+def crawlers(errs):
+    """R79 (like-vincent #84): search and AI crawlers can read the guides. Cloudflare refuses some user agents (error 1010)."""
+    for name, ua in CRAWLERS.items():
+        req = urllib.request.Request(BASE + "/guides", headers={"accept": "text/html", "user-agent": ua})
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                status = r.status
+        except urllib.error.HTTPError as e:
+            status = e.code
+        if status != 200:
+            errs.append(f"{name}: /guides answered {status}")
+
+
 SECTIONS = {
     "legal pages": legal_pages,
     "docs pages": docs_pages,
@@ -574,6 +597,7 @@ SECTIONS = {
     "gemini cli repo": gemini_cli_repo,
     "claude plugin bundle": claude_plugin_bundle,
     "antigravity plugin bundle": antigravity_plugin_bundle,
+    "crawlers": crawlers,
     "openai plugin release": openai_plugin_release,
     "site seo": site_seo,
     "complaint sources": complaint_sources,
