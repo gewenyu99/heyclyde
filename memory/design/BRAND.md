@@ -42,7 +42,7 @@ Don't write:
 ## Mascot & Logo
 
 Sticky-Note Forehead Clyde is our mascot and brand mark:
-- **Mark & Lockup (`memory/design/brand/` & `/_clyde/brand/`).** Head-and-forehead-note mark (`clyde-mark-light.svg`, `clyde-mark-dark.svg`, `favicon.svg`) paired with the outlined lowercase Bricolage Grotesque ExtraBold `clyde` wordmark (`clyde-lockup-light.svg`, `clyde-lockup-dark.svg`). `memory/design/brand.js` exports compact token-driven inline SVGs (`LOGO_LOCKUP` <= 4.5 KB, `LOGO_MARK`) using `.p` (`--cl-paper-1`), `.s` (`--cl-sticky`), `.i` (`--cl-ink`), and `.c` (`--cl-carbon`).
+- **Mark & Lockup (`memory/design/brand/` & `/_clyde/brand/`).** Head-and-forehead-note mark (`clyde-mark-light.svg`, `clyde-mark-dark.svg`, `favicon.svg`) paired with the outlined lowercase Bricolage Grotesque ExtraBold `clyde` wordmark (`clyde-lockup-light.svg`, `clyde-lockup-dark.svg`). `memory/design/brand.js` exports compact token-driven inline SVGs (`LOGO_LOCKUP`, `LOGO_MARK`) using `.p` (`--cl-paper-1`), `.s` (`--cl-sticky`), `.i` (`--cl-ink`), and `.c` (`--cl-carbon`).
 - **Full Mascot & Multi-Pose Scenes (`memory/design/assets/scenes/` & `/_clyde/scenes/`).** Five character-consistent hand-drawn scratchy-ink scenes in light and dark SVG:
   1. `standing` — slouching hands-in-pockets Clyde (`clyde-mascot-{light,dark}.svg`).
   2. `relay` — passing a sticky note between a chat window and a `>_` terminal window.
@@ -56,7 +56,7 @@ Sticky-Note Forehead Clyde is our mascot and brand mark:
 - **Contrast.** Every foreground (`ink`, `ink-2`, `ink-3`, `carbon`, `ok`, `warn`, `bad`, and all 7 `pen-*` colors) holds `>= 4.5:1` WCAG contrast on `paper-0`, `paper-1`, `paper-2`, AND `sticky` in both light and dark themes — enforced in `harness/test/memory/design_test.ts`.
 - **Dark theme.** `#121311` ground, `#1b1c1a` sheets, `#282416` dark warm sticky notes, `#ecece6` ink, and `#86a6f5` carbon blue. Media-query dark and `[data-theme="dark"]` stay 100% identical.
 - **Type.** Bricolage Grotesque for display headlines, Geist for UI and reading copy, Geist Mono for labels, provenance, counts, and URLs (`fonts.css`).
-- **CSP discipline.** Zero literal `#hex` or `rgb()` in `components.css` or chat card CSS (`ui/style.ts`), and zero inline `style=""` attributes on Worker HTML pages. Pages have no byte budget (R79): the only ceiling is Cloudflare's Worker bundle limit, 3 MB on the free plan and 10 MB on paid. Each MCP chat card stays at or under `60,000` bytes, since a chat app loads it whole into an iframe.
+- **CSP discipline.** Zero literal `#hex` or `rgb()` in `components.css` or chat card CSS (`ui/style.ts`), and zero inline `style=""` attributes on Worker HTML pages. Nothing has a byte budget, not pages, chat cards or the logo (R79). The only ceiling is Cloudflare's Worker bundle limit, 3 MB on the free plan and 10 MB on paid.
 
 ## Other apps' logos
 

@@ -52,11 +52,10 @@ test('R67 only card-rendering clients get cards', () => {
   assert.equal(wantsUi({ clientInfo: { name: 'r67-any' }, capabilities: ext([UI_MIME]) }), true)
 })
 
-test('R67 cards are small and self-contained', () => {
+test('R67 cards are self-contained', () => {
   assert.equal(Object.keys(CARDS).length, 6)
   for (const card of Object.keys(CARDS)) {
     const html = cardHtml(card)
-    assert.ok(Buffer.byteLength(html) <= 60_000, `${card} is ${Buffer.byteLength(html)} bytes`)
     assert.equal((html.match(/(src|href)\s*=\s*["']?https?:/gi) ?? []).length, 0, `${card} fetches nothing`)
     assert.equal(html.split('</script>').length - 1, 1, `${card} has one script, which nothing in it closes early`)
     const r = readUiResource(uriOf(card), 'https://project.supabase.co')!
@@ -72,7 +71,6 @@ test('R67 the cards use only the design tokens', () => {
   assert.equal(TOKENS_CSS, design.TOKENS_CSS, 'run node memory/design/build.mjs')
   assert.equal(COMPONENTS_CSS, design.COMPONENTS_CSS, 'run node memory/design/build.mjs')
   assert.equal(LOGO_LOCKUP, BRAND_LOCKUP, 'the logo is brand.js\'s: run node memory/design/build.mjs')
-  assert.ok(Buffer.byteLength(LOGO_LOCKUP) <= 4_500, `LOGO_LOCKUP is ${Buffer.byteLength(LOGO_LOCKUP)} bytes`)
   for (const card of Object.keys(CARDS)) {
     const html = cardHtml(card)
     assert.ok(html.includes(BRAND_LOCKUP), `${card} carries the logo`)

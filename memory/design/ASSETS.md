@@ -13,7 +13,7 @@ Reusable vector (`.svg`) and raster (`.png`, `.jpg`) assets featuring **Sticky-N
 | `clyde-mascot-light.svg` / `clyde-mascot-dark.svg` | `0 0 156 310` | Full standing Sticky-Note Forehead Clyde with hands in pockets (~17 KB static vector). |
 | `clyde-wordmark-light.svg` / `clyde-wordmark-dark.svg` | `0 -71 240 87` | Outlined Bricolage Grotesque ExtraBold lowercase wordmark alone. |
 | `favicon.svg` | `0 0 128 128` | Auto-switching `prefers-color-scheme` browser tab icon. |
-| `memory/design/brand.js` | `LOGO_LOCKUP` (`<= 4.5 KB`), `LOGO_MARK` | Token-driven inline SVGs (`.p`, `.s`, `.i`, `.c`) for sandboxed MCP chat cards and artifacts. |
+| `memory/design/brand.js` | `LOGO_LOCKUP`, `LOGO_MARK` | Token-driven inline SVGs (`.p`, `.s`, `.i`, `.c`) for sandboxed MCP chat cards and artifacts. |
 
 ---
 

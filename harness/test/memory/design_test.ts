@@ -114,7 +114,6 @@ Deno.test('sticky-note tokens, doodle components, and Sticky-Note Forehead Clyde
   for (const cls of ['.cl-sticky', '.cl-sticky--tilt', '.cl-sticky--blue', '.cl-scribble', '.cl-mascot']) {
     assert.ok(componentsCss.includes(cls), `components.css defines ${cls}`)
   }
-  assert.ok(new TextEncoder().encode(LOGO_LOCKUP).length <= 4_500, `LOGO_LOCKUP compact: ${LOGO_LOCKUP.length} bytes`)
   assert.ok(LOGO_LOCKUP.includes('class="c"') && LOGO_LOCKUP.includes('class="i"'), 'LOGO_LOCKUP uses ink and carbon token classes')
   assert.ok(LOGO_MARK.includes('class="c"') && LOGO_MARK.includes('class="i"'), 'LOGO_MARK uses ink and carbon token classes')
   for (const file of ['clyde-mascot-light.svg', 'clyde-mascot-dark.svg', 'clyde-lockup-light.svg', 'clyde-lockup-dark.svg']) {
