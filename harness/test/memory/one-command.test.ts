@@ -344,3 +344,44 @@ test("R78 a fresh install's hooks print no out-of-date line", async () => {
     await fake.close()
   }
 })
+
+test('Quest #27: installer rerun preserves existing memory.heyclyde.me OAuth URLs and tokens in Antigravity and Gemini CLI', async () => {
+  const fake = await fakeServer()
+  try {
+    const h = home()
+    const legacyUrl = 'https://memory.heyclyde.me/mcp'
+    mkdirSync(join(h, '.gemini/antigravity'), { recursive: true })
+    mkdirSync(join(h, '.gemini/extensions/clyde'), { recursive: true })
+    writeFileSync(join(h, '.gemini/antigravity/mcp_oauth_tokens.json'), JSON.stringify({
+      [legacyUrl]: { client_id: 'agy-client', token: 'agy-oauth-token', token_url: 'https://wlhlncmgjqyidosunugv.supabase.co/auth/v1/oauth/token' },
+    }))
+    writeFileSync(join(h, '.gemini/mcp-oauth-tokens.json'), JSON.stringify({
+      clyde: { serverUrl: legacyUrl, token: { accessToken: 'gemini-oauth-token' } },
+    }))
+    // Even if one config had been rewritten to heyclyde.me/mcp while its token file holds memory.heyclyde.me/mcp, or if
+    // the config already holds memory.heyclyde.me/mcp, the rerun keeps memory.heyclyde.me/mcp so the OAuth login holds.
+    writeFileSync(join(h, '.gemini/config/mcp_config.json'), JSON.stringify({
+      mcpServers: { clyde: { serverUrl: 'https://heyclyde.me/mcp' }, 'chrome-devtools': { command: 'npx' } },
+    }))
+    writeFileSync(join(h, '.gemini/extensions/clyde/gemini-extension.json'), JSON.stringify({
+      name: 'clyde', version: '1.1.0', mcpServers: { clyde: { httpUrl: legacyUrl } },
+    }))
+
+    await install(h, fake)
+
+    assert.equal(json(h, '.gemini/config/mcp_config.json').mcpServers.clyde.serverUrl, legacyUrl)
+    assert.equal(json(h, '.gemini/extensions/clyde/gemini-extension.json').mcpServers.clyde.httpUrl, legacyUrl)
+
+    // A second rerun changes 0 bytes.
+    const first = snapshot(h)
+    await new Promise((r) => setTimeout(r, 30))
+    await install(h, fake)
+    const second = snapshot(h)
+    for (const [f, [bytes, mtime]] of Object.entries(first)) {
+      assert.equal(second[f][0], bytes, `${f} changed on the rerun`)
+      assert.equal(second[f][1], mtime, `${f} was rewritten on the rerun`)
+    }
+  } finally {
+    await fake.close()
+  }
+})

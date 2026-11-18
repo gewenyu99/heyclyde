@@ -236,6 +236,33 @@ def write(path, text, mode=None):
 
 def dump(doc):
     return json.dumps(doc, indent=2) + "\n"
+
+CLYDE_URLS = ("https://heyclyde.me/mcp", "https://memory.heyclyde.me/mcp")
+
+def oauth_mcp(mcp, current, token_files):
+    """Keep an existing Clyde OAuth URL (or the one the app token file holds) so a rerun never logs the app out."""
+    if mcp not in CLYDE_URLS:
+        return mcp
+    tokens = []
+    for p in token_files:
+        if not p.exists():
+            continue
+        try:
+            raw = p.read_text()
+            for u in CLYDE_URLS:
+                if u in raw and u not in tokens:
+                    tokens.append(u)
+        except OSError:
+            pass
+    for u in current:
+        if u in tokens:
+            return u
+    if tokens:
+        return tokens[0]
+    for u in current:
+        if u in CLYDE_URLS:
+            return u
+    return mcp
 '
 
 # merge <hooks file> <snippet>: our entries from the snippet ({"hooks": {...}} plus any top-level settings beside it, such
@@ -326,12 +353,19 @@ put_gemini() {
   python3 -c "$PYLIB"'
 home, mcp, here = Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3])
 ext = home / ".gemini/extensions/clyde"
+old = home / ".gemini/extensions/memory"
+cur = []
+for p, k in ((ext / "gemini-extension.json", "clyde"), (old / "gemini-extension.json", "memory")):
+    try:
+        cur.append(json.loads(p.read_text()).get("mcpServers", {}).get(k, {}).get("httpUrl"))
+    except (OSError, ValueError, AttributeError):
+        pass
+mcp = oauth_mcp(mcp, cur, [home / ".gemini/mcp-oauth-tokens.json", home / ".gemini/mcp-oauth-tokens-v2.json"])
 manifest = json.loads((here / "gemini-extension.json").read_text())
 for server in manifest.get("mcpServers", {}).values():
     server["httpUrl"] = mcp
 write(ext / "gemini-extension.json", dump(manifest), 0o644)
 write(ext / "hooks/hooks.json", (here / "gemini-hooks.json").read_text(), 0o644)
-old = home / ".gemini/extensions/memory"
 try:
     if json.loads((old / "gemini-extension.json").read_text()).get("name") == "memory":
         import shutil
@@ -361,11 +395,13 @@ if isinstance(doc, dict):
 put_antigravity() {
   python3 -c "$PYLIB"'
 path, entry, mcp = Path(sys.argv[1]), json.loads(Path(sys.argv[2]).read_text())["mcpServers"]["clyde"], sys.argv[3]
-entry = {**entry, "serverUrl": mcp}
 doc = load(path)
 servers = doc.setdefault("mcpServers", {}) if isinstance(doc, dict) else None
 if not isinstance(servers, dict):
     sys.exit(f"{path} has no mcpServers object")
+cur = [servers.get(k, {}).get("serverUrl") for k in ("clyde", "memory") if isinstance(servers.get(k), dict)]
+mcp = oauth_mcp(mcp, cur, [Path.home() / ".gemini/antigravity/mcp_oauth_tokens.json"])
+entry = {**entry, "serverUrl": mcp}
 for old in ("memory", "kb"):
     servers.pop(old, None)
 servers["clyde"] = entry
