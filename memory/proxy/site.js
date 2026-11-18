@@ -3,6 +3,7 @@
 // Clyde's doodle and sticky-note design system, in Clyde's deadpan voice (R72, #77; memory/design/BRAND.md).
 // Pricing matches memory.plan (memory/supabase/migrations/20261115120000_billing.sql); site_test.ts checks it.
 import { ANTIGRAVITY_HOOKS_JSON, ANTIGRAVITY_RULE, CLAUDE_HOOKS_JSON, CLYDE_GATE_SH, CLYDE_HOOK_SH, CLYDE_RULE, CODEX_CONFIG_TOML, CODEX_HOOKS_JSON, GATE_URL, GEMINI_HOOKS_JSON, HOOK_APPS, HOOK_INSTALL, HOOK_PATH, HOOK_URL, hookSetupText, REGISTER_STEP } from "./hook.js";
+import { GUIDES, GUIDES_UPDATED } from "./guides.js";
 import { SOON, SOON_NOTE, APP_STEPS_CSS, appCards, appLogo, appSteps, APP_LOGO, CONNECT_CSS, COPY_JS, copyBox, copyPre, DESIGN_URL, esc, HERO_CSS, INSTALL, LEGAL, LOGO, MARK, MASCOT, MCP_URL, SCENE, SCENE_CSS, SCENE_IMG, shell, SITE, WORKS } from "./pages.js";
 
 const CONNECT = "/docs";
@@ -115,11 +116,11 @@ const FAQ_CSS = `
 const ARROW_SVG = `<svg class="doodle-arrow" viewBox="0 0 120 36" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 20 C36 14 72 23 108 17"/><path d="M95 8 C102 12 108 15 113 17 C107 21 101 25 96 30"/></svg>`;
 
 const header = `<header class="bar wrap"><a class="logo" href="/" aria-label="clyde home">${LOGO()}</a>
-<nav class="topnav"><a href="/docs">Docs</a><a href="/how-it-works">How it works</a><a href="/faq">FAQ</a></nav>
+<nav class="topnav"><a href="/docs">Docs</a><a href="/how-it-works">How it works</a><a href="/guides">Guides</a><a href="/faq">FAQ</a></nav>
 <span class="acts"><a class="cl-btn cl-btn--primary" href="${CONNECT}">Get Clyde</a></span></header>`;
 
 const footer = `<footer class="foot"><div class="wrap"><span class="brand">${MARK(22)}clyde · a boring memory system</span>
-<nav><a href="/docs">Docs</a><a href="/how-it-works">How it works</a><a href="/faq">FAQ</a><a href="mailto:${SUPPORT}">${SUPPORT}</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="${DESIGN_URL}">Design system</a></nav>
+<nav><a href="/docs">Docs</a><a href="/how-it-works">How it works</a><a href="/guides">Guides</a><a href="/faq">FAQ</a><a href="mailto:${SUPPORT}">${SUPPORT}</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="${DESIGN_URL}">Design system</a></nav>
 <span class="legal">${LEGAL}</span></div></footer>`;
 
 /** One page. A page with a description is indexed, gets its search tags, and is in the sitemap. */
@@ -130,9 +131,12 @@ export const INDEXNOW_KEY = "70151fb588ed671b459bec17f31444a0";
 const ORG_LD = { "@context": "https://schema.org", "@type": "Organization", name: "Pennywhistle software", url: SITE,
   logo: `${SITE}/brand/clyde-512.png`, email: SUPPORT, brand: { "@type": "Brand", name: "Clyde" } };
 const SITE_LD = { "@context": "https://schema.org", "@type": "WebSite", name: "Clyde", alternateName: "heyclyde.me", url: SITE };
-const NAMES = { "/docs": "Docs", "/how-it-works": "How it works", "/faq": "FAQ", "/privacy": "Privacy", "/terms": "Terms" };
-const crumbs = (path) => ({ "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: [
-  { "@type": "ListItem", position: 1, name: "Clyde", item: SITE }, { "@type": "ListItem", position: 2, name: NAMES[path], item: SITE + path }] });
+const NAMES = { "/docs": "Docs", "/how-it-works": "How it works", "/guides": "Guides", "/faq": "FAQ", "/privacy": "Privacy", "/terms": "Terms",
+  ...Object.fromEntries(GUIDES.map((g) => [g.path, g.h1])) };
+// A guide sits under /guides, so its trail has three steps (R79).
+const crumbs = (path) => ({ "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement:
+  [["Clyde", SITE], ...(path.startsWith("/guides/") ? [["Guides", `${SITE}/guides`]] : []), [NAMES[path], SITE + path]]
+    .map(([name, item], i) => ({ "@type": "ListItem", position: i + 1, name, item })) });
 const ld = (path, extra = []) => [...(path === "/" ? [SITE_LD, ORG_LD] : [crumbs(path)]), ...extra];
 
 const page = (nonce, { title, description, path, css = "", main, status = 200, jsonld, script = "" }) => ({
@@ -440,19 +444,19 @@ const RECALL_JS = `(function(){var r=document.getElementById('rc');if(!r)return;
 // R73 (#78): real complaints about agents that forget, each paraphrased with a link to where it was posted, and what
 // Clyde does about it. Then two made-up ones in the same spirit. listing_check.py "complaint sources" checks every src.
 const COMPLAINTS = [
-  { q: "Explaining the same thing across a thousand conversations.", src: "https://www.reddit.com/r/ClaudeAI/comments/1kpdoia/megathread_for_claude_performance_discussion/", site: "reddit.com/r/ClaudeAI",
+  { q: "Explaining the same thing across a thousand conversations.", guide: "/guides/stop-repeating-yourself", src: "https://www.reddit.com/r/ClaudeAI/comments/1kpdoia/megathread_for_claude_performance_discussion/", site: "reddit.com/r/ClaudeAI",
     a: "Your agent recalls the note when a chat starts, so you say it once." },
-  { q: "Claude keeps making the mistake I already corrected.", src: "https://claudelab.net/en/articles/claude-ai/claude-keeps-making-same-mistake-fix", site: "claudelab.net",
+  { q: "Claude keeps making the mistake I already corrected.", guide: "/guides/same-mistake-again", src: "https://claudelab.net/en/articles/claude-ai/claude-keeps-making-same-mistake-fix", site: "claudelab.net",
     a: "Your correction is saved as a note, and it comes back next time." },
-  { q: "ChatGPT says it saved my preference, but the next chat doesn't have it.", src: "https://community.openai.com/t/fails-to-update-memory-even-though-it-says-it-has/987812", site: "community.openai.com",
+  { q: "ChatGPT says it saved my preference, but the next chat doesn't have it.", guide: "/guides/chatgpt-forgets", src: "https://community.openai.com/t/fails-to-update-memory-even-though-it-says-it-has/987812", site: "community.openai.com",
     a: "Remember returns the note's ID, so you can check it was saved." },
-  { q: "We moved to pnpm, and Claude Code still runs npm from an old note.", src: "https://www.besthub.dev/articles/why-claude-code-still-runs-npm-after-you-switched-to-pnpm-the-memory-invalidation-problem-e9a0e83509b7", site: "besthub.dev",
+  { q: "We moved to pnpm, and Claude Code still runs npm from an old note.", guide: "/guides/outdated-instructions", src: "https://www.besthub.dev/articles/why-claude-code-still-runs-npm-after-you-switched-to-pnpm-the-memory-invalidation-problem-e9a0e83509b7", site: "besthub.dev",
     a: "The new note replaces the old one." },
-  { q: "ChatGPT and Claude have no idea what the other one said.", src: "https://dev.to/doremi/the-pain-of-switching-ai-platforms-and-how-i-fixed-it-for-myself-44h2", site: "dev.to",
+  { q: "ChatGPT and Claude have no idea what the other one said.", guide: "/guides/share-memory-claude-chatgpt", src: "https://dev.to/doremi/the-pain-of-switching-ai-platforms-and-how-i-fixed-it-for-myself-44h2", site: "dev.to",
     a: "Both apps read the same notes." },
-  { q: "“Cursor with Claude has memory of a goldfish.”", src: "https://forum.cursor.com/t/cursor-with-claude-has-memory-of-a-goldfish/118276", site: "forum.cursor.com",
+  { q: "“Cursor with Claude has memory of a goldfish.”", guide: "/guides/claude-code-forgets", src: "https://forum.cursor.com/t/cursor-with-claude-has-memory-of-a-goldfish/118276", site: "forum.cursor.com",
     a: "Somebody already wrote our headline." },
-  { q: "My rules get lost in a long CLAUDE.md.", src: "https://dev.to/docat0209/5-patterns-that-make-claude-code-actually-follow-your-rules-44dh", site: "dev.to",
+  { q: "My rules get lost in a long CLAUDE.md.", guide: "/guides/claude-md-too-long", src: "https://dev.to/docat0209/5-patterns-that-make-claude-code-actually-follow-your-rules-44dh", site: "dev.to",
     a: "Recall returns only the few notes that match what you're doing." },
 ];
 const MADE_UP = [
@@ -469,9 +473,9 @@ const WALL_CSS = `
 .clyde-says{padding:12px 14px;font:var(--cl-text-small);color:var(--cl-ink-2)}
 .clyde-says b{display:block;font:var(--cl-text-label);letter-spacing:.06em;text-transform:uppercase;color:var(--cl-carbon);margin-bottom:4px}
 `;
-const says = (a) => `<div class="clyde-says cl-card"><b>With Clyde</b>${esc(a)}</div>`;
+const says = (a, guide) => `<div class="clyde-says cl-card"><b>With Clyde</b>${esc(a)}${guide ? ` <a class="cm-guide" href="${guide}">Read the guide</a>` : ""}</div>`;
 const WALL = `<section class="wrap" id="complaints"><div class="section"><span class="cl-label">Real complaints</span><h2 class="cl-title-1">Things people keep telling their agents.</h2></div>
-<div class="cm-wall">${COMPLAINTS.map((c) => `<article class="complaint"><div class="cl-sticky cm-q"><p>${esc(c.q)}</p><a href="${c.src}" rel="nofollow noopener noreferrer">${c.site}</a></div>${says(c.a)}</article>`).join("")}
+<div class="cm-wall">${COMPLAINTS.map((c) => `<article class="complaint" data-guide="${c.guide}"><div class="cl-sticky cm-q"><p>${esc(c.q)}</p><a href="${c.src}" rel="nofollow noopener noreferrer">${c.site}</a></div>${says(c.a, c.guide)}</article>`).join("")}
 ${MADE_UP.map(([q, a]) => `<article class="complaint-made"><div class="cl-sticky cm-q"><p>${esc(q)}</p><span class="cm-made">made up</span></div>${says(a)}</article>`).join("")}</div></section>`;
 
 const HONEST = `<section class="wrap honest-wrap" id="honest">
@@ -745,6 +749,58 @@ const FAQ_PAGE = `<main class="doc wrap">${hero("FAQ", "Clyde FAQ: shared memory
 
 // ---- The routes ----
 
+// ---- Guides (R79): the woes people search, and how-tos ----
+
+const GUIDE_CSS = `
+.answer-box{display:grid;gap:8px;padding:18px 22px;max-width:720px}
+.answer-box p.answer{font:var(--cl-text-body-l);color:var(--cl-ink)}
+.qa{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:720px){.qa{grid-template-columns:minmax(0,1fr)}}
+.qa div{padding:16px 18px;display:grid;gap:6px;align-content:start}
+.qa h3.q{margin:0;font:var(--cl-text-title-3)}.qa p{font:var(--cl-text-small)}
+.related{display:flex;flex-wrap:wrap;gap:8px 18px;font:var(--cl-text-mono);font-size:13px}
+.gl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:720px){.gl{grid-template-columns:minmax(0,1fr)}}
+.gl a{display:grid;gap:6px;padding:16px 18px;text-decoration:none;color:inherit}
+.gl b{font:var(--cl-text-title-3);color:var(--cl-ink)}.gl span{font:var(--cl-text-small);color:var(--cl-ink-2)}
+.gl a:hover b{color:var(--cl-carbon)}
+`;
+
+const SCENE_ALT = { goldfish: "Clyde staring at a goldfish in a bowl", relay: "Clyde passing a sticky note from a chat window to a terminal",
+  questboard: "Clyde pointing at a board of sticky notes", nosecrets: "Clyde holding up a palm next to a crossed-out padlock" };
+const SCENE_SIZE = { goldfish: [142, 165], relay: [230, 133], questboard: [142, 158], nosecrets: [140, 171] };
+const plain = (html) => html.replace(/<[^>]+>/g, "");
+
+function guidePage(nonce, g) {
+  const url = SITE + g.path;
+  const article = { "@context": "https://schema.org", "@type": "Article", headline: plain(g.h1), description: g.description,
+    datePublished: GUIDES_UPDATED, dateModified: GUIDES_UPDATED, url, mainEntityOfPage: url, image: `${SITE}/brand/og-banner.png`,
+    author: { "@type": "Organization", name: "Pennywhistle software", url: SITE },
+    publisher: { "@type": "Organization", name: "Pennywhistle software", logo: { "@type": "ImageObject", url: `${SITE}/brand/clyde-512.png` } },
+    about: { "@type": "SoftwareApplication", name: "Clyde", url: SITE } };
+  const faqLd = { "@context": "https://schema.org", "@type": "FAQPage",
+    mainEntity: g.faq.map(([q, a]) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: a } })) };
+  const [w, h] = SCENE_SIZE[g.art];
+  const related = g.related.map((slug) => GUIDES.find((x) => x.path === `/guides/${slug}`)).filter(Boolean);
+  const main = `<main class="doc wrap">${hero(g.kind === "woe" ? "Guides · Why it happens" : "Guides · How to", g.h1, "", SCENE_IMG(g.art, SCENE_ALT[g.art], w, h), "")}
+<div class="cl-sticky cl-sticky--tilt answer-box"><span class="cl-label">Short answer</span><p class="answer">${esc(g.answer)}</p></div>
+${g.body}
+<h2>Questions</h2><div class="qa">${g.faq.map(([q, a], i) => `<div class="${i % 2 ? "cl-sticky" : "cl-card"}"><h3 class="q">${esc(q)}</h3><p>${esc(a)}</p></div>`).join("")}</div>
+<h2>Related guides</h2><nav class="related" aria-label="Related guides">${related.map((r) => `<a href="${r.path}">${esc(plain(r.h1))}</a>`).join("")}<a href="/guides">All guides</a></nav>
+<a class="cl-btn cl-btn--primary cl-btn--lg" href="/docs">Get Clyde</a></main>`;
+  return page(nonce, { title: g.kind === "woe" ? g.title : `${g.title} · Clyde`, description: g.description, path: g.path,
+    css: DOC_CSS + GUIDE_CSS, main, jsonld: [article, faqLd] });
+}
+
+const guideList = (kind) => `<div class="gl">${GUIDES.filter((g) => g.kind === kind).map((g, i) =>
+  `<a class="${i % 3 === 1 ? "cl-sticky" : "cl-card"}" href="${g.path}"><b>${esc(plain(g.h1))}</b><span>${esc(g.description)}</span></a>`).join("")}</div>`;
+const GUIDES_INDEX = `<main class="doc doc--wide wrap">${hero("Guides", "When your agents <em>forget</em>",
+  "Every agent starts every chat knowing nothing, and none of them share notes. These are the problems that causes, and how to use Clyde about it.",
+  SCENE_IMG("goldfish", SCENE_ALT.goldfish, 142, 165), "a support group, basically")}
+<h2>Why it happens</h2>${guideList("woe")}
+<h2>How to</h2>${guideList("howto")}
+<a class="cl-btn cl-btn--primary cl-btn--lg" href="/docs">Get Clyde</a></main>`;
+
 const PAGES = {
   "/": home,
   "/docs": (n) => page(n, { title: "Install Clyde in Claude, ChatGPT, Gemini, Codex and Grok", path: "/docs", css: DOC_CSS + CONNECT_CSS, main: DOCS,
@@ -757,6 +813,9 @@ const PAGES = {
     description: "What data Clyde stores, which subprocessors handle it, and how to export or delete your account." }),
   "/terms": (n) => page(n, { title: "Terms · Clyde", path: "/terms", css: DOC_CSS, main: TERMS,
     description: "Clyde terms of service: pricing, refunds, acceptable use, regional availability, liability, and governing law." }),
+  "/guides": (n) => page(n, { title: "Clyde guides · When your AI agents forget everything", path: "/guides", css: DOC_CSS + GUIDE_CSS, main: GUIDES_INDEX,
+    description: "Why ChatGPT, Claude and Claude Code forget things, how to share memory between them, and step-by-step guides to setting up Clyde." }),
+  ...Object.fromEntries(GUIDES.map((g) => [g.path, (n) => guidePage(n, g)])),
 };
 
 /** Pages that went away when the site shrank to three, and where they went. */
@@ -788,6 +847,11 @@ Setup, every app: 1. Register first: ${REGISTER_STEP}. 2. Connect (the one comma
 - [FAQ](${SITE}/faq): setup, hooks, trial recalls, quest board, security, and pricing
 - [Privacy](${SITE}/privacy): Supabase in Canada (ca-central-1), subprocessors, export, and 30-day deletion
 - [Terms](${SITE}/terms): $12.99 USD/month plan, 14-day refunds, acceptable use, and regional limits
+- [Guides](${SITE}/guides): why agents forget, and how to use Clyde
+
+## Guides
+
+${GUIDES.map((g) => `- [${g.h1}](${SITE}${g.path}): ${g.answer}`).join("\n")}
 
 Hooks are required, not optional. Clyde is the agent's only memory, and the hooks enforce it. SessionStart says so and, when the app hasn't registered, owes a register_agent. UserPromptSubmit, BeforeAgent, and Antigravity PreInvocation owe a recall on a session's first task, a folder switch, a 20m+ idle gap, or an unrelated topic shift, and stay silent on quick follow-ups ("push it", "fix line 4", screenshots), mid-turn Antigravity PreInvocation steps where lastUserInput hasn't changed, and subagents. The gate (PreToolUse, Gemini CLI BeforeTool, every tool) refuses every tool but register_agent, recall, recall_more and ToolSearch while a debt is open; a debt expires after 20 minutes. Writes to the app's own memory files are always refused. PostToolUse and AfterTool act on Clyde's tools only, Stop never blocks, and MEMORY_HOOKS=metadata sends session IDs and folder names without prompt text.
 
@@ -814,7 +878,7 @@ export function siteFile(host, path) {
   if (path === "/clyde-gate.sh" && host === "heyclyde.me") return { type: "text/x-shellscript; charset=utf-8", body: CLYDE_GATE_SH };
   if (path === "/sitemap.xml" && host === "heyclyde.me") {
     return { type: "application/xml; charset=utf-8", body: `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
-      INDEXED.map((p) => `<url><loc>${SITE}${p}</loc><lastmod>${UPDATED}</lastmod></url>`).join("\n") + "\n</urlset>\n" };
+      INDEXED.map((p) => `<url><loc>${SITE}${p}</loc><lastmod>${p.startsWith("/guides") ? GUIDES_UPDATED : UPDATED}</lastmod></url>`).join("\n") + "\n</urlset>\n" };
   }
   return null;
 }

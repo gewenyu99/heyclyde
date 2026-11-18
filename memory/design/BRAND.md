@@ -56,7 +56,7 @@ Sticky-Note Forehead Clyde is our mascot and brand mark:
 - **Contrast.** Every foreground (`ink`, `ink-2`, `ink-3`, `carbon`, `ok`, `warn`, `bad`, and all 7 `pen-*` colors) holds `>= 4.5:1` WCAG contrast on `paper-0`, `paper-1`, `paper-2`, AND `sticky` in both light and dark themes — enforced in `harness/test/memory/design_test.ts`.
 - **Dark theme.** `#121311` ground, `#1b1c1a` sheets, `#282416` dark warm sticky notes, `#ecece6` ink, and `#86a6f5` carbon blue. Media-query dark and `[data-theme="dark"]` stay 100% identical.
 - **Type.** Bricolage Grotesque for display headlines, Geist for UI and reading copy, Geist Mono for labels, provenance, counts, and URLs (`fonts.css`).
-- **CSP & byte discipline.** Zero literal `#hex` or `rgb()` in `components.css` or chat card CSS (`ui/style.ts`), zero inline `style=""` attributes on Worker HTML pages, `memory.heyclyde.me/` <= `40,000` bytes, `heyclyde.me/` <= `50,000` bytes, and each MCP chat card <= `60,000` bytes.
+- **CSP discipline.** Zero literal `#hex` or `rgb()` in `components.css` or chat card CSS (`ui/style.ts`), and zero inline `style=""` attributes on Worker HTML pages. Pages have no byte budget (R79): the only ceiling is Cloudflare's Worker bundle limit, 3 MB on the free plan and 10 MB on paid. Each MCP chat card stays at or under `60,000` bytes, since a chat app loads it whole into an iframe.
 
 ## Other apps' logos
 
