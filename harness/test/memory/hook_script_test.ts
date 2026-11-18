@@ -111,14 +111,13 @@ Deno.test('Antigravity lifecycle: deduplicates mid-turn PreInvocation, skips fol
     }, 1010))
     assert.deepEqual(post, {})
 
-    // 5. Stop requests one memory check before the reply.
+    // 5. Stop never blocks, so the agent doesn't reply twice.
     const stop = JSON.parse(h.run('antigravity', 'Stop', {
       conversationId: 'conv-1',
       workspacePaths: ['/work/billing'],
       fullyIdle: true,
     }, 1020))
-    assert.equal(stop.decision, 'continue')
-    assert.match(stop.reason, /remember.*decisions and results/)
+    assert.deepEqual(stop, { decision: 'allow' })
 
     // 6. Quick follow-ups ("push it", "fix line 12 and show me a screenshot") stay silent!
     for (const [i, follow] of ['push it', 'fix line 12 and show me a screenshot'].entries()) {
@@ -194,13 +193,13 @@ Deno.test('Claude Code, Codex, and Gemini CLI output contracts', () => {
     assert.match(h.run('claude', 'UserPromptSubmit', { session_id: 'c1', cwd: '/repo', prompt: 'Add OAuth callback validation' }, 105), /recall/)
     assert.equal(h.run('claude', 'PostToolUse', { session_id: 'c1', cwd: '/repo', tool_name: 'mcp__clyde__recall', tool_input: { query: 'OAuth callback' } }, 110), '')
     assert.equal(h.run('claude', 'UserPromptSubmit', { session_id: 'c1', cwd: '/repo', prompt: 'ship it' }, 150), '')
-    assert.equal(JSON.parse(h.run('claude', 'Stop', { session_id: 'c1', cwd: '/repo' }, 160)).decision, 'block')
+    assert.equal(h.run('claude', 'Stop', { session_id: 'c1', cwd: '/repo' }, 160), '')
 
-    // Codex: plain text on SessionStart / task-shift UserPromptSubmit, JSON on Stop.
+    // Codex: plain text on SessionStart / task-shift UserPromptSubmit, {} on Stop.
     assert.match(h.run('codex', 'SessionStart', { session_id: 'x1', cwd: '/repo' }, 200), /register_agent/)
     assert.match(h.run('codex', 'UserPromptSubmit', { session_id: 'x1', cwd: '/repo', prompt: 'Set up nightly Postgres backups' }, 205), /recall/)
     assert.equal(h.run('codex', 'UserPromptSubmit', { session_id: 'x1', cwd: '/repo', prompt: 'looks good' }, 240), '')
-    assert.equal(JSON.parse(h.run('codex', 'Stop', { session_id: 'x1', cwd: '/repo' }, 250)).decision, 'block')
+    assert.deepEqual(JSON.parse(h.run('codex', 'Stop', { session_id: 'x1', cwd: '/repo' }, 250)), {})
 
     // Gemini CLI: mandatory JSON with hookSpecificOutput.additionalContext on nudges, {} when silent.
     const gs = JSON.parse(h.run('gemini', 'SessionStart', { session_id: 'g1', cwd: '/repo' }, 300))
@@ -211,13 +210,13 @@ Deno.test('Claude Code, Codex, and Gemini CLI output contracts', () => {
     assert.match(gb1.hookSpecificOutput.additionalContext, /recall/)
     assert.deepEqual(JSON.parse(h.run('gemini', 'AfterTool', { session_id: 'g1', cwd: '/repo', tool_name: 'mcp_clyde_recall', tool_input: { query: 'CSP headers' } }, 310)), {})
     assert.deepEqual(JSON.parse(h.run('gemini', 'BeforeAgent', { session_id: 'g1', cwd: '/repo', prompt: 'push it' }, 350)), {})
-    assert.equal(JSON.parse(h.run('gemini', 'AfterAgent', { session_id: 'g1', cwd: '/repo', prompt_response: 'Done.' }, 360)).decision, 'deny')
+    assert.deepEqual(JSON.parse(h.run('gemini', 'AfterAgent', { session_id: 'g1', cwd: '/repo', prompt_response: 'Done.' }, 360)), {})
   } finally {
     h.cleanup()
   }
 })
 
-Deno.test('changed scope after recall and one decision check per reply on every client', () => {
+Deno.test('changed scope after recall, and the save reminder comes with the prompt, never as a Stop block', () => {
   const h = makeEnv()
   try {
     for (const [client, submit, post, stop] of [
@@ -230,19 +229,12 @@ Deno.test('changed scope after recall and one decision check per reply on every 
         h.run(client, event, { session_id: 'scope', ...data })
       call(submit, { prompt: 'Document webhook retries' })
       call(post, { tool_name: 'mcp__clyde__recall' })
-      assert.match(call(submit, { prompt: 'Also log headers' }), /scope.*information/)
-      assert.match(call(submit, { prompt: 'Switch to billing' }), /recall comes first/)
+      assert.match(call(submit, { prompt: 'Also log headers' }), /scope.*information.*remember.*decisions and results/s)
+      assert.match(call(submit, { prompt: 'Switch to billing' }), /recall comes first.*remember.*decisions and results/s)
       call(post, { tool_name: 'mcp__clyde__recall' })
-      const reminder = JSON.parse(call(stop, {}))
-      assert.match(reminder.reason, /remember.*decisions and results/)
-      call(submit, { prompt: reminder.reason })
-      assert.doesNotMatch(call(stop, {}), /remember/)
-      call(submit, { prompt: 'push it' })
-      call(post, { tool_name: 'mcp__clyde__remember', tool_response: { isError: true } })
-      assert.match(call(stop, {}), /remember/)
-      call(submit, { prompt: 'commit it' })
-      call(post, { tool_name: 'mcp__clyde__remember' })
-      assert.doesNotMatch(call(stop, {}), /remember/)
+      assert.doesNotMatch(call(stop, {}), /remember|block|deny|continue/)
+      assert.doesNotMatch(call(submit, { prompt: 'push it' }), /remember/)
+      assert.doesNotMatch(call(stop, {}), /remember|block|deny|continue/)
     }
   } finally {
     h.cleanup()

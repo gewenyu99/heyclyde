@@ -242,8 +242,6 @@ RECALL = "Clyde: new task, so recall comes first. Call Clyde recall before anyth
 
 if canon == "SessionStart":
     state["started"] = True
-    if phash:
-        state["check_before_reply"] = not bool(GREET_RE.match(prompt.strip()))
     if cwd:
         state["cwd"] = cwd
     local_msg = ONLY + " Top-level session only (skip in subagents): once this session, call check_messages, then ack_messages once handled. " + SCOPE + " " + SAVE
@@ -258,7 +256,6 @@ elif canon == "UserPromptSubmit":
     t = prompt.strip()
     prev_cwd = state.get("cwd", "")
     cwd_shifted = bool(cwd and prev_cwd and cwd != prev_cwd)
-    state["check_before_reply"] = bool(t and not GREET_RE.match(t))
     if GREET_RE.match(t) and not cwd_shifted:
         if phash:
             state["last_prompt_hash"] = phash
@@ -287,10 +284,6 @@ elif canon == "UserPromptSubmit":
         local_msg = SCOPE
         state["task_words"] = list(dict.fromkeys((state.get("task_words") or []) + pwords))[:24]
 elif canon == "PostToolUse":
-    if re.search(r"(?:^|[_:.])(?:memory|clyde)[_:.]+remember$", tname, re.I):
-        response = data.get("tool_response") or data.get("tool_result") or {}
-        if not data.get("error") and not (isinstance(response, dict) and (response.get("isError") or response.get("error"))):
-            state["check_before_reply"] = False
     if is_tool(tname, "register_agent"):
         mark_registered()
     if is_tool(tname, "recall", "recall_more"):
@@ -409,18 +402,12 @@ if token and url.startswith(("https://", "http://127.0.0.1", "http://localhost")
         except Exception:
             pass
 
-if canon == "Stop" and state.pop("check_before_reply", False):
-    save_json(sfile, state)
-    if not down and not data.get("stop_hook_active") and not state.get("subagent"):
-        decision = {"antigravity": "continue", "gemini": "deny"}.get(client, "block")
-        emit(raw_json=json.dumps({"decision": decision, "reason": SAVE}))
-
+# Stop never blocks: a block makes the agent reply a second time. The save reminder rides on the prompt instead.
 parts = []
 owes_recall = False
 if down and canon in ("SessionStart", "UserPromptSubmit"):
     state.pop("debt", None)
     state.pop("register_debt", None)
-    state.pop("check_before_reply", None)
     save_json(sfile, state)
     if not state.get("subagent"):
         parts.append(BUSY)
@@ -443,6 +430,8 @@ if local_msg and not down and not (server_msg and "recall" in server_msg and can
     parts.append(local_msg)
 elif owes_recall:
     parts.append("Clyde: other tools are refused until that call is made.")
+if canon == "UserPromptSubmit" and parts and not down and not state.get("subagent"):
+    parts.append(SAVE)
 if status == "expired" and failed_file.exists() and pinned and canon in ("SessionStart", "UserPromptSubmit"):
     parts.append(f"Clyde: the Clyde client on this computer is out of date. Rerun `{INSTALL}`, which needs no new sign-in.")
 if inbox_msg:
