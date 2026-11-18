@@ -1,8 +1,9 @@
 {
   "hooks": {
-    "SessionStart": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/gemini-hook SessionStart", "timeout": 10000 }] }],
-    "BeforeAgent": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/gemini-hook BeforeAgent", "timeout": 10000 }] }],
-    "AfterTool": [{ "matcher": "mcp_memory_.*|memory__.*", "hooks": [{ "type": "command", "command": "~/.config/memory/gemini-hook AfterTool", "timeout": 10000 }] }],
-    "AfterAgent": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/gemini-hook AfterAgent", "timeout": 10000 }] }]
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh gemini SessionStart", "timeout": 5000 }] }],
+    "BeforeAgent": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh gemini BeforeAgent", "timeout": 5000 }] }],
+    "BeforeTool": [{ "matcher": ".*", "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh gemini BeforeTool", "timeout": 5000 }] }],
+    "AfterTool": [{ "matcher": "mcp_+(clyde|memory)_.*|(clyde|memory)__.*", "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh gemini AfterTool", "timeout": 5000 }] }],
+    "AfterAgent": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh gemini AfterAgent", "timeout": 5000 }] }]
   }
 }

@@ -4,15 +4,16 @@
 // SERVER_VERSION also covers, since R67, what chat apps that render cards read: the card links, resources and HTML.
 //
 // CLIENT_VERSION covers the client files computers update themselves from: client/memory-hook, install.sh, the two hook
-// configs, the public key, and the Gemini CLI and Antigravity files (R45). A computer whose hook is behind it replaces them. SERVER_VERSION covers the MCP tools and
+// configs, the public key, the Gemini CLI and Antigravity files (R45), and clyde-hook.sh with its gate shim, rule and
+// Antigravity hooks (R78). A computer whose hook is behind it replaces them. SERVER_VERSION covers the MCP tools and
 // the server instructions, which every client reads fresh at initialize, so editing a tool description needs no update
 // on any computer and bumps only this one.
 //
 // Each is pinned to the hash of its surface: version.test.ts fails unless the surface on disk hashes to the entry for the
 // current version, no two versions share a hash, and no entry that main already has changed. After a bump, add an entry
 // with the hash the failing test prints. deploy.sh runs that guard before it deploys.
-export const CLIENT_VERSION = "20261115.1";
-export const SERVER_VERSION = "20261117.1";
+export const CLIENT_VERSION = "20261117.1";
+export const SERVER_VERSION = "20261117.2";
 
 /** Every client version that was released, oldest first, with the day it was. A client is expired only when it is behind
  * a version released more than the cutoff ago, so a new release can never expire a client on the day it ships.
@@ -20,12 +21,14 @@ export const SERVER_VERSION = "20261117.1";
 export const CLIENT_RELEASES: { version: string; released: string }[] = [
   { version: "20261102.1", released: "2026-11-02" },
   { version: "20261115.1", released: "2026-11-15" },
+  { version: "20261117.1", released: "2026-11-17" },
 ];
 
 /** SHA-256 of the client files at each client version: `{ "20261102.1": "<hash>" }`. Entries are never edited or removed. */
 export const CLIENT_SURFACE_HASHES: Record<string, string> = {
   "20261102.1": "70276f9bf6b6cc030f83e7e46afdc3b02abd42973615d249c433f40415ec89cb",
   "20261115.1": "e1224e98bff182a79adb223a3341793a8eabc0f980e963ba3605c5b1950b7ccb",
+  "20261117.1": "28194dd98f0ec4cd38b26ccd8d1bf3d889173f3caafad014edecde5348067c5d",
 };
 
 /** SHA-256 of the MCP tools and server instructions at each server version. Entries are never edited or removed. */
@@ -46,11 +49,12 @@ export const SERVER_SURFACE_HASHES: Record<string, string> = {
   "20261115.7": "72665030df87ec47d5cef22011f8481e247578d54f32973ecdc414995f6fe614",
   "20261116.1": "4d4f1bd495b287e7a002dccce212da147d84a2861bcb32c5ee82ee492122f352",
   "20261117.1": "e4b7811bc92dc400f89580000215d7569111eeb491c8ad710900d427f2af3ec5",
+  "20261117.2": "b22f55adc013ff3cdc1dd9cb08b11340f350b6d9c7d5e176cb09053ad398d725",
 };
 
 /** What a rerun of the installer fixes: it replaces a hook too old to update itself or one that can't, and keeps the
  * device token. */
-const UPDATE_NOTE = "memory: this computer's client is out of date. Rerun `curl -fsSL https://memory.heyclyde.me/install | sh`, " +
+const UPDATE_NOTE = "Clyde: the Clyde client on this computer is out of date. Rerun `curl -fsSL https://heyclyde.me/install | sh`, " +
   "which needs no new sign-in.";
 
 // current: at the newest client version or newer, or a checkout's unstamped "dev". behind: older, but not by a release
@@ -102,3 +106,8 @@ export function clientStatus(
 export function installerNote(status: ClientStatus, updateFailed: boolean): string {
   return status === "unknown" || (status === "expired" && updateFailed) ? UPDATE_NOTE : "";
 }
+
+/** True for a call from clyde-hook.sh, which sends its requests through Python's urllib. Copies from before 20261117.1 send
+ * no version (they came from the docs, not the installer, and have no memory-hook to update them), so a missing version
+ * from one of them is no reason to tell the person their client is out of date. */
+export const fromClydeHook = (userAgent: string | null | undefined): boolean => /^Python-urllib\//.test(userAgent ?? "");

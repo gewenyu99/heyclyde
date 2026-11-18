@@ -89,8 +89,11 @@ function cardOf(result) {
 function theme(t) { if (t === "dark" || t === "light") docEl.setAttribute("data-theme", t); }
 function context(c) { if (c) theme(c.theme); }
 var lastH = 0;
+// The card's height is its content's. It goes on the document too, since claude.ai sizes the frame from the document's
+// height rather than from size-changed (anthropics/claude-ai-mcp#69), and a frame sized short reads as collapsed.
 function resized() {
-  var r = docEl.getBoundingClientRect(), height = Math.ceil(r.height);
+  var r = docEl.getBoundingClientRect(), height = Math.ceil(document.body.getBoundingClientRect().height);
+  if (height > 0) docEl.style.height = height + "px";
   if (height === lastH) return; lastH = height;
   if (oa) { if (typeof oa.notifyIntrinsicHeight === "function") oa.notifyIntrinsicHeight(height); return; }
   notify("ui/notifications/size-changed", { width: Math.ceil(r.width), height: height });
@@ -371,6 +374,7 @@ function recallCard(d) {
     rows.push(item); dk.appendChild(item.el);
   });
   cap = capList(dk, rows, sync);
+  rows.forEach(function (r) { r.setOpen(true); });
   s.appendChild(dk); s.appendChild(foot); s.appendChild(msg);
   refresh(); sync();
   return s;
@@ -379,6 +383,7 @@ function entryCard(d, saved) {
   var item = null, toggle = toggleBtn(function (want) { if (item) item.setOpen(want); });
   var s = sheet(saved ? "remember" : "memory", d.badge, toggle), dk = desk();
   item = memoryItem(d.entry, { saved: saved, detail: true, onFlip: function () { toggle.sync(item.isOpen()); } });
+  item.setOpen(true);
   dk.appendChild(item.el); s.appendChild(dk);
   return s;
 }
@@ -386,6 +391,7 @@ function artifactCard(d) {
   var view = null, toggle = toggleBtn(function (want) { if (view) view.setOpen(want); });
   var s = sheet("artifact · " + (d.artifact && d.artifact.name || ""), d.badge, toggle), dk = desk();
   view = artifactView(d.artifact, false, function () { toggle.sync(view.isOpen()); });
+  view.setOpen(true);
   dk.appendChild(view.el); s.appendChild(dk);
   return s;
 }
@@ -462,14 +468,16 @@ function questsCard(d) {
   if (d.head && !qs.length) dk.appendChild(h("p", { class: "c-text", text: d.head }));
   if (!qs.length) dk.appendChild(h("div", { class: "cl-empty" }, h("p", { class: "cl-empty__title", text: "Quest board's empty." }),
     h("p", { class: "cl-empty__text", text: "Nobody has pinned anything. Ask your agent to post one, with a done-when line anyone can check." })));
-  qs.forEach(function (q) { var item = questCard(q, d, false, sync); rows.push(item); dk.appendChild(item.el); });
+  qs.forEach(function (q) { var item = questCard(q, d, true, sync); rows.push(item); dk.appendChild(item.el); });
   cap = capList(dk, rows, sync);
+  sync();
   s.appendChild(dk);
   return s;
 }
 function agentCard(d) {
-  var a = d.agent, desc = a.description ? h("p", { class: "c-text c-say", hidden: true, text: a.description }) : null;
+  var a = d.agent, desc = a.description ? h("p", { class: "c-text c-say", text: a.description }) : null;
   var toggle = desc ? toggleBtn(function (want) { desc.hidden = !want; toggle.sync(want); resized(); }) : null;
+  if (toggle) toggle.sync(true);
   var s = sheet("agent · " + a.name, d.badge, toggle), dk = desk();
   dk.appendChild(h("div", { class: "cl-card" }, h("div", { class: "c-hero" }, agentBadge({ name: a.name, context: a.context, surface: a.surface, registered: true }, true),
     h("span", { class: "c-sp" }), a.since ? h("span", { class: "cl-label", text: "since " + a.since }) : null), desc));
@@ -497,17 +505,23 @@ function show(result) {
 
 // ---------- start ----------
 (function () { var s = sheet("", null); s.appendChild(h("div", { class: "c-desk" }, h("div", { class: "c-skel" }), h("div", { class: "c-skel" }))); root.appendChild(s); })();
-if (typeof ResizeObserver === "function") new ResizeObserver(resized).observe(docEl);
+if (typeof ResizeObserver === "function") new ResizeObserver(resized).observe(document.body);
 if (oa) {
   theme(oa.theme);
+  // Inline, in the conversation, is where a card belongs. ChatGPT starts there; this asks for it back if it isn't.
+  if (oa.displayMode && oa.displayMode !== "inline" && typeof oa.requestDisplayMode === "function") {
+    try { oa.requestDisplayMode({ mode: "inline" }); } catch (e) { /* the host keeps its mode */ }
+  }
   var ready = function () { var r = { _meta: oa.toolResponseMetadata, structuredContent: oa.toolOutput }; if (cardOf(r)) show(r); };
   window.addEventListener("openai:set_globals", function (e) { var g = e.detail && e.detail.globals; if (g && g.theme) theme(g.theme); ready(); });
   ready();
 } else {
-  request("ui/initialize", { protocolVersion: "2026-01-26", appInfo: { name: "clyde-" + KIND, version: "1" }, appCapabilities: {} }).then(function (r) {
+  request("ui/initialize", { protocolVersion: "2026-01-26", appInfo: { name: "clyde-" + KIND, version: "1" }, appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] } }).then(function (r) {
     if (r && r.hostCapabilities && r.hostCapabilities.serverTools === false) noIpc = true;
     context(r && r.hostContext);
     notify("ui/notifications/initialized", {});
+    // The card shows inline and open in the conversation (R78). The host answers with the mode it set, and may keep its own.
+    request("ui/request-display-mode", { mode: "inline" }).catch(function () {});
     resized();
   }, function () { notify("ui/notifications/initialized", {}); });
 }

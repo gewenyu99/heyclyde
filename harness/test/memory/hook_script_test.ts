@@ -123,6 +123,12 @@ Deno.test('Antigravity lifecycle: deduplicates mid-turn PreInvocation, skips fol
       assert.deepEqual(out, {}, `follow-up "${follow}" must stay silent`)
     }
 
+    // 6b. R78: the session started unregistered, so the gate holds every tool until register_agent runs.
+    const gated = JSON.parse(h.run('antigravity', 'PreToolUse', { conversationId: 'conv-1', toolCall: { name: 'run_command', args: { CommandLine: 'ls' } } }, 1290))
+    assert.equal(gated.decision, 'deny')
+    const reg = JSON.parse(h.run('antigravity', 'PreToolUse', { conversationId: 'conv-1', toolCall: { name: 'mcp_clyde_register_agent', args: {} } }, 1291))
+    assert.deepEqual(reg, { decision: 'allow' })
+
     // 7. Spawning a subagent via invoke_subagent suppresses both SessionStart and PreInvocation inside the subagent!
     const preSub = JSON.parse(h.run('antigravity', 'PreToolUse', {
       conversationId: 'conv-1',

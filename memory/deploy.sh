@@ -2,7 +2,7 @@
 # Deploy the memory function. In order:
 #   1. the version guard (harness/test/memory/version.test.ts), which fails a change to the client files, tools or
 #      instructions that did not bump its version;
-#   2. bake the installer's files into client/files.ts, since the CLI's --use-api bundling (the one that needs no Docker)
+#   2. copy the hook files from memory/proxy/hook.js into ./client (sync-client.mjs), then bake the installer's files into client/files.ts, since the CLI's --use-api bundling (the one that needs no Docker)
 #      ships no static files. memory-hook is stamped with CLIENT_VERSION, a `manifest` is written (version=<CLIENT_VERSION>,
 #      then a `<name> <sha256>` line for every client file, signing-pub.pem included), and only the manifest is signed with
 #      the offline key, as manifest.sig. A computer verifies that one signature, then each file against its line, so files
@@ -26,6 +26,9 @@ if [ -z "$BAKE_ONLY" ]; then
     { echo "deploy.sh: the version guard failed. Bump the version it names in $FUNCTION/version.ts." >&2; exit 1; }
 fi
 
+# The hook script, gate shim, hook configs and rule come from memory/proxy/hook.js, the source the docs render.
+node "$ROOT/memory/sync-client.mjs"
+
 if [ ! -r "$KEY" ]; then
   echo "deploy.sh: no signing key at $KEY. Client files are signed by an offline RSA-3072 key, and computers install nothing else." >&2
   echo "  Make one with: (umask 077; openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out $KEY)" >&2
@@ -47,7 +50,7 @@ from pathlib import Path
 
 client = Path(os.environ["FUNCTION"]) / "client"
 key, trusted = os.environ["MEMORY_SIGNING_KEY"], os.environ["MEMORY_TRUSTED_PUB"]
-FILES = ["memory-hook", "claude-settings.json", "codex-hooks.json", "install.sh", "signing-pub.pem", "gemini-hook", "gemini-hooks.json", "gemini-extension.json", "antigravity-mcp.json"]
+FILES = ["memory-hook", "claude-settings.json", "codex-hooks.json", "install.sh", "signing-pub.pem", "gemini-hook", "gemini-hooks.json", "gemini-extension.json", "antigravity-mcp.json", "clyde-hook.sh", "clyde-gate.sh", "clyde-rule.md", "antigravity-hooks.json"]
 
 def fail(why):
     sys.exit(f"deploy.sh: {why}")

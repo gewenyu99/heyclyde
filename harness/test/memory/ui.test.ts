@@ -86,36 +86,51 @@ test('R67 the cards use only the design tokens', () => {
   assert.equal((CARD_CSS.match(/#[0-9a-f]{3,8}\b|rgb\(/gi) ?? []).length, 0, 'the card CSS has no literal colors')
 })
 
-test('R67 cards start compact, label confidence and agent-filed, and escape everything when expanded', { skip: NO_CHROME }, () => {
-  const compact = run(frames('light', 640))
+test('R67 cards label confidence and agent-filed, and escape everything', { skip: NO_CHROME }, () => {
   const ids = Object.keys(FIXTURES)
   assert.equal(ids.length, 7)
-  for (const id of ['recall', 'entry', 'remembered', 'artifact', 'quests'] as const) {
-    assert.ok(compact.frames[id].compactItems >= 1, `${id} starts collapsed in compact view`)
-  }
-  for (const id of ['recall', 'entry', 'remembered'] as const) {
-    assert.equal(compact.frames[id].memoryPadding, '8px 12px', `${id} uses compact .cl-memory padding by default`)
-    assert.match(compact.frames[id].text, /\d+% confidence/, `${id} labels confidence`)
-    assert.ok(!compact.frames[id].text.includes('unreviewed'), `${id} drops unreviewed label`)
-  }
-  assert.match(compact.frames.recall.text, /\bagent-filed\b/, 'draft memory renders as agent-filed')
-  assert.match(compact.frames.remembered.text, /\bSaved\b/i, 'remembered card stamps Saved in compact view')
-  assert.equal(compact.xss, 0)
-
-  const expandClicks = Object.fromEntries(ids.map((id) => [id, ['button.c-toggle']]))
-  const report = run(frames('light', 640, expandClicks))
+  const report = run(frames('light', 640))
   for (const id of ids) {
     const f = report.frames[id]
     assert.equal(f.ready, cardFor(id), `${id} drew`)
     assert.equal(f.injected, 0, `${id} made no element from data`)
     assert.ok(f.text.includes('<b class="injected">'), `${id} shows the markup as text`)
   }
-  assert.match(report.frames.remembered.text, /\bSaved\b/i, 'remembered card stamps Saved')
   for (const id of ['recall', 'entry', 'remembered'] as const) {
-    assert.equal(report.frames[id].memoryPadding, '14px 16px 12px', `${id} keeps .cl-memory padding when expanded`)
+    assert.match(report.frames[id].text, /\d+% confidence/, `${id} labels confidence`)
+    assert.ok(!report.frames[id].text.includes('unreviewed'), `${id} drops unreviewed label`)
+    assert.equal(report.frames[id].memoryPadding, '14px 16px 12px', `${id} keeps .cl-memory padding when open`)
   }
+  assert.match(report.frames.recall.text, /\bagent-filed\b/, 'draft memory renders as agent-filed')
+  assert.match(report.frames.remembered.text, /\bSaved\b/i, 'remembered card stamps Saved')
   assert.equal(report.frames.agent.memoryPadding, null, 'agent card has no .cl-memory wrapper')
   assert.equal(report.xss, 0)
+  // Compact stays one click away.
+  const compact = run(frames('light', 640, { entry: ['button.c-toggle'], remembered: ['button.c-toggle'], artifact: ['button.c-toggle'] }))
+  for (const id of ['entry', 'remembered', 'artifact'] as const) assert.ok(compact.frames[id].compactItems >= 1, `${id} folds on Compact`)
+  assert.equal(compact.xss, 0)
+})
+
+// R78 (like-vincent #83): a card shows open, in the conversation, with no click. It declares inline first, asks the host for
+// inline, carries ChatGPT's inline-first hint, and puts its height on the document for hosts that read it there.
+test('R78 cards open inline and expanded', { skip: NO_CHROME }, () => {
+  const report = run(frames('light', 640))
+  for (const id of Object.keys(FIXTURES)) {
+    const f = report.frames[id]
+    assert.equal(f.compactItems, 0, `${id} starts open`)
+    assert.deepEqual(report.appCapabilities[id]?.availableDisplayModes, ['inline', 'fullscreen'], `${id} declares inline first`)
+    const asks = report.requests.filter((r: any) => r.frame === id && r.method === 'ui/request-display-mode')
+    assert.equal(asks.length, 1, `${id} asks for a display mode once`)
+    assert.deepEqual(asks[0].params, { mode: 'inline' })
+    assert.match(f.docHeight, /^\d+px$/, `${id} puts its height on the document`)
+    assert.equal(parseInt(f.docHeight), report.sizes[id].height, `${id} document height matches size-changed`)
+  }
+  for (const card of Object.keys(CARDS)) {
+    const meta = readUiResource(uriOf(card), null)!.contents[0]._meta as any
+    assert.deepEqual(meta['openai/ui'], { availableDisplayModes: ['inline', 'fullscreen'] }, card)
+    assert.equal(meta.ui.prefersBorder, false, card)
+    assert.equal(meta.ui.preferredDisplayMode, undefined, `${card} stays in the conversation`)
+  }
 })
 
 test('R67 multi-item cards cap at top three by default with a show-more button', { skip: NO_CHROME }, () => {

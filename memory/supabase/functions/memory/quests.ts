@@ -428,6 +428,17 @@ async function hookAgent(principal: string, agent: string): Promise<AgentScope> 
   };
 }
 
+/** Whether the agent a hook speaks for has registered (R78): one registered agent by that name, or one this credential's
+ * client of that family registered as. */
+export async function registered(principal: string, agent: string): Promise<boolean> {
+  const [row] = await sql`select 1 from memory.agent a
+    where a.owner_id = memory.owner_default()
+      and (a.name = ${agent} or exists (select 1 from memory.agent_binding b
+        where b.owner_id = a.owner_id and b.principal = ${principal} and b.agent = a.name and memory.agent_name(b.client) = ${agent}))
+    limit 1`;
+  return Boolean(row);
+}
+
 /** The board a hook prints, in at most 5 lines: unread messages, acknowledged as they print, then open quests this agent may
  * claim in its context. "start" (SessionStart) shows every open quest under a one-line summary. "prompt" (the hook inbox) shows
  * only quests posted since this computer's agent last saw the board, in the inbox's own format. "" when there is nothing. */

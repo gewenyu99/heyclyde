@@ -1,10 +1,12 @@
 {
+  "autoMemoryEnabled": false,
   "hooks": {
-    "SessionStart": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/memory-hook SessionStart" }] }],
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/memory-hook UserPromptSubmit" }] }],
-    "PostToolUse": [{ "matcher": "mcp__memory__.*", "hooks": [{ "type": "command", "command": "~/.config/memory/memory-hook PostToolUse" }] }],
-    "Stop": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/memory-hook Stop" }] }],
-    "PreCompact": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/memory-hook PreCompact" }] }],
-    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/memory-hook SessionEnd" }] }]
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh claude SessionStart" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh claude UserPromptSubmit" }] }],
+    "PreToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh claude PreToolUse" }] }],
+    "PostToolUse": [{ "matcher": "mcp__.*", "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh claude PostToolUse" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh claude Stop" }] }],
+    "PreCompact": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh claude PreCompact" }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh claude SessionEnd" }] }]
   }
 }

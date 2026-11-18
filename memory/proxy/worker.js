@@ -54,8 +54,10 @@ function failed(url, message) {
 }
 
 // heyclyde.me hands these to the function (R53, R58): the MCP endpoint listings use, its discovery file and Google's
-// verification file. Every other path there is the site.
-const SITE_API = (path) => path === "/mcp" || path === "/mcp/" || path.startsWith("/.well-known/oauth-protected-resource") ||
+// verification file, and since R78 the one-command installer and its files (`curl -fsSL https://heyclyde.me/install | sh`).
+// Every other path there is the site.
+const SITE_API = (path) => path === "/mcp" || path === "/mcp/" || path === "/install" || path.startsWith("/install/files/") ||
+  path.startsWith("/.well-known/oauth-protected-resource") ||
   path === "/.well-known/google-connected-apps" || path === "/.well-known/openai-apps-challenge";
 
 function nonce() {

@@ -15,7 +15,7 @@ import * as oauth from "./oauth.ts";
 import * as service from "./service.ts";
 import * as quests from "./quests.ts";
 import * as store from "./blobs.ts";
-import { CLIENT_VERSION, clientStatus, installerNote, SERVER_VERSION } from "./version.ts";
+import { CLIENT_VERSION, clientStatus, fromClydeHook, installerNote, SERVER_VERSION } from "./version.ts";
 import { Refused, remember } from "./write.ts";
 import type { EntryFilter } from "./permissions.ts";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
@@ -71,10 +71,15 @@ async function hooks(req: Request, event: string, url: URL, who: Principal) {
   // memory-hook prints whatever comes back into the agent's context, so an answer is a decision to make. SessionStart's is the
   // board (R47): unread messages and open quests, in at most 5 lines. A board that fails costs the session nothing.
   if (event === "SessionStart" && AGENT.test(agent)) {
+    // Whether this token's app has registered an agent (R78), so clyde-hook.sh knows to make register_agent come first.
+    const registered = await quests.registered(who.device ?? who.role, agent).catch(() => null);
+    const headers: Record<string, string> = { "content-type": "text/plain; charset=utf-8" };
+    if (registered !== null) headers["x-clyde-registered"] = registered ? "1" : "0";
     try {
-      return new Response(await quests.board(who.device ?? who.role, agent, "start"), { headers: { "content-type": "text/plain; charset=utf-8" } });
+      return new Response(await quests.board(who.device ?? who.role, agent, "start"), { headers });
     } catch (e) {
       console.error(e);
+      return new Response("", { headers });
     }
   }
   if (event === "UserPromptSubmit") {
@@ -224,7 +229,8 @@ async function exportPage(url: URL) {
 // every file's sha256, and signs that manifest with the offline key. A computer verifies the manifest against the public key
 // it saved at install, then each file against its line, so only files of one signed release install.
 const CLIENT_FILES = ["install.sh", "memory-hook", "claude-settings.json", "codex-hooks.json", "signing-pub.pem", "gemini-hook",
-  "gemini-hooks.json", "gemini-extension.json", "antigravity-mcp.json"];
+  "gemini-hooks.json", "gemini-extension.json", "antigravity-mcp.json", "clyde-hook.sh", "clyde-gate.sh", "clyde-rule.md",
+  "antigravity-hooks.json"];
 const SERVED = new Set([...CLIENT_FILES, "manifest", "manifest.sig"]);
 const CLAIM = /^[A-Za-z0-9_-]{20,100}$/;
 
@@ -349,8 +355,10 @@ async function serve(req: Request, url: URL, path: string, who: Principal): Prom
     const messages = await quests.board(who.device ?? who.role, decodeURIComponent(match[1]).toLowerCase(), "prompt");
     // A hook that sends no version predates self-update and can't fix itself or print its own line, so it hears it here.
     // One that does send a version prints its own, when its update has failed.
-    const note = who.role === "device" && !who.device?.startsWith("oauth:")
-      ? installerNote(clientStatus(req.headers.get("x-memory-client-version"), config.clientCutoffDays), false)
+    // clyde-hook.sh copied from the docs before 20261117.1 sends no version and has nothing to update, so it hears nothing.
+    const sent = req.headers.get("x-memory-client-version");
+    const note = who.role === "device" && !who.device?.startsWith("oauth:") && !(sent === null && fromClydeHook(req.headers.get("user-agent")))
+      ? installerNote(clientStatus(sent, config.clientCutoffDays), false)
       : "";
     return text(note ? `${messages}${note}\n` : messages);
   }
@@ -398,7 +406,7 @@ const CORS = {
   "access-control-allow-origin": "*",
   "access-control-allow-headers": "authorization, content-type, mcp-session-id, mcp-protocol-version, x-memory-client-version, x-memory-update-failed",
   "access-control-allow-methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  "access-control-expose-headers": "mcp-session-id, retry-after, x-rows, www-authenticate, x-memory-version, x-memory-client-latest, x-memory-client-status, server-timing",
+  "access-control-expose-headers": "mcp-session-id, retry-after, x-rows, www-authenticate, x-memory-version, x-memory-client-latest, x-memory-client-status, x-clyde-registered, server-timing",
 };
 
 Deno.serve(async (req) => {

@@ -457,7 +457,7 @@ test('agents leave each other messages: codex reads claude\'s once, and a messag
 // ---------------------------------------------------------------- R31, clients update themselves (#35)
 
 const CLIENT_DIR = join(repoRoot(), 'memory', 'supabase', 'functions', 'memory', 'client')
-const NOTE = /Rerun `curl -fsSL https:\/\/memory\.heyclyde\.me\/install \| sh`/
+const NOTE = /^Clyde: .*Rerun `curl -fsSL https:\/\/heyclyde\.me\/install \| sh`/m
 
 /** A new computer's device row and its token, for a test that needs a computer no other test has touched. */
 function newDevice(name: string): string {

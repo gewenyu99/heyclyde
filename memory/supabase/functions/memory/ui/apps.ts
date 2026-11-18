@@ -14,6 +14,9 @@ export const UI_EXTENSION = "io.modelcontextprotocol/ui";
 export const UI_MIME = "text/html;profile=mcp-app";
 export const CARD_KEY = "clyde/card";
 export const uriOf = (card: string) => `ui://clyde/${card}.html`;
+/** The display modes a card takes, inline first: it shows in the conversation, open, and can go fullscreen (R78). The card
+ * declares the same list in ui/initialize and asks for inline with ui/request-display-mode. */
+export const DISPLAY_MODES = ["inline", "fullscreen"];
 
 /** Chat apps known to render MCP Apps that may not say so in initialize. A coding app is never on this list, and anything
  * that declares the extension gets cards whatever its name. */
@@ -77,6 +80,8 @@ export function readUiResource(uri: unknown, storage: string | null) {
       uri, mimeType: UI_MIME, text: cardHtml(m[1]),
       _meta: {
         ui: { prefersBorder: false, ...(domains.length ? { csp: { resourceDomains: domains } } : {}) },
+        // Inline first (R78): ChatGPT opens a widget fullscreen when fullscreen is its only mode, so inline leads the list.
+        "openai/ui": { availableDisplayModes: DISPLAY_MODES },
         "openai/widgetDescription": CARDS[m[1]], "openai/widgetPrefersBorder": false,
         ...(domains.length ? { "openai/widgetCSP": { connect_domains: [], resource_domains: domains } } : {}),
       },

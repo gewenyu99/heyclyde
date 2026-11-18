@@ -129,7 +129,7 @@ Deno.test('the home page lists every app and / still reaches the function', asyn
   assert.deepEqual(apps, ['agent-setup', 'claude-ai', 'antigravity', 'grok', 'other', 'claude-code', 'gemini', 'chatgpt', 'antigravity-cloud'])
   assert.equal(h1(html), 'Connect your apps')
   assert.ok(html.includes('https://heyclyde.me/mcp'))
-  assert.ok(html.includes('curl -fsSL https://memory.heyclyde.me/install | sh'))
+  assert.ok(html.includes('curl -fsSL https://heyclyde.me/install | sh'))
   assert.ok(/<div class="cl-sticky[^"]*">\s*<b>Use with caution\.<\/b>/.test(html), 'connect page carries the sticky-note warning')
   assert.ok(/ChatGPT[\s\S]*Grok|Claude,\s*ChatGPT/.test(html), 'how-it-works names ChatGPT alongside supported apps')
   for (const headers of [{ accept: 'text/html', authorization: 'Bearer x' }, { accept: 'application/json' }] as Record<string, string>[]) {
@@ -207,7 +207,7 @@ Deno.test('a browser on /billing/thanks gets a page, and other callers reach the
 const ORIGIN = 'https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory'
 const at = (url: string, init: RequestInit = {}) => worker.fetch(new Request(url, init), ENV)
 
-Deno.test('R53 heyclyde.me serves /mcp and nothing else of the function', async () => {
+Deno.test('R53 heyclyde.me serves /mcp, and since R78 the installer, and nothing else of the function', async () => {
   const rpc = { jsonrpc: '2.0', id: 1, method: 'ping' }
   for (const [path, init] of [
     ['/mcp', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer x' }, body: JSON.stringify(rpc) }],
@@ -215,6 +215,9 @@ Deno.test('R53 heyclyde.me serves /mcp and nothing else of the function', async 
     ['/.well-known/oauth-protected-resource/mcp', {}],
     ['/.well-known/google-connected-apps', {}],
     ['/.well-known/openai-apps-challenge', {}],
+    // R78: the one-command installer and its files, so `curl -fsSL https://heyclyde.me/install | sh` works.
+    ['/install', {}],
+    ['/install/files/clyde-hook.sh', {}],
   ] as [string, RequestInit][]) {
     stub(json({ ok: true }))
     const r = await at(`https://heyclyde.me${path}`, init)
@@ -223,7 +226,7 @@ Deno.test('R53 heyclyde.me serves /mcp and nothing else of the function', async 
     assert.equal(sent[0].url, ORIGIN + path)
     assert.equal(sent[0].headers.get('x-memory-host'), 'heyclyde.me', path)
   }
-  for (const path of ['/', '/oauth/consent?authorization_id=abc12345', '/install']) {
+  for (const path of ['/', '/oauth/consent?authorization_id=abc12345', '/install/check', '/install/claim/abc']) {
     stub(json({ ok: true }))
     await at(`https://heyclyde.me${path}`, { headers: { accept: 'text/html' } })
     assert.equal(sent.length, 0, path)

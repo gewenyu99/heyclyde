@@ -1,5 +1,5 @@
 {
   "mcpServers": {
-    "memory": { "serverUrl": "https://memory.heyclyde.me/mcp" }
+    "clyde": { "serverUrl": "https://heyclyde.me/mcp" }
   }
 }

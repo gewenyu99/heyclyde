@@ -14,7 +14,10 @@ import { readFileSync } from 'node:fs'
 export const AGENT_APP_FILES = ['gemini-hook', 'gemini-hooks.json', 'gemini-extension.json', 'antigravity-mcp.json']
 
 /** The files a self-update installs and verifies. Their hash is the client surface. */
-export const CLIENT_SURFACE_FILES = ['claude-settings.json', 'codex-hooks.json', 'install.sh', 'memory-hook', 'signing-pub.pem', ...AGENT_APP_FILES]
+/** The hook script, the gate shim, the Clyde rule and Antigravity's hook config (R78), copied from memory/proxy/hook.js. */
+export const HOOK_FILES = ['clyde-hook.sh', 'clyde-gate.sh', 'clyde-rule.md', 'antigravity-hooks.json']
+
+export const CLIENT_SURFACE_FILES = ['claude-settings.json', 'codex-hooks.json', 'install.sh', 'memory-hook', 'signing-pub.pem', ...AGENT_APP_FILES, ...HOOK_FILES]
 
 const sha256 = (text: string) => createHash('sha256').update(text).digest('hex')
 

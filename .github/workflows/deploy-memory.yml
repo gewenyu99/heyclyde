@@ -7,7 +7,7 @@ name: deploy-memory
 on:
   push:
     branches: [main]
-    paths: ['memory/supabase/functions/memory/**', '.github/workflows/deploy-memory.yml']
+    paths: ['memory/supabase/functions/memory/**', 'memory/sync-client.mjs', '.github/workflows/deploy-memory.yml']
   workflow_dispatch:
 
 permissions:
@@ -36,6 +36,8 @@ jobs:
         env:
           MEMORY_REQUIRE_DENO: '1'
         run: node --test harness/test/memory/version.test.ts
+      - name: Client files match memory/proxy/hook.js
+        run: node memory/sync-client.mjs --check
       - name: Verify offline-signed client bundle
         run: |
           python3 - <<'PY'
@@ -50,6 +52,7 @@ jobs:
           names = [
               "memory-hook", "claude-settings.json", "codex-hooks.json", "install.sh", "signing-pub.pem",
               "gemini-hook", "gemini-hooks.json", "gemini-extension.json", "antigravity-mcp.json",
+              "clyde-hook.sh", "clyde-gate.sh", "clyde-rule.md", "antigravity-hooks.json",
           ]
           expected = f"version={version}\n" + "".join(
               f"{n} {hashlib.sha256(((client / n).read_text().replace('VERSION=@MEMORY_VERSION@', f'VERSION={version}') if n == 'memory-hook' else (client / n).read_text()).encode()).hexdigest()}\n"

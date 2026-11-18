@@ -1,7 +1,12 @@
 #!/bin/sh
-# clyde-hook.sh <client> <event>: task-shift hook for Antigravity, Claude Code, Codex, and Gemini CLI.
-# Nudges Clyde recall on new tasks, folder switches, and 20m+ idle gaps. Stays silent on quick follow-ups,
-# mid-turn Antigravity PreInvocation tool loops, and subagents. Always exits 0 so it never blocks a run.
+# clyde-hook.sh <client> <event>: Clyde's hook for Antigravity, Claude Code, Codex, and Gemini CLI. It makes Clyde the
+# agent's only memory, and the gate makes that stick:
+#   - Writes to the app's own memory files are always refused (PreToolUse, BeforeTool).
+#   - An agent this app hasn't registered owes a register_agent. Until it calls one, every other tool is refused.
+#   - A new task, folder switch or 20m+ idle gap owes a recall. Until the agent calls Clyde recall, every other tool is
+#     refused (ToolSearch stays open, to load it).
+#   - A debt expires after 20 minutes, so an outage never locks a session.
+# Quick follow-ups, mid-turn Antigravity steps and subagents stay quiet. Always exits 0.
 client=${1:-claude}
 event=${2:-}
 fallback() {
@@ -14,7 +19,7 @@ fallback() {
 [ -n "$event" ] && command -v python3 >/dev/null 2>&1 || { cat >/dev/null 2>&1 || true; fallback; }
 
 python3 -c '
-import hashlib, json, os, re, sys, tempfile, time, urllib.request
+import hashlib, json, os, re, subprocess, sys, tempfile, time, urllib.request
 from pathlib import Path
 
 client, event = sys.argv[1], sys.argv[2]
@@ -31,10 +36,14 @@ CANON = {
     "SessionStart": "SessionStart",
     "UserPromptSubmit": "UserPromptSubmit", "BeforeAgent": "UserPromptSubmit", "PreInvocation": "UserPromptSubmit",
     "PostToolUse": "PostToolUse", "AfterTool": "PostToolUse",
+    "PreToolUse": "PreToolUse", "BeforeTool": "PreToolUse",
     "Stop": "Stop", "AfterAgent": "Stop",
-    "PreToolUse": "PreToolUse", "PreCompact": "PreCompact", "SessionEnd": "SessionEnd",
+    "PreCompact": "PreCompact", "SessionEnd": "SessionEnd",
 }
 canon = CANON.get(event, "")
+DEBT_TTL = 1200
+INSTALL = "curl -fsSL https://heyclyde.me/install | sh"
+REGISTER = "register_agent (name, context, surface, description, computer, type, projects)"
 
 def emit(msg="", raw_json=""):
     if raw_json:
@@ -54,10 +63,17 @@ def emit(msg="", raw_json=""):
     elif client == "codex":
         if event == "Stop":
             print("{}")
-        elif msg:
+        elif msg and event in ("SessionStart", "UserPromptSubmit"):
             print(msg)
     elif msg and event in ("SessionStart", "UserPromptSubmit"):
         print(msg)
+    sys.exit(0)
+
+def deny(reason):
+    if client in ("gemini", "antigravity"):
+        print(json.dumps({"decision": "deny", "reason": reason}))
+    else:
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": reason}}))
     sys.exit(0)
 
 if not canon:
@@ -98,6 +114,21 @@ tc = data.get("toolCall") if isinstance(data.get("toolCall"), dict) else {}
 tname = str(data.get("tool_name") or tc.get("name") or "")
 tinput = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else (tc.get("args") if isinstance(tc.get("args"), dict) else {})
 
+CLYDE_TOOLS = ("recall", "recall_more", "remember", "feedback", "register_agent", "check_messages", "ack_messages",
+    "dismiss_messages", "post_message", "post_quest", "list_quests", "claim_quest", "update_quest", "complete_quest",
+    "abandon_quest", "get_entry", "get_blob", "upload_blob")
+def is_tool(name, *names):
+    return any(re.search(r"(^|[_:.])" + n + "$", name) for n in names)
+
+sfile = sdir / f"{sha(client + chr(58) + sid)}.json"
+state = load_json(sfile)
+regfile = sdir / f"registered-{client}.json"
+
+def mark_registered():
+    save_json(regfile, {"at": now})
+    if state.pop("register_debt", None) is not None:
+        save_json(sfile, state)
+
 sub_file = sdir / "subagents.json"
 if canon == "PreToolUse":
     if tname == "invoke_subagent":
@@ -105,12 +136,49 @@ if canon == "PreToolUse":
         items = [x for x in (subs.get("items") or []) if isinstance(x, dict) and now - float(x.get("t", 0)) < 300]
         for spec in (tinput.get("Subagents") or []):
             if isinstance(spec, dict) and spec.get("Prompt"):
-                items.append({"h": sha(str(spec["Prompt"]).strip()), "t": now})
+                h = sha(str(spec["Prompt"]).strip())
+                if not any(x.get("h") == h for x in items):
+                    items.append({"h": h, "t": now})
         save_json(sub_file, {"items": items[-40:]})
+    # Never the memory files of the app itself: Claude Code auto memory, Codex memories, Antigravity knowledge, Gemini save_memory.
+    seen = []
+    for k, v in (tinput or {}).items():
+        if isinstance(v, str):
+            if re.search(r"path|file|command|cmd|target|notebook|cwd|dir", k, re.I):
+                seen.append(v)
+            elif re.search(r"patch|^input$", k, re.I):
+                seen += re.findall(r"(?m)^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$", v)
+        elif isinstance(v, list) and re.search(r"command|cmd|args|path|file", k, re.I):
+            seen += [str(x) for x in v if isinstance(x, (str, int))]
+    if is_tool(tname, "save_memory") or re.search(
+            r"/\.claude/projects/[^ ]*/memory/|/\.claude/memory/|MEMORY\.md|/\.codex/memories|/\.gemini/antigravity/knowledge/",
+            " ".join(seen)):
+        deny("Clyde is the only memory for this agent, so the memory files of this app are off. Save it with Clyde remember, and recall from Clyde.")
+    if state.get("subagent"):
+        emit()
+    if is_tool(tname, "register_agent"):
+        mark_registered()
+        emit()
+    owed = state.get("register_debt")
+    if isinstance(owed, dict):
+        if now - float(owed.get("at", 0)) > DEBT_TTL or regfile.exists():
+            state.pop("register_debt", None)
+            save_json(sfile, state)
+        elif tname != "ToolSearch":
+            deny(f"Register with Clyde first. Call Clyde {REGISTER} before anything else (load it with ToolSearch if it is deferred), then carry on.")
+    debt = state.get("debt")
+    if isinstance(debt, dict):
+        if is_tool(tname, "recall", "recall_more") or now - float(debt.get("at", 0)) > DEBT_TTL:
+            state.pop("debt", None)
+            save_json(sfile, state)
+        elif tname != "ToolSearch":
+            q = str(debt.get("query") or "").strip() or "this task"
+            deny(f"Clyde recall comes first on a new task. Call Clyde recall with query \"{q}\" (load it with ToolSearch if it is deferred), then carry on.")
     emit()
 
-sfile = sdir / f"{sha(client + chr(58) + sid)}.json"
-state = load_json(sfile)
+if canon == "PostToolUse" and not is_tool(tname, *CLYDE_TOOLS):
+    emit()
+
 phash = sha(prompt.strip()) if prompt.strip() else ""
 
 if client == "antigravity":
@@ -164,19 +232,22 @@ def is_followup(text):
 
 local_msg = ""
 should_nudge = False
+pwords = []
+ONLY = "Clyde is the only memory for this agent: never use the built-in memory or memory files of this app."
+RECALL = "Clyde: new task, so recall comes first. Call Clyde recall before anything else (other tools are refused until you do), then call feedback on what helped."
 
 if canon == "SessionStart":
     state["started"] = True
     if cwd:
         state["cwd"] = cwd
-    local_msg = "Clyde (top-level session only, skip in subagents): once this session, call register_agent and check_messages, then ack_messages once handled."
+    local_msg = ONLY + " Top-level session only (skip in subagents): once this session, call check_messages, then ack_messages once handled."
     if phash and not is_followup(prompt):
         state["last_prompt_hash"] = phash
         state["last_prompt_at"] = now
         state["last_nudge_at"] = now
-        state["task_words"] = words(prompt)
+        state["task_words"] = pwords = words(prompt)
         should_nudge = True
-        local_msg += " Call recall for this task before guessing past decisions or preferences, then call feedback on what helped."
+        local_msg += " " + RECALL
 elif canon == "UserPromptSubmit":
     t = prompt.strip()
     prev_cwd = state.get("cwd", "")
@@ -213,12 +284,15 @@ elif canon == "UserPromptSubmit":
         state["last_nudge_at"] = now
         if pwords:
             state["task_words"] = pwords
-        local_msg = "Clyde (skip in subagents): new task or scope shift, so call recall before guessing past decisions or preferences, then call feedback on what helped."
+        local_msg = RECALL
     elif pwords:
         state["task_words"] = list(dict.fromkeys((state.get("task_words") or []) + pwords))[:24]
 elif canon == "PostToolUse":
-    if "recall" in tname.lower():
+    if is_tool(tname, "register_agent"):
+        mark_registered()
+    if is_tool(tname, "recall", "recall_more"):
         state["last_recall_at"] = now
+        state.pop("debt", None)
         qw = words(" ".join(str(tinput.get(k) or "") for k in ("query", "task")))
         if qw:
             state["task_words"] = list(dict.fromkeys(qw + (state.get("task_words") or [])))[:24]
@@ -231,12 +305,39 @@ def read_txt(p):
     except Exception:
         return ""
 
+def isver(v):
+    return bool(re.fullmatch(r"\d{8}\.\d+", v or ""))
+
+def vkey(v):
+    a, b = v.split(".")
+    return (int(a), int(b))
+
+# The installed client version is the stamp in memory-hook, which the signed self-update moves. A hook with no memory-hook
+# beside it (copied from the docs) is "dev", which the server counts as current.
+ver = "dev"
+for line in read_txt(cfg / "memory-hook").splitlines():
+    if line.startswith("VERSION="):
+        ver = line[8:].strip() if isver(line[8:].strip()) else "dev"
+        break
+failed_file = cfg / "update-failed"
+vheaders = {"x-memory-client-version": ver}
+if failed_file.exists():
+    vheaders["x-memory-update-failed"] = "1"
+
 token = os.environ.get("MEMORY_TOKEN") or read_txt(cfg / "token")
-url = (os.environ.get("MEMORY_URL") or read_txt(cfg / "url") or "https://memory.heyclyde.me").rstrip("/")
+# The Supabase function itself is the same server as memory.heyclyde.me.
+RAW = "https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory"
+def server(u):
+    u = u.rstrip("/")
+    return "https://memory.heyclyde.me" if u == RAW else u
+url = server(os.environ.get("MEMORY_URL") or read_txt(cfg / "url") or "https://memory.heyclyde.me")
+pinned = server(read_txt(cfg / "url"))
 hmode = os.environ.get("MEMORY_HOOKS") or read_txt(cfg / "hooks") or "full"
 
 server_msg = ""
 inbox_msg = ""
+status = ""
+registered = None
 if token and url.startswith(("https://", "http://127.0.0.1", "http://localhost")):
     if hmode == "metadata":
         sbody = {"session_id": sid, "cwd": cwd, "hook_event_name": canon}
@@ -260,19 +361,32 @@ if token and url.startswith(("https://", "http://127.0.0.1", "http://localhost")
         req = urllib.request.Request(
             f"{url}/hooks/{canon}?agent={client}",
             data=json.dumps(sbody).encode("utf-8"),
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json", **vheaders},
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=2.5) as resp:
+            latest = resp.headers.get("x-memory-client-latest") or ""
+            status = resp.headers.get("x-memory-client-status") or ""
+            reg = resp.headers.get("x-clyde-registered") or ""
+            registered = True if reg == "1" else (False if reg == "0" else None)
             if 200 <= resp.status < 300:
                 server_msg = resp.read(8192).decode("utf-8", "ignore").strip()
+        # Self-update, only on the word of the server in the url file, over https, through the signed memory-hook.
+        if pinned and url == pinned and pinned.startswith("https://") and isver(latest) and isver(ver):
+            if vkey(latest) > vkey(ver):
+                recent = failed_file.exists() and time.time() - failed_file.stat().st_mtime < 600
+                if os.access(cfg / "memory-hook", os.X_OK) and not recent:
+                    subprocess.Popen([str(cfg / "memory-hook"), "--update"], stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            elif failed_file.exists():
+                failed_file.unlink()
     except Exception:
         pass
     if server_msg.startswith("{") and canon == "Stop" and client == "claude":
         emit(raw_json=server_msg)
     if canon == "SessionStart" or (canon == "UserPromptSubmit" and (should_nudge or server_msg)):
         try:
-            mreq = urllib.request.Request(f"{url}/messages/{client}", headers={"Authorization": f"Bearer {token}"})
+            mreq = urllib.request.Request(f"{url}/messages/{client}", headers={"Authorization": f"Bearer {token}", **vheaders})
             with urllib.request.urlopen(mreq, timeout=2.5) as mresp:
                 if 200 <= mresp.status < 300:
                     inbox_msg = mresp.read(8192).decode("utf-8", "ignore").strip()
@@ -280,10 +394,28 @@ if token and url.startswith(("https://", "http://127.0.0.1", "http://localhost")
             pass
 
 parts = []
+owes_recall = False
+if canon == "SessionStart" and not state.get("subagent"):
+    if registered is True:
+        save_json(regfile, {"at": now})
+    elif not regfile.exists():
+        state["register_debt"] = {"at": now}
+        parts.append(f"Clyde: this agent is not registered. Call Clyde {REGISTER} before anything else (other tools are refused until you do).")
+if canon in ("SessionStart", "UserPromptSubmit") and not state.get("subagent"):
+    owes_recall = should_nudge or (canon == "UserPromptSubmit" and "recall" in server_msg and not server_msg.startswith("{"))
+    if owes_recall:
+        m = re.search(r"recall\(\"([^\"]*)\"\)", server_msg)
+        state["debt"] = {"at": now, "query": m.group(1) if m else " ".join(pwords[:5])}
+    if owes_recall or "register_debt" in state:
+        save_json(sfile, state)
 if server_msg and not server_msg.startswith("{"):
     parts.append(server_msg)
 if local_msg and not (server_msg and "recall" in server_msg and canon == "UserPromptSubmit"):
     parts.append(local_msg)
+elif owes_recall:
+    parts.append("Clyde: other tools are refused until that call is made.")
+if status == "expired" and failed_file.exists() and pinned and canon in ("SessionStart", "UserPromptSubmit"):
+    parts.append(f"Clyde: the Clyde client on this computer is out of date. Rerun `{INSTALL}`, which needs no new sign-in.")
 if inbox_msg:
     parts.append(inbox_msg)
 emit("\n".join(parts))

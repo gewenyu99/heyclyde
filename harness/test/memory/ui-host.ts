@@ -23,7 +23,7 @@ export function hostPage(frames: Frame[], calls: Record<string, unknown> = {}): 
 <script>
 const { frames, calls } = ${data};
 const docs = ${docs};
-const log = { calls: [], sizes: {}, initialized: {} };
+const log = { calls: [], sizes: {}, initialized: {}, requests: [], appCapabilities: {} };
 window.__xss = 0;
 window.addEventListener('message', (ev) => {
   const f = frames.find((x) => document.getElementById(x.id).contentWindow === ev.source);
@@ -32,6 +32,8 @@ window.addEventListener('message', (ev) => {
   const frame = document.getElementById(f.id);
   const reply = (result) => ev.source.postMessage({ jsonrpc: '2.0', id: m.id, result }, '*');
   const fail = (code, message) => ev.source.postMessage({ jsonrpc: '2.0', id: m.id, error: { code, message } }, '*');
+  if (m.id !== undefined && m.method) log.requests.push({ frame: f.id, method: m.method, params: m.params });
+  if (m.method === 'ui/initialize') log.appCapabilities[f.id] = m.params.appCapabilities;
   if (m.method === 'ui/initialize') reply({ protocolVersion: m.params.protocolVersion, hostInfo: { name: 'clyde-test-host', version: '1' }, hostCapabilities: {}, hostContext: { theme: f.theme, displayMode: 'inline' } });
   else if (m.method === 'ui/notifications/initialized') { log.initialized[f.id] = true; ev.source.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: f.result }, '*'); }
   else if (m.method === 'ui/notifications/size-changed') { log.sizes[f.id] = m.params; frame.style.height = m.params.height + 'px'; }
@@ -62,6 +64,7 @@ setTimeout(() => {
       overflow: doc.documentElement.scrollWidth > doc.documentElement.clientWidth,
       background: getComputedStyle(doc.querySelector('.clyde') ?? doc.body).backgroundColor,
       memoryPadding: (() => { const m = doc.querySelector('.cl-memory'); return m ? getComputedStyle(m).padding : null; })(),
+      docHeight: doc.documentElement.style.height,
     };
   }
   document.getElementById('report').textContent = 'REPORT' + JSON.stringify({ frames: out, xss: window.__xss, ...log }) + 'END';

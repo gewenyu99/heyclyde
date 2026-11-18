@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { repoRoot } from '../../src/config.ts'
 import {
-  CLIENT_RELEASES, CLIENT_SURFACE_HASHES, CLIENT_VERSION, clientStatus, compareVersions, installerNote, parseVersion, reportable, SERVER_SURFACE_HASHES,
+  CLIENT_RELEASES, CLIENT_SURFACE_HASHES, CLIENT_VERSION, clientStatus, compareVersions, fromClydeHook, installerNote, parseVersion, reportable, SERVER_SURFACE_HASHES,
   SERVER_VERSION,
 } from '../../../memory/supabase/functions/memory/version.ts'
 import { AGENT_APP_FILES, CLIENT_SURFACE_FILES, checkSurface, clientSurfaceHash, hashHistory, parseHashes, readText, serverSurfaceHash } from './surface-hash.ts'
@@ -47,8 +47,8 @@ test('every list of client files names the Gemini and Antigravity files, and the
   const update = /^  for f in (.*); do$/m.exec(readText(join(FUNCTION, 'client', 'memory-hook')))
   assert.ok(update, "memory-hook's update has a file loop")
   assert.deepEqual(words(update[1]), surface, 'an update fetches and verifies every client file')
-  const install = /^  for f in (.*); do$/m.exec(readText(join(FUNCTION, 'client', 'install.sh')))
-  assert.ok(install, 'install.sh has a fetch loop')
+  const install = /^FILES="(.*)"$/m.exec(readText(join(FUNCTION, 'client', 'install.sh')))
+  assert.ok(install, 'install.sh has a FILES list for its fetch loop')
   assert.deepEqual(words(install[1]), surface.filter((f) => f !== 'install.sh'), 'a curl | sh install fetches every other client file')
 })
 
@@ -184,5 +184,26 @@ test('the installer note goes only to a client with no version, or one that is e
   for (const [status, failed, want] of table) {
     assert.equal(installerNote(status, failed) !== '', want, `${status}, update failed: ${failed}`)
   }
-  assert.match(installerNote('unknown', false), /Rerun `curl -fsSL https:\/\/memory\.heyclyde\.me\/install \| sh`/)
+  assert.match(installerNote('unknown', false), /Rerun `curl -fsSL https:\/\/heyclyde\.me\/install \| sh`/)
+})
+
+// R78 (like-vincent #83): the line says Clyde, never memory, and names the one command.
+test('R78 the installer line says Clyde', () => {
+  const note = installerNote('unknown', false)
+  assert.match(note, /^Clyde: /)
+  assert.ok(note.includes('https://heyclyde.me/install'))
+  const hook = readText(join(FUNCTION, 'client', 'memory-hook'))
+  assert.match(hook, /echo "Clyde: the Clyde client on this computer is out of date/)
+  assert.doesNotMatch(hook, /echo "memory: /)
+})
+
+// R78: clyde-hook.sh from before 20261117.1 came from the docs and sends no version. It has nothing to update, so a missing
+// version from it is no reason to say the client is out of date. A curl-era memory-hook with no version still hears it.
+test('R78 an old clyde-hook hears no installer note', () => {
+  const note = (ua: string, sent: string | null) => fromClydeHook(ua) && sent === null ? '' : installerNote(clientStatus(sent, 30), false)
+  assert.equal(note('Python-urllib/3.9', null), '')
+  assert.equal(note('Python-urllib/3.12', null), '')
+  assert.notEqual(note('curl/8.7.1', null), '')
+  assert.equal(note('Python-urllib/3.9', CLIENT_VERSION), '')
+  assert.equal(note('curl/8.7.1', CLIENT_VERSION), '')
 })

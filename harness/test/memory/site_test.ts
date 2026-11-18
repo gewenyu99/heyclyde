@@ -27,7 +27,8 @@ const REDIRECTS: Record<string, string> = { '/research': '/how-it-works', '/supp
 const SUPPORT = 'support@heyclyde.me'
 // One ceiling for every page (Wen, 2026-11-16: the old 40 to 75 KB budgets were arbitrary). It still catches real bloat,
 // like an image inlined by accident.
-const PAGE_MAX = 150_000
+// R78 (like-vincent #83) put every coding app's full hook config on its own card, so /docs grew past 150 KB of plain text.
+const PAGE_MAX = 200_000
 const HOME_MAX = PAGE_MAX
 const h1s = (html: string) => [...html.matchAll(/<h1[^>]*>([\s\S]*?)<\/h1>/g)].map((m) => m[1].replace(/<[^>]+>/g, '').trim())
 const text = (html: string) => html.replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
@@ -233,7 +234,7 @@ Deno.test('the store pages', async () => {
   const hookConfigs = /<h2 id="hook-configs">[\s\S]*?<h2 id="instructions">/.exec(docs)?.[0] ?? ''
   for (const w of [
     'https://heyclyde.me/clyde-hook.sh',
-    'curl -fsSL https://memory.heyclyde.me/install | sh',
+    'curl -fsSL https://heyclyde.me/install | sh',
     '~/.config/memory/clyde-hook.sh',
     '~/.gemini/config/hooks.json',
     '.agents/hooks.json',
@@ -249,7 +250,7 @@ Deno.test('the store pages', async () => {
     assert.ok(hookConfigs.includes(w), `/docs#hook-configs mentions ${w}`)
   }
   const instructions = /<h2 id="instructions">[\s\S]*?<h2 id="then">/.exec(docs)?.[0] ?? ''
-  assert.ok(instructions.includes('data-copy="Use Clyde MCP tools'), '/docs#instructions has a copyable Clyde rule')
+  assert.ok(instructions.includes('data-copy="Clyde is your only memory'), '/docs#instructions has a copyable Clyde rule')
   for (const w of ['Personal preferences', 'CLAUDE.md', 'AGENTS.md', 'Model Decision', 'Custom instructions', 'Saved info', 'GEMINI.md', 'Customize Grok', '.agents/rules/clyde.md']) {
     assert.ok(instructions.includes(w), `/docs#instructions covers ${w}`)
   }
@@ -272,21 +273,16 @@ Deno.test('the store pages', async () => {
   }
   const agentSetup = /<article[^>]*data-app="agent-setup"[\s\S]*?<\/article>/.exec(cards)?.[0] ?? ''
   assert.ok(agentSetup.includes('cl-sticky'), 'agent-setup wears a sticky-note card in the mosaic')
+  // R78 (like-vincent #83): register first, then the one command (MCP and sign-in), the hooks, the gate, confirm, restart.
   for (const w of [
-    'Wire MCP', 'Guide sign-in', 'register_agent', 'remember', 'trigger: model_decision',
-    '.agents/rules/clyde.md', '.agent/rules/clyde.md', '~/.config/memory/token',
-    'clyde-hook.sh', '~/.gemini/config/hooks.json', 'Tell the user to restart',
-    'Paste into your coding agent',
+    'Register first:', 'register_agent', 'curl -fsSL https://heyclyde.me/install | sh', 'remember', '~/.config/memory/token',
+    'clyde-hook.sh', '~/.gemini/config/hooks.json', '~/.claude/settings.json', '~/.codex/hooks.json', '~/.gemini/extensions/clyde/hooks/hooks.json',
+    'Hooks (required):', 'Gate check:', 'Confirm:', 'Restart:', 'Paste into your coding agent',
   ]) {
     assert.ok(agentSetup.includes(w), `mosaic agent-setup card covers ${w}`)
   }
-  assert.ok(
-    agentSetup.indexOf('Wire MCP') < agentSetup.indexOf('Guide sign-in') &&
-      agentSetup.indexOf('Guide sign-in') < agentSetup.indexOf('register_agent') &&
-      agentSetup.indexOf('register_agent') < agentSetup.indexOf('Install task-shift hooks') &&
-      agentSetup.indexOf('Install task-shift hooks') < agentSetup.indexOf('Tell the user to restart'),
-    'agent-setup mosaic card walks MCP -> login -> confirm -> hooks -> restart in order',
-  )
+  const order = ['Register first:', 'Install:', 'Hooks (required):', 'Gate check:', 'Confirm:', 'Restart:'].map((w) => agentSetup.indexOf(w))
+  assert.deepEqual(order, [...order].sort((a, b) => a - b), 'agent-setup walks register -> install -> hooks -> gate -> confirm -> restart in order')
   const support = /<h2 id="support">[\s\S]*?<\/main>/.exec(docs)?.[0] ?? ''
   assert.ok(support.includes(`href="mailto:${SUPPORT}"`), '/docs#support: a mailto link to support')
   assert.ok(docs.includes('href="/privacy"'), '/docs points export and delete at the privacy policy')

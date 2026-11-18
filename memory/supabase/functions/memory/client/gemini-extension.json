@@ -1,8 +1,9 @@
 {
-  "name": "memory",
-  "version": "1.0.0",
-  "description": "Wen's memory: recall, remember and messages from Wen's other agents, with hooks that keep memory in the loop.",
+  "name": "clyde",
+  "version": "1.1.0",
+  "description": "Clyde: shared memory for AI agents, with the hooks that make it this agent's only memory.",
   "mcpServers": {
-    "memory": { "httpUrl": "https://memory.heyclyde.me/mcp" }
-  }
+    "clyde": { "httpUrl": "https://heyclyde.me/mcp" }
+  },
+  "excludeTools": ["save_memory"]
 }

@@ -17,7 +17,7 @@ import { test } from 'node:test'
 import { repoRoot } from '../../src/config.ts'
 import { tempDir, waitFor } from '../helpers.ts'
 import { type KeyPair, localTls, nextKey, otherKey, sign, trustedKey } from './signing.ts'
-import { CLIENT_SURFACE_FILES } from './surface-hash.ts'
+import { CLIENT_SURFACE_FILES, HOOK_FILES } from './surface-hash.ts'
 
 const CLIENT = join(repoRoot(), 'memory', 'supabase', 'functions', 'memory', 'client')
 const OLD = '20261101.1'
@@ -29,7 +29,7 @@ const UPDATE_FILES = CLIENT_SURFACE_FILES
 /** What a memory-hook from before R45 fetched and verified, so what its install.sh --update ran beside. */
 const OLD_UPDATE_FILES = ['memory-hook', 'claude-settings.json', 'codex-hooks.json', 'install.sh', 'signing-pub.pem']
 /** The public MCP URL, which the OAuth clients (Gemini CLI, Antigravity, the Claude Code plugin) are given. */
-const MCP_URL = 'https://memory.heyclyde.me/mcp'
+const MCP_URL = 'https://heyclyde.me/mcp'
 
 type Fake = {
   /** https, which is all self-update will talk to. */
@@ -235,9 +235,9 @@ function computer(url: string, at = OLD, opts: { userLast?: boolean; trust?: Key
   writeFileSync(join(dir, 'token'), `${TOKEN}\n`, { mode: 0o600 })
   copyFileSync((opts.trust ?? trustedKey()).pub, join(dir, 'signing-pub.pem'))
   const claude = join(home, '.claude', 'settings.json')
-  const ours = JSON.parse(read('claude-settings.json')).hooks
+  const { hooks: ours, ...settingsOfOurs } = JSON.parse(read('claude-settings.json'))
   const prompt = opts.userLast ? [...ours.UserPromptSubmit, USER_HOOK] : [USER_HOOK, ...ours.UserPromptSubmit]
-  writeFileSync(claude, JSON.stringify({ model: 'opus', hooks: { ...ours, UserPromptSubmit: prompt } }, null, 2))
+  writeFileSync(claude, JSON.stringify({ model: 'opus', ...settingsOfOurs, hooks: { ...ours, UserPromptSubmit: prompt } }, null, 2))
   const codex = join(home, '.codex', 'hooks.json')
   writeFileSync(codex, JSON.stringify(JSON.parse(read('codex-hooks.json')), null, 2))
   return { home, dir, hook, claude, codex }
@@ -291,7 +291,7 @@ const snapshot = (c: Computer) => ({
 })
 const grown = (file: string) => {
   const doc = JSON.parse(read(file))
-  doc.hooks.Notification = [{ hooks: [{ type: 'command', command: '~/.config/memory/memory-hook Notification' }] }]
+  doc.hooks.Notification = [{ hooks: [{ type: 'command', command: '~/.config/memory/clyde-hook.sh claude Notification' }] }]
   return JSON.stringify(doc)
 }
 
@@ -335,7 +335,7 @@ test('a newer client version updates memory-hook and the hook config in the back
     assert.ok(settings.hooks.Notification, 'the new event is merged in')
     assert.equal(settings.model, 'opus', 'the rest of settings.json is untouched')
     assert.deepEqual(settings.hooks.UserPromptSubmit[0], USER_HOOK, "the user's own hook stays")
-    assert.equal(JSON.stringify(settings).split('memory-hook UserPromptSubmit').length, 2, 'ours is there once, not twice')
+    assert.equal(JSON.stringify(settings).split('clyde-hook.sh claude UserPromptSubmit').length, 2, 'ours is there once, not twice')
     assert.ok(JSON.parse(readFileSync(c.codex, 'utf8')).hooks.SessionStart)
     assert.equal(pubOf(c), readFileSync(trustedKey().pub, 'utf8'), 'the public key is kept')
     for (const f of [...UPDATE_FILES, 'manifest', 'manifest.sig']) assert.ok(fake.hits.includes(`GET /install/files/${f}`), `${f} was fetched`)
@@ -739,7 +739,7 @@ test('an expired client whose update failed prints one installer line on Session
     await waitFor(() => existsSync(join(c.dir, 'update-failed')), 30_000, 'the update to fail')
     await clean(c)
     const start = await runHook(c, 'SessionStart')
-    assert.match(start.stdout, /^memory: this computer's client is out of date\. Rerun `curl -fsSL https:\/\/127\.0\.0\.1:\d+\/install \| sh`/)
+    assert.match(start.stdout, /^Clyde: the Clyde client on this computer is out of date\. Rerun `curl -fsSL https:\/\/127\.0\.0\.1:\d+\/install \| sh`/)
     assert.equal(start.stdout.trim().split('\n').length, 1)
     assert.deepEqual(fake.failed['POST /hooks/SessionStart'].at(-1), '1', 'the hook says its update failed')
     assert.match((await runHook(c, 'UserPromptSubmit')).stdout, /Rerun `curl/)
@@ -892,7 +892,7 @@ test('a JSON body prints alone: no installer note, no inbox, so the JSON stays v
     // Plain text keeps the old order: the body, the note, then the inbox.
     fake.answer.SessionStart = { status: 200, body: 'context\n' }
     const text = await runHook(c, 'SessionStart')
-    assert.match(text.stdout, /^context\nmemory: this computer's client is out of date\. Rerun `curl .*\nfrom codex to claude: hello\n$/)
+    assert.match(text.stdout, /^context\nClyde: the Clyde client on this computer is out of date\. Rerun `curl .*\nfrom codex to claude: hello\n$/)
   } finally {
     await cleanup(fake, c)()
   }
@@ -953,7 +953,7 @@ test('when Codex\'s hooks.json changes, the hook says once to run /hooks, and a 
   const fake = await fakeServer(NEW)
   fake.override['codex-hooks.json'] = grown('codex-hooks.json')
   const c = computer(fake.url, OLD)
-  const line = "Codex: run /hooks to trust memory's updated hooks.\n"
+  const line = "Codex: run /hooks to trust Clyde's updated hooks.\n"
   try {
     await runHook(c, 'Stop')
     await waitFor(() => versionOf(c) === NEW, 30_000, 'the update to land')
@@ -1004,7 +1004,7 @@ test('merge() writes through a unique temp file in the target\'s directory, so a
     assert.deepEqual(codes, [0, 0, 0, 0, 0, 0])
     const settings = JSON.parse(readFileSync(c.claude, 'utf8'))
     assert.ok(settings.hooks.Notification)
-    assert.equal(JSON.stringify(settings).split('memory-hook UserPromptSubmit').length, 2, 'ours is there once')
+    assert.equal(JSON.stringify(settings).split('clyde-hook.sh claude UserPromptSubmit').length, 2, 'ours is there once')
     assert.deepEqual(readdirSync(join(c.home, '.claude')).filter((n) => n !== 'settings.json' && n !== 'settings.json.memory-tmp'), [], 'no temp file left')
     assert.equal(statSync(c.claude).mode & 0o077, 0, 'the merged file is private')
   } finally {
@@ -1120,7 +1120,7 @@ async function installAlone(fake: Fake, home: string, opts: { stubs?: string[]; 
   try {
     return await new Promise((resolve) => {
       const env = {
-        PATH: `${stubs}:/usr/bin:/bin`, HOME: home, MEMORY_URL: fake.url, MEMORY_DEVICE: 'test-mac', CURL_CA_BUNDLE: localTls().certPath,
+        PATH: `${stubs}:/usr/bin:/bin`, HOME: home, MEMORY_URL: fake.url, CLYDE_MCP_URL: MCP_URL, MEMORY_DEVICE: 'test-mac', CURL_CA_BUNDLE: localTls().certPath,
         NO_PROXY: '127.0.0.1', no_proxy: '127.0.0.1', ...opts.env,
       }
       const child = spawn('sh', [join(bin, 'install.sh')], { env, stdio: ['ignore', 'ignore', 'pipe'], detached: true })
@@ -1146,7 +1146,7 @@ function tree(dir: string): Record<string, string> {
   return out
 }
 
-const GEMINI_EVENTS = ['AfterAgent', 'AfterTool', 'BeforeAgent', 'SessionStart']
+const GEMINI_EVENTS = ['AfterAgent', 'AfterTool', 'BeforeAgent', 'BeforeTool', 'SessionStart']
 
 test('installer sets up Gemini CLI', async () => {
   const fake = await fakeServer(NEW)
@@ -1157,22 +1157,23 @@ test('installer sets up Gemini CLI', async () => {
   try {
     const ran = await installAlone(fake, home, { stubs: ['gemini'], env: { MEMORY_TOKEN: token } })
     assert.equal(ran.code, 0, ran.stderr)
-    const ext = join(home, '.gemini', 'extensions', 'memory')
-    const manifestText = readFileSync(join(ext, 'gemini-extension.json'), 'utf8')
-    const manifest = JSON.parse(manifestText)
-    assert.equal(manifest.name, 'memory')
-    assert.equal(manifest.mcpServers.memory.httpUrl, MCP_URL)
-    assert.deepEqual(Object.keys(manifest.mcpServers.memory), ['httpUrl'], 'no headers: Gemini CLI signs in by OAuth')
+    // R78: the extension is clyde, and its hooks run clyde-hook.sh with the gate on BeforeTool.
+    const ext = join(home, '.gemini', 'extensions', 'clyde')
+    const manifest = JSON.parse(readFileSync(join(ext, 'gemini-extension.json'), 'utf8'))
+    assert.equal(manifest.name, 'clyde')
+    assert.equal(manifest.mcpServers.clyde.httpUrl, MCP_URL)
+    assert.deepEqual(Object.keys(manifest.mcpServers.clyde), ['httpUrl'], 'no headers: Gemini CLI signs in by OAuth')
+    assert.deepEqual(manifest.excludeTools, ['save_memory'])
     const hooks = JSON.parse(readFileSync(join(ext, 'hooks', 'hooks.json'), 'utf8')).hooks
     assert.deepEqual(Object.keys(hooks).sort(), GEMINI_EVENTS)
     for (const event of GEMINI_EVENTS) {
       const commands = hooks[event].flatMap((g: { hooks: { type: string; command: string }[] }) => g.hooks.map((h) => `${h.type} ${h.command}`))
-      assert.deepEqual(commands, [`command ~/.config/memory/gemini-hook ${event}`], event)
+      assert.deepEqual(commands, [`command ~/.config/memory/clyde-hook.sh gemini ${event}`], event)
     }
-    const adapter = join(home, '.config', 'memory', 'gemini-hook')
-    assert.equal(readFileSync(adapter, 'utf8'), read('gemini-hook'))
-    assert.ok(statSync(adapter).mode & 0o100, 'gemini-hook is executable')
-    assert.equal(statSync(adapter).mode & 0o077, 0, 'and private')
+    const hook = join(home, '.config', 'memory', 'clyde-hook.sh')
+    assert.equal(readFileSync(hook, 'utf8'), read('clyde-hook.sh'))
+    assert.ok(statSync(hook).mode & 0o100, 'clyde-hook.sh is executable')
+    assert.equal(statSync(hook).mode & 0o077, 0, 'and private')
     for (const [path, text] of Object.entries(tree(join(home, '.gemini')))) assert.ok(!text.includes(token), `${path} holds no token`)
     assert.equal(existsSync(join(home, '.gemini', 'config')), false, 'no Antigravity on this computer, so no mcp_config.json')
     // A computer with neither app gets no ~/.gemini at all.
@@ -1266,9 +1267,10 @@ test('installer sets up Antigravity', async () => {
     assert.equal(first.code, 0, first.stderr)
     const bytes = readFileSync(config, 'utf8')
     const doc = JSON.parse(bytes)
-    assert.deepEqual(doc.mcpServers.memory, { serverUrl: MCP_URL })
+    assert.deepEqual(doc.mcpServers.clyde, { serverUrl: MCP_URL })
     assert.deepEqual(doc.mcpServers.other, other, 'the other server is untouched')
-    assert.deepEqual(Object.keys(doc.mcpServers).sort(), ['memory', 'other'])
+    assert.deepEqual(Object.keys(doc.mcpServers).sort(), ['clyde', 'other'])
+    assert.deepEqual(JSON.parse(readFileSync(join(home, '.gemini', 'config', 'hooks.json'), 'utf8')), JSON.parse(read('antigravity-hooks.json')))
     assert.ok(!bytes.includes(token), 'no token: Antigravity signs in by OAuth')
     const second = await installAlone(fake, home, { env: { MEMORY_TOKEN: token } })
     assert.equal(second.code, 0, second.stderr)
@@ -1279,7 +1281,7 @@ test('installer sets up Antigravity', async () => {
       const ran = await installAlone(fake, fresh, { stubs: [binary], env: { MEMORY_TOKEN: token } })
       assert.equal(ran.code, 0, ran.stderr)
       const made = JSON.parse(readFileSync(join(fresh, '.gemini', 'config', 'mcp_config.json'), 'utf8'))
-      assert.deepEqual(made, { mcpServers: { memory: { serverUrl: MCP_URL } } }, binary)
+      assert.deepEqual(made, { mcpServers: { clyde: { serverUrl: MCP_URL } } }, binary)
     }
   } finally {
     await fake.close()
@@ -1294,10 +1296,16 @@ test("install.sh --update run beside the five files a pre-R45 memory-hook fetche
   const set = tempDir('memory-fetched-old-')
   for (const f of OLD_UPDATE_FILES) writeFileSync(join(set, f), f === 'memory-hook' ? read(f).replace('VERSION=@MEMORY_VERSION@', `VERSION=${NEW}`) : read(f))
   copyFileSync(trustedKey().pub, join(set, 'signing-pub.pem'))
+  // R78: an old memory-hook leaves the manifest it verified beside install.sh, and the update fetches the files it lacks
+  // against that manifest.
+  writeFileSync(join(set, 'manifest'), `version=${NEW}\n${HOOK_FILES.map((f) => `${f} ${sha256(read(f))}`).join('\n')}\n`)
   try {
     const ran = await runInstall(join(set, 'install.sh'), ['--update'], c)
     assert.equal(ran.code, 0, ran.stderr)
     assert.equal(versionOf(c), NEW)
+    for (const f of HOOK_FILES) assert.ok(fake.hits.includes(`GET /install/files/${f}`), `${f} was fetched`)
+    assert.equal(readFileSync(join(c.dir, 'clyde-hook.sh'), 'utf8'), read('clyde-hook.sh'))
+    assert.match(readFileSync(c.claude, 'utf8'), /clyde-hook\.sh claude PreToolUse/)
     assert.equal(existsSync(join(c.home, '.gemini')), false)
     assert.equal(existsSync(join(c.dir, 'gemini-hook')), false)
   } finally {
@@ -1306,21 +1314,43 @@ test("install.sh --update run beside the five files a pre-R45 memory-hook fetche
   }
 })
 
-test("a self-update brings gemini-hook and the Gemini extension's files to a computer that has the extension", async () => {
+test("R78 an update whose added files don't match the manifest it verified installs nothing", async () => {
   const fake = await fakeServer(NEW)
   const c = computer(fake.url, OLD)
-  const ext = join(c.home, '.gemini', 'extensions', 'memory')
-  mkdirSync(join(ext, 'hooks'), { recursive: true })
-  writeFileSync(join(ext, 'hooks', 'hooks.json'), '{"hooks":{}}')
-  writeFileSync(join(ext, 'gemini-extension.json'), '{"name":"memory","version":"0.0.1"}')
+  const set = tempDir('memory-fetched-bad-')
+  for (const f of OLD_UPDATE_FILES) writeFileSync(join(set, f), f === 'memory-hook' ? read(f).replace('VERSION=@MEMORY_VERSION@', `VERSION=${NEW}`) : read(f))
+  copyFileSync(trustedKey().pub, join(set, 'signing-pub.pem'))
+  writeFileSync(join(set, 'manifest'), `version=${NEW}\n${HOOK_FILES.map((f) => `${f} ${'0'.repeat(64)}`).join('\n')}\n`)
+  const before = snapshot(c)
+  try {
+    const ran = await runInstall(join(set, 'install.sh'), ['--update'], c)
+    assert.equal(ran.code, 1)
+    assert.deepEqual(snapshot(c), before)
+    assert.equal(existsSync(join(c.dir, 'clyde-hook.sh')), false)
+  } finally {
+    await cleanup(fake, c)()
+    rmSync(set, { recursive: true, force: true })
+  }
+})
+
+test("a self-update moves a computer with the old memory extension to the clyde extension", async () => {
+  const fake = await fakeServer(NEW)
+  const c = computer(fake.url, OLD)
+  const old = join(c.home, '.gemini', 'extensions', 'memory')
+  mkdirSync(join(old, 'hooks'), { recursive: true })
+  writeFileSync(join(old, 'hooks', 'hooks.json'), '{"hooks":{}}')
+  writeFileSync(join(old, 'gemini-extension.json'), '{"name":"memory","version":"0.0.1"}')
   try {
     await runHook(c, 'Stop')
     await waitFor(() => versionOf(c) === NEW, 30_000, 'the update to land')
     await clean(c)
-    assert.equal(readFileSync(join(c.dir, 'gemini-hook'), 'utf8'), read('gemini-hook'))
+    const ext = join(c.home, '.gemini', 'extensions', 'clyde')
+    assert.equal(existsSync(old), false, 'the memory extension is gone')
     assert.deepEqual(JSON.parse(readFileSync(join(ext, 'hooks', 'hooks.json'), 'utf8')), JSON.parse(read('gemini-hooks.json')))
-    assert.deepEqual(JSON.parse(readFileSync(join(ext, 'gemini-extension.json'), 'utf8')), JSON.parse(read('gemini-extension.json')))
-    for (const f of ['gemini-hook', 'gemini-hooks.json', 'gemini-extension.json', 'antigravity-mcp.json']) {
+    const manifest = JSON.parse(readFileSync(join(ext, 'gemini-extension.json'), 'utf8'))
+    assert.equal(manifest.name, 'clyde')
+    assert.equal(manifest.mcpServers.clyde.httpUrl, `${fake.url}/mcp`)
+    for (const f of ['gemini-hooks.json', 'gemini-extension.json', 'clyde-hook.sh', 'antigravity-hooks.json']) {
       assert.ok(fake.hits.includes(`GET /install/files/${f}`), `${f} was fetched and checked against the manifest`)
     }
   } finally {
@@ -1328,29 +1358,32 @@ test("a self-update brings gemini-hook and the Gemini extension's files to a com
   }
 })
 
-test('MEMORY_CLAUDE=plugin leaves Claude Code to the memory plugin, and the installer sets it up otherwise', async () => {
+test('MEMORY_CLAUDE=plugin leaves Claude Code\'s MCP server to the plugin and keeps the hooks, and the installer adds clyde otherwise', async () => {
   const fake = await fakeServer(NEW)
   const plugin = tempDir('memory-plugin-')
   const plain = tempDir('memory-plain-')
-  // This computer ran the installer before, so settings.json has its hooks beside the user's own.
+  // This computer ran an old installer before: a memory server, and settings.json with its hooks beside the user's own.
   mkdirSync(join(plugin, '.claude'))
-  const ours = JSON.parse(read('claude-settings.json')).hooks
-  writeFileSync(join(plugin, '.claude', 'settings.json'), JSON.stringify({ model: 'opus', hooks: { ...ours, UserPromptSubmit: [USER_HOOK, ...ours.UserPromptSubmit] } }))
+  writeFileSync(join(plugin, '.claude.json'), JSON.stringify({ mcpServers: { memory: { type: 'http', url: 'https://memory.heyclyde.me/mcp' } } }))
+  const old = { UserPromptSubmit: [USER_HOOK, { hooks: [{ type: 'command', command: '~/.config/memory/memory-hook UserPromptSubmit' }] }] }
+  writeFileSync(join(plugin, '.claude', 'settings.json'), JSON.stringify({ model: 'opus', hooks: old }))
   try {
     const skipped = await installAlone(fake, plugin, { stubs: ['claude'], env: { MEMORY_TOKEN: TOKEN, MEMORY_CLAUDE: 'plugin' } })
     assert.equal(skipped.code, 0, skipped.stderr)
-    // The plugin brings the MCP server and the hooks, so the installer's go: no second server and no event sent twice.
+    // The plugin brings the MCP server, so the installer's goes: no second server. The hooks stay, since they are the gate.
     const calls = readFileSync(join(plugin, 'claude.log'), 'utf8').trim().split('\n')
-    assert.deepEqual(calls, ['mcp remove kb --scope user', 'mcp remove memory --scope user'])
+    assert.deepEqual(calls, ['mcp remove kb --scope user', 'mcp remove memory --scope user', 'mcp remove clyde --scope user'])
+    assert.deepEqual(JSON.parse(readFileSync(join(plugin, '.claude.json'), 'utf8')).mcpServers, {})
     const settings = JSON.parse(readFileSync(join(plugin, '.claude', 'settings.json'), 'utf8'))
     assert.ok(!JSON.stringify(settings).includes('memory-hook'), 'no memory-hook entry is left in settings.json')
-    assert.deepEqual(settings.hooks.UserPromptSubmit, [USER_HOOK], "the user's own hook stays")
+    assert.deepEqual(settings.hooks.UserPromptSubmit[0], USER_HOOK, "the user's own hook stays")
+    assert.match(JSON.stringify(settings.hooks.UserPromptSubmit[1]), /clyde-hook\.sh claude UserPromptSubmit/)
     assert.equal(settings.model, 'opus')
-    assert.ok(existsSync(join(plugin, '.config', 'memory', 'memory-hook')), "the plugin's hooks forward through memory-hook, so it is there")
     const added = await installAlone(fake, plain, { stubs: ['claude'], env: { MEMORY_TOKEN: TOKEN } })
     assert.equal(added.code, 0, added.stderr)
-    assert.match(readFileSync(join(plain, 'claude.log'), 'utf8'), /^mcp add --transport http --scope user memory /m)
-    assert.match(readFileSync(join(plain, '.claude', 'settings.json'), 'utf8'), /memory-hook UserPromptSubmit/)
+    assert.match(readFileSync(join(plain, 'claude.log'), 'utf8'), /^mcp add --transport http --scope user clyde https:\/\/heyclyde\.me\/mcp /m)
+    assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(plain, '.claude.json'), 'utf8')).mcpServers), ['clyde'])
+    assert.match(readFileSync(join(plain, '.claude', 'settings.json'), 'utf8'), /clyde-hook\.sh claude UserPromptSubmit/)
   } finally {
     await fake.close()
     rmSync(plugin, { recursive: true, force: true })
