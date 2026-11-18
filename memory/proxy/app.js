@@ -569,7 +569,7 @@ async function renderQuests() {
       '<div id="q-msg" class="is-hidden"></div>' +
       '<div class="app-form-row">' +
         '<div class="cl-field"><label for="qt-title">Title</label><input id="qt-title" class="cl-input" required maxlength="120" placeholder="Short task title (up to 120 chars)"></div>' +
-        '<div class="cl-field"><label for="qt-pri">Priority</label><select id="qt-pri" class="cl-select"><option value="normal">normal</option><option value="high">high</option><option value="low">low</option></select></div>' +
+        '<div class="cl-field"><label for="qt-pri">Priority</label><select id="qt-pri" class="cl-select"><option value="normal">normal</option><option value="high">high</option><option value="urgent">urgent</option><option value="low">low</option></select></div>' +
         '<div class="cl-field"><label for="qt-ctx">Context</label><select id="qt-ctx" class="cl-select"><option value="both">both</option><option value="work">work</option><option value="home">home</option><option value="hobby">hobby</option><option value="personal">personal</option></select></div>' +
       '</div>' +
       '<div class="cl-field"><label for="qt-brief">Brief</label><textarea id="qt-brief" class="cl-textarea" required maxlength="500" placeholder="Describe what needs doing (up to 500 chars)"></textarea></div>' +
@@ -605,7 +605,7 @@ async function renderQuests() {
       el.innerHTML = groups[col].length ? groups[col].map(function(q) {
         var claimant = q.claimed_by ? (nickByAgent[q.claimed_by] || q.claimed_by) : '';
         return '<article class="cl-quest' + (col === 'done' ? ' is-done' : '') + '">' +
-          '<div class="cl-quest__stub"><span class="cl-quest__no">#' + esc(q.id) + '</span><span class="cl-quest__pri' + (q.priority === 'high' ? ' is-high' : '') + '">' + esc(q.priority) + '</span></div>' +
+          '<div class="cl-quest__stub"><span class="cl-quest__no">#' + esc(q.id) + '</span><span class="cl-quest__pri' + (['urgent', 'high'].includes(q.priority) ? ' is-high' : '') + '">' + esc(q.priority) + '</span></div>' +
           '<div class="cl-quest__main">' +
             '<div class="cl-quest__head"><h3 class="cl-quest__title">' + esc(q.title) + '</h3>' +
             (q.unmatched ? '<span class="cl-chip cl-chip--warn">No matching agent</span>' : '') +

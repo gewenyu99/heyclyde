@@ -103,7 +103,7 @@ test('R47 post_quest refuses fields past their limits and writes nothing', { ski
   const ok = { title: 'A quest', brief: 'A brief.', done_when: 'It is done.' }
   const bad: Record<string, unknown>[] = [
     { title: 'x'.repeat(121) }, { brief: 'x'.repeat(501) }, { done_when: '' }, { done_when: 'x'.repeat(301) },
-    { priority: 'urgent' }, { context: 'invalid-realm' }, { tags: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'] }, { for: 'Bad Name' },
+    { priority: 'unrecognized' }, { context: 'invalid-realm' }, { tags: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'] }, { for: 'Bad Name' },
   ]
   const before = countOf('quest', 'true')
   for (const b of bad) {
@@ -380,7 +380,7 @@ test('R47 list_quests stays fast over 5,000 quests', { skip: SKIP }, async () =>
   sql(`delete from memory.quest where posted_by = 'r47-seed'`)
 })
 
-test('R47 tools/list adds six quest tools and the instructions teach the flow', { skip: SKIP }, async () => {
+test('R47 tools/list includes Paseo dispatch and the quest tools and the instructions teach the flow', { skip: SKIP }, async () => {
   const init = await bed.call('POST', '/mcp', bearer(memory.token),
     { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', clientInfo: { name: 'r47-tools' } } })
   const instructions: string = JSON.parse(init.text).result.instructions
@@ -401,8 +401,31 @@ test('R47 tools/list adds six quest tools and the instructions teach the flow', 
     post_message: ['to', 'body'], check_messages: [], ack_messages: ['ids'], dismiss_messages: [],
   }
   for (const [name, req] of Object.entries(before)) assert.deepEqual(required(name), req, name)
-  assert.equal(Object.keys(tools).length, 18)
+  assert.deepEqual(required('dispatch_quest'), ['action'])
+  assert.equal(Object.keys(tools).length, 19)
 })
+
+test('Paseo dispatchprioritizes urgent work, fences acknowledgements, and recovers the same lease', {skip: SKIP}, async () => {
+  const poster = await agent('r47-paseo-poster');
+  const [alice,bob] = await Promise.all([agent('paseo-dispatch-a'),agent('paseo-dispatch-b')]);
+  const tag = 'paseotest';
+  const normal = await post(poster,{tags:[tag]});
+  const urgent = await post(poster,{priority:'urgent',tags:[tag]});
+  const peek = await alice.send('dispatch_quest',{action:'peek',areas:[tag]});
+  assert.equal(peek.error,false,peek.text);
+  assert.equal(JSON.parse(peek.text).id,urgent);
+  const claims = await Promise.all([alice,bob].map(a => a.send('dispatch_quest',{action:'claim',id:urgent,areas:[tag]})));
+  const winners = claims.flatMap((c,i) => c.error ? [] : [{ session:[alice,bob][i], job:JSON.parse(c.text) }]);
+  assert.equal(winners.length,1);
+  const {session,job} = winners[0];
+  const ack = {action:'ack',id:urgent,run:'r-'+job.assignment,assignment:job.assignment};
+  assert.ok((await session.send('dispatch_quest',{...ack,assignment:'stale'})).error);
+  assert.equal(JSON.parse((await session.send('dispatch_quest',ack)).text).run,ack.run);
+  assert.equal(JSON.parse((await session.send('dispatch_quest',{action:'peek',areas:[tag]})).text).assignment,job.assignment);
+  sql(`update memory.quest set lease_until = now() - interval '1 hour' where id = ${urgent}`);
+  assert.equal(JSON.parse((await session.send('dispatch_quest',{action:'peek',areas:[tag]})).text).assignment,job.assignment);
+  assert.equal(quest(normal).state,'open');
+});
 
 // ------------------------------------------------------------------ the tests below empty tables or reset every quest
 

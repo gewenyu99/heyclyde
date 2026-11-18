@@ -139,7 +139,7 @@ async function syncEmbeddings() {
 test('R70 register_agent stores realm, projects, computer, type and session snapshot', { skip: SKIP }, async () => {
   const s = await open(memory.token, 'claude-code')
   const tools = (await s.rpc('tools/list')).result.tools as any[]
-  assert.equal(tools.length, 18)
+  assert.equal(tools.length, 19)
   const regTool = tools.find((t) => t.name === 'register_agent')
   assert.deepEqual(regTool.inputSchema.required, ['name', 'context', 'surface', 'description'])
 

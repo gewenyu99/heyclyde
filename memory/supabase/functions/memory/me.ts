@@ -33,7 +33,7 @@ const RESERVED_NAMES = new Set(["claude", "codex", "all", "wen", "memory"]);
 const KINDS = new Set(["fact", "wen", "observation", "plan"]);
 const PATTERNS = new Set(["projects", "decisions", "observations", "preferences", "recommendations", "references", "reactions"]);
 const SENSITIVITIES = new Set(["normal", "private", "confidential"]);
-const PRIORITIES = new Set(["high", "normal", "low"]);
+const PRIORITIES = new Set(["urgent", "high", "normal", "low"]);
 // deno-lint-ignore no-control-regex
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]+/g;
 const MAX_JSON_BODY = 64 * 1024;
@@ -695,7 +695,7 @@ export async function handle(req: Request, path: string, owner: string): Promise
     if (!doneWhen) errs.push("done_when is required (1 to 300 characters).");
 
     const priority = typeof body.priority === "string" && body.priority.trim() ? body.priority.trim().toLowerCase() : "normal";
-    if (!PRIORITIES.has(priority)) errs.push("priority must be high, normal, or low.");
+    if (!PRIORITIES.has(priority)) errs.push("priority must be urgent, high, normal, or low.");
 
     const { target, errs: targetErrs } = parseQuestTarget(body.target);
     errs.push(...targetErrs);

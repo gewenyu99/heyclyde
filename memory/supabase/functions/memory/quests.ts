@@ -68,7 +68,7 @@ const whoToQuestAgent = (who: Who): QuestAgent => ({
 
 export const LEASE_MINUTES = 120;
 const LEASE_MIN = 15, LEASE_MAX = 480;
-const PRIORITIES = ["high", "normal", "low"];
+const PRIORITIES = ["urgent", "high", "normal", "low"];
 const CONTEXTS: string[] = [...AGENT_CONTEXTS];
 const SHOWS = ["open", "mine", "done", "all"];
 const NAME = /^[a-z0-9][a-z0-9_-]{0,39}$/;
@@ -163,7 +163,7 @@ export async function postQuest(who: Who, args: Record<string, unknown>) {
   const brief = field(errs, args.brief, "brief", 500);
   const doneWhen = field(errs, args.done_when, "done_when", 300);
   const priority = s(args.priority).trim().toLowerCase() || "normal";
-  if (!PRIORITIES.includes(priority)) errs.push("priority must be high, normal or low.");
+  if (!PRIORITIES.includes(priority)) errs.push("priority must be urgent, high, normal or low.");
   const { target, errs: targetErrs } = parseQuestTarget(args.target);
   errs.push(...targetErrs);
   const context = s(args.context).trim().toLowerCase() || target.context || (who.context ?? "both");
@@ -254,7 +254,7 @@ export async function listQuests(who: Who, args: Record<string, unknown>) {
     where q.state = any(${states}::text[]) and q.context = any(${contexts}::text[])
       and (${tag}::text = '' or q.tags @> array[${tag}::text])
       and (${show}::text <> 'mine' or q.claimed_by = ${who.name}::text or q.posted_by = ${who.name}::text)
-    order by case when ${show}::text = 'open' then array_position(array['high', 'normal', 'low'], q.priority) else 0 end,
+    order by case when ${show}::text = 'open' then array_position(array['urgent', 'high', 'normal', 'low'], q.priority) else 0 end,
       coalesce(q.closed_at, q.updated_at) desc, q.id desc
     limit 500`;
   const viewer = whoToQuestAgent(who);
@@ -306,6 +306,7 @@ export async function claimQuest(who: Who, args: Record<string, unknown>) {
     const match = questMatches(whoToQuestAgent(who), q, { checkAssignee: true });
     if (!match.ok) throw new Refused(`Quest #${id} doesn't match ${who.name}: ${match.reason}.`);
     const [c] = await tx`update memory.quest set state = 'claimed', claimed_by = ${who.name}, claimed_device = ${who.principal},
+        dispatch_id = case when ${mine} then dispatch_id end, dispatch_run = case when ${mine} then dispatch_run end,
         claimed_session = ${who.session}, claimed_at = coalesce(case when ${mine} then claimed_at end, now()),
         lease_minutes = ${minutes}, lease_until = now() + make_interval(mins => ${minutes}::int), updated_at = now()
       where id = ${id} returning lease_until`;
@@ -480,7 +481,7 @@ export async function board(principal: string, agent: string, mode: "start" | "p
   const matcher = scope ?? { name: who.name, family: who.family, principal };
   const rawQuests = await sql`select q.* from memory.quest q
     where q.state = 'open' and q.id > ${after} and q.context = any(${contextsFor(ctx)}::text[]) and q.assignee = any(${claimants(who)}::text[])
-    order by array_position(array['high', 'normal', 'low'], q.priority), q.id desc limit 100`;
+    order by array_position(array['urgent', 'high', 'normal', 'low'], q.priority), q.id desc limit 100`;
   const matchedQuests = rawQuests.filter((q) => questMatches(matcher, q, { checkAssignee: true }).ok);
   const quests = matchedQuests.slice(0, BOARD_LINES);
   const [{ n }] = await sql`select count(*)::int as n from memory.message_delivery d
@@ -516,4 +517,43 @@ export async function board(principal: string, agent: string, mode: "start" | "p
     ...(Q ? ["New on memory's quest board (claim_quest takes one):", ...qLines] : []),
     ...tail,
   ].join("\n") + "\n";
+}
+
+/** The host serializes local delivery. This transaction serializes assignment across hosts. */
+export async function dispatchQuest(who: Who, args: Record<string, unknown>) {
+  if (!who.profile || !who.name.startsWith("paseo-")) throw new Refused("Register this Paseo agent first.");
+  const action = s(args.action);
+  if (!["peek", "claim", "ack", "renew"].includes(action)) throw new Refused("Unknown dispatch action.");
+  const areas = Array.isArray(args.areas) ? args.areas.map(s).map(a => a.trim().toLowerCase()).filter(Boolean).slice(0, 32) : [];
+  const passed = Array.isArray(args.passed) ? args.passed.map(Number).filter(Number.isSafeInteger).slice(-100) : [];
+  await reopenExpired();
+  return await sql.begin(async tx => {
+    await tx`select pg_advisory_xact_lock(hashtext(memory.owner_default()::text), hashtext(${who.name}))`;
+    const [mine] = await tx`select * from memory.quest where state = 'claimed' and claimed_by = ${who.name}
+      and claimed_device = ${who.principal} and dispatch_id is not null for update`;
+    const describe = (q: Row) => JSON.stringify({ id: Number(q.id), title: q.title, brief: q.brief, done_when: q.done_when,
+      priority: q.priority, assignment: q.state === "claimed" ? q.dispatch_id : null, run: q.state === "claimed" ? q.dispatch_run : null });
+    if (action === "ack" || action === "renew") {
+      if (!mine || mine.dispatch_id !== args.assignment || mine.id.toString() !== String(args.id)) throw new Refused("Assignment lease lost.");
+      const run = s(args.run);
+      if (!/^r-[a-z0-9-]{8,64}$/.test(run) || (mine.dispatch_run && mine.dispatch_run !== run)) throw new Refused("Run does not match the assignment.");
+      await tx`update memory.quest set dispatch_run = ${run}, lease_until = now() + interval '2 hours' where id = ${mine.id}`;
+      return describe({ ...mine, dispatch_run: run });
+    }
+    if (mine) return describe(mine);
+    const rows = await tx`select *, xmin::text as revision from memory.quest where state = 'open'
+      and (assignee = ${who.name} or tags && ${areas}::text[])
+      and not (id = any(${passed}::bigint[]) and priority in ('normal','low'))
+      order by array_position(array['urgent','high','normal','low'], priority), id`;
+    const candidate = rows.find(q => mayClaim(q, who) && questMatches(whoToQuestAgent(who), q, { checkAssignee: true }).ok);
+    if (!candidate || action === "peek") return candidate ? describe(candidate) : "null";
+    if (Number(candidate.id) !== questId(args.id)) throw new Refused("Offer changed. Refresh the board.");
+    const [claimed] = await tx`update memory.quest set state = 'claimed', claimed_by = ${who.name}, claimed_device = ${who.principal},
+      claimed_session = ${who.session}, claimed_at = now(), lease_minutes = 120, lease_until = now() + interval '2 hours',
+      updated_at = now(), dispatch_id = gen_random_uuid(), dispatch_run = null
+      where id = ${candidate.id} and state = 'open' and xmin::text = ${candidate.revision} returning *`;
+    if (!claimed) throw new Refused("Quest changed or was already claimed.");
+    await tx`insert into memory.quest_note (quest_id, author, device, kind) values (${claimed.id}, ${who.name}, ${who.principal}, 'claim')`;
+    return describe(claimed);
+  });
 }

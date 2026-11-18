@@ -403,7 +403,7 @@ function questCard(q, d, startOpen, onFlip) {
   if (q.assignee && q.assignee !== "any") who.push(h("span", null, " · for ", h("b", { text: q.assignee })));
   if (q.state === "claimed" && q.claimed_by) who.push(h("span", null, " · claimed by ", h("b", { text: q.claimed_by }), q.lease_until ? " until " + when(q.lease_until) : ""));
   if (q.state === "done") who.push(h("span", null, " · done by ", h("b", { text: q.claimed_by || "" }), q.closed_at ? " " + when(q.closed_at) : ""));
-  var stub = h("div", { class: "cl-quest__stub", hidden: !open }, h("span", { class: "cl-quest__pri" + (q.priority === "high" ? " is-high" : ""), text: q.priority }),
+  var stub = h("div", { class: "cl-quest__stub", hidden: !open }, h("span", { class: "cl-quest__pri" + (["urgent", "high"].includes(q.priority) ? " is-high" : ""), text: q.priority }),
     h("span", { class: "cl-quest__no", text: "Nº" + q.id }));
   var main = h("div", { class: "cl-quest__main", hidden: !open },
     h("div", { class: "cl-quest__head" }, h("h3", { class: "cl-quest__title", text: q.title }),
@@ -415,7 +415,7 @@ function questCard(q, d, startOpen, onFlip) {
     h("div", { class: "cl-quest__for" }, who, " · " + q.context), row, msg);
   var sum = h("button", { class: "c-qsum", type: "button", hidden: open, "aria-expanded": String(open), onclick: function () { setOpen(true); } },
     h("span", { class: "c-qno", text: "Nº" + q.id }),
-    q.priority === "high" ? h("span", { class: "cl-quest__pri is-high", text: q.priority }) : null,
+    ["urgent", "high"].includes(q.priority) ? h("span", { class: "cl-quest__pri is-high", text: q.priority }) : null,
     h("span", { class: "c-sum__title", text: q.title }),
     h("span", { class: "cl-stamp " + (STAMP[q.state] || ""), text: q.state }), icon("more"));
   var card = h("article", { class: "cl-quest" + (open ? "" : " is-compact") + (q.state === "done" ? " is-done" : ""), "data-quest": q.id }, sum, stub, main);

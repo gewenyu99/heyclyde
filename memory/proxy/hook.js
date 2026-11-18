@@ -151,6 +151,12 @@ def mark_registered():
     if state.pop("register_debt", None) is not None:
         save_json(sfile, state)
 
+# A receipt is written only by a running native hook. Paseo uses its timestamp to report the last turn.
+paseo_agent = os.environ.get("CLYDE_PASEO_AGENT", "")
+def receipt(outcome):
+    if re.fullmatch(r"[a-zA-Z0-9_-]{1,128}", paseo_agent):
+        save_json(sdir / ("paseo-" + paseo_agent + ".json"), {"at": now, "outcome": outcome})
+
 sub_file = sdir / "subagents.json"
 if canon == "PreToolUse":
     if tname == "invoke_subagent":
@@ -264,7 +270,7 @@ if canon == "SessionStart":
     if cwd:
         state["cwd"] = cwd
     local_msg = ONLY + " Top-level session only (skip in subagents): once this session, call check_messages, then ack_messages once handled. " + SCOPE + " " + SAVE
-    if phash and not is_followup(prompt):
+    if phash and (paseo_agent or not is_followup(prompt)):
         state["last_prompt_hash"] = phash
         state["last_prompt_at"] = now
         state["last_nudge_at"] = now
@@ -289,6 +295,10 @@ elif canon == "UserPromptSubmit":
     topic_shifted = bool(SHIFT_RE.search(t)) or (len(pwords) >= 6 and bool(twords) and not (set(pwords) & twords) and cooled_down)
     followup = is_followup(t)
     should_nudge = cwd_shifted or bool(t and (first_task or (not followup and (idle_gap or topic_shifted))))
+    if paseo_agent and t:
+        # Other follow-ups can be short and still ask about an earlier decision.
+        unchanged = t.strip().lower().rstrip(".!") in ("continue", "rerun", "run it again", "push it", "commit it", "yes", "ok", "thanks")
+        should_nudge = first_task or cwd_shifted or not unchanged
     if phash:
         state["last_prompt_hash"] = phash
     if cwd:
@@ -308,6 +318,7 @@ elif canon == "PostToolUse":
         response = data.get("tool_response") or data.get("tool_result") or {}
         if not data.get("error") and not (isinstance(response, dict) and (response.get("isError") or response.get("error"))):
             state["check_before_reply"] = False
+            receipt("saved")
     if is_tool(tname, "register_agent"):
         mark_registered()
     if is_tool(tname, "recall", "recall_more"):
@@ -430,6 +441,7 @@ if canon == "Stop" and state.pop("check_before_reply", False):
     save_json(sfile, state)
     if not down and not data.get("stop_hook_active") and not state.get("subagent"):
         decision = {"antigravity": "continue", "gemini": "deny"}.get(client, "block")
+        receipt("held")
         emit(raw_json=json.dumps({"decision": decision, "reason": STOP_SAVE_AGY if client == "antigravity" else STOP_SAVE}))
 
 parts = []

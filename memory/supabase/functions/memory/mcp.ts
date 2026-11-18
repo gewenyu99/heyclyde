@@ -262,7 +262,7 @@ export const TOOLS = [
       "brief: what to do and why, up to 500 characters. The details go in artifacts.\n" +
       "done_when: one line any agent can check to tell the quest is finished, up to 300 characters.\n" +
       "tags: up to 8 lowercase words.\n" +
-      "priority: high, normal (default) or low.\n" +
+      "priority: urgent, high, normal (default) or low.\n" +
       "context: work, home, hobby, personal or both. Default: the agent's registered context.\n" +
       "for: who may claim it: any (default), claude, codex, or one agent's name.\n" +
       "project, computer, agent_type: optional restrictions on who can see and claim this quest.\n" +
@@ -275,7 +275,7 @@ export const TOOLS = [
         title: str("Up to 120 characters"), brief: str("What to do and why, up to 500 characters"),
         done_when: str("How anyone can tell it's finished, up to 300 characters"),
         tags: { type: "array", items: { type: "string" }, description: "Up to 8 lowercase words" },
-        priority: str("high, normal (default) or low"), context: str("work, home, hobby, personal or both. Default: the agent's own"),
+        priority: str("urgent, high, normal (default) or low"), context: str("work, home, hobby, personal or both. Default: the agent's own"),
         for: str("any (default), claude, codex, or an agent's name"),
         project: str("Optional project slug"), computer: str("Optional computer restriction"),
         agent_type: { type: "string", enum: [...AGENT_TYPES], description: "Optional agent type restriction" },
@@ -312,6 +312,16 @@ export const TOOLS = [
         limit: int("1 to 50, default 20"),
       },
     },
+  },
+  {
+    name: "dispatch_quest",
+    ...hints("Match or acknowledge a Paseo assignment", false, false),
+    description: "For registered Paseo hosts. Match confirmed responsibilities or recover an existing lease.",
+    inputSchema: { type: "object", required: ["action"], properties: {
+      action: str("peek, claim, ack, or renew"), id: int("Offered quest ID"), assignment: str("Current assignment UUID"),
+      run: str("Local run ID"), areas: { type: "array", items: { type: "string" } },
+      passed: { type: "array", items: { type: "integer" } },
+    } },
   },
   {
     name: "claim_quest",
@@ -651,6 +661,7 @@ const RUN: Record<string, (c: Call) => Promise<string>> = {
   dismiss_messages: (c) => service.dismissMessages(mailboxes(c), c.args.ids),
   post_quest: (c) => quests.postQuest(questor(c), c.args),
   list_quests: (c) => quests.listQuests(questor(c), c.args),
+  dispatch_quest: (c) => quests.dispatchQuest(questor(c), c.args),
   claim_quest: (c) => quests.claimQuest(questor(c), c.args),
   update_quest: (c) => quests.updateQuest(questor(c), c.args),
   complete_quest: (c) => quests.completeQuest(questor(c), c.args),
@@ -731,7 +742,7 @@ async function card(c: Parameters<typeof cardData>[0]): Promise<{ _meta: Record<
   }
 }
 
-const QUEST_TOOLS = new Set(["post_quest", "list_quests", "claim_quest", "update_quest", "complete_quest", "abandon_quest"]);
+const QUEST_TOOLS = new Set(["dispatch_quest", "post_quest", "list_quests", "claim_quest", "update_quest", "complete_quest", "abandon_quest"]);
 
 async function answer(msg: RpcMessage, session: string | null, minted: { id?: string }, who: Principal) {
   const id = msg.id;
