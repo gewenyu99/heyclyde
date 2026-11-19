@@ -105,3 +105,12 @@ test('classifier aborts tool attempts, oversized output, and deadline without ac
   const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),30);
   try{await assert.rejects(classifyProject('Task',[{id:'one',name:'One',slug:'owner/one'}],abort.signal),/timed out/);}finally{clearTimeout(timer);}
 });
+
+test('Auto offers an existing directory project without requiring Git or a child checkout',async()=>{
+  const path=join(repositories,'plain-notes');mkdirSync(path);
+  let offered;
+  const f=fixture({classify:async(_prompt,projects)=>{offered=projects;return {projectId:'folder',reason:'The task names the notes folder.'};}});
+  f.projects.push({projectId:'folder',projectDisplayName:'Notes folder',projectRootPath:path,projectKind:'non_git'});
+  assert.deepEqual(await f.invoke('Organize the notes folder'),{projectId:'folder',reason:'The task names the notes folder.'});
+  assert.equal(offered.find(p=>p.id==='folder').slug,'plain-notes');
+});

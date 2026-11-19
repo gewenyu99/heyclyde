@@ -59,6 +59,7 @@ function fixture(t) {
       if(!runs.has(id))runs.set(id,{id,title:quest.title,status:"running",asks:[],stages:[],repo:input.cwd,paseoParentId:input.paseoParentId,...(input.directory?{directory:true}:{})});
       return json(runs.get(id));
     }
+    if(path==="/threads")return json([]);
     if(path==="/runs")return json([...runs.values()]);
     if(path.startsWith("/runs/"))return runs.has(path.slice(6))?json(runs.get(path.slice(6))):json({error:"not found"},404);
     throw new Error("Unexpected fake request "+path);
