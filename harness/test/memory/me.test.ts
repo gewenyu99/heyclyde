@@ -487,6 +487,12 @@ test('Quest #42: /me enforces quest plan limits, syncs live agent scopes, and pa
     insert into memory.entitlement (owner_id, provider, plan, state, event_at) values ('${paidId}', 'owner', 'owner', 'paid', now())
       on conflict (owner_id) do update set provider = 'owner', plan = 'owner', state = 'paid', event_at = now();`)
   const paidJwt = jwt({ sub: paidId, email: paidEmail, jti: randomUUID() })
+  const paidQuest = await request('POST', `${memory.url}/me/quests`, {
+    headers: bearer(paidJwt),
+    body: { title: 'Paid quest succeeds', brief: 'Paid plan allows posting quests.', done_when: 'Returns 201.' },
+    timeoutMs: 30_000,
+  })
+  assert.equal(paidQuest.status, 201, paidQuest.text)
   const oauth = jwt({ sub: paidId, email: paidEmail, client_id: 'q42-client', jti: randomUUID() })
   const init = await request('POST', `${memory.url}/mcp`, {
     headers: bearer(oauth),
@@ -535,6 +541,15 @@ test('Quest #42: /me enforces quest plan limits, syncs live agent scopes, and pa
   assert.equal(p2.total, 3)
   assert.equal(p2.has_more, false)
   assert.equal(p2.entries.length, 1)
+
+  // Streaming GET /me/export handles early reader cancellation cleanly and streams all NDJSON rows when read in full.
+  const aborted = await fetch(`${memory.url}/me/export`, { headers: bearer(paidJwt) })
+  assert.equal(aborted.status, 200)
+  await aborted.body?.getReader().cancel()
+  const exp = await request('GET', `${memory.url}/me/export`, { headers: bearer(paidJwt), timeoutMs: 30_000 })
+  assert.equal(exp.status, 200, exp.text)
+  const exportedEntries = exp.text.trim().split('\n').map((line) => JSON.parse(line)).filter((x) => x.table === 'entry').map((x) => x.row.id)
+  for (const id of ['q42-e1', 'q42-e2', 'q42-e3']) assert.ok(exportedEntries.includes(id), `export contains ${id}`)
 })
 
 test('delete account', { skip: SKIP }, async () => {

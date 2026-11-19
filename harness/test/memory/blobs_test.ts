@@ -111,6 +111,7 @@ Deno.test('Quest #42: binary-labelled UTF-8 blobs and blob names redact secrets 
     artifacts: [
       { name: 'leak-sk-proj-1234567890abcdefghij123456.bin', media_type: 'application/octet-stream', base64: b64Secret },
       { name: 'img.bin', media_type: 'application/octet-stream', base64: btoa('\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR') },
+      { name: 'cited-sk-proj-1234567890abcdefghij123456.txt', sha256: 'a'.repeat(64) },
     ],
   }, 'agent')
   const firstText = new TextDecoder().decode(res.blobs[0].content)
@@ -118,6 +119,7 @@ Deno.test('Quest #42: binary-labelled UTF-8 blobs and blob names redact secrets 
   assert.ok(firstText.includes('[redacted:'))
   assert.ok(!res.blobs[0].name.includes('sk-proj-'), 'secret in blob filename is redacted')
   assert.equal(res.blobs[1].content?.[0], 0x89, 'true binary payload with NUL bytes stays intact')
+  assert.ok(!res.blobs[2].name.includes('sk-proj-'), 'secret in cited/uploaded sha256 blob filename is redacted')
 })
 
 const V1 = {
