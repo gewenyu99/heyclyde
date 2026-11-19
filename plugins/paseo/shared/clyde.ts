@@ -7,18 +7,19 @@ export type Status = "running" | "asking" | "passed" | "sent-back" | "failed" | 
 export type Ask = {
   kind: "run" | "thread"; id: string; task: string; why: string; question: string; askedAt: string; approve: boolean;
   // For a plan approval: the plan's slices, so Wen can approve from the card.
-  plan?: string[];
+  plan?: string[]; askKey?:string; blockedStage?:string;
 };
 
 /** One top-level task: a run the point man started, or a standalone point-man thread. */
 export type TaskCard = {
   kind: "run" | "thread"; id: string; name: string; why: string; status: Status;
+  checkSummary?:string;
   pips: Status[]; passed: number; running: number; sentBack: number; pending: number;
   current: string; rung?: string; startedAt: string; endedAt?: string; lastActivity?: string; agentId?: string;
 };
 
 export type Home = {
-  needsYou: Ask[]; tasks: TaskCard[]; doneToday: TaskCard[];
+  needsYou: Ask[]; tasks: TaskCard[]; doneToday: TaskCard[]; failedToday: TaskCard[];
   background: number; running: number; revision: number;
 };
 
@@ -47,6 +48,7 @@ export type AttemptView = {
 };
 
 export type TaskView = {
+  completionCriteria?: string[];
   routing?: string[]; auditedHead?: string;
   kind: "run" | "thread"; id: string; name: string; status: Status; startedAt: string; summary: string;
   question?: string; approve: boolean; branch?: string;
@@ -94,7 +96,7 @@ export const waitRpc = defineRpc({
 /** Answers a run's question, or sends a thread a message. */
 export const answerRpc = defineRpc({
   name: "clyde.answer",
-  input: z.object({ kind: z.enum(["run", "thread"]), id: z.string(), text: z.string().min(1) }),
+  input: z.object({ askKey:z.string().optional(), kind: z.enum(["run", "thread"]), id: z.string(), text: z.string().min(1) }),
   output: z.object({ ok: z.boolean(), error: z.string().optional() }),
 });
 
@@ -119,7 +121,7 @@ export const projectsRpc = defineRpc({
 });
 export const workerModels = ["auto", "sol", "sonnet", "opus", "astra", "neon"] as const;
 export const launchRpc = defineRpc({
-  name:"clyde.launch", input:z.object({project:z.string().min(1),prompt:z.string().trim().min(1).max(12000),
+  name:"clyde.launch", input:z.object({project:z.string().min(1),prompt:z.string().trim().min(1).max(12000),criteria:z.array(z.string().trim().min(1).max(4000)).max(64).optional(),
     flow:z.enum(["task","ship"]),worker:z.enum(workerModels),requestId:z.string().uuid(),agentId:z.string().optional()}),
   output:z.object({id:z.string()}),
 });

@@ -12,6 +12,10 @@ The sidebar **Clyde** button opens the board across projects. In **Agents**, rev
 
 The [Clyde design system](../../design/README.md) supplies the logo, typography and light/dark paper and ink colors. Run `node plugins/paseo/sync-brand.mjs` after changing the shared assets.
 
+## Returning to work
+
+The board shows how many tasks finished today and how many await a reply. Open decisions and today’s failures appear first. Open a run to see its completion criteria, audited revision when available, and check results from the latest attempt at each stage. Failed checks show their command and exit code; expand the evidence for the output. Model routing and transcripts are available on demand.
+
 ## Routing
 
 Opus or Astra plans. Sol and Sonnet handle routine work based on available provider quota. Opus handles complex implementation. Fable reviews specs and verifies findings in read-only sessions. Carbon audits code changes. Clyde prefers Orchestrator (Carbon) when the host advertises it and can fall back to Carbon High. Enter `/route worker astra` in a run’s steering field to change the worker for its next attempt.

@@ -32,6 +32,8 @@ export function Composer(
     [flow, setFlow] = useState<"task" | "ship">("task");
   const [worker, setWorker] = useState<Worker>("auto"), [menu, setMenu] = useState<"project" | "worker" | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const [doneWhen,setDoneWhen]=useState("");
+  const [showCriteria,setShowCriteria]=useState(false);
   const pending = useRef<{ key: string; id: string } | null>(null);
   const locked = useRef(false);
   const selected = projects.data?.find((p) => p.id === project) ?? projects.data?.[0];
@@ -40,12 +42,14 @@ export function Composer(
     locked.current = true;
     setBusy(true);
     setError("");
-    const key = JSON.stringify([selected.id, text, flow, worker]);
+    const criteria=doneWhen.split("\n").map(line=>line.trim()).filter(Boolean);
+    const key = JSON.stringify([selected.id, text, flow, worker, criteria]);
     if (pending.current?.key !== key) pending.current = { key, id: requestId() };
     try {
       const run = await launch({
         project: selected.id,
         prompt: text,
+        criteria,
         flow,
         worker,
         agentId,
@@ -53,6 +57,7 @@ export function Composer(
       });
       pending.current = null;
       setText("");
+      setDoneWhen("");setShowCriteria(false);
       void cache.invalidateQueries({ queryKey: ["clyde", "home"] });
       onStarted(run.id);
     } catch (e) {
@@ -123,6 +128,15 @@ export function Composer(
           borderRadius: 9,
         }}
       />
+      {showCriteria ? <View style={{gap:5}}>
+        <Text style={{color:c.foreground,fontWeight:"600"}}>Done when</Text>
+        <TextInput accessibilityLabel="Completion criteria" multiline editable={!busy} maxLength={4000}
+          value={doneWhen} onChangeText={setDoneWhen} placeholder="One observable outcome per line" placeholderTextColor={c.foregroundMuted}
+          style={{padding:10,minHeight:58,color:c.foreground,borderColor:c.border,borderWidth:1,borderRadius:6}}/>
+      </View> : <Pressable accessibilityRole="button" onPress={()=>setShowCriteria(true)}>
+        <Text style={{color:c.accent}}>+ Add completion criteria</Text>
+      </Pressable>}
+
       <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
         {control((selected?.name || "Select project") + " ▾", () => setMenu(menu === "project" ? null : "project"))}
         {control(

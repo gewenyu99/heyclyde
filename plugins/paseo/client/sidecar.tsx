@@ -98,7 +98,7 @@ export function Sidecar(props: PluginAgentPanelProps | PluginWorkspacePanelProps
             {runs.data?.error || runs.error
               ? <Text style={{ color: c.statusDanger }}>{runs.data?.error || runs.error?.message}</Text>
               : null}
-            {(runs.data?.data?.tasks ?? []).concat(runs.data?.data?.doneToday ?? []).filter((t) => t.kind === "run")
+            {(runs.data?.data?.tasks ?? []).concat(runs.data?.data?.failedToday ?? [], runs.data?.data?.doneToday ?? []).filter((t) => t.kind === "run")
               .map((t) => (
                 <Pressable
                   key={t.id}
@@ -109,7 +109,7 @@ export function Sidecar(props: PluginAgentPanelProps | PluginWorkspacePanelProps
                   <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{t.status}</Text>
                 </Pressable>
               ))}
-            {runs.data?.data && !runs.data.data.tasks.length && !runs.data.data.doneToday.length && (
+            {runs.data?.data && ![...runs.data.data.tasks,...(runs.data.data.failedToday??[]),...runs.data.data.doneToday].some(t=>t.kind==="run") && (
               <Text style={{ color: c.foregroundMuted }}>No runs in this workspace yet.</Text>
             )}
           </View>
