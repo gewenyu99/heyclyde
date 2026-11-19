@@ -5,6 +5,8 @@
 #   GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
 # Callback URL to register in Google Cloud Console and GitHub OAuth App settings:
 #   https://wlhlncmgjqyidosunugv.supabase.co/auth/v1/callback
+# The consent page (memory.heyclyde.me/oauth/consent) and the workspace (heyclyde.me) show each provider's button once it
+# is on here. memory/SIGN-IN.md has the rest of the setup and the cases that need a live login.
 set -eu
 
 PROJECT=wlhlncmgjqyidosunugv
@@ -17,6 +19,9 @@ Usage:
 
 Register this OAuth callback URL in Google Cloud Console and GitHub OAuth App settings:
   $CALLBACK
+
+Supabase Auth's redirect allow list must also hold https://heyclyde.me/** (the workspace's
+/auth/callback) and https://memory.heyclyde.me/oauth/approve** (the consent page). See memory/SIGN-IN.md.
 EOF
   exit 0
 fi

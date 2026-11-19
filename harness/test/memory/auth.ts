@@ -14,6 +14,8 @@ export type FakeAuth = {
   calls: { method: string; path: string; body: any }[]
   /** A PKCE auth code and the email it signs in. */
   signIns: Record<string, string>
+  /** PKCE auth codes whose user has no verified email, like a GitHub account with none (provider sign-in). */
+  unverified: Set<string>
   /** An email and its password, for password sign-in (R55). */
   passwords: Record<string, string>
   /** An authorization request by id: where its code goes and the client that asked. */
@@ -47,10 +49,12 @@ export async function startFakeAuth(extra?: (req: http.IncomingMessage, res: htt
   const passwords: FakeAuth['passwords'] = {}
   const authorizations: FakeAuth['authorizations'] = {}
   const deletedUsers = new Set<string>()
+  const unverified = new Set<string>()
   const state: FakeAuth = {
     url: '',
     calls,
     signIns,
+    unverified,
     passwords,
     authorizations,
     otpFailure: null,
@@ -105,7 +109,8 @@ export async function startFakeAuth(extra?: (req: http.IncomingMessage, res: htt
         // A stable uuid per email, as Supabase Auth gives each user one.
         const h = createHash('sha256').update(email).digest('hex')
         const id = `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`
-        return reply(200, { access_token: jwt({ sub: id, email }), user: { id, email, email_confirmed_at: '2026-11-01T00:00:00Z' } })
+        const confirmed = unverified.has(body.auth_code) ? null : '2026-11-01T00:00:00Z'
+        return reply(200, { access_token: jwt({ sub: id, email }), user: { id, email, email_confirmed_at: confirmed } })
       }
       const oauth = /^\/auth\/v1\/oauth\/authorizations\/([^/]+)(\/consent)?$/.exec(path)
       if (oauth) {

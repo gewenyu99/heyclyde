@@ -1,7 +1,10 @@
 // Authenticated heyclyde.me app pages (R51-R65): /memories, /entries/<id>, /graph, /quests, /agents, /apps, /usage, /settings.
 // Self-contained ES module with nonce'd CSS and vanilla client script, zero external scripts, zero inline style attrs,
 // zero slop, and zero matches of /\bmemory\b/i in visible copy.
+import { AUTH_PROVIDERS, OR_RULE, providerButton } from "../design/auth.js";
+import { AUTH_CSS } from "../design/css.js";
 import { DESIGN_URL, esc, LEGAL, LOGO, MARK, shell } from "./pages.js";
+import { socialClient } from "./social.js";
 
 const APP_ROUTES = [
   ["/memories", "Notes"],
@@ -71,7 +74,12 @@ const PAGE_SPEC = {
   apps: { title: "Connected apps · Clyde", heading: "Connected apps", sub: "Check which client apps hold OAuth access and revoke a grant anytime." },
   usage: { title: "Usage and billing · Clyde", heading: "Usage and billing", sub: "Check your plan, monthly usage meters, and overage spend limit." },
   settings: { title: "Settings · Clyde", heading: "Settings", sub: "Download an NDJSON export of your records or permanently delete your account." },
+  callback: { title: "Signing in · Clyde", heading: "Signing in", sub: "Finishing your Google or GitHub sign-in." },
 };
+
+// The provider buttons the sign-in form can show, from design/auth.mjs. Which ones show is Supabase Auth's call:
+// the page asks /auth/v1/settings and draws only the providers it has turned on.
+const PROVIDER_BUTTONS = Object.fromEntries(AUTH_PROVIDERS.map((p) => [p, providerButton(p)]));
 
 const APP_JS = `(function(){
 var root = document.getElementById('app-root');
@@ -79,6 +87,11 @@ if (!root) return;
 var view = root.getAttribute('data-view');
 var entryId = root.getAttribute('data-id') || '';
 var STORE = 'clyde_session_v1';
+var PROVIDER_BUTTONS = ${JSON.stringify(PROVIDER_BUTTONS).replace(/</g, "\\u003c")};
+var OR_RULE = ${JSON.stringify(OR_RULE).replace(/</g, "\\u003c")};
+var social = (${socialClient.toString()})(window);
+// Where a provider sign-in lands afterwards: this page, or the page a failed callback was headed to.
+var afterSignIn = view === 'callback' ? '/memories' : location.pathname + location.search;
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
@@ -205,6 +218,7 @@ function renderSignIn(msg) {
       '<h2 class="cl-title-2">Sign in to Clyde</h2>' +
       '<p class="cl-hint">Enter your email for a sign-in link or code, or use a password if your account has one.</p>' +
       '<div id="sign-msg" class="' + (msg ? 'app-banner app-banner--bad' : 'is-hidden') + '">' + esc(msg || '') + '</div>' +
+      '<div id="sign-providers" class="is-hidden"></div>' +
       '<form id="otp-req" class="app-grid">' +
         '<div class="cl-field"><label for="s-email">Email</label><input id="s-email" class="cl-input" type="email" required placeholder="you@example.com" autocomplete="email"></div>' +
         '<div class="app-actions"><button type="submit" class="cl-btn cl-btn--primary" id="btn-send-code">Send sign-in email</button>' +
@@ -221,6 +235,7 @@ function renderSignIn(msg) {
     '</section>';
   var banner = document.getElementById('sign-msg');
   var emailEl = document.getElementById('s-email');
+  showProviders(document.getElementById('sign-providers'), banner);
   var otpVerify = document.getElementById('otp-verify');
   var pwForm = document.getElementById('pw-form');
 
@@ -286,6 +301,43 @@ function renderSignIn(msg) {
       notice(banner, 'bad', err.message);
     }
   });
+}
+
+// Google and GitHub, when Supabase Auth has them on. A settings call that fails shows none, and email still works.
+async function showProviders(box, banner) {
+  var on = [];
+  try {
+    var r = await fetch('/auth/v1/settings');
+    var d = r.ok ? await r.json() : {};
+    on = Object.keys(PROVIDER_BUTTONS).filter(function(p) { return d && d.external && d.external[p] === true; });
+  } catch (e) { on = []; }
+  if (!box || !on.length) return;
+  box.className = 'app-grid';
+  box.innerHTML = '<div class="cl-auth-providers">' + on.map(function(p) { return PROVIDER_BUTTONS[p]; }).join('') + '</div>' + OR_RULE;
+  box.querySelectorAll('[data-provider]').forEach(function(b) {
+    b.addEventListener('click', async function() {
+      clearNotice(banner);
+      b.setAttribute('aria-busy', 'true');
+      try { await social.begin(b.getAttribute('data-provider'), afterSignIn); }
+      catch (err) { b.removeAttribute('aria-busy'); notice(banner, 'bad', err.message || "Couldn't start that sign-in. Try again."); }
+    });
+  });
+}
+
+// /auth/callback: the provider sent the tab back. The code leaves the address bar before anything else happens.
+async function finishProviderSignIn() {
+  var search = location.search;
+  history.replaceState(null, '', '/auth/callback');
+  root.innerHTML = '<p class="cl-hint" role="status">Finishing sign-in...</p>';
+  var res = await social.finish(search);
+  if (!res.ok) {
+    afterSignIn = res.next;
+    writeSession(null);
+    renderSignIn(res.message);
+    return;
+  }
+  writeSession(res.session);
+  location.replace(res.next);
 }
 
 function confText(c) {
@@ -853,6 +905,7 @@ async function renderSettings() {
 }
 
 async function start() {
+  if (view === 'callback') return finishProviderSignIn();
   parseCallbackHash();
   var s = readSession();
   updateUserBar(s);
@@ -890,6 +943,7 @@ export function appPage(path, nonce) {
   else if (path === "/usage") view = "usage";
   else if (path === "/settings") view = "settings";
   else if (path === "/entries") view = "entries";
+  else if (path === "/auth/callback") view = "callback";
   else if (path.startsWith("/entries/")) {
     const raw = path.slice("/entries/".length);
     if (raw && !raw.includes("/")) {
@@ -925,6 +979,6 @@ export function appPage(path, nonce) {
   return {
     status: 200,
     cacheControl: "no-store",
-    html: shell({ nonce, title: spec.title, css: APP_CSS, body: header + main + footer, script: APP_JS, noindex: true }),
+    html: shell({ nonce, title: spec.title, css: APP_CSS + AUTH_CSS, body: header + main + footer, script: APP_JS, noindex: true }),
   };
 }

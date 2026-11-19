@@ -115,6 +115,10 @@ from memory.admin_audit where action = 'oauth_deny' order by created_at desc lim
 
 Add that host to `CLIENT_HOSTS` in [oauth.ts](supabase/functions/memory/oauth.ts) and deploy.
 
+## Google and GitHub sign-in
+
+The consent page and the workspace offer **Continue with Google** and **Continue with GitHub** once Supabase Auth has each provider on. [SIGN-IN.md](SIGN-IN.md) has the setup, the app-by-app callbacks, and the cases that need a live login.
+
 ## The tokens
 
 Supabase stores every token as SHA-256 only, so a database read never yields one.

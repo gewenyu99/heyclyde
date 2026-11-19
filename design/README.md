@@ -7,6 +7,7 @@ Use this directory when building a Clyde interface or asset. Sticky-Note Forehea
 | Voice, color, type, and illustration rules | [Brand brief](BRAND.md) and [design principles](PRINCIPLES.md) |
 | Theme, typography, spacing, and motion | [Tokens](tokens.css) |
 | Buttons, cards, sticky notes, stamps, and quest stubs | [Components](components.css) and the [component preview](../memory/design/design-system.html) |
+| Sign-in: Google and GitHub buttons and the "or with email" rule | [Auth styles](auth.css) and [provider buttons](auth.mjs), on the Worker's pages only |
 | Standing mascot | [Light SVG](brand/clyde-mascot-light.svg) and [dark SVG](brand/clyde-mascot-dark.svg) |
 | Head mark and wordmark together | [Light lockup](brand/clyde-lockup-light.svg) and [dark lockup](brand/clyde-lockup-dark.svg) |
 | Inline mark and lockup that follow the active tokens | [SVG exports](brand.js) |

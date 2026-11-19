@@ -169,6 +169,15 @@ test('R54: a closed door says so', { skip: SKIP }, async () => {
   }
 })
 
+/** The bind and the cookie /oauth/provider gave this browser, read off its 302. */
+function bound(res: { headers: Record<string, any> }) {
+  const set = ([] as string[]).concat(res.headers['set-cookie'] ?? [])[0] ?? ''
+  const cookie = /^(__Host-clyde_oauth=[^;]+)/.exec(set)?.[1] ?? ''
+  const to = new URL(String(res.headers.location))
+  const bind = new URL(String(to.searchParams.get('redirect_to'))).searchParams.get('bind') ?? ''
+  return { bind, cookie, set }
+}
+
 test('R54/R55: /oauth/provider and CSP-safe 303 direct wait redirect', { skip: SKIP }, async () => {
   const { startSibling } = await import('./server.ts')
   const sibling = await startSibling(memory, { MEMORY_OAUTH_PROVIDERS: 'google' })
@@ -198,8 +207,9 @@ test('R54/R55: /oauth/provider and CSP-safe 303 direct wait redirect', { skip: S
     const who = email()
     memory.auth.signIns[`code-${authId}`] = who
     memory.auth.authorizations[authId] = { redirect_uri: 'https://platform.openai.com/oauth/callback', client: { id: 'openai-test', name: 'ChatGPT' } }
-    const direct = await request('GET', `${sibling.url}/oauth/approve?authorization_id=${authId}&direct=1&code=code-${authId}`, {
-      headers: { ...proxied('US'), accept: 'application/json' }, timeoutMs: 30_000,
+    const { bind, cookie } = bound(ok)
+    const direct = await request('GET', `${sibling.url}/oauth/approve?authorization_id=${authId}&direct=1&bind=${bind}&code=code-${authId}`, {
+      headers: { ...proxied('US'), accept: 'application/json', cookie }, timeoutMs: 30_000,
     })
     assert.equal(direct.status, 303, direct.text)
     assert.equal(direct.headers.location, `/oauth/wait?authorization_id=${authId}`)
@@ -207,6 +217,119 @@ test('R54/R55: /oauth/provider and CSP-safe 303 direct wait redirect', { skip: S
     const waited = await request('GET', `${sibling.url}/oauth/wait?authorization_id=${authId}`, { timeoutMs: 30_000 })
     assert.equal(waited.status, 302, waited.text)
     assert.match(String(waited.headers.location), /^https:\/\/platform\.openai\.com\/oauth\/callback\?code=/)
+  } finally {
+    await sibling.close()
+  }
+})
+
+// Google and GitHub on the consent page: the callback has to come back to the browser that started it, a cancelled or
+// failed one goes back to this request's sign-in, and nothing reaches a callback Clyde doesn't approve.
+test('provider sign-in: bound to the starting browser, with denial, expiry, mismatch and open-redirect cases', { skip: SKIP }, async () => {
+  const { startSibling } = await import('./server.ts')
+  const sibling = await startSibling(memory, { MEMORY_OAUTH_PROVIDERS: 'google,github' })
+  const exchanges = () => memory.auth.calls.filter((c) => c.path === '/auth/v1/token' && c.body?.auth_code).length
+  const begin = async (provider = 'github') => {
+    const id = `auth-${nonce()}`
+    const r = await request('GET', `${sibling.url}/oauth/provider?authorization_id=${id}&provider=${provider}`, { headers: proxied('US'), timeoutMs: 30_000 })
+    assert.equal(r.status, 302, r.text)
+    return { id, ...bound(r), location: String(r.headers.location) }
+  }
+  const back = (id: string, query: string, cookie = '') => request('GET', `${sibling.url}/oauth/approve?authorization_id=${id}&direct=1&${query}`, {
+    headers: { ...proxied('US'), accept: 'application/json', ...(cookie ? { cookie } : {}) }, timeoutMs: 30_000,
+  })
+  const cleared = (r: { headers: Record<string, any> }) =>
+    ([] as string[]).concat(r.headers['set-cookie'] ?? []).some((c) => /^__Host-clyde_oauth=;.*Max-Age=0/.test(c))
+  try {
+    // The start: PKCE to Supabase Auth, and a cookie only this host, over https, can read.
+    const a = await begin('github')
+    const to = new URL(a.location)
+    assert.equal(to.searchParams.get('provider'), 'github')
+    assert.equal(to.searchParams.get('code_challenge_method'), 's256')
+    assert.ok((to.searchParams.get('code_challenge') ?? '').length >= 43)
+    assert.match(a.bind, /^[A-Za-z0-9_-]{16,64}$/)
+    assert.equal(a.cookie, `__Host-clyde_oauth=${a.id}.${a.bind}`)
+    for (const attr of ['Path=/', 'HttpOnly', 'Secure', 'SameSite=Lax', 'Max-Age=900']) assert.ok(a.set.includes(attr), `${attr} in ${a.set}`)
+    assert.ok(!a.set.includes('Domain='), 'no Domain, so the cookie stays on this host')
+
+    // Success: the code is spent once, with the stored verifier, and the window goes on to the app.
+    memory.auth.signIns[`code-${a.id}`] = email()
+    memory.auth.authorizations[a.id] = { redirect_uri: 'https://claude.ai/api/mcp/auth_callback', client: { id: `c-${nonce()}`, name: 'Claude' } }
+    let n = exchanges()
+    const ok = await back(a.id, `bind=${a.bind}&code=code-${a.id}`, a.cookie)
+    assert.equal(ok.status, 303, ok.text)
+    assert.equal(ok.headers.location, `/oauth/wait?authorization_id=${a.id}`)
+    assert.ok(cleared(ok), 'the binding is spent')
+    assert.equal(exchanges(), n + 1)
+    const verifier = sql(`select code_verifier from memory.oauth_consent where authorization_id = '${a.id}'`)
+    assert.equal(verifier[0]?.code_verifier, '', 'the verifier is gone once used')
+    const went = await request('GET', `${sibling.url}/oauth/wait?authorization_id=${a.id}`, { timeoutMs: 30_000 })
+    assert.equal(went.status, 302)
+    assert.match(String(went.headers.location), /^https:\/\/claude\.ai\/api\/mcp\/auth_callback\?code=/)
+
+    // Another browser (no cookie), a cookie for another request, and a bind that doesn't match: refused, nothing spent.
+    const b = await begin('google')
+    memory.auth.signIns[`code-${b.id}`] = email()
+    memory.auth.authorizations[b.id] = { redirect_uri: 'https://claude.ai/api/mcp/auth_callback', client: { id: `c-${nonce()}`, name: 'Claude' } }
+    n = exchanges()
+    for (const [query, cookie] of [
+      [`bind=${b.bind}&code=code-${b.id}`, ''],
+      [`bind=${b.bind}&code=code-${b.id}`, a.cookie],
+      [`bind=${a.bind}&code=code-${b.id}`, b.cookie],
+      [`code=code-${b.id}`, b.cookie],
+      [`bind=${b.bind}&code=code-${b.id}`, `__Host-clyde_oauth=${b.id}.${b.bind}x`],
+    ]) {
+      const r = await back(b.id, query, cookie)
+      assert.equal(r.status, 403, `${query} ${cookie}: ${r.text}`)
+      const body = JSON.parse(r.text)
+      assert.equal(body.state, 'error')
+      assert.equal(body.retry, true)
+      assert.match(body.message, /didn't start in this browser/)
+      assert.ok(cleared(r))
+    }
+    assert.equal(exchanges(), n, 'no code was spent')
+
+    // Cancelled at the provider, or a provider error: back to this request's sign-in, nothing spent.
+    const denied = await back(b.id, 'error=access_denied&error_description=The+user+denied+access', b.cookie)
+    assert.equal(denied.status, 400, denied.text)
+    assert.deepEqual([JSON.parse(denied.text).state, JSON.parse(denied.text).retry], ['denied', true])
+    const broken = await back(b.id, 'error=server_error&error_description=Unable+to+exchange+external+code', b.cookie)
+    assert.equal(broken.status, 400)
+    assert.equal(JSON.parse(broken.text).state, 'error')
+    assert.match(JSON.parse(broken.text).message, /Unable to exchange external code/)
+    assert.equal(exchanges(), n)
+
+    // Expired: 15 minutes after the start, even the right browser gets the expired page.
+    exec(`update memory.oauth_consent set created_at = now() - interval '16 minutes' where authorization_id = '${b.id}'`)
+    const late = await back(b.id, `bind=${b.bind}&code=code-${b.id}`, b.cookie)
+    assert.equal(late.status, 410, late.text)
+    assert.equal(JSON.parse(late.text).state, 'expired')
+    assert.equal(exchanges(), n)
+
+    // A code Supabase Auth refuses offers the sign-in page again.
+    const c = await begin('google')
+    const refused = await back(c.id, `bind=${c.bind}&code=not-a-code`, c.cookie)
+    assert.equal(refused.status, 400, refused.text)
+    assert.equal(JSON.parse(refused.text).retry, true)
+
+    // A provider account with no verified email gets no grant.
+    const d = await begin('github')
+    memory.auth.signIns[`code-${d.id}`] = email()
+    memory.auth.unverified.add(`code-${d.id}`)
+    memory.auth.authorizations[d.id] = { redirect_uri: 'https://claude.ai/api/mcp/auth_callback', client: { id: `c-${nonce()}`, name: 'Claude' } }
+    const unverified = await back(d.id, `bind=${d.bind}&code=code-${d.id}`, d.cookie)
+    assert.equal(unverified.status, 403, unverified.text)
+    assert.match(JSON.parse(unverified.text).message, /no verified email/)
+
+    // Open redirect: a client whose callback isn't an approved app is refused, and the window never goes there.
+    const e = await begin('google')
+    memory.auth.signIns[`code-${e.id}`] = email()
+    memory.auth.authorizations[e.id] = { redirect_uri: 'https://evil.example/cb', client: { id: `c-${nonce()}`, name: 'Evil' } }
+    const evil = await back(e.id, `bind=${e.bind}&code=code-${e.id}`, e.cookie)
+    assert.equal(evil.status, 403, evil.text)
+    assert.equal(JSON.parse(evil.text).state, 'refused')
+    assert.equal(evil.headers.location, undefined)
+    const after = await request('GET', `${sibling.url}/oauth/wait?authorization_id=${e.id}`, { timeoutMs: 30_000 })
+    assert.ok(!String(after.headers.location ?? '').startsWith('https://evil.example'), String(after.headers.location))
   } finally {
     await sibling.close()
   }

@@ -8,6 +8,11 @@ a third-party website. The official files for those six are kept outside the rep
 `memory/proxy/public/_clyde/apps/<slug>.svg`, add it to `APP_LOGO` in `memory/proxy/pages.js`, and add the notice
 its owner requires. The row is labelled "Connects to", not "Works with", per OpenAI's wording rules.
 
+**Sign-in providers.** The consent page and the workspace sign-in show Google's multicolor "G" and GitHub's mark beside
+"Continue with Google" and "Continue with GitHub" ([auth.mjs](auth.mjs)). Both are the providers' own marks, unaltered,
+on a light or dark neutral button, which is how Google's Sign in with Google branding guidelines and GitHub's logo
+guidelines allow a sign-in button to use them. Keep the Google button at least as prominent as GitHub's.
+
 Research notes follow, as gathered.
 
 Collected 2026-11-15. All files come from each company's own domain or CDN. No logo was redrawn, and no third-party source (Wikipedia, Simple Icons, LobeHub, svgrepo, toolradar and so on) was used. Paths are relative to this folder.

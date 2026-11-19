@@ -11,7 +11,10 @@ const ORIGIN = "https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory";
 const AUTH_ORIGIN = "https://wlhlncmgjqyidosunugv.supabase.co";
 const AUTH_VERIFY = `${AUTH_ORIGIN}/auth/v1/verify`;
 const SIGN_IN = new Set(["/oauth/consent", "/oauth/provider", "/oauth/wait", "/oauth/approve"]);
-const SITE_AUTH = new Set(["/auth/v1/otp", "/auth/v1/verify", "/auth/v1/token", "/auth/v1/user", "/auth/v1/logout"]);
+// The workspace's sign-in calls, passed to Supabase Auth. /auth/v1/authorize starts a Google or GitHub sign-in (a 302 to
+// the provider) and /auth/v1/settings says which providers are on, both GET only.
+const SITE_AUTH = new Set(["/auth/v1/otp", "/auth/v1/verify", "/auth/v1/token", "/auth/v1/user", "/auth/v1/logout", "/auth/v1/authorize", "/auth/v1/settings"]);
+const SITE_AUTH_GET = new Set(["/auth/v1/authorize", "/auth/v1/settings"]);
 const ID = /^[A-Za-z0-9_-]{8,100}$/;
 let cachedAnonKey = "";
 
@@ -122,7 +125,10 @@ async function signIn(req, url, env) {
   const headers = { "cache-control": "no-store" };
   if (advances) headers.refresh = `3; url=/oauth/wait?authorization_id=${encodeURIComponent(id)}`;
   const asks = data.state === "ask_email" && typeof data.turnstile_site_key === "string" && /^[\w-]{1,100}$/.test(data.turnstile_site_key);
-  return html((n) => statePage(asks ? data : { ...data, turnstile_site_key: undefined }, n, ID.test(id) ? id : ""), res.status, headers, asks);
+  const page = html((n) => statePage(asks ? data : { ...data, turnstile_site_key: undefined }, n, ID.test(id) ? id : ""), res.status, headers, asks);
+  // The function clears its provider sign-in cookie on these pages too, so its Set-Cookie rides along.
+  for (const c of res.headers.getSetCookie?.() ?? []) page.headers.append("set-cookie", c);
+  return page;
 }
 
 /** A browser asking for a page: it accepts HTML and sends no token. */
@@ -138,6 +144,7 @@ export default {
     if (file) return new Response(file.body, { headers: { "content-type": file.type, "cache-control": "public, max-age=3600" } });
     if (url.hostname === "heyclyde.me" && SITE_API(url.pathname)) return pass(req, url, env, { "x-memory-host": "heyclyde.me" });
     if (url.hostname === "heyclyde.me" && SITE_AUTH.has(url.pathname)) {
+      if (SITE_AUTH_GET.has(url.pathname) && req.method !== "GET") return new Response("Method not allowed", { status: 405, headers: { allow: "GET" } });
       const headers = new Headers(req.headers);
       headers.delete("host");
       headers.delete("x-memory-proxy");

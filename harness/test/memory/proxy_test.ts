@@ -310,7 +310,7 @@ Deno.test('site pages say Clyde', async () => {
   const homeTitle = /<title>([^<]*)<\/title>/i.exec(homeHtml)?.[1] ?? ''
   assert.ok(homeTitle.includes('Clyde'), homeTitle)
 
-  for (const path of ['/memories', '/entries/note-1', '/graph', '/quests', '/agents', '/apps', '/usage', '/settings']) {
+  for (const path of ['/memories', '/entries/note-1', '/graph', '/quests', '/agents', '/apps', '/usage', '/settings', '/auth/callback']) {
     stub(json({ ok: true }))
     const r = await at(`https://heyclyde.me${path}`)
     assert.equal(r.status, 200, path)
@@ -343,4 +343,91 @@ Deno.test('site pages say Clyde', async () => {
   assert.equal(sent[0].url, 'https://wlhlncmgjqyidosunugv.supabase.co/auth/v1/token?grant_type=password')
   assert.equal(sent[0].headers.get('x-memory-proxy'), null)
   assert.equal(sent[0].headers.get('apikey'), 'anon-test')
+})
+
+// Google and GitHub sign-in on the consent page and the workspace. The buttons are design/auth.mjs's, styled by auth.css.
+Deno.test('the consent page offers the providers the function names, each for this same request', async () => {
+  stub(json({ state: 'ask_email', message: 'memory: enter your email', providers: ['github', 'google', 'twitter'] }))
+  const html = await (await get('/oauth/consent?authorization_id=abc12345')).text()
+  const links = [...html.matchAll(/<a class="cl-btn[^"]*cl-btn--provider" href="([^"]+)"/g)].map((m) => m[1])
+  assert.deepEqual(links, ['/oauth/provider?authorization_id=abc12345&amp;provider=google', '/oauth/provider?authorization_id=abc12345&amp;provider=github'])
+  assert.ok(html.includes('Continue with Google') && html.includes('Continue with GitHub'))
+  assert.ok(!html.includes('twitter'))
+  assert.ok(html.includes('.cl-btn--provider'), 'auth.css is inlined')
+  stub(json({ state: 'ask_email', message: 'memory: enter your email' }))
+  const none = await (await get('/oauth/consent?authorization_id=abc12345')).text()
+  assert.ok(!/cl-btn--provider" href/.test(none) && !none.includes('cl-or-rule"'), 'no providers, no buttons and no rule')
+})
+
+Deno.test('a cancelled or failed provider sign-in goes back to this request\'s sign-in page and nowhere else', async () => {
+  stub(json({ state: 'denied', message: 'memory: sign-in was cancelled at the provider. Nothing was shared.', retry: true }, 400))
+  const r = await get('/oauth/approve?authorization_id=abc12345&direct=1&error=access_denied')
+  const html = await r.text()
+  assert.equal(r.status, 400)
+  assert.equal(h1(html), 'Sign-in cancelled')
+  assert.ok(html.includes('href="/oauth/consent?authorization_id=abc12345">Back to sign-in</a>'), html)
+  stub(json({ state: 'error', message: "memory: that sign-in didn't start in this browser.", retry: true }, 403))
+  const elsewhere = await (await get('/oauth/approve?authorization_id=abc12345&direct=1')).text()
+  assert.equal(h1(elsewhere), 'Sign-in failed')
+  assert.ok(elsewhere.includes('Back to sign-in'))
+  // The link is built from this request's id, never from the JSON, and only with retry: true.
+  stub(json({ state: 'error', message: 'memory: x', retry: 'https://evil.example' }, 400))
+  assert.ok(!(await (await get('/oauth/approve?authorization_id=abc12345&direct=1')).text()).includes('Back to sign-in'))
+  stub(json({ state: 'error', message: 'memory: x', retry: true }, 400))
+  const badId = await (await get('/oauth/approve?authorization_id=x')).text()
+  assert.ok(!badId.includes('Back to sign-in'), 'no id, no link')
+})
+
+Deno.test('the function\'s sign-in cookie survives the Worker, on redirects and on rendered pages', async () => {
+  const cookie = '__Host-clyde_oauth=abc12345.bind; Path=/; Max-Age=900; HttpOnly; Secure; SameSite=Lax'
+  stub(() => new Response(null, { status: 302, headers: { location: 'https://wlhlncmgjqyidosunugv.supabase.co/auth/v1/authorize?provider=github', 'set-cookie': cookie } }))
+  const start = await get('/oauth/provider?authorization_id=abc12345&provider=github')
+  assert.equal(start.status, 302)
+  assert.equal(start.headers.get('set-cookie'), cookie)
+  const clear = '__Host-clyde_oauth=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax'
+  stub(() => Response.json({ state: 'denied', message: 'memory: cancelled', retry: true }, { status: 400, headers: { 'set-cookie': clear } }))
+  const page = await get('/oauth/approve?authorization_id=abc12345&direct=1&error=access_denied')
+  assert.match(String(page.headers.get('content-type')), /^text\/html/)
+  assert.equal(page.headers.get('set-cookie'), clear)
+  stub(() => new Response(null, { status: 303, headers: { location: '/oauth/wait?authorization_id=abc12345' } }))
+  await get('/oauth/approve?authorization_id=abc12345&direct=1&bind=b&code=c', { accept: 'text/html', cookie: 'x=1; __Host-clyde_oauth=abc12345.b' })
+  assert.equal(sent[0].headers.get('cookie'), 'x=1; __Host-clyde_oauth=abc12345.b', 'the browser\'s cookie reaches the function')
+})
+
+Deno.test('heyclyde.me passes the workspace\'s provider calls to Supabase Auth, GET only', async () => {
+  const to = 'https://accounts.google.com/o/oauth2/v2/auth?client_id=x'
+  stub(() => new Response(null, { status: 302, headers: { location: to } }))
+  const q = '?provider=google&redirect_to=https%3A%2F%2Fheyclyde.me%2Fauth%2Fcallback%3Fstate%3Ds&code_challenge=c&code_challenge_method=s256'
+  const go = await at(`https://heyclyde.me/auth/v1/authorize${q}`)
+  assert.equal(go.status, 302)
+  assert.equal(go.headers.get('location'), to)
+  // The Worker may look up the anon key first, so the Auth call is the last one sent.
+  assert.equal(sent.at(-1)!.url, `https://wlhlncmgjqyidosunugv.supabase.co/auth/v1/authorize${q}`)
+  assert.equal(sent.at(-1)!.headers.get('x-memory-proxy'), null)
+  stub(json({ external: { google: true, github: false } }))
+  const settings = await at('https://heyclyde.me/auth/v1/settings')
+  assert.deepEqual(await settings.json(), { external: { google: true, github: false } })
+  assert.equal(sent.at(-1)!.url, 'https://wlhlncmgjqyidosunugv.supabase.co/auth/v1/settings')
+  for (const path of ['/auth/v1/authorize', '/auth/v1/settings']) {
+    stub(json({ ok: true }))
+    const post = await at(`https://heyclyde.me${path}`, { method: 'POST', body: '{}' })
+    assert.equal(post.status, 405, path)
+    assert.equal(sent.length, 0, path)
+  }
+})
+
+Deno.test('the workspace sign-in carries the provider buttons and the callback page finishes the sign-in', async () => {
+  stub(json({ ok: true }))
+  const html = await (await at('https://heyclyde.me/memories')).text()
+  assert.ok(html.includes('Continue with Google') && html.includes('Continue with GitHub'), 'buttons ship in the script, shown once /auth/v1/settings says so')
+  assert.ok(html.includes('/auth/v1/settings') && html.includes('/auth/v1/authorize') && html.includes('grant_type=pkce'))
+  assert.ok(html.includes('.cl-btn--provider'), 'auth.css is inlined')
+  const script = /<script nonce="[^"]+">([\s\S]*?)<\/script>/.exec(html)?.[1] ?? ''
+  assert.doesNotThrow(() => new Function(script), 'the page script, provider client included, parses')
+  assert.ok(!/<script[^>]*>[^<]*<\/script>[\s\S]*\son[a-z]+=/i.test(html), 'no inline event handlers')
+  const cb = await at('https://heyclyde.me/auth/callback?state=s&code=c')
+  assert.equal(cb.status, 200)
+  assert.match(String(cb.headers.get('cache-control')), /no-store/)
+  assert.match(String(cb.headers.get('content-security-policy')), /connect-src 'self'/)
+  assert.match(await cb.text(), /data-view="callback"/)
 })

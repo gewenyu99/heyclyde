@@ -10,6 +10,8 @@ verify_jwt = false
 # /install/approve, and the installer finishes the PKCE exchange itself, so the link alone signs nobody in. The function
 # mints a device token only for an email in memory.allowed_email. Sign-ups are off: Clyde is allowlist only, and the
 # accounts that exist were added on purpose.
+# Google and GitHub sign in a person on the consent page and the workspace (memory/SIGN-IN.md). They come back through
+# heyclyde.me/auth/callback and memory.heyclyde.me/oauth/approve, both covered below. oauth_providers_setup.sh turns them on.
 [auth]
 enable_signup = false
 site_url = "https://memory.heyclyde.me"

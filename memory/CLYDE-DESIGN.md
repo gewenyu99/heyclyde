@@ -219,7 +219,7 @@ Why $12.99 and not $9.99: the same model gives $9.99 with 4M tokens 67.9%, and $
 
 ## L2: auth
 
-**The site.** Supabase Auth email one-time codes through Resend from `send.heyclyde.me` (R24), plus email and password for the store reviewers' demo account, plus Turnstile CAPTCHA on sign-up. `config.toml` gets `enable_signup = true` and `site_url = "https://heyclyde.me"`. The site holds the session in supabase-js and sends its access token to `/me`.
+**The site.** Supabase Auth email one-time codes through Resend from `send.heyclyde.me` (R24), plus email and password for the store reviewers' demo account, plus Turnstile CAPTCHA on sign-up, plus Google and GitHub through Supabase Auth's PKCE flow on the consent page and the workspace ([SIGN-IN.md](SIGN-IN.md)). They identify the person only, and link to an existing account with the same verified email. `config.toml` gets `enable_signup = true` and `site_url = "https://heyclyde.me"`. The site holds the session in supabase-js and sends its access token to `/me`.
 
 **Agent apps.** Supabase's OAuth 2.1 server with dynamic client registration and S256 PKCE. Consent renders at `https://heyclyde.me/oauth/consent`, the page the `memory-ui` session builds (R46), now open to any signed-up account. The callback allowlist is one constant shared by the consent page and `auth.ts`:
 

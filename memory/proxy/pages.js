@@ -1,7 +1,8 @@
 // The pages the Worker serves at memory.heyclyde.me (R46): the sign-in states the function reports as JSON, and the
 // "connect your apps" page at /. They wear Clyde's sticky-note & doodle design system (R68): tokens.css, components.css
 // and fonts.css, inlined from memory/design/css.js because the CSP allows only this response's nonce'd styles.
-import { COMPONENTS_CSS, FONTS_CSS, TOKENS_CSS } from "../design/css.js";
+import { providerBlock } from "../design/auth.js";
+import { AUTH_CSS, COMPONENTS_CSS, FONTS_CSS, TOKENS_CSS } from "../design/css.js";
 import { AGENT_SETUP_PROMPT, CLYDE_VERIFY_SH, HOOK_APPS, HOOK_INSTALL, HOOK_PATH, INSTALL } from "./hook.js";
 
 // The one connector URL every app and store listing uses (R53). memory.heyclyde.me/mcp stays as an alias.
@@ -81,11 +82,7 @@ main.sign{flex:1;display:flex;align-items:center;justify-content:center;padding:
 form.ask{display:grid;gap:14px;margin-top:4px}
 .human{margin:0;font:var(--cl-text-small);color:var(--cl-ink-3)}
 form.ask .cl-btn[disabled]{opacity:.55;cursor:progress}
-.social{display:grid;gap:10px;margin-top:4px}
-.social-btn{justify-content:center;gap:10px;text-decoration:none}
-.social-btn svg{width:18px;height:18px;flex:none}
-.or-rule{display:flex;align-items:center;gap:12px;color:var(--cl-ink-3);font:var(--cl-text-label);text-transform:uppercase;letter-spacing:.06em;margin:2px 0}
-.or-rule::before,.or-rule::after{content:"";flex:1;height:1px;background:var(--cl-rule)}
+.retry{justify-self:start;text-decoration:none}
 `;
 
 // The hero, section, works and how styles heyclyde.me shares with the connect page (R72 keeps the site home under 50 KB).
@@ -230,10 +227,6 @@ const ICON = {
   wait: svg(`<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>`),
 };
 
-const PROVIDER_ICON = {
-  google: `<svg viewBox="0 0 18 18" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92a8.78 8.78 0 0 0 2.68-6.62Z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.83.86-3.04.86-2.34 0-4.32-1.58-5.03-3.71H.96v2.33A9 9 0 0 0 9 18Z"/><path fill="#FBBC05" d="M3.97 10.71A5.4 5.4 0 0 1 3.69 9c0-.6.1-1.17.28-1.71V4.96H.96A9 9 0 0 0 0 9c0 1.45.35 2.82.96 4.04l3.01-2.33Z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.96l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58Z"/></svg>`,
-  github: `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.65 7.65 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>`,
-};
 
 const live = (text) => `<div class="live" role="status"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>${text}</div>`;
 const stamp = (tone, word, when) => `<span class="cl-stamp cl-stamp--${tone} is-new">${word} <small>${when}</small></span>`;
@@ -282,9 +275,8 @@ export function statePage(data, nonce, id = "") {
       lead = names.length
         ? `Sign in with ${names.join(" or ")}, or enter your email for a one-time link.`
         : "Enter your email and Clyde sends you a one-time sign-in link.";
-      const social = providers.length
-        ? `<div class="social">${providers.map((pr) => `<a class="cl-btn cl-btn--lg cl-btn--block social-btn" href="/oauth/provider?authorization_id=${esc(encodeURIComponent(id))}&provider=${pr}">${PROVIDER_ICON[pr]}<span>Continue with ${pr === "google" ? "Google" : "GitHub"}</span></a>`).join("")}</div><div class="or-rule"><span>or with email</span></div>`
-        : "";
+      // The provider buttons are design/auth.mjs's. Each starts /oauth/provider for this same request.
+      const social = providerBlock(providers, (pr) => `/oauth/provider?authorization_id=${esc(encodeURIComponent(id))}&amp;provider=${pr}`);
       // R80: with Turnstile on, the button waits for its token (Cloudflare's callbacks), says what it's waiting for, and
       // locks again if the token expires or errors. A password sign-in needs no token. A failed try comes back here with
       // the address kept and the reason above the form.
@@ -315,6 +307,10 @@ ${human ? `<div class="cf-turnstile" data-sitekey="${esc(data.turnstile_site_key
       lead = "Your Clyde plan is active. Paid limits apply within a minute.";
       extra = note("Close this tab and return to your app.");
       break;
+    case "denied":
+      mark = stamp("warn", "Cancelled", date); h1 = "Sign-in cancelled"; title = "Sign-in cancelled";
+      lead = esc(sentence(data?.message, "Sign-in was cancelled at the provider. Nothing was shared."));
+      break;
     case "expired":
       mark = stamp("warn", "Expired", date); h1 = "Link expired"; title = "Link expired";
       lead = "Sign-in links work once and expire after 15 minutes. Start again from your app.";
@@ -323,10 +319,14 @@ ${human ? `<div class="cf-turnstile" data-sitekey="${esc(data.turnstile_site_key
       mark = stamp("bad", "Error", date); h1 = "Sign-in failed"; title = "Sign-in failed";
       lead = esc(sentence(data?.message));
   }
+  // A provider sign-in that failed or was cancelled goes back to this request's own sign-in page, never anywhere else.
+  if (data?.retry === true && /^[A-Za-z0-9_-]{8,100}$/.test(id)) {
+    extra += `<a class="cl-btn cl-btn--lg retry" href="/oauth/consent?authorization_id=${esc(encodeURIComponent(id))}">Back to sign-in</a>`;
+  }
   const body = `<header class="bar center wrap">${WORDMARK}</header>
 <main class="sign"><section class="cl-sheet ticket"><div class="ticket-head"><span class="cl-label">${kind}</span><span class="cl-label">memory.heyclyde.me</span></div>
 <div class="ticket-body">${mark}<h1 class="cl-title-1">${h1}</h1><p class="cl-lead">${lead}</p>${extra}</div></section></main>${footer}`;
-  return shell({ nonce, title: `${title} · Clyde`, css: SIGN_CSS, body });
+  return shell({ nonce, title: `${title} · Clyde`, css: SIGN_CSS + AUTH_CSS, body });
 }
 
 // ---- Connect your apps ----

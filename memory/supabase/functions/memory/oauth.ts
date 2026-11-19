@@ -38,6 +38,14 @@ const MAX_EMAILS = 3;
 // from one client address an hour.
 const MAX_PER_EMAIL = 3, MAX_PER_CLIENT = 5;
 const EMAIL = /^[^\s@<>"]{1,64}@[^\s@<>"]{1,255}\.[^\s@<>"]{2,63}$/;
+// A Google or GitHub sign-in is bound to the browser that started it: /oauth/provider sets this cookie to
+// <authorization_id>.<bind> and puts bind in the callback's address, and /oauth/approve?direct=1 trades the code only when
+// both match. A callback opened in another browser, or one an attacker started and sent on, is refused before any code is
+// spent. __Host- keeps it on memory.heyclyde.me alone, and SameSite=Lax still sends it on the provider's redirect back.
+const BIND_COOKIE = "__Host-clyde_oauth";
+const BIND = /^[A-Za-z0-9_-]{16,64}$/;
+const bindCookie = (value: string, maxAge: number) => `${BIND_COOKIE}=${value}; Path=/; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Lax`;
+export const CLEAR_BIND = bindCookie("", 0);
 
 const text = (body: string, status = 200, headers: Record<string, string> = {}) =>
   new Response(body + "\n", { status, headers: { "content-type": "text/plain; charset=utf-8", ...headers } });
@@ -65,6 +73,21 @@ export function resourceMetadata(base: string) {
 }
 
 export const resourceMetadataUrl = (base: string) => `${base}/.well-known/oauth-protected-resource`;
+
+function same(a: string, b: string) {
+  if (!a || !b || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/** Whether this browser started the provider sign-in for this request (BIND_COOKIE). */
+function boundHere(req: Request, id: string, bind: string | null) {
+  if (!bind || !BIND.test(bind)) return false;
+  const jar = (req.headers.get("cookie") ?? "").split(/;\s*/);
+  const got = jar.find((c) => c.startsWith(`${BIND_COOKIE}=`))?.slice(BIND_COOKIE.length + 1) ?? "";
+  return same(got, `${id}.${bind}`);
+}
 
 function b64url(bytes: Uint8Array) {
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -255,24 +278,40 @@ function clientAllowed(uri: string) {
   }
 }
 
-/** The email link or OAuth callback lands here. Sign the user in with the stored verifier and approve the client request. */
-async function approve(p: Page, req: Request, id: string, code: string | null, error: string | null, direct = false) {
+/** The email link or OAuth callback lands here. Sign the user in with the stored verifier and approve the client request.
+ * direct is a Google or GitHub callback (/oauth/provider's redirect_to): it must come back to the browser that started it,
+ * and a cancelled or failed one offers this request's sign-in page again. */
+async function approve(p: Page, req: Request, id: string, code: string | null, error: { code: string | null; text: string | null },
+  direct = false, bind: string | null = null) {
   const [row] = await sql`select code_verifier, redirect_url, client_name from memory.oauth_consent
     where authorization_id = ${id} and created_at > now() - ${FRESH}::interval`;
   if (!row) return page(p, "expired", "that sign-in expired. Start connecting again from the app.", 410);
+  if (direct && !code) {
+    const line = error.code === "access_denied"
+      ? "sign-in was cancelled at the provider. Nothing was shared. Go back to sign-in to try again or use your email."
+      : `the provider couldn't sign you in${error.text ? ` (${error.text.slice(0, 200)})` : ""}. Go back to sign-in to try again or use your email.`;
+    return page(p, error.code === "access_denied" ? "denied" : "error", line, 400, { retry: true });
+  }
+  if (direct && !boundHere(req, id, bind)) {
+    return page(p, "error", "that sign-in didn't start in this browser, so Clyde ignored it. Go back to sign-in and start again here.", 403, { retry: true });
+  }
   // A link works once. Opened again after it already signed this request in (a second click, a reload, a mail app that
   // opens it twice), it's done, not failed.
   if (!code && row.redirect_url) {
     return page(p, "connected", `connected${row.client_name ? ` ${row.client_name}` : ""}. Go back to the window that asked. It finishes by itself.`, 200);
   }
-  if (!code) return page(p, "error", `that sign-in link didn't work. ${error ?? ""}`.trim(), 400);
+  if (!code) return page(p, "error", `that sign-in link didn't work. ${error.text ?? ""}`.trim(), 400);
 
   const session = await auth("/token?grant_type=pkce", {
     method: "POST", body: JSON.stringify({ auth_code: code, code_verifier: row.code_verifier }),
   });
   // This session only approves. It lapses within the hour, and its refresh token is never kept.
   const jwt = session.body.access_token, user = session.body.user;
-  if (!session.ok || !jwt) return page(p, "error", "that sign-in link didn't work. Start connecting again from the app.", 400);
+  if (!session.ok || !jwt) {
+    return direct
+      ? page(p, "error", "that sign-in code didn't work or was already used. Go back to sign-in and start again.", 400, { retry: true })
+      : page(p, "error", "that sign-in link didn't work. Start connecting again from the app.", 400);
+  }
   const proxied = await viaProxy(req);
   if (direct && user?.email && !(await allowed(user.email)) && geoBlocked(geoOf(req, proxied))) {
     return page(p, "blocked", REFUSAL, 451);
@@ -283,7 +322,11 @@ async function approve(p: Page, req: Request, id: string, code: string | null, e
 /** With a signed-in session: approve the app's request if its callback is one Clyde approves, else deny and log it.
  * Direct browser sign-ins (password or social OAuth) bounce through same-origin /oauth/wait (303) to respect form-action 'self'. */
 async function finish(p: Page, id: string, jwt: string, user: Record<string, any>, direct: boolean): Promise<Response> {
-  if (!(user?.email && user.email_confirmed_at && (await openSignup() || await allowed(user.email)))) {
+  // A Google or GitHub account counts only with an email the provider verified, the same bar an email link sets.
+  if (!(user?.email && user.email_confirmed_at)) {
+    return page(p, "error", "that account has no verified email, so Clyde can't tell whose it is. Verify the email with your provider, or sign in with your email.", 403);
+  }
+  if (!(await openSignup() || await allowed(user.email))) {
     return page(p, "error", "that account isn't on Clyde's allowlist.", 403);
   }
   const details = await auth(`/oauth/authorizations/${encodeURIComponent(id)}`, { jwt });
@@ -319,7 +362,7 @@ async function finish(p: Page, id: string, jwt: string, user: Record<string, any
     await sql`insert into memory.oauth_consent (authorization_id, code_verifier, redirect_url, client_name)
       values (${id}, '', ${redirect!}, ${name})
       on conflict (authorization_id) do update
-      set redirect_url = excluded.redirect_url, client_name = excluded.client_name, created_at = now()`;
+      set code_verifier = '', redirect_url = excluded.redirect_url, client_name = excluded.client_name, created_at = now()`;
     return new Response(null, {
       status: 303,
       headers: { location: `/oauth/wait?authorization_id=${encodeURIComponent(id)}`, "cache-control": "no-store" },
@@ -392,11 +435,15 @@ async function startProvider(p: Page, req: Request, base: string, id: string, ra
   await sql`insert into memory.signup_attempt (client, email) values (${client}, ${`oauth:${provider}`})`;
   const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
   const challenge = b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
+  const bind = b64url(crypto.getRandomValues(new Uint8Array(16)));
   await sql`insert into memory.oauth_consent (authorization_id, code_verifier) values (${id}, ${verifier})
     on conflict (authorization_id) do update set code_verifier = excluded.code_verifier, redirect_url = null, created_at = now()`;
-  const redirect = encodeURIComponent(`${base}/oauth/approve?authorization_id=${encodeURIComponent(id)}&direct=1`);
+  const redirect = encodeURIComponent(`${base}/oauth/approve?authorization_id=${encodeURIComponent(id)}&direct=1&bind=${bind}`);
   const dest = `${AUTH()}/authorize?provider=${encodeURIComponent(provider)}&redirect_to=${redirect}&code_challenge=${challenge}&code_challenge_method=s256`;
-  return new Response(null, { status: 302, headers: { location: dest, "cache-control": "no-store" } });
+  return new Response(null, {
+    status: 302,
+    headers: { location: dest, "cache-control": "no-store", "set-cookie": bindCookie(`${id}.${bind}`, 15 * 60) },
+  });
 }
 
 /** json: the request came through the Worker (x-memory-proxy) and asked for application/json. */
@@ -428,7 +475,14 @@ export async function handle(req: Request, base: string, path: string, url: URL,
     return page(p, "closed", "Sign-ups are closed. Clyde isn't taking new accounts right now.", 403);
   }
   if (path === "/oauth/consent") return consent(p, base, id);
-  if (path === "/oauth/approve") return approve(p, req, id, url.searchParams.get("code"), url.searchParams.get("error_description"), url.searchParams.get("direct") === "1");
+  if (path === "/oauth/approve") {
+    const direct = url.searchParams.get("direct") === "1";
+    const error = { code: url.searchParams.get("error"), text: url.searchParams.get("error_description") };
+    const res = await approve(p, req, id, url.searchParams.get("code"), error, direct, url.searchParams.get("bind"));
+    // A provider callback spends its binding whatever happens, so the same address can't be replayed in this browser.
+    if (direct) res.headers.append("set-cookie", CLEAR_BIND);
+    return res;
+  }
   if (path === "/oauth/wait") return wait(p, base, id);
   return json ? page(p, "error", "no such endpoint.", 404) : text("No such endpoint.", 404);
 }

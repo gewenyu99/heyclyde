@@ -111,4 +111,4 @@ PKG_SEED_DIR=~/pkg-seed OPEN_AI=... python eval/decider_eval.py --out /tmp/decid
 
 ## Deploy
 
-See [DEPLOY.md](DEPLOY.md).
+See [DEPLOY.md](DEPLOY.md). Sign-in, including Google and GitHub, is in [SIGN-IN.md](SIGN-IN.md).

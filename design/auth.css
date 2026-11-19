@@ -1,0 +1,10 @@
+/* Clyde sign-in. Built on tokens.css and components.css; load both first. Used by the Worker's pages only (the consent
+   page and the workspace sign-in), never by chat cards, so it stays out of the cards' bundled design module.
+   Provider buttons carry the provider's own mark from design/auth.mjs beside "Continue with <provider>". */
+
+.cl-auth-providers { display: grid; gap: 10px; margin-top: 4px; }
+.cl-btn--provider { justify-content: center; gap: 10px; text-decoration: none; }
+.cl-btn--provider svg { width: 18px; height: 18px; flex: none; }
+.cl-btn--provider[aria-busy="true"] { opacity: 0.6; cursor: progress; }
+.cl-or-rule { display: flex; align-items: center; gap: 12px; margin: 2px 0; color: var(--cl-ink-3); font: var(--cl-text-label); letter-spacing: var(--cl-track-label); text-transform: uppercase; }
+.cl-or-rule::before, .cl-or-rule::after { content: ""; flex: 1; height: 1px; background: var(--cl-rule); }
