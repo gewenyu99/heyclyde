@@ -1,6 +1,6 @@
 import { currentActivity, workspaceActivity } from "./server/current-activity.ts";
 import { workerPermissions } from "./server/worker-permissions.ts";
-import { clydeLookupPolicy } from "./shared/paseo-tool-policy.ts";
+import { allowRunLookups } from "./server/allow-run-lookups.ts";
 import { isProjectChat, listAllAgents, projectSlug, residents } from "./server/residents.ts";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -96,10 +96,11 @@ async function createProjectChat(
   const firstLine = prompt.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? "";
   const title = (firstLine || selected.projectDisplayName).slice(0, 72);
   const idempotencyKey = "clyde-launch-" + requestId;
+  const labels = { "clyde.orchestrator": "r-" + requestId.replace(/^quest-/, "") };
   try {
     const handle = ws && paseo.workspaces?.ref
-      ? await paseo.workspaces.ref(ws.id).agents.create({ idempotencyKey, title, config: { provider, toolPolicy: clydeLookupPolicy() } })
-      : await paseo.agents?.create?.({ cwd: chatCwd, idempotencyKey, title, config: { provider, toolPolicy: clydeLookupPolicy() } });
+      ? await paseo.workspaces.ref(ws.id).agents.create({ idempotencyKey, title, labels, config: { provider } })
+      : await paseo.agents?.create?.({ cwd: chatCwd, idempotencyKey, title, labels, config: { provider } });
     if (!handle?.id) throw new Error(LAUNCH_CHAT_ERROR);
     return handle.id;
   } catch (err) {
@@ -174,6 +175,7 @@ async function resolveProjectChat(
 
 export default function contribute(server: PluginServerContext) {
   workerPermissions(server);
+  allowRunLookups(server);
   const live = follow(ensureCompanion);
   const cancelUpdate = typeof readJson<{ pid?: number }>("daemon.json")?.pid === "number" ? updateWhenIdle() : undefined;
   const residentControl = residents(server);

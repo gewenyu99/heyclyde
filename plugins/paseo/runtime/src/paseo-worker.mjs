@@ -1,5 +1,4 @@
 /** Runs under the installed Paseo CLI runtime, using the same authenticated daemon connection as the CLI. */
-import {clydeLookupPolicy} from '../../shared/paseo-tool-policy.ts'
 import {createHash} from 'node:crypto'
 import {join} from 'node:path'
 import {realpathSync} from 'node:fs'
@@ -78,7 +77,7 @@ try{
     const workspace=await workerWorkspace(api,owner)
     child=await workspace.agents.create({agentId:input.id,idempotencyKey:input.id,parent:input.parent,
       title:input.title,env:input.env,labels:{'clyde.run':input.run,'clyde.thread':input.thread},background:true,
-      config:{toolPolicy:clydeLookupPolicy(),provider:input.backend+'/'+input.model,modeId,...(input.thinking && input.backend!=='antigravity'?{thinkingOptionId:input.thinking}:{}),systemPrompt:input.system},
+      config:{provider:input.backend+'/'+input.model,modeId,...(input.thinking && input.backend!=='antigravity'?{thinkingOptionId:input.thinking}:{}),systemPrompt:input.system},
     })
   }else{
     child=api.agents.ref(input.id)
