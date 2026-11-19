@@ -41,7 +41,7 @@ export function workerPrompt(o: WorkerPromptInput): string {
       spec.checks?.length && `The runtime will execute these checks:\n${spec.checks.join('\n')}`,
       spec.name.startsWith('code-it-works:') && 'Record the acceptance check before your first edit and again afterwards. If an earlier attempt already made the change, verify the red result against the pinned starting revision in a separate scratch copy. Preserve the current worktree.',
       'Paseo records your activity and Clyde collects your final reply. Use that reply for the stage report. You do not need shell access to the companion daemon.',
-      'Commit changes to this local branch only. If Git needs permission, request approval through the native permission UI for the specific Git operation. If you cannot proceed, return status "blocked" and name the operation that needs a decision.',
+      'Commit only new changes you actually made. If the approved result is already committed, verify it and report without staging or making an empty commit. For a permission denial on a necessary Git operation, request approval through the native permission UI for the specific Git operation. If you cannot proceed, return status "blocked" and name the operation that needs a decision.',
       `End with one fenced JSON block in this format. Include concrete evidence for each criterion and the commands and results you observed:\n\n${spec.resultTemplate ?? RESULT_BLOCK}`,
     ].filter(Boolean).join('\n\n')
   }
@@ -216,8 +216,11 @@ export function planPrompt(intent: string, notes?: string): string {
 
 export function slicePrompt(run: Run, plan: Plan, slice: Slice, skill: string): string {
   const scope = `run:${run.id}`
+  const instruction = skill === 'code-it-good' ? 'Verify the implemented slice against the approved scope and checks. Fix only an evidenced defect in'
+    : skill === 'code-it-clean' ? 'Inspect the implemented slice for worthwhile cleanup. Leave correct work unchanged when no cleanup is needed in'
+    : 'Build'
   return [
-    `Build slice ${slice.id} of the approved plan: ${slice.title}.`,
+    `${instruction} slice ${slice.id} of the approved plan: ${slice.title}.`,
     `The plan's intent: ${plan.intent}`,
     slice.acceptance.length ? `The runtime runs this slice's acceptance after you finish:\n\n${slice.acceptance.map((c) => `- \`${c}\``).join('\n')}` : 'This slice has no acceptance commands, so the judge reads the diff alone.',
     run.paseoParentId ? 'The approved scope and checks are included above.' : `The plan is in memory scope ${scope}. Read it with clyde plan show --run ${run.id}, or clyde recall "plan" --scope ${scope}.`,

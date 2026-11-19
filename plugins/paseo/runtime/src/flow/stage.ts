@@ -165,6 +165,7 @@ async function attempt(d: Driver, spec: StageSpec, rec: StageRecord, rung: Rung,
 async function gradeOutput(d: Driver, spec: StageSpec, rec: StageRecord, a: Attempt, text: string, result: WorkerResult): Promise<Outcome> {
   const run = d.run
   a.result = result
+  let verifiedExisting = false
   if (result.status === 'blocked') {
     const reason = result.summary
     const diff = await d.race(diffSince(run.cwd, rec.base))
@@ -172,16 +173,23 @@ async function gradeOutput(d: Driver, spec: StageSpec, rec: StageRecord, a: Atte
       const question = 'Git needs permission to commit in the task worktree. Review the changes in Paseo and commit the files you approve, then retry.'
       return { ...fail(d, a, reason), providerError: question }
     }
-    const commits = await d.race(commitsSince(run.cwd, rec.base))
-    const blockSpec = { ...spec, criteria: ['The worker is genuinely blocked and cannot resolve this stage without Wen.'], checks: [] }
-    const { verdict, errors } = await judge(d, blockSpec, rec, a, { diff, commits, checks: [], artifact: { blocked: reason } })
-    if (!verdict) {
-      const why = errors.join(' ')
-      return backendLimit(why) ? { ...fail(d, a, why), limit: why } : fail(d, a, why)
+    // A verification worker can try to re-stage an already committed implementation.
+    // Judge that work against the original criteria and real checks; no new commit is required.
+    const verifySlice = /^code-it-(?:good|clean):(.+)$/.exec(spec.name)?.[1]
+    verifiedExisting = !!(run.paseoParentId && needsGitPermission(result) && !diff && verifySlice &&
+      run.stages.some(s => s.name === 'code-it-works:' + verifySlice && s.status === 'passed' && s.base !== rec.base))
+    if (!verifiedExisting) {
+      const commits = await d.race(commitsSince(run.cwd, rec.base))
+      const blockSpec = { ...spec, criteria: ['The worker is genuinely blocked and cannot resolve this stage without Wen.'], checks: [] }
+      const { verdict, errors } = await judge(d, blockSpec, rec, a, { diff, commits, checks: [], artifact: { blocked: reason } })
+      if (!verdict) {
+        const why = errors.join(' ')
+        return backendLimit(why) ? { ...fail(d, a, why), limit: why } : fail(d, a, why)
+      }
+      a.verdict = verdict
+      if (passes(verdict, blockSpec.criteria, [])) return { ...fail(d, a, `The judge accepted the block: ${reason}`), acceptedBlock: reason }
+      return fail(d, a, `The judge rejected the block: ${firstLine(verdict.notes) || reason}`)
     }
-    a.verdict = verdict
-    if (passes(verdict, blockSpec.criteria, [])) return { ...fail(d, a, `The judge accepted the block: ${reason}`), acceptedBlock: reason }
-    return fail(d, a, `The judge rejected the block: ${firstLine(verdict.notes) || reason}`)
   }
   let artifact: unknown
   if (spec.extract) {
@@ -214,7 +222,7 @@ async function gradeOutput(d: Driver, spec: StageSpec, rec: StageRecord, a: Atte
   if (!passes(verdict, spec.criteria, checks)) return fail(d, a, `The judge failed it: ${firstLine(verdict.notes) || 'no notes'}`)
   Object.assign(a, { ok: true, endedAt: now() })
   d.save()
-  return { ok: true, verdict, summary: result.summary, artifact, diff, checks }
+  return { ok: true, verdict, summary: verifiedExisting ? 'Verified the existing commit against the stage criteria.' : result.summary, artifact, diff, checks }
 }
 
 // A shell sandbox can allow working files but refuse the linked worktree's Git index.
@@ -271,6 +279,9 @@ async function judge(d: Driver, spec: StageSpec, rec: StageRecord, a: Attempt, o
   if (!pick.differs) d.log(`No judge rung is from another family than ${rungLabel(a.rung)}, so ${rungLabel(pick.rung)} judges stage ${spec.name}.`)
   const order = [pick.rung, ...judges.filter((j) => j !== pick.rung)]
   let prompt = judgePrompt({ run: d.run, spec, base: o.base ?? rec.base, commits: o.commits, diff: o.diff, checks: o.checks, artifact: o.artifact })
+  if (/^code-it-(good|clean):/.test(spec.name) || spec.name === 'review') {
+    prompt += '\nThese are verification stages. The accumulated committed change and actual acceptance checks above are the deliverable. No empty commit is required. No new implementation or extra test files should be demanded outside the approved scope.'
+  }
   if (rec.baselineChecks?.length) {
     prompt += '\nThe runtime executed these checks before the first worker attempt. Compare them with the post-change checks above:\n' +
       rec.baselineChecks.map(c => `${c.cmd} exited ${c.code}\n${c.output.slice(-2000)}`).join('\n')
@@ -284,14 +295,24 @@ async function judge(d: Driver, spec: StageSpec, rec: StageRecord, a: Attempt, o
       '\nWorker report (check claims against those receipts): '+JSON.stringify(a.result)
   }
   const errors: string[] = []
-  for (const rung of order) {
-    const t = d.startThread({ title: `${d.run.id} ${spec.name} #${a.n} judge`, prompt, rung, stage: spec.name, readOnly: true, schema: VERDICT_SCHEMA })
+  async function requestVerdict(rung: Rung, instructions: string) {
+    const t = d.startThread({ title: `${d.run.id} ${spec.name} #${a.n} judge`, prompt: instructions, rung, stage: spec.name, readOnly: true, schema: VERDICT_SCHEMA })
     Object.assign(a, { judgeId: t.id, judgeRung: rung })
     d.save()
     const turn = (await d.waitThread(t.id)).turns.at(-1)
     const verdict = turn?.ok ? parseVerdict(turn.json) ?? parseVerdict(lastJsonBlock(turn.text ?? '')) : null
-    if (verdict) return { verdict, errors }
-    const why = `Judge ${rungLabel(rung)}: ${firstLine(turn?.error ?? 'no valid Verdict JSON')}.`
+    return { verdict, error: turn?.error }
+  }
+  const contradictory = (v: Verdict | null) => v && v.criteria.length >= spec.criteria.length &&
+    (v.verdict === 'pass') !== v.criteria.every(c => c.pass)
+  for (const rung of order) {
+    let response = await requestVerdict(rung, prompt)
+    if (contradictory(response.verdict)) {
+      d.log(`Checking an inconsistent verdict from ${rungLabel(rung)} for stage ${spec.name}.`)
+      response = await requestVerdict(rung, prompt + '\nThe previous verdict disagreed with its individual grades. Recheck the evidence. Identify the unmet criterion if the verdict is fail. Return one consistent verdict.')
+    }
+    if (response.verdict && !contradictory(response.verdict)) return { verdict: response.verdict, errors }
+    const why = `Judge ${rungLabel(rung)}: ${firstLine(response.error ?? 'no valid Verdict JSON')}.`
     errors.push(why)
     d.log(`${why.replace(/\.$/, '')} on stage ${spec.name} attempt ${a.n}.`)
   }

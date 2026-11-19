@@ -1,6 +1,7 @@
 import {RemoveTask} from "./remove-task";
 import { OpenChatButton } from "./open-chat";
 import { RunEvidence } from "./run-evidence";
+import { OrchestrationFlow } from "./orchestration-flow";
 import { WorkerPermissions } from "./worker-permissions";
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -360,6 +361,7 @@ export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = 
           <Text style={{ color: theme.colors.foreground, fontSize: 13, lineHeight: 20 }}>{activity.retryReason}</Text>
         </View>}
       </View>
+      <OrchestrationFlow theme={theme} view={view} selectedStage={selected?.stage} onSelect={stage => { setPicked(stage); setShowTranscript(false); }} />
       {view.kind === "run" && ["running", "asking", "sent-back"].includes(view.status) && <WorkerPermissions key={view.id} theme={theme} runId={view.id} openAgent={openAgent} onPending={setPendingFor} expected={!!activity?.permissionAgentId} />}
         {view.question ? (
           <View style={{ borderLeftWidth: 2, borderLeftColor: t.amber.ink, paddingLeft: 12, marginTop: 12, gap: 8 }}>
@@ -487,31 +489,25 @@ export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = 
             {view.diff.commits} commits · {view.diff.files} changed files · +{view.diff.insertions} −{view.diff.deletions}
           </Text>}
         <RunEvidence view={view} theme={theme} />
-        {stages.map(stage => {
-          const isSelected = stage.stage === selected?.stage;
-          const waitingForPermission = stage.status === "running" && waiting && stage.piece.id === view.selected;
-          const label = pieces.length === 1 || stage.label === stage.piece.title ? stage.label : `${stage.piece.title} · ${stage.label}`;
-          return <View key={stage.stage} style={{ borderLeftWidth: 2, borderLeftColor: isSelected ? theme.colors.accent : theme.colors.border, paddingLeft: 10 }}>
-            <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: isSelected }} onPress={() => { setPicked(stage.stage); setShowTranscript(false); }} style={{ minHeight: MIN_HIT_HEIGHT, flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-              <Text style={{ color: theme.colors.foreground, fontSize: 14, fontWeight: "600", flexShrink: 1 }}>{label}</Text>
-              <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>{waitingForPermission ? "Permission required" : STATUS_LABEL[stage.status]}</Text>
-            </Pressable>
-            {isSelected && <View style={{ gap: 6 }}>
-              {stage.piece.doneWhen.filter(item => !view.completionCriteria?.includes(item)).map((item, i) =>
+        {selected && <View style={{ gap: 8 }}>
+          {selected.piece.phases.length > 1 && <View accessibilityRole="tablist" style={{ flexDirection:"row",flexWrap:"wrap",gap:8 }}>
+            {selected.piece.phases.map(phase=><Pressable key={phase.stage} accessibilityRole="tab" accessibilityState={{ selected:phase.stage===selected.stage }} onPress={()=>{setPicked(phase.stage);setShowTranscript(false);}} style={{minHeight:MIN_HIT_HEIGHT,justifyContent:"center",paddingHorizontal:10,borderRadius:6,backgroundColor:phase.stage===selected.stage?theme.colors.surface2:"transparent"}}>
+              <Text style={{color:phase.stage===selected.stage?theme.colors.foreground:theme.colors.foregroundMuted,fontSize:13,fontWeight:"600"}}>{phase.label}</Text>
+            </Pressable>)}
+          </View>}
+              {selected.piece.doneWhen.filter(item => !view.completionCriteria?.includes(item)).map((item, i) =>
                 <Text key={i} selectable style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>{item}</Text>
               )}
-              <StageAttempts key={stage.stage} theme={theme} tries={tries} alreadyShown={[activity?.latestResult || "", activity?.retryReason || ""]} />
-              {!tries.length && stage.piece.rung && <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>{stage.piece.rung}</Text>}
-              {!tries.length && stage.piece.progress && <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>{stage.piece.progress}</Text>}
+              <StageAttempts key={selected.stage} theme={theme} tries={tries} alreadyShown={[activity?.latestResult || "", activity?.retryReason || ""]} />
+              {!tries.length && selected.piece.rung && <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>{selected.piece.rung}</Text>}
+              {!tries.length && selected.piece.progress && <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>{selected.piece.progress}</Text>}
               {lastThread && <View>
                 <Pressable accessibilityRole="button" accessibilityState={{ expanded: showTranscript }} onPress={() => setShowTranscript(!showTranscript)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
                   <Text style={{ color: theme.colors.accent, fontSize: 13 }}>{showTranscript ? "Hide agent transcript" : "View agent transcript"}</Text>
                 </Pressable>
-                {showTranscript && <Transcript key={stage.stage} theme={theme} threadId={lastThread} tries={tries} />}
+                {showTranscript && <Transcript key={selected.stage} theme={theme} threadId={lastThread} tries={tries} />}
               </View>}
-            </View>}
-          </View>;
-        })}
+        </View>}
         {view.kind === "run" && view.status === "running" && <Steering id={view.id} theme={theme} />}
         <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
           {(view.status === "running" || view.status === "asking") && <StopButton theme={theme} view={view} />}

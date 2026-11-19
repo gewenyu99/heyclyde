@@ -125,3 +125,18 @@ test('a headless permission denial asks once without looking like a provider quo
     assert.doesNotMatch(held.question??'',/quota|backend limit|dangerously-skip/i)
   } finally {await d.close();await s.memory.close()}
 })
+
+test('a contradictory verdict is checked again before rerunning the worker', async () => {
+  const { s, d, client } = await fixture([
+    { match: 'worker for stage task of', reply: 'done', json: result, write: { 'hello.txt':'hello\n' }, commit:'add hello' },
+    { match: 'judge for stage task of', json: { ...verdict(true, 'all checks pass'), verdict:'fail' } },
+    { match: 'previous verdict disagreed', json: verdict(true, 'verified the check') },
+  ])
+  try {
+    const run = await client.startRun('task', TASK, s.repo)
+    const finished = await waitStatus(client, run.id, ['done','failed','asking'])
+    assert.equal(finished.status, 'done')
+    assert.equal(finished.stages[0].attempts.length, 1)
+    assert.match(finished.log.join('\n'), /inconsistent verdict/)
+  } finally { await d.close(); await s.memory.close() }
+})

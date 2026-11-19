@@ -16,7 +16,7 @@ The [Clyde design system](../../design/README.md) supplies the logo, typography 
 
 Selecting a run opens its stages, latest finding, checks, and supervisor conversation. Switching to another workspace tab and back restores the selected task. **Back to board** returns to the queue. Open a stopped or older run from **Task history**.
 
-Ask **Chat with Clyde** about an attempt or saved plan while the worker continues. Replies use Paseo’s Markdown renderer. Pending decisions appear on the task. When a worker requests permission, its run shows the request and its available actions. For a shell command, review the command and choose **Allow once** or **Deny**. Requests that need a native form open in the worker’s chat. New Clyde-created Paseo agents preapprove only the agent-bound recall and recall-more lookups. Select a stage to inspect its attempts and transcript.
+Ask **Chat with Clyde** about an attempt or saved plan while the worker continues. Replies use Paseo’s Markdown renderer. Pending decisions appear on the task. When a worker requests permission, its run shows the request and its available actions. For a shell command, review the command and choose **Allow once** or **Deny**. Requests that need a native form open in the worker’s chat. New Clyde-created Paseo agents preapprove only the agent-bound recall and recall-more lookups. Select a stage to inspect its attempts and transcript. If Git denies a local commit, choose **Review worktree changes in Paseo**, commit the files you approve in the task’s worktree, then retry. Clyde keeps the acceptance results from before the edit for the reviewer.
 
 ## Routing
 
