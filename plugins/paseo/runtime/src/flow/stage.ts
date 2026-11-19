@@ -55,6 +55,10 @@ export async function runStage(d: Driver, spec: StageSpec): Promise<StageResult>
         d.save()
         throw d.stopped(`stage ${spec.name} stopped by the user`)
       }
+      if (pending.providerError && routed && run.routes?.[routed] && !run.routes[routed]!.pinned) {
+        delete run.routes[routed]
+        d.save()
+      }
       notes = [notes, `Wen answered the ${kind} ask: ${answer}`].filter(Boolean).join('\n\n')
     }
     const maxAttempts = maxStageAttempts()
@@ -117,7 +121,10 @@ async function attempt(d: Driver, spec: StageSpec, rec: StageRecord, rung: Rung,
   const turn = done.turns.at(-1)
   if (!turn?.ok) {
     const error = turn?.error ?? done.status
-    if (permissionFailure(error)) return {...fail(d,a,'The worker failed: '+error),providerError:permissionFailure(error)}
+    const perm = permissionFailure(error)
+    if (perm) return { ...fail(d, a, 'The worker failed: ' + error), providerError: perm }
+    const det = deterministicProviderFailure(error)
+    if (det) return { ...fail(d, a, 'The worker failed: ' + error), providerError: det }
     return backendLimit(error) ? { ...fail(d, a, `The worker failed: ${error}.`), limit: error } : fail(d, a, `The worker failed: ${error}.`)
   }
   const text = turn.text ?? ''
@@ -248,6 +255,16 @@ export function permissionFailure(error:string):string|undefined {
   if (/^Permission required:/i.test(error))return error
   if (/permission.*cannot prompt|headless.*cannot prompt|tool required the .*permission|soft-denying tool/i.test(error))
     return 'The provider denied a tool required by this worker. Retry with the permitted Paseo launch mode or choose another worker.'
+}
+
+/** Detect deterministic launch/CLI/auth failures that cannot succeed by blindly retrying. */
+export function deterministicProviderFailure(error: string): string | undefined {
+  if (
+    /API Error:\s*40[013]\b|does not support this model|unrecognized_model|unknown model|model_not_found|invalid_model|version\s+[\d.]+\s+or newer is required|Run ['"]?claude update['"]?|unknown (?:flag|option)|unrecognized option|not logged in|please log in|authentication_error|invalid[_ ]api[_ ]key|unauthorized/i
+      .test(error)
+  ) {
+    return `The provider rejected this launch (${firstLine(error)}). Fix the CLI or model config, then retry.`
+  }
 }
 
 export function backendLimit(error: string): boolean {

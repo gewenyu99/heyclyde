@@ -10,7 +10,7 @@ import { workerEnv } from '../env.ts'
 import { HttpError } from '../http.ts'
 import { runtimeMemory, type Memory } from '../memory.ts'
 import { paseo } from '../paseo.ts'
-import { carbonAuditor, preferences, profiles, select, inferRouting, usage, validateRouting, type Routing, type Model, type Stage } from '../routing.ts'
+import { carbonAuditor, fallbackBackendsFor, preferences, profiles, resolveCatalogRung, select, inferRouting, usage, validateRouting, type CatalogEntry, type Routing, type Model, type Stage } from '../routing.ts'
 import { ladder } from '../roles.ts'
 import { readJson,readJsonDir, writeJson } from '../store.ts'
 import type { Rung, Thread } from '../types.ts'
@@ -19,7 +19,7 @@ import { gate } from './gate.ts'
 import { answerEntry, entry, parsePlan, planEntry, projectEntry, refused, type Plan } from './memory.ts'
 import { firstLine } from './prompts.ts'
 import { sh } from './shell.ts'
-import { runStage } from './stage.ts'
+import { deterministicProviderFailure, permissionFailure, runStage } from './stage.ts'
 import type { AgentResult, AskKind, AskRecord, FlowCtx, FlowModule, Run, RunStatus } from './types.ts'
 
 export type { Run } from './types.ts'
@@ -458,10 +458,29 @@ export class Driver {
       for (let attempt = 0; ; attempt++) {
         try {
           const reports = stage === 'worker' && !policy.overrides?.worker && policy.complexity !== 'complex' ? await usage() : []
+          const primaryAntigravity = stage === 'audit' && !policy.overrides?.audit
+            ? (await paseo(['provider', 'models', 'antigravity'], 5000).catch(() => ({ json: undefined }))).json
+            : undefined
           const selection = stage === 'audit' && !policy.overrides?.audit
-            ? carbonAuditor((await paseo(['provider','models','antigravity'],5000)).json)
+            ? carbonAuditor(primaryAntigravity)
             : select(stage, policy, preferences(this.run.repo), reports)
-          routes[stage] ??= selection
+          const backend = profiles[selection.model].backend
+          const catalogs: Partial<Record<typeof backend, CatalogEntry[]>> = {}
+          const primaryRaw = primaryAntigravity !== undefined && backend === 'antigravity'
+            ? primaryAntigravity
+            : (await paseo(['provider', 'models', backend], 3000).catch(() => ({ json: undefined }))).json
+          if (Array.isArray(primaryRaw) && primaryRaw.length > 0) {
+            catalogs[backend] = primaryRaw
+            const hasPrimary = primaryRaw.some((entry) => entry?.id === profiles[selection.model].model)
+            if (!hasPrimary) {
+              for (const fbBackend of fallbackBackendsFor(stage, selection.model)) {
+                const fbRaw = (await paseo(['provider', 'models', fbBackend], 3000).catch(() => ({ json: undefined }))).json
+                if (Array.isArray(fbRaw) && fbRaw.length > 0) catalogs[fbBackend] = fbRaw
+              }
+            }
+          }
+          const resolved = resolveCatalogRung(stage, selection, catalogs)
+          routes[stage] ??= resolved.selection
           this.save()
           break
         } catch (err) {
@@ -472,7 +491,9 @@ export class Driver {
         }
       }
     }
-    return profiles[routes[stage]!.model]
+    const chosen = routes[stage]!
+    const base = profiles[chosen.model]
+    return chosen.resolvedModel ? { ...base, model: chosen.resolvedModel } : base
   }
 
   async agent(opts: { route?: Stage; role: string; prompt: string; readOnly?: boolean; title: string }, retries = 0): Promise<AgentResult> {
@@ -494,6 +515,10 @@ export class Driver {
         this.run.routes.audit = { model:'carbon', pinned:false, reason:'Carbon Orchestrator could not finish this audit; retrying with Carbon High' }
         this.save()
         return this.agent(opts, retries + 1)
+      }
+      if (!turn?.ok) {
+        const det = deterministicProviderFailure(why)
+        if (det) throw new Error(det)
       }
       const answer = await this.ask('retry:' + opts.title + ':' + t.id, 'limit', opts.title + ' could not finish: ' + why + '. Reply to retry or stop.')
       if (/^stop\b/i.test(answer.trim())) throw this.stopped(why)

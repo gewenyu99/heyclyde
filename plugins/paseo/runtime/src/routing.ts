@@ -18,7 +18,9 @@ export const profiles = {
 export type Model = keyof typeof profiles
 export type Routine = 'sol' | 'sonnet'
 export type Stage = 'planner' | 'worker' | 'specReview' | 'audit' | 'verify'
-export type Selection = { model: Model; reason: string; pinned: boolean }
+export type Selection = { model: Model; resolvedModel?: string; reason: string; pinned: boolean }
+export type CatalogEntry = { id?: string }
+export type ResolvedRoute = { selection: Selection; rung: Rung }
 export type Routing = { complexity?: 'routine' | 'complex'; reason?: string; overrides?: Partial<Record<Stage, Model>> }
 type Preferences = { planner?: 'opus' | 'astra'; routine?: Routine }
 export function preferences(repo: string): Preferences {
@@ -110,4 +112,114 @@ export function select(stage: Stage, policy: Routing, prefs: Preferences, report
     }
   }
   return choice(prefs.routine === 'sonnet' ? 'sonnet' : 'sol', 'Routine worker preference')
+}
+
+const STAGE_FALLBACKS: Partial<Record<Stage, Partial<Record<Model, Model[]>>>> = {
+  planner: { opus: ['astra'], astra: ['opus'] },
+  worker: { sonnet: ['sol'], sol: ['sonnet'] },
+  specReview: { fable: ['sonnet', 'sol'], sonnet: ['sol'] },
+  verify: { fable: ['sonnet', 'sol'], sonnet: ['sol'] },
+  audit: { orchestrator: ['carbon'] },
+}
+
+function parseFamily(id: string): { key: string; ver: number[]; hasWindow: boolean } | null {
+  const claude = /^(claude-(?:opus|sonnet|fable))-([\d.-]+)(\[[^\]]+\])?$/i.exec(id)
+  if (claude) {
+    return { key: claude[1].toLowerCase(), ver: claude[2].split(/[.-]/).map(Number), hasWindow: Boolean(claude[3]) }
+  }
+  const gpt = /^(gpt)-([\d.]+)-(sol|astra)$/i.exec(id)
+  if (gpt) return { key: `gpt-${gpt[3].toLowerCase()}`, ver: gpt[2].split('.').map(Number), hasWindow: false }
+  const gem = /^(gemini)-([\d.]+)-(neon|carbon|argon|hydrogen)-(low|medium|high|xhigh)$/i.exec(id)
+  if (gem) {
+    return {
+      key: `gemini-${gem[3].toLowerCase()}-${gem[4].toLowerCase()}`,
+      ver: gem[2].split('.').map(Number),
+      hasWindow: false,
+    }
+  }
+  return null
+}
+
+function compareVer(a: number[], b: number[]): number {
+  const len = Math.max(a.length, b.length)
+  for (let i = 0; i < len; i++) {
+    const d = (a[i] ?? 0) - (b[i] ?? 0)
+    if (d !== 0) return d
+  }
+  return 0
+}
+
+function familyMatch(baseModel: string, ids: string[]): string | undefined {
+  const target = parseFamily(baseModel)
+  if (!target) return undefined
+  const candidates = ids
+    .map((id) => ({ id, info: parseFamily(id) }))
+    .filter((entry): entry is { id: string; info: NonNullable<ReturnType<typeof parseFamily>> } =>
+      Boolean(entry.info) && entry.info.key === target.key && entry.info.hasWindow === target.hasWindow,
+    )
+    .sort((a, b) => compareVer(b.info.ver, a.info.ver))
+  if (candidates.length > 0) return candidates[0].id
+  if (target.key === 'claude-fable' && ids.includes('fable')) return 'fable'
+  return undefined
+}
+
+function idsFor(entries?: CatalogEntry[]): string[] {
+  if (!Array.isArray(entries)) return []
+  return entries.map((e) => e?.id).filter((id): id is string => typeof id === 'string' && id.length > 0)
+}
+
+/** Return candidate secondary backends for a stage/model when its primary catalog omits the model. */
+export function fallbackBackendsFor(stage: Stage, model: Model): Rung['backend'][] {
+  const seen = new Set<Rung['backend']>()
+  const primary = profiles[model].backend
+  for (const alt of STAGE_FALLBACKS[stage]?.[model] ?? []) {
+    const b = profiles[alt].backend
+    if (b !== primary) seen.add(b)
+  }
+  return [...seen]
+}
+
+/** Resolve a selected model against live provider catalogs, falling back cleanly when unavailable. */
+export function resolveCatalogRung(
+  stage: Stage,
+  selection: Selection,
+  catalogs: Partial<Record<Rung['backend'], CatalogEntry[]>>,
+): ResolvedRoute {
+  const base = profiles[selection.model]
+  const primaryIds = idsFor(catalogs[base.backend])
+  if (primaryIds.length === 0) return { selection, rung: base }
+  if (primaryIds.includes(base.model)) return { selection, rung: base }
+
+  const sameFamily = familyMatch(base.model, primaryIds)
+  if (sameFamily) {
+    return {
+      selection: {
+        ...selection,
+        resolvedModel: sameFamily,
+        reason: `${selection.reason} (${base.model} unavailable, using ${sameFamily})`,
+      },
+      rung: { ...base, model: sameFamily },
+    }
+  }
+
+  if (!selection.pinned) {
+    for (const alt of STAGE_FALLBACKS[stage]?.[selection.model] ?? []) {
+      const altRung = profiles[alt]
+      const altIds = idsFor(catalogs[altRung.backend])
+      if (altIds.length === 0) continue
+      const matched = altIds.includes(altRung.model) ? altRung.model : familyMatch(altRung.model, altIds)
+      if (!matched) continue
+      return {
+        selection: {
+          ...selection,
+          model: alt,
+          ...(matched !== altRung.model ? { resolvedModel: matched } : {}),
+          reason: `${selection.reason} (${base.model} unavailable, using ${matched})`,
+        },
+        rung: { ...altRung, model: matched },
+      }
+    }
+  }
+
+  return { selection, rung: base }
 }
