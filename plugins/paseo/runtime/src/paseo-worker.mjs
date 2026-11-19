@@ -1,5 +1,5 @@
 /** Runs under the installed Paseo CLI runtime, using the same authenticated daemon connection as the CLI. */
-import {clydeLookupPolicy} from './paseo-tool-policy.ts'
+import {clydeLookupPolicy} from '../../shared/paseo-tool-policy.ts'
 import {createHash} from 'node:crypto'
 import {join} from 'node:path'
 import {realpathSync} from 'node:fs'

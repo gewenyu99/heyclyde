@@ -1,5 +1,5 @@
 import { workerPermissions } from "./server/worker-permissions.ts";
-import { clydeLookupPolicy } from "./runtime/src/paseo-tool-policy.ts";
+import { clydeLookupPolicy } from "./shared/paseo-tool-policy.ts";
 import { isProjectChat, listAllAgents, projectSlug, residents } from "./server/residents.ts";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
