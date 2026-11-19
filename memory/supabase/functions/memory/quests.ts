@@ -123,7 +123,7 @@ async function artifacts(errs: string[], raw: unknown, agentScope: AgentScope = 
   }
   const out: { name: string; sha256: string }[] = [];
   for (const a of raw) {
-    const name = s(a?.name).replace(CONTROL, " ").trim(), sha = s(a?.sha256).trim().toLowerCase();
+    const name = redactText(s(a?.name).replace(CONTROL, " ").trim())[0], sha = s(a?.sha256).trim().toLowerCase();
     if (!name || name.length > 200 || !SHA_RE.test(sha)) {
       errs.push("Each artifact needs a name of up to 200 characters and the sha256 of a blob memory holds.");
       return [];

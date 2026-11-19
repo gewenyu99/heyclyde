@@ -697,8 +697,7 @@ export async function handle(req: Request, path: string, owner: string): Promise
 
   if (path === "/me/quests" && req.method === "POST") {
     const ent = await entitlementOf(owner);
-    if (!ent.allowed) return json({ error: ent.reason }, 402);
-    if (!ent.plan.quests) return json({ error: "Quests require a paid Clyde plan." }, 402);
+    if (!ent.plan.open || !ent.plan.quests) return json({ error: "Quests require a paid Clyde plan." }, 402);
     const body = await readJsonObject(req);
     if (!body) return json({ error: "Body must be a JSON object." }, 400);
 
@@ -845,38 +844,50 @@ export async function handle(req: Request, path: string, owner: string): Promise
       "judge_cache", "upload", "event", "burst", "usage", "admin_audit",
     ] as const;
     const enc = new TextEncoder();
+    let cancelled = false;
     const stream = new ReadableStream<Uint8Array>({
+      cancel() {
+        cancelled = true;
+      },
       async start(controller) {
         try {
           await asTenant(owner, async () => {
             let storedBytes = 0;
             for (const table of tables) {
-              const rows = await sql`select * from ${sql("memory." + table)} where owner_id = ${owner}::uuid`;
-              for (const r of rows) {
-                if (table === "blob") {
-                  let bytes: Uint8Array | null = r.content instanceof Uint8Array ? r.content : null;
-                  const sz = Number(r.size ?? 0);
-                  if (!bytes && r.stored === "storage" && sz <= EXPORT_BLOB_MAX && storedBytes + sz <= EXPORT_STORED_TOTAL && storageOn()) {
-                    bytes = await getBlob(String(r.sha256), owner);
-                    if (bytes) storedBytes += bytes.byteLength;
+              if (cancelled) return;
+              const batchSize = table === "blob" ? 16 : 250;
+              for (let offset = 0; !cancelled; offset += batchSize) {
+                const rows = await sql`select * from ${sql("memory." + table)}
+                  where owner_id = ${owner}::uuid order by ctid limit ${batchSize} offset ${offset}`;
+                for (const r of rows) {
+                  if (cancelled) return;
+                  if (table === "blob") {
+                    let bytes: Uint8Array | null = r.content instanceof Uint8Array ? r.content : null;
+                    const sz = Number(r.size ?? 0);
+                    if (!bytes && r.stored === "storage" && sz <= EXPORT_BLOB_MAX && storedBytes + sz <= EXPORT_STORED_TOTAL && storageOn()) {
+                      bytes = await getBlob(String(r.sha256), owner);
+                      if (bytes) storedBytes += bytes.byteLength;
+                    }
+                    if (cancelled) return;
+                    controller.enqueue(enc.encode(JSON.stringify({
+                      table,
+                      row: { ...r, content: bytes ? { base64: encodeBase64(new Uint8Array(bytes)) } : null },
+                    }) + "\n"));
+                  } else {
+                    const clean: Record<string, unknown> = {};
+                    for (const [k, v] of Object.entries(r)) {
+                      clean[k] = v instanceof Uint8Array ? { base64: encodeBase64(v) } : v;
+                    }
+                    controller.enqueue(enc.encode(JSON.stringify({ table, row: clean }) + "\n"));
                   }
-                  controller.enqueue(enc.encode(JSON.stringify({
-                    table,
-                    row: { ...r, content: bytes ? { base64: encodeBase64(new Uint8Array(bytes)) } : null },
-                  }) + "\n"));
-                } else {
-                  const clean: Record<string, unknown> = {};
-                  for (const [k, v] of Object.entries(r)) {
-                    clean[k] = v instanceof Uint8Array ? { base64: encodeBase64(v) } : v;
-                  }
-                  controller.enqueue(enc.encode(JSON.stringify({ table, row: clean }) + "\n"));
                 }
+                if (rows.length < batchSize) break;
               }
             }
           });
-          controller.close();
+          if (!cancelled) controller.close();
         } catch (err) {
-          controller.error(err);
+          if (!cancelled) controller.error(err);
         }
       },
     });

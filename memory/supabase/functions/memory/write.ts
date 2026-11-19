@@ -331,13 +331,14 @@ async function artifacts(value: unknown, errs: string[]): Promise<Row[]> {
       errs.push(`Blob ${label} needs a media_type like text/markdown, not ${JSON.stringify(mediaType)}.`);
       return false;
     };
+    const safeName = name ? redactText(name)[0] : name;
     if (given[0] === "sha256") {
       if (typeof b.sha256 !== "string" || !store.SHA_RE.test(b.sha256)) {
         errs.push(`Blob ${label} has a sha256 that isn't 64 hex digits.`);
         continue;
       }
       typeOk();
-      out.push({ name, kind, media_type: mediaType ?? null, sha256: b.sha256, cited: true });
+      out.push({ name: safeName, kind, media_type: mediaType ?? null, sha256: b.sha256, cited: true });
       continue;
     }
     let data: Uint8Array, defaultType: string;
@@ -366,7 +367,6 @@ async function artifacts(value: unknown, errs: string[]): Promise<Row[]> {
       const [redacted, found] = redactText(asText);
       if (store.isText(mediaType) || found.length) data = new TextEncoder().encode(redacted);
     }
-    const safeName = name ? redactText(name)[0] : name;
     out.push({ name: safeName, kind: kind ?? store.kindOf(mediaType, safeName ?? ""), media_type: mediaType, content: data, sha256: await sha256(data) });
   }
   const total = out.reduce((n, b) => n + (b.content?.length ?? 0), 0);
