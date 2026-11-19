@@ -7,6 +7,7 @@ import { useState, type ReactElement } from "react";
 import { Pressable, TextInput, ScrollView, Text, View } from "react-native";
 import { answerRpc,steerRpc, stopRpc, transcriptRpc, type AttemptView, type Phase, type Piece, type Status, type TaskView } from "../shared/clyde";
 import { ago, count, duration, edgePalette, Eyebrow, formatRpcError, hue, Ladder, MIN_HIT_HEIGHT, Pill, STATUS_LABEL, tones } from "./nodes";
+import { groupAttempts, parseInline, parseTranscriptBlocks, type TranscriptBlock } from "./transcript-format";
 
 // Everything on the 8px grid: a gutter for the row label, fixed piece cells, fixed gaps, one band per row.
 const U = 8;
@@ -163,15 +164,17 @@ function Legend({ theme }: { theme: PluginTheme }) {
   );
 }
 
-/** One attempt as a single line, with only what went wrong under it. Passing criteria aren't news. */
-function AttemptRow({ theme, a }: { theme: PluginTheme; a: AttemptView }) {
+/** One attempt as a single line, with only what went wrong under it unless compacted under history. */
+function AttemptRow({ theme, a, compact = false }: { theme: PluginTheme; a: AttemptView; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const fails = a.criteria.filter((c) => c.result === "fail");
+  const badChecks = a.checks.filter((c) => c.code !== 0);
   const tone: Status = a.interrupted ? "pending" : /passed|done/i.test(a.outcome) ? "passed" : /sent back|failed/i.test(a.outcome) ? "sent-back" : "running";
   const t = tones(theme);
   const toneHue = hue(tone, theme);
+  const showDetails = open || !compact;
   return (
-    <View style={{ borderLeftWidth: 2, borderLeftColor: toneHue.ink, paddingLeft: 10, paddingVertical: 6, marginTop: 4, opacity: a.interrupted ? 0.55 : 1 }}>
+    <View style={{ borderLeftWidth: 2, borderLeftColor: toneHue.ink, paddingLeft: 10, paddingVertical: 4, marginTop: 4, opacity: a.interrupted ? 0.55 : 1 }}>
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
@@ -183,13 +186,13 @@ function AttemptRow({ theme, a }: { theme: PluginTheme; a: AttemptView }) {
         </Text>
         <Text style={{ color: toneHue.ink, fontSize: 12, fontWeight: "700" }}>{a.outcome}</Text>
       </Pressable>
-      {fails.map((c, i) => (
+      {showDetails && fails.map((c, i) => (
         <View key={i} style={{ marginTop: 6 }}>
           <Text style={{ color: t.red.ink, fontSize: 12, fontWeight: "600" }}>✕ {c.criterion}</Text>
           {c.evidence ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, marginTop: 2, lineHeight: 18 }}>{c.evidence}</Text> : null}
         </View>
       ))}
-      {a.checks.filter((c) => c.code !== 0).map((c, i) => (
+      {showDetails && badChecks.map((c, i) => (
         <Text key={i} style={{ fontFamily: "Menlo", fontSize: 12, color: t.red.ink, marginTop: 4 }}>$ {c.cmd} → exit {c.code}</Text>
       ))}
       {open ? (
@@ -202,6 +205,40 @@ function AttemptRow({ theme, a }: { theme: PluginTheme; a: AttemptView }) {
           {a.judgeRung ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>Judged by {a.judgeRung}</Text> : null}
         </View>
       ) : null}
+    </View>
+  );
+}
+
+function PhaseAttempts({ theme, tries }: { theme: PluginTheme; tries: AttemptView[] }) {
+  const [showPast, setShowPast] = useState(false);
+  const { past, latest, summary } = groupAttempts(tries);
+  if (!latest) return null;
+  return (
+    <View>
+      {past.length > 0 && (
+        <View style={{ marginTop: 6 }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: showPast }}
+            onPress={() => setShowPast(!showPast)}
+            style={{
+              minHeight: MIN_HIT_HEIGHT,
+              justifyContent: "center",
+              paddingHorizontal: 10,
+              borderRadius: 6,
+              backgroundColor: theme.colors.surface2,
+              borderWidth: 1,
+              borderColor: theme.colors.border,
+            }}
+          >
+            <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "600" }}>
+              {showPast ? "▾" : "▸"} {summary}
+            </Text>
+          </Pressable>
+          {showPast ? past.map((a) => <AttemptRow key={a.n} theme={theme} a={a} compact />) : null}
+        </View>
+      )}
+      <AttemptRow theme={theme} a={latest} />
     </View>
   );
 }
@@ -236,7 +273,7 @@ function PieceDetail({ theme, view, piece }: { theme: PluginTheme; view: TaskVie
                 {tries.length ? `${STATUS_LABEL[ph.status].toLowerCase()} · ${duration(first.startedAt, ph.status === "passed" ? last.endedAt : undefined)}` : "not started"}
               </Text>
             </View>
-            {tries.map((a) => <AttemptRow key={a.n} theme={theme} a={a} />)}
+            <PhaseAttempts theme={theme} tries={tries} />
           </View>
         );
       })}
@@ -244,22 +281,186 @@ function PieceDetail({ theme, view, piece }: { theme: PluginTheme; view: TaskVie
   );
 }
 
-function Transcript({ theme, threadId }: { theme: PluginTheme; threadId: string }) {
+function InlineText({ theme, text, baseStyle }: { theme: PluginTheme; text: string; baseStyle: { color: string; fontSize: number; lineHeight: number; fontWeight?: "400" | "600" | "700" } }) {
+  const runs = parseInline(text);
+  return (
+    <Text selectable style={baseStyle}>
+      {runs.map((run, idx) =>
+        run.kind === "bold" ? (
+          <Text key={idx} style={{ fontWeight: "700" }}>{run.text}</Text>
+        ) : run.kind === "code" ? (
+          <Text key={idx} style={{ fontFamily: "Menlo", fontSize: 12, backgroundColor: theme.colors.surface2 }}>{` ${run.text} `}</Text>
+        ) : (
+          <Text key={idx}>{run.text}</Text>
+        ),
+      )}
+    </Text>
+  );
+}
+
+function CodeBlock({ theme, block }: { theme: PluginTheme; block: Extract<TranscriptBlock, { kind: "code" }> }) {
+  const collapsible = (block.isJson && block.lines > 14) || block.lines > 24;
+  const [expanded, setExpanded] = useState(!collapsible);
+  const label = block.isJson ? "JSON" : block.lang || "Code";
+  return (
+    <View style={{ backgroundColor: theme.colors.surface2, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 6, overflow: "hidden" }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 10, borderBottomWidth: expanded ? 1 : 0, borderBottomColor: theme.colors.border }}>
+        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "600", fontFamily: "Menlo" }}>
+          {label} · {block.lines} lines
+        </Text>
+        {collapsible ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded }}
+            onPress={() => setExpanded(!expanded)}
+            style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingLeft: 10 }}
+          >
+            <Text style={{ color: theme.colors.accent, fontSize: 12, fontWeight: "600" }}>
+              {expanded ? `Hide ${label} ▴` : `Show ${label} ▾`}
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+      {expanded ? (
+        <Text selectable style={{ fontFamily: "Menlo", fontSize: 12, lineHeight: 18, color: theme.colors.foreground, padding: 10 }}>
+          {block.text}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function FormattedBody({ theme, text }: { theme: PluginTheme; text: string }) {
+  const blocks = parseTranscriptBlocks(text);
+  const t = tones(theme);
+  if (!blocks.length) {
+    return <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>(no text yet)</Text>;
+  }
+  return (
+    <View style={{ gap: 8 }}>
+      {blocks.map((b, i) => {
+        if (b.kind === "heading") {
+          const fontSize = b.level === 1 ? 16 : b.level === 2 ? 15 : 14;
+          return (
+            <InlineText
+              key={i}
+              theme={theme}
+              text={b.text}
+              baseStyle={{ color: theme.colors.foreground, fontSize, lineHeight: fontSize + 6, fontWeight: "700" }}
+            />
+          );
+        }
+        if (b.kind === "bullet") {
+          return (
+            <View key={i} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
+              <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13, lineHeight: 20, fontWeight: "700" }}>{b.marker}</Text>
+              <View style={{ flex: 1 }}>
+                <InlineText theme={theme} text={b.text} baseStyle={{ color: theme.colors.foreground, fontSize: 13, lineHeight: 20 }} />
+              </View>
+            </View>
+          );
+        }
+        if (b.kind === "quote") {
+          return (
+            <View key={i} style={{ borderLeftWidth: 2, borderLeftColor: t.blue.ink, paddingLeft: 10 }}>
+              <InlineText theme={theme} text={b.text} baseStyle={{ color: theme.colors.foregroundMuted, fontSize: 13, lineHeight: 20 }} />
+            </View>
+          );
+        }
+        if (b.kind === "code") {
+          return <CodeBlock key={i} theme={theme} block={b} />;
+        }
+        return (
+          <InlineText key={i} theme={theme} text={b.text} baseStyle={{ color: theme.colors.foreground, fontSize: 13, lineHeight: 20 }} />
+        );
+      })}
+    </View>
+  );
+}
+
+function TurnCard({ theme, turn, rungLabel }: { theme: PluginTheme; turn: { n: number; at: string; prompt: string; text: string }; rungLabel?: string }) {
+  const [showPrompt, setShowPrompt] = useState(false);
+  return (
+    <View style={{ backgroundColor: theme.colors.surface1, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 8, padding: 12, gap: 10 }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "700" }}>
+          Turn {turn.n} · {timeAgo(turn.at)}
+        </Text>
+        {rungLabel ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>{rungLabel}</Text> : null}
+      </View>
+      {turn.prompt.trim() ? (
+        <View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: showPrompt }}
+            onPress={() => setShowPrompt(!showPrompt)}
+            style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}
+          >
+            <Text style={{ color: theme.colors.accent, fontSize: 12, fontWeight: "600" }}>
+              {showPrompt ? "Hide prompt ▴" : "Show prompt ▾"}
+            </Text>
+          </Pressable>
+          {showPrompt ? (
+            <Text selectable style={{ color: theme.colors.foregroundMuted, fontFamily: "Menlo", fontSize: 12, lineHeight: 18, backgroundColor: theme.colors.surface2, padding: 8, borderRadius: 6 }}>
+              {turn.prompt}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+      <FormattedBody theme={theme} text={turn.text} />
+    </View>
+  );
+}
+
+function Transcript({ theme, threadId, tries = [] }: { theme: PluginTheme; threadId: string; tries?: AttemptView[] }) {
+  const [pickedThread, setPickedThread] = useState<string | undefined>();
+  const activeThread = tries.some((a) => a.threadId === pickedThread) ? pickedThread! : threadId;
   const read = useRpc(transcriptRpc);
-  const q = useQuery({ queryKey: ["clyde", "transcript", threadId], queryFn: () => read({ threadId }) });
+  const q = useQuery({ queryKey: ["clyde", "transcript", activeThread], queryFn: () => read({ threadId: activeThread }) });
   const t = q.data?.data;
   const pal = tones(theme);
-  if (q.isPending) return <Text style={{ color: theme.colors.foregroundMuted, padding: 12, fontSize: 13 }}>Reading…</Text>;
-  if (!t) return <Text accessibilityRole="alert" style={{ color: pal.red.ink, padding: 12, fontSize: 13 }}>{formatRpcError(q.data?.error ?? q.error ?? "No transcript.")}</Text>;
   return (
     <View style={{ padding: 12, gap: 10, backgroundColor: theme.colors.surface2 }}>
-      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>{t.threadId} · {t.rung}</Text>
-      {t.turns.map((turn) => (
-        <View key={turn.n}>
-          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "700" }}>TURN {turn.n} · {timeAgo(turn.at)}</Text>
-          <Text style={{ fontFamily: "Menlo", fontSize: 12, color: theme.colors.foreground, marginTop: 4 }}>{turn.text || "(no text yet)"}</Text>
+      {tries.length > 1 ? (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+          {[...tries].reverse().map((a, idx) => {
+            const selected = a.threadId === activeThread;
+            return (
+              <Pressable
+                key={a.threadId}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                onPress={() => setPickedThread(a.threadId)}
+                style={{
+                  minHeight: MIN_HIT_HEIGHT,
+                  justifyContent: "center",
+                  paddingHorizontal: 10,
+                  borderRadius: 6,
+                  borderWidth: 1,
+                  borderColor: selected ? theme.colors.accent : theme.colors.border,
+                  backgroundColor: selected ? theme.colors.surface1 : "transparent",
+                }}
+              >
+                <Text style={{ color: selected ? theme.colors.accent : theme.colors.foregroundMuted, fontSize: 12, fontWeight: selected ? "700" : "500" }}>
+                  #{a.n}{idx === 0 ? " (latest)" : ""} · {a.outcome}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
-      ))}
+      ) : null}
+      {q.isPending ? (
+        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>Reading…</Text>
+      ) : !t ? (
+        <Text accessibilityRole="alert" style={{ color: pal.red.ink, fontSize: 13 }}>{formatRpcError(q.data?.error ?? q.error ?? "No transcript.")}</Text>
+      ) : (
+        <>
+          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>{t.threadId} · {t.rung}</Text>
+          {t.turns.map((turn) => (
+            <TurnCard key={turn.n} theme={theme} turn={turn} rungLabel={t.rung} />
+          ))}
+        </>
+      )}
     </View>
   );
 }
@@ -521,7 +722,7 @@ export function TaskScreen({ theme, view, back, openAgent }: { theme: PluginThem
               {details ? "▾" : "▸"} Transcript of the agent on this piece
             </Text>
           </Pressable>
-          {details && lastThread ? <Transcript theme={theme} threadId={lastThread} /> : null}
+          {details && lastThread ? <Transcript theme={theme} threadId={lastThread} tries={tries} /> : null}
         </View>
         {view.agentId && openAgent ? (
           <Pressable

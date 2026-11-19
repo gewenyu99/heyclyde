@@ -185,6 +185,11 @@ export function Composer(
           </Text>
         </Pressable>
       </View>
+      {flow === "ship" && worker !== "auto" && (
+        <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>
+          Plans with Opus or Astra, builds with {workerLabel(worker)}, and audits with Carbon.
+        </Text>
+      )}
       {worker==="neon" && <Pressable accessibilityRole="checkbox" accessibilityState={{checked:allowNeon}} disabled={busy} onPress={()=>setAllowNeon(!allowNeon)} style={{minHeight:MIN_HIT_HEIGHT,justifyContent:"center"}}>
         <Text style={{color:c.foreground,fontSize:13}}>{allowNeon?"☑":"☐"} Allow full access for this run</Text>
         <Text style={{color:c.foregroundMuted,fontSize:12}}>Paseo’s Neon worker can use files, shell commands and the network without further permission prompts.</Text>
