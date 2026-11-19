@@ -28,10 +28,10 @@ export function AddProject({ theme, onSelected }: { theme: PluginTheme; onSelect
     <Text style={{color:disabled ? c.foregroundMuted : c.accent,fontSize:13,fontWeight:"600"}}>{label}</Text>
   </Pressable>;
   return open ? <View style={{gap:4,padding:8}}>
-    <TextInput accessibilityLabel="Git repository path" autoCapitalize="none" autoCorrect={false} placeholder="Absolute path to a Git repository" placeholderTextColor={c.foregroundMuted}
+    <TextInput accessibilityLabel="Project folder path" autoCapitalize="none" autoCorrect={false} placeholder="Absolute path to a project folder" placeholderTextColor={c.foregroundMuted}
       editable={!busy} value={path} onChangeText={value=>{setPath(value);setError("");}} onSubmitEditing={()=>void submit()}
       style={{fontSize:14,color:c.foreground,backgroundColor:c.surface0,borderWidth:1,borderColor:c.border,borderRadius:6,padding:10}}/>
     <View style={{flexDirection:"row",gap:10}}>{button(busy?"Opening…":"Open project",()=>void submit(),busy||!path.trim())}{button("Cancel",()=>setOpen(false),busy)}</View>
     {!!error && <Text accessibilityRole="alert" style={{fontSize:13,color:c.statusDanger}}>{error}</Text>}
-  </View> : button("Add a Git project…",()=>setOpen(true));
+  </View> : button("Add a project folder…",()=>setOpen(true));
 }

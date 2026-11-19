@@ -62,7 +62,7 @@ export function codexArgs(input: TurnInput, files: Files, session?: string): str
     '--ignore-user-config',
     '-c', `sandbox_workspace_write.writable_roots=${JSON.stringify([
       ...ensureWritableRoots(input.env.CLYDE_HOME || clydeHome()),
-      ...gitDirsOutside(input.cwd),
+      ...(input.directory ? [] : gitDirsOutside(input.cwd)),
     ])}`,
     '-c', 'sandbox_workspace_write.network_access=true',
     '-c', 'features.network_proxy.enabled=true',

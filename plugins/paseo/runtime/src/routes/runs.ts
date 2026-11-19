@@ -30,9 +30,10 @@ export function runRoutes(ctx: DaemonCtx): Route[] {
       method: 'POST', path: '/runs',
       handle: async (req) => {
         const b = req.body ?? {}
+        if (b.directory !== undefined && typeof b.directory !== 'boolean') throw new HttpError(400, 'directory must be boolean')
         const cwd = typeof b.cwd === 'string' && b.cwd ? b.cwd : undefined
         return { body: await runs.start(text(b.flow, 'flow'), b.input ?? {}, cwd, b.track === undefined ? undefined : owner(b.track),
-          typeof b.parentThreadId === 'string' && b.parentThreadId ? b.parentThreadId : undefined, b.assignment, typeof b.paseoParentId==='string' ? b.paseoParentId : undefined) }
+          typeof b.parentThreadId === 'string' && b.parentThreadId ? b.parentThreadId : undefined, b.assignment, typeof b.paseoParentId==='string' ? b.paseoParentId : undefined, b.directory === true) }
       },
     },
     { method: 'POST', path: '/runs/:id/steer', handle: req => ({body:runs.steer(req.params.id,text(req.body?.text,'text'))}) },

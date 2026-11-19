@@ -39,7 +39,7 @@ export function projectEntry(run: Run): Record<string, unknown> {
   const input = JSON.stringify(run.input, null, 2)
   return entry(run, {
     id: projectId(run.id), pattern: 'projects', project: undefined, title: `Run ${run.id}: ${run.title}`,
-    body: `clyde ${run.flow} run ${run.id} on branch ${run.branch}, cut from ${run.repo} at ${run.base.slice(0, 12)}. Its stages hand off through this scope.`,
+    body: run.directory ? `clyde ${run.flow} run ${run.id} in selected folder ${run.cwd}. Its stages hand off through this scope.` : `clyde ${run.flow} run ${run.id} on branch ${run.branch}, cut from ${run.repo} at ${run.base.slice(0, 12)}. Its stages hand off through this scope.`,
     evidence_kind: 'summary', evidence: `The run's input:\n${input}`,
     blobs: input.length > LIMITS.evidence ? [{ name: 'input.json', media_type: 'application/json', text: input }] : undefined,
   })

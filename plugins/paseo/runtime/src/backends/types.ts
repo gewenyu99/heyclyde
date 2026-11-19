@@ -2,6 +2,7 @@
 import type { BackendName, Rung } from '../types.ts'
 
 export type TurnInput = {
+  directory?: boolean
   rung: Rung; cwd: string; session?: string; prompt: string; readOnly?: boolean
   systemAppend?: string; env: Record<string, string>; schema?: object; signal: AbortSignal
   onProgress?: (line: string) => void

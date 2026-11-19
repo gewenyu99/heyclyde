@@ -1,11 +1,11 @@
-/** Keep Paseo's whole registry visible; task eligibility is an exact, verified Git checkout. */
+/** Paseo's registered Git and directory projects, with exact source placement. */
 import { execFile } from 'node:child_process';
 import { realpathSync,statSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import type { PluginHandlerContext,PluginServerContext } from '@getpaseo/plugin/server';
 import { openProjectRpc,projectsRpc,type ProjectChat } from '../shared/clyde.ts';
 import { isProjectChat,listAllAgents } from './residents.ts';
-import { registerFolderRepos } from './folder-repositories.ts';
+import {verifyDirectory,directorySlug} from './project-path.ts';
 
 type Paseo=PluginHandlerContext['paseo'];
 type Project=Awaited<ReturnType<Paseo['projects']['list']>>['projects'][number];
@@ -26,8 +26,7 @@ export async function verifyRepository(path:string):Promise<string> {
   return root;
 }
 export async function projectEligibility(project:Pick<Project,'projectKind'|'projectRootPath'>):Promise<{eligible:boolean;ineligibleReason?:string}> {
-  if(project.projectKind!=='git')return {eligible:false,ineligibleReason:'Registered folder. Clyde tasks need a Git repository.'};
-  try{await verifyRepository(project.projectRootPath);return {eligible:true};}
+  try{if(project.projectKind==='git')await verifyRepository(project.projectRootPath);else verifyDirectory(project.projectRootPath);return {eligible:true};}
   catch(error){return {eligible:false,ineligibleReason:(error as Error).message};}
 }
 export async function canonicalProjectSlug(root:string):Promise<string> {
@@ -37,7 +36,6 @@ export async function canonicalProjectSlug(root:string):Promise<string> {
 }
 
 export function projectRegistry(server:PluginServerContext):void {
-  registerFolderRepos(server,{verifyRepository,canonicalProjectSlug});
   const requestPaths=new Map<string,string>();
   const opening=new Map<string,Promise<{projectId:string;workspaceId?:string;path:string}>>();
   server.handle(projectsRpc,async({workspaceId},{paseo})=>{
@@ -53,7 +51,7 @@ export function projectRegistry(server:PluginServerContext):void {
       chatsByProject.set(projectId,list);
     }
     return Promise.all(projects.filter(p=>!workspaceId || p.projectId===workspace?.projectId).map(async p=>{
-      const [eligibility,slug]=await Promise.all([projectEligibility(p),canonicalProjectSlug(p.projectRootPath)]);
+      const [eligibility,slug]=await Promise.all([projectEligibility(p),p.projectKind==='git'?canonicalProjectSlug(p.projectRootPath):directorySlug(p.projectRootPath)]);
       return {id:p.projectId,name:p.projectDisplayName,label:p.projectDisplayName+' · '+(p.projectKind==='git'?slug:'folder'),slug,path:p.projectRootPath,kind:p.projectKind,...eligibility,
         workspaces:workspaces.filter(w=>w.projectId===p.projectId && (!workspaceId || w.id===workspaceId) && !w.background && !w.internal && !w.archivingAt && !(w as {archivedAt?:string|null}).archivedAt)
           .map(w=>({id:w.id,name:w.title || w.name || w.id,path:w.workspaceDirectory})),
@@ -61,7 +59,7 @@ export function projectRegistry(server:PluginServerContext):void {
     }));
   });
   server.handle(openProjectRpc,async({path,requestId},{paseo})=>{
-    const root=await verifyRepository(path.trim());
+    const root=verifyDirectory(path.trim());
     if(requestPaths.has(requestId) && requestPaths.get(requestId)!==root)throw new Error('This request already belongs to another project path.');
     requestPaths.set(requestId,root);
     const pending=opening.get(root);if(pending)return pending;
@@ -72,8 +70,8 @@ export function projectRegistry(server:PluginServerContext):void {
       // The public SDK performs Paseo's native open-project workflow; never borrow an ancestor or a name match.
       const workspace=await paseo.workspaces.open({cwd:root,requestId});
       const after=await paseo.projects.list();
-      const registered=after.projects.find(p=>canonical(p.projectRootPath)===root && p.projectKind==='git');
-      if(!registered || workspace.projectId!==registered.projectId || canonical(workspace.directory??'')!==root)throw new Error('Paseo did not register the selected repository as its own project. Open that exact Git repository in Paseo and retry.');
+      const registered=after.projects.find(p=>canonical(p.projectRootPath)===root);
+      if(!registered || workspace.projectId!==registered.projectId || canonical(workspace.directory??'')!==root)throw new Error('Paseo did not register the selected directory as its own project. Open that exact directory in Paseo and retry.');
       return {projectId:registered.projectId,workspaceId:workspace.id,path:root};
     })();
     opening.set(root,operation);

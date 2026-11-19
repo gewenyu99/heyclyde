@@ -28,8 +28,8 @@ export async function run(ctx: FlowCtx, input: TaskInput) {
   const stage = await ctx.stage({
     name: 'task', route: input.role ? undefined : 'worker', skill: input.skill, prompt: input.prompt, criteria: input.criteria, checks: input.checks, role: input.role ?? 'worker',
   })
-  if (stage.passed && ctx.run.routes) await auditChange(ctx, input.checks ?? [])
-  if (stage.passed && ctx.run.auditedHead && input.draftPR === true) await publishDraft(ctx)
+  if (stage.passed && !ctx.run.directory && ctx.run.routes) await auditChange(ctx, input.checks ?? [])
+  if (stage.passed && !ctx.run.directory && ctx.run.auditedHead && input.draftPR === true) await publishDraft(ctx)
   return stage
 }
 

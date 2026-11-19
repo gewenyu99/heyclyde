@@ -160,10 +160,6 @@ export const projectsRpc = defineRpc({
   input:z.object({workspaceId:z.string().optional()}),
   output:z.array(z.object({id:z.string(),name:z.string(),label:z.string(),kind:z.string(),eligible:z.boolean(),ineligibleReason:z.string().optional(),slug:z.string(),path:z.string(),chats:z.array(projectChat),workspaces:z.array(z.object({id:z.string(),name:z.string(),path:z.string()}))})),
 });
-export const folderReposRpc = defineRpc({
-  name:"clyde.folder-repos",input:z.object({projectId:z.string().min(1)}),
-  output:z.array(z.object({path:z.string(),name:z.string(),slug:z.string(),projectId:z.string().optional()})),
-});
 export const openProjectRpc = defineRpc({
   name:"clyde.open-project",input:z.object({path:z.string().trim().min(1).max(4096),requestId:z.string().uuid()}),
   output:z.object({projectId:z.string(),workspaceId:z.string().optional(),path:z.string()}),

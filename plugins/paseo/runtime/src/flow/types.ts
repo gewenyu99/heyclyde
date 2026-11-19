@@ -5,6 +5,7 @@ import type { Rung } from '../types.ts'
 export type StageSpec = {
   name: string; skill?: string; prompt: string; criteria: string[]; checks?: string[]; role?: string
   route?: Stage
+  readOnly?: boolean
   resultTemplate?: string
   // Pulls the stage's product out of the worker's output, like the plan. The judge sees it, never the worker's own claims.
   extract?: (output: WorkerOutput) => unknown
@@ -43,6 +44,7 @@ export type AskRecord = {
 export type RunStatus = 'running' | 'asking' | 'done' | 'failed' | 'stopped'
 
 export type Run = {
+  directory?: boolean
   id: string; flow: string; title: string; status: RunStatus; input: unknown
   steering?: string[]
   verifiedNotes?:{id:string;title:string;sources:string[]}[]

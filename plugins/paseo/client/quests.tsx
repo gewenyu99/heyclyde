@@ -31,8 +31,8 @@ export function Quests({ theme, agent: activeAgent, workspaceId, onStarted }: {
   const targets = (projects.data ?? []).filter(p => p.eligible !== false && questProjectMatches(p.slug, currentQuest?.project));
   const target = targets.find(p => p.id === project) ?? (targets.length === 1 ? targets[0] : undefined);
   const workspaces = target?.workspaces ?? [];
-  const targetWorkspace = workspaceId || workspaces.find(w => w.id === workspace)?.id || (workspaces.length === 1 ? workspaces[0].id : undefined);
-  const needsWorkspace = !targetWorkspace && workspaces.length > 1;
+  const targetWorkspace = workspaceId || workspaces.find(w => w.id === workspace)?.id || (target?.kind === "git" && workspaces.length === 1 ? workspaces[0].id : undefined);
+  const needsWorkspace = target?.kind === "git" && !targetWorkspace && workspaces.length > 1;
   const chats = target?.chats ?? [];
   const agent = chats.find(chat => chat.id === chosen)?.id || chats.find(chat => chat.id === activeAgent)?.id;
   const matches = useQuery({ queryKey: ["clyde", "eligible-quests", agent], queryFn: () => scoped({ agent: agent! }), enabled: existing && !!agent, refetchInterval: 30000, retry: false });
@@ -97,9 +97,10 @@ export function Quests({ theme, agent: activeAgent, workspaceId, onStarted }: {
                   <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{p.path}</Text>
                 </Pressable>)}
               </View>}
-              {!target && !projects.isPending && <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>{targets.length ? "Choose where this quest should run." : currentQuest?.project ? "Open the quest’s project in Paseo to start it." : "Open a Git project in Paseo to start this quest."}</Text>}
-              {!existing && !workspaceId && target && workspaces.length > 1 && <View>
-                {button((workspaces.find(w => w.id === targetWorkspace)?.name || "Choose a workspace") + " ▾", () => setMenu(menu === "workspace" ? null : "workspace"), busy)}
+              {!target && !projects.isPending && <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>{targets.length ? "Choose where this quest should run." : currentQuest?.project ? "Open the quest’s project in Paseo to start it." : "Open a project in Paseo to start this quest."}</Text>}
+              {!existing && !workspaceId && target && workspaces.length > 0 && (target.kind !== "git" || workspaces.length > 1) && <View>
+                {button((workspaces.find(w => w.id === targetWorkspace)?.name || (target.kind === "git" ? "Choose a workspace" : "Project folder")) + " ▾", () => setMenu(menu === "workspace" ? null : "workspace"), busy)}
+                {menu === "workspace" && target.kind !== "git" && button("Use project folder", () => { setWorkspace(""); setMenu(null); }, busy)}
                 {menu === "workspace" && workspaces.map(w => <Pressable key={w.id} accessibilityRole="button" accessibilityState={{ selected: targetWorkspace === w.id, disabled: busy }} disabled={busy} onPress={() => { setWorkspace(w.id); setMenu(null); setError(""); }} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingLeft: 10 }}>
                   <Text style={{ color: targetWorkspace === w.id ? c.accent : c.foreground, fontSize: 13 }}>{w.name}</Text>
                   <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{w.path}</Text>

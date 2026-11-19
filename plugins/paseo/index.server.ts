@@ -1,3 +1,4 @@
+import {verifyDirectory,directorySlug} from "./server/project-path.ts";
 import { projectRegistry } from "./server/project-registry.ts";
 import { currentActivity, workspaceActivity } from "./server/current-activity.ts";
 import { suggestProject } from "./server/project-selection.ts";
@@ -131,6 +132,13 @@ function canonicalPath(p?: string): string | undefined {
   try { return realpathSync(p); } catch { return p; }
 }
 
+async function verifyDirectoryOrigin(paseo:PaseoApi,id:string,cwd:string,projectId:string):Promise<void> {
+  const handle=paseo.agents.ref(id);await handle.refresh();const agent=handle.current();
+  if(!agent || !isProjectChat(agent) || verifyDirectory(agent.cwd)!==cwd)throw new Error("The chat is not in the selected folder workspace.");
+  const workspace=(await paseo.workspaces.list()).entries.find(w=>w.id===agent.workspaceId);
+  if(!workspace || workspace.projectId!==projectId || verifyDirectory(workspace.workspaceDirectory)!==cwd)throw new Error("The chat belongs to another project workspace.");
+}
+
 function findProjectForPath(
   targetPath: string | undefined,
   projects: ProjectEntry[],
@@ -138,12 +146,12 @@ function findProjectForPath(
 ): { project: ProjectEntry; workspaces: WorkspaceEntry[] } | undefined {
   const target = canonicalPath(targetPath);
   if (!target) return undefined;
-  const gitProjects = projects.filter((p) => p.projectKind !== "non_git");
-  const projectById = new Map(gitProjects.map((p) => [p.projectId, p]));
+  const availableProjects = projects;
+  const projectById = new Map(availableProjects.map((p) => [p.projectId, p]));
   const wsMatch = workspaces.find((w) => projectById.has(w.projectId) && canonicalPath(w.workspaceDirectory) === target);
   const exactProject = (wsMatch ? projectById.get(wsMatch.projectId) : undefined)
-    ?? gitProjects.find((p) => canonicalPath(p.projectRootPath) === target);
-  const project = exactProject ?? gitProjects
+    ?? availableProjects.find((p) => canonicalPath(p.projectRootPath) === target);
+  const project = exactProject ?? availableProjects.filter(p=>p.projectKind==="git")
     .map((p) => ({ p, root: canonicalPath(p.projectRootPath) }))
     .filter((x): x is { p: ProjectEntry; root: string } => Boolean(x.root) && target.startsWith(x.root + "/"))
     .sort((a, b) => b.root.length - a.root.length)[0]?.p;
@@ -166,12 +174,13 @@ async function resolveProjectChat(
   if (!match) return null;
   if (exactRepository && canonicalPath(match.project.projectRootPath) !== canonicalPath(targetPath) &&
       !match.workspaces.some(w => canonicalPath(w.workspaceDirectory) === canonicalPath(targetPath))) return null;
-  const workspaceIds = new Set(match.workspaces.map((w) => w.id));
+  const matchingWorkspaces=match.project.projectKind==="git"?match.workspaces:match.workspaces.filter(w=>canonicalPath(w.workspaceDirectory)===canonicalPath(targetPath));
+  const workspaceIds = new Set(matchingWorkspaces.map((w) => w.id));
   const chats = allAgents
     .filter((a) => a.workspaceId && workspaceIds.has(a.workspaceId) && isProjectChat(a))
     .sort((a, b) => (b.updatedAt ?? b.createdAt ?? "").localeCompare(a.updatedAt ?? a.createdAt ?? ""));
   if (chats.length > 0) return { agentId: chats[0].id, created: false };
-  const agentId = await createProjectChat(paseo, match.project, match.workspaces, "auto", title, "open-chat-" + randomUUID());
+  const agentId = await createProjectChat(paseo, match.project, matchingWorkspaces, "auto", title, "open-chat-" + randomUUID());
   return { agentId, created: true };
 }
 
@@ -211,13 +220,19 @@ export default function contribute(server: PluginServerContext) {
       return pending;
     }
     const start=(async()=>{
-      const selected=(await paseo.projects.list()).projects.find(p=>p.projectId===project && p.projectKind!=="non_git");
-      if(!selected)throw new Error("Select an available Git project in Paseo.");
+      const selected=(await paseo.projects.list()).projects.find(p=>p.projectId===project);
+      if(!selected)throw new Error("Select an available project in Paseo.");
+      const directory=selected.projectKind!=="git";
+      const source=directory?verifyDirectory(selected.projectRootPath):selected.projectRootPath;
       const available=(await paseo.workspaces.list()).entries.filter(w=>w.projectId===project && !w.background && !w.internal && !w.archivingAt && !(w as {archivedAt?:string|null}).archivedAt);
-      const workspace=workspaceId ? available.find(w=>w.id===workspaceId) : available.length===1 ? available[0] : undefined;
+      const workspace=workspaceId ? available.find(w=>w.id===workspaceId) : directory ? available.find(w=>canonicalPath(w.workspaceDirectory)===source) : available.length===1 ? available[0] : undefined;
       if(workspaceId && !workspace)throw new Error("Choose an available workspace in the selected project.");
-      if(!workspaceId && available.length>1)throw new Error("Choose a workspace for the new quest orchestrator.");
-      if(known?.id)return {id:known.id};
+      if(!directory && !workspaceId && available.length>1)throw new Error("Choose a workspace for the new quest orchestrator.");
+      const cwd=directory?verifyDirectory(workspaceId?workspace!.workspaceDirectory:source):workspace?.workspaceDirectory || selected.projectRootPath;
+      if(known?.id){
+        if(directory){const existing=await call<{directory?:boolean;repo?:string}>("GET","/runs/"+encodeURIComponent(known.id));if(existing.directory!==true || !existing.repo || verifyDirectory(existing.repo)!==cwd)throw new Error("Quest belongs to another folder workspace.");}
+        return {id:known.id};
+      }
       let prior:QuestStart|undefined;
       if(!known)for(const candidate of Object.values(questStarts)){
         if(candidate.quest!==quest || candidate.project!==project || !candidate.agent)continue;
@@ -229,7 +244,7 @@ export default function contribute(server: PluginServerContext) {
       }
       const record=known ?? prior ?? {quest,project,...(workspaceId?{workspaceId}:{})};
       if(prior && prior.workspaceId!==workspaceId)throw new Error("This quest already has an orchestrator in another workspace.");
-      const slug=projectSlug(selected.projectRootPath),cwd=workspace?.workspaceDirectory || selected.projectRootPath;
+      const slug=directory?directorySlug(source):projectSlug(selected.projectRootPath);
       const item=(await residentControl.questBoard()).quests.find(q=>q.id===quest);
       if(!item)throw new Error("This quest is no longer available.");
       if(!questProjectMatches(slug,item.project))throw new Error("This quest belongs to another project.");
@@ -242,8 +257,9 @@ export default function contribute(server: PluginServerContext) {
         record.agent=await createProjectChat(paseo,selected,workspace?[workspace]:[],"auto",`Quest #${quest}: ${item.title}`,"quest-"+requestId,provider);
         saveQuestStarts();
       }else if(!known){questStarts[requestId]=record;saveQuestStarts();}
-      await residentControl.prepareQuestOwner(record.agent,quest,slug,paseo);
-      const result=await residentControl.startQuest({agent:record.agent,quest,requestId,item},paseo);
+      const owner=await residentControl.prepareQuestOwner(record.agent,quest,slug,paseo);
+      if(directory){if(verifyDirectory(owner.cwd)!==cwd)throw new Error("The quest chat is not in the selected folder workspace.");await verifyDirectoryOrigin(paseo,record.agent,cwd,project);}
+      const result=await residentControl.startQuest({agent:record.agent,quest,requestId,item,...(directory?{placement:{directory:true,cwd}}:{})},paseo);
       record.id=result.id;saveQuestStarts();
       return result;
     })();
@@ -255,12 +271,15 @@ export default function contribute(server: PluginServerContext) {
     }
   });
   server.handle(launchRpc, async ({project,workspaceId,prompt,criteria,flow,worker,requestId,agentId,newChat,allowAntigravityFullAccess}, {paseo}) => {
-    const selected=(await paseo.projects.list()).projects.find(p => p.projectId === project && p.projectKind !== "non_git");
-    if (!selected) throw new Error("Select an available Git project in Paseo.");
-    const allWorkspaces=(await paseo.workspaces.list()).entries.filter(w=>w.projectId===project);
+    const selected=(await paseo.projects.list()).projects.find(p => p.projectId === project);
+    if (!selected) throw new Error("Select an available project in Paseo.");
+    const directory=selected.projectKind!=="git";
+    const source=directory?verifyDirectory(selected.projectRootPath):selected.projectRootPath;
+    const allWorkspaces=(await paseo.workspaces.list()).entries.filter(w=>w.projectId===project && !w.background && !w.internal && !w.archivingAt && !(w as {archivedAt?:string|null}).archivedAt);
     const activeWorkspace = workspaceId ? allWorkspaces.find((w) => w.id === workspaceId) : undefined;
     if (workspaceId && !activeWorkspace) throw new Error("Workspace belongs to another project.");
-    const workspaces = activeWorkspace ? [activeWorkspace] : allWorkspaces;
+    const launchCwd=directory?verifyDirectory(activeWorkspace?.workspaceDirectory || source):activeWorkspace?.workspaceDirectory || selected.projectRootPath;
+    const workspaces=activeWorkspace?[activeWorkspace]:directory?allWorkspaces.filter(w=>canonicalPath(w.workspaceDirectory)===launchCwd):allWorkspaces;
     const workspaceIds=new Set(workspaces.map(w=>w.id));
     const agents=(await listAllAgents(paseo))
       .filter(a=>a.workspaceId && workspaceIds.has(a.workspaceId) && isProjectChat(a))
@@ -271,15 +290,15 @@ export default function contribute(server: PluginServerContext) {
       : !newChat && agents.length >= 1
       ? agents[0].id
       : await createProjectChat(paseo, selected, workspaces, worker, prompt, requestId);
-    const launchCwd = activeWorkspace?.workspaceDirectory || selected.projectRootPath;
+    if(directory)await verifyDirectoryOrigin(paseo,origin,launchCwd,project);
     const routing=worker === "auto" ? {} : {overrides:{worker}};
-    const existing=await call<{id:string,repo:string}>("GET","/runs/"+encodeURIComponent("r-"+requestId)).catch(e=>{if(!String(e).includes("404"))throw e;return null;});
-    if(existing){const allowed=[selected.projectRootPath,activeWorkspace?.workspaceDirectory].filter(Boolean);if(!allowed.includes(existing.repo))throw new Error("Task belongs to another project.");residentControl.track(existing.id,origin,paseo);return {id:existing.id};}
+    const existing=await call<{id:string,repo:string,directory?:boolean}>("GET","/runs/"+encodeURIComponent("r-"+requestId)).catch(e=>{if(!String(e).includes("404"))throw e;return null;});
+    if(existing){if(directory && (existing.directory!==true || canonicalPath(existing.repo)!==launchCwd))throw new Error("Task belongs to another project workspace.");const allowed=directory?[launchCwd]:[selected.projectRootPath,activeWorkspace?.workspaceDirectory].filter(Boolean);if(!allowed.includes(directory?canonicalPath(existing.repo):existing.repo))throw new Error("Task belongs to another project.");residentControl.track(existing.id,origin,paseo);return {id:existing.id};}
     const notes=await residentControl.context(origin,prompt,paseo);
     const input=flow==="ship"
       ? {intent:prompt,criteria,notes:[criteria?.length ? "User completion criteria:\n"+criteria.join("\n") : "", notes].filter(Boolean).join("\n\n"),routing}
       : {prompt:prompt+notes,criteria:criteria?.length ? criteria : [prompt],routing};
-    const run=await call<{id:string}>("POST","/runs",{flow,input:{...input,allowAntigravityFullAccess:worker==="neon"&&allowAntigravityFullAccess===true},cwd:launchCwd,assignment:requestId,paseoParentId:origin});
+    const run=await call<{id:string}>("POST","/runs",{flow,input:{...input,allowAntigravityFullAccess:worker==="neon"&&allowAntigravityFullAccess===true},cwd:launchCwd,assignment:requestId,paseoParentId:origin,...(directory?{directory:true}:{})});
     if(origin)residentControl.track(run.id,origin,paseo);
     return {id:run.id};
   });

@@ -23,6 +23,7 @@ import {
 import { recallPacket, usedNotes } from "../shared/recall.ts";
 import { agentCall, agentReply, sharedBoardReply } from "./connection.ts";
 import { call, readJson } from "./daemon.ts";
+import {verifyDirectory} from "./project-path.ts";
 
 type Origin = {
   agent: string;
@@ -34,6 +35,7 @@ type Origin = {
     criterion: string;
     title: string;
     cwd: string;
+    directory?: boolean;
     leaseCheck?: number;
     note?: string;
     complete?: boolean;
@@ -46,6 +48,7 @@ type Run = {
   id: string;
   title: string;
   status: string;
+  directory?: boolean; repo?: string;
   asks: Ask[];
   auditedHead?: string;
   stages: { summary?: string }[];
@@ -293,7 +296,9 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => (R
   });
   async function launch(run: string, origin: Origin) {
     try {
-      return await call<Run>("GET", "/runs/" + run);
+      const existing=await call<Run>("GET", "/runs/" + run);
+      if(origin.job?.directory && (existing.directory!==true || !existing.repo || verifyDirectory(existing.repo)!==origin.job.cwd))throw new Error("Quest run belongs to another project workspace.");
+      return existing;
     } catch (e) {
       if (!String(e).includes("404")) throw e;
     }
@@ -313,6 +318,7 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => (R
       assignment: run.slice(2),
       paseoParentId: origin.agent,
       cwd: job.cwd,
+      ...(job.directory?{directory:true}:{}),
       input: {
         title: job.title,
         prompt: job.brief +
@@ -322,7 +328,7 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => (R
       },
     });
   }
-  async function startQuest({ agent, quest, requestId, item: selectedItem }: {agent:string;quest:number;requestId?:string;item?:BoardQuest}, paseo:PaseoApi) {
+  async function startQuest({ agent, quest, requestId, item: selectedItem, placement }: {agent:string;quest:number;requestId?:string;item?:BoardQuest;placement?:{directory:true;cwd:string}}, paseo:PaseoApi) {
     api = paseo;
     const key = "quest/" + quest;
     if (inFlight.has(key)) throw new Error("This quest is already starting");
@@ -332,11 +338,13 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => (R
         o.agent === agent && o.job?.quest === quest && !o.job?.complete
       );
       if (existing) {
+        if(placement && (existing[1].job?.directory!==true || existing[1].job.cwd!==placement.cwd))throw new Error("Quest belongs to another folder workspace.");
         await launch(...existing);
         return { id: existing[0] };
       }
       const owner = rowFor(agent);
       if (!owner) throw new Error("Open the project chat before starting a quest.");
+      if(placement && verifyDirectory(owner.cwd)!==verifyDirectory(placement.cwd))throw new Error("The quest chat is not in the selected folder workspace.");
       const item: BoardQuest | undefined = selectedItem ?? (await board(agent)).find((q) => q.id === quest);
       if (!item) throw new Error("This quest is no longer open");
       if(item.id!==quest || (item.state && item.state!=="open"))throw new Error("This quest is no longer open");
@@ -349,7 +357,7 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => (R
       const run = "r-" + (requestId ?? randomUUID()),
         origin: Origin = {
           agent,
-          job: { quest, title: item.title, brief: item.brief, criterion: item.done_when, cwd: owner.cwd },
+          job: { quest, title: item.title, brief: item.brief, criterion: item.done_when, cwd: placement?.cwd ?? owner.cwd, ...(placement?{directory:true}:{}) },
         };
       origins[run] = origin;
       save();
@@ -367,7 +375,21 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => (R
       inFlight.delete(key);
     }
   }
-  server.handle(spawnQuestRpc, ({agent,quest},{paseo}) => startQuest({agent,quest},paseo));
+  server.handle(spawnQuestRpc, async({agent,quest},{paseo}) => {
+    let placement:{directory:true;cwd:string}|undefined;
+    if(paseo.projects?.list && paseo.workspaces?.list){
+      const handle=paseo.agents.ref(agent);await handle.refresh();const native=handle.current();
+      const [{projects},{entries}]=await Promise.all([paseo.projects.list(),paseo.workspaces.list()]);
+      const workspace=entries.find(w=>w.id===native?.workspaceId),project=projects.find(p=>p.projectId===workspace?.projectId);
+      if(!native || native.archivedAt || !workspace || !project)throw new Error("Select an available project chat.");
+      if(project.projectKind!=="git"){
+        const cwd=verifyDirectory(workspace.workspaceDirectory);
+        if(verifyDirectory(native.cwd)!==cwd)throw new Error("The quest chat is not in its folder workspace.");
+        placement={directory:true,cwd};
+      }
+    }
+    return startQuest({agent,quest,...(placement?{placement}:{})},paseo);
+  });
   async function tick() {
     if (closed || polling || !Object.keys(origins).length) return;
     polling = true;

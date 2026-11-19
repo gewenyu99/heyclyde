@@ -34,7 +34,7 @@ export async function runStage(d: Driver, spec: StageSpec): Promise<StageResult>
     for (const a of rec.attempts) if (!a.endedAt) Object.assign(a, { endedAt: now(), ok: false, reason: LOST })
   } else {
     // The base comes before the first attempt, so the judge's diff holds every attempt's work.
-    rec = { name: spec.name, skill: spec.skill, role: spec.role ?? 'worker', status: 'running', base: await d.race(headSha(run.cwd)), round: 0, attempts: [], startedAt: now() }
+    rec = { name: spec.name, skill: spec.skill, role: spec.role ?? 'worker', status: 'running', base: run.directory ? '' : await d.race(headSha(run.cwd)), round: 0, attempts: [], startedAt: now() }
     run.stages.push(rec)
   }
   if (run.paseoParentId && spec.name.startsWith('code-it-works:') && spec.checks?.length && !rec.attempts.length && !rec.baselineChecks) {
@@ -131,11 +131,11 @@ async function attempt(d: Driver, spec: StageSpec, rec: StageRecord, rung: Rung,
   d.emit('run.stage', `Run ${run.id} stage ${spec.name}: attempt ${n} on ${rungLabel(rung)}.${after}`, { stage: spec.name, attempt: n, round: rec.round, rung })
   const prompt = workerPrompt({ run, spec, attempt: n, notes, skillFile: spec.skill ? skillPath(spec.skill) : undefined, root: repoRoot(), bin: clydeBin() })
   // The worker starts from a list the runtime writes, one item per gate criterion, and adds its own steps under them.
-  const representative = !run.parentThreadId && rec.attempts.length === 0 &&
+  const representative = !run.directory && !run.parentThreadId && rec.attempts.length === 0 &&
     ((run.flow === 'task' && spec.name === 'task') || (run.flow === 'ship' && spec.name === 'plan'))
   const baseline = rec.baselineChecks?.map(c => `exit ${c.code}: ${c.cmd}`).join('\n')
-  const worker = d.startThread({ title: `${run.id} ${spec.name} #${n} worker`, prompt: baseline ? prompt + "\nBefore this stage edited the worktree, the runtime observed:\n" + baseline : prompt, rung, stage: spec.name,
-    ...(!(planning(spec) && spec.extract) && (!run.paseoParentId || memoryMaintenance(run)) ? { list: [...spec.criteria, REPORT_ITEM] } : {}), ...(representative ? { mirrorTitle: run.title } : {}) })
+  const worker = d.startThread({ title: `${run.id} ${spec.name} #${n} worker`, prompt: baseline ? prompt + "\nBefore this stage edited the worktree, the runtime observed:\n" + baseline : prompt, rung, stage: spec.name, ...(spec.readOnly ? { readOnly: true } : {}),
+    ...(!run.directory && !spec.readOnly && !(planning(spec) && spec.extract) && (!run.paseoParentId || memoryMaintenance(run)) ? { list: [...spec.criteria, REPORT_ITEM] } : {}), ...(representative ? { mirrorTitle: run.title } : {}) })
   const a: Attempt = { n, round: rec.round, rung, threadId: worker.id, startedAt: now() }
   rec.attempts.push(a)
   d.save()
@@ -168,18 +168,17 @@ async function gradeOutput(d: Driver, spec: StageSpec, rec: StageRecord, a: Atte
   let verifiedExisting = false
   if (result.status === 'blocked') {
     const reason = result.summary
-    const diff = await d.race(diffSince(run.cwd, rec.base))
-    if (run.paseoParentId && diff && needsGitPermission(result)) {
+    const { diff, commits } = await stageEvidence(d, spec, rec, rec.base)
+    if (!run.directory && run.paseoParentId && diff && needsGitPermission(result)) {
       const question = 'Git needs permission to commit in the task worktree. Review the changes in Paseo and commit the files you approve, then retry.'
       return { ...fail(d, a, reason), providerError: question }
     }
     // A verification worker can try to re-stage an already committed implementation.
     // Judge that work against the original criteria and real checks; no new commit is required.
     const verifySlice = /^code-it-(?:good|clean):(.+)$/.exec(spec.name)?.[1]
-    verifiedExisting = !!(run.paseoParentId && needsGitPermission(result) && !diff && verifySlice &&
+    verifiedExisting = !!(!run.directory && run.paseoParentId && needsGitPermission(result) && !diff && verifySlice &&
       run.stages.some(s => s.name === 'code-it-works:' + verifySlice && s.status === 'passed' && s.base !== rec.base))
     if (!verifiedExisting) {
-      const commits = await d.race(commitsSince(run.cwd, rec.base))
       const blockSpec = { ...spec, criteria: ['The worker is genuinely blocked and cannot resolve this stage without Wen.'], checks: [] }
       const { verdict, errors } = await judge(d, blockSpec, rec, a, { diff, commits, checks: [], artifact: { blocked: reason } })
       if (!verdict) {
@@ -211,8 +210,7 @@ async function gradeOutput(d: Driver, spec: StageSpec, rec: StageRecord, a: Atte
   const slice = /^code-it-(?:good|clean):(.+)$/.exec(spec.name)?.[1]
   const base = spec.name === 'review' ? run.base
     : (slice && run.stages.find(stage => stage.name === 'code-it-works:' + slice)?.base) || rec.base
-  const diff = await d.race(diffSince(run.cwd, base))
-  const commits = await d.race(commitsSince(run.cwd, base))
+  const { diff, commits } = await stageEvidence(d, spec, rec, base)
   const { verdict, errors } = await judge(d, spec, rec, a, { base, diff, commits, checks, artifact })
   if (!verdict) {
     const why = `No judge returned a verdict, so the work is ungraded. ${errors.join(' ')}`
@@ -231,6 +229,11 @@ export function needsGitPermission(result: WorkerResult): boolean {
   const report = [result.summary, ...result.evidence.map(item => item.evidence)].join(' ')
   return /\bgit\b/i.test(report) && /index[ .-]lock|unable to create[^\n]*\.git/i.test(report) &&
     /operation not permitted|permission denied|denied permission|read-only file system/i.test(report)
+}
+
+async function stageEvidence(d: Driver, spec: StageSpec, rec: StageRecord, base: string): Promise<{ diff: string; commits: string }> {
+  if (!d.run.directory) return { diff: await d.race(diffSince(d.run.cwd, base)), commits: await d.race(commitsSince(d.run.cwd, base)) }
+  return { diff: '', commits: '' }
 }
 
 // This exact launcher error is raised before child.send, so later work cannot have invalidated the saved plan.
@@ -280,7 +283,7 @@ async function judge(d: Driver, spec: StageSpec, rec: StageRecord, a: Attempt, o
   const order = [pick.rung, ...judges.filter((j) => j !== pick.rung)]
   let prompt = judgePrompt({ run: d.run, spec, base: o.base ?? rec.base, commits: o.commits, diff: o.diff, checks: o.checks, artifact: o.artifact })
   if (/^code-it-(good|clean):/.test(spec.name) || spec.name === 'review') {
-    prompt += '\nThese are verification stages. The accumulated committed change and actual acceptance checks above are the deliverable. No empty commit is required. No new implementation or extra test files should be demanded outside the approved scope.'
+    prompt += d.run.directory ? '\nThese are verification stages. Grade the relevant current files and actual acceptance checks. Do not demand additional changes outside the approved scope.' : '\nThese are verification stages. The accumulated committed change and actual acceptance checks above are the deliverable. No empty commit is required. No new implementation or extra test files should be demanded outside the approved scope.'
   }
   if (rec.baselineChecks?.length) {
     prompt += '\nThe runtime executed these checks before the first worker attempt. Compare them with the post-change checks above:\n' +
@@ -289,6 +292,7 @@ async function judge(d: Driver, spec: StageSpec, rec: StageRecord, a: Attempt, o
   if (d.run.paseoParentId && a.result && !planning(spec) && !memoryMaintenance(d.run)) {
     prompt += '\nWorker-reported evidence (verify against files, checks and the change):\n' + JSON.stringify({ current: a.result, earlier: rec.attempts.filter(attempt => attempt.n < a.n && attempt.result).slice(-2).map(attempt => ({ attempt: attempt.n, report: attempt.result, checks: attempt.checks })) }).slice(0, 12000)
   }
+  if (d.run.directory) prompt += '\nWorker report (unverified claims, not proof). Check the relevant files and actual runtime check output against the criteria:\n' + JSON.stringify(a.result)
   if(memoryMaintenance(d.run)){
     const receipts=readJsonDir<{id:string;title:string;sources:string[]}>(join(clydeHome(),'note-receipts',d.run.id))
     prompt+='\nThis is a shared-memory task. Grade the note changes, not repository diffs. The host read these new notes back from Clyde and verified their links to the original, unmodified notes: '+JSON.stringify(receipts)+

@@ -77,7 +77,7 @@ function onClydeBranch(cwd: string): boolean {
 }
 
 export function permissionMode(input: TurnInput): string {
-  return input.rung.permission ?? (insideWorktrees(input.cwd) ? 'bypassPermissions' : 'acceptEdits')
+  return input.rung.permission ?? (input.directory ? 'acceptEdits' : insideWorktrees(input.cwd) ? 'bypassPermissions' : 'acceptEdits')
 }
 
 export function claudeArgs(input: TurnInput, session: string, resume: boolean): string[] {

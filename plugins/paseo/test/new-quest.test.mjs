@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -12,14 +12,14 @@ async function waitFor(check) {
   throw new Error("Fake quest operation did not settle");
 }
 function fixture(t) {
-  const home=mkdtempSync(join(tmpdir(),"clyde-new-quest-")), old={...process.env};
+  const home=realpathSync(mkdtempSync(join(tmpdir(),"clyde-new-quest-"))), old={...process.env};
   Object.assign(process.env,{CLYDE_HOME:home,CLYDE_CONFIG_DIR:home,PASEO_HOME:home});
   execFileSync("git",["init","-q",home]);
   execFileSync("git",["-C",home,"remote","add","origin","git@github.com:owner/repo.git"]);
   for(const [name,value] of Object.entries({url:"http://127.0.0.1:12345",token:"fake-token-"+randomUUID(),"server-id":"fake-host-"+randomUUID(),"daemon.json":JSON.stringify({port:12345,token:"fake-token"})}))writeFileSync(join(home,name),value);
   const quest={id:501,title:"Fix quest launch",brief:"Implement a fix",done_when:"Tests pass",priority:"normal",project:"owner/repo",state:"open",assignee:"any",tags:["quest-routing"]};
   const calls=[],created=[],runs=new Map(),agents=new Map(),sessions=new Map();
-  const settings={claimError:"",failLaunch:0};
+  const settings={claimError:"",failLaunch:0,scopedQuests:false};
   const workspaces=[{id:"ws-one",projectId:"project",name:"Main checkout",workspaceDirectory:home}];
   const projects=[{projectId:"project",projectDisplayName:"Repo",projectRootPath:home,projectKind:"git"}];
   let sessionN=0,closed=false;
@@ -36,12 +36,12 @@ function fixture(t) {
       if(name==="list_quests"){
         if(args.show==="board")return json({result:{content:[{text:JSON.stringify({quests:[quest],after:null})}]}});
         // The chosen quest deliberately isn't in the first 50 scoped results.
-        return json({result:{content:[{text:"No open quests for you"}],_meta:{"clyde/card":{quests:[]}}}});
+        return json({result:{content:[{text:"No open quests for you"}],_meta:{"clyde/card":{quests:settings.scopedQuests?[quest]:[]}}}});
       }
       if(name==="claim_quest"){
         if(settings.claimError)return json({result:{isError:true,content:[{text:settings.claimError}]}});
         const registration=sessions.get(session);
-        assert.deepEqual(registration.projects,["owner/repo"]);
+        assert.deepEqual(registration.projects,[quest.project]);
         assert.equal(registration.strict_projects,true);
         assert.equal(registration.harness,"claude");
         quest.state="claimed";quest.claimed_by=registration.name;
@@ -56,7 +56,7 @@ function fixture(t) {
       const input=JSON.parse(options.body);calls.push({name:"launch",args:input});
       if(settings.failLaunch-->0)return json({error:"simulated launch failure"},503);
       const id="r-"+input.assignment;
-      if(!runs.has(id))runs.set(id,{id,title:quest.title,status:"running",asks:[],stages:[],repo:input.cwd,paseoParentId:input.paseoParentId});
+      if(!runs.has(id))runs.set(id,{id,title:quest.title,status:"running",asks:[],stages:[],repo:input.cwd,paseoParentId:input.paseoParentId,...(input.directory?{directory:true}:{})});
       return json(runs.get(id));
     }
     if(path==="/runs")return json([...runs.values()]);
@@ -64,6 +64,11 @@ function fixture(t) {
     throw new Error("Unexpected fake request "+path);
   });
   const create=async(workspaceId,options)=>{
+    if(!workspaceId){
+      const exact=workspaces.find(w=>w.projectId==='project' && w.workspaceDirectory===(options.cwd||home));
+      if(exact)workspaceId=exact.id;
+      else{workspaceId='native-workspace-'+(created.length+1);workspaces.push({id:workspaceId,projectId:'project',name:'Folder',workspaceDirectory:options.cwd||home});}
+    }
     const duplicate=created.find(c=>c.options.idempotencyKey===options.idempotencyKey);
     if(duplicate)return {id:duplicate.id};
     const id="fresh-"+(created.length+1),cwd=workspaces.find(w=>w.id===workspaceId)?.workspaceDirectory||home;
@@ -174,4 +179,52 @@ test("failed quest runs abandon their real claim through existing settlement",as
   assert.equal(f.saved("chat-runs.json")[result.id].job.complete,true);
   assert.equal(f.quest.state,"open");
   assert.equal(f.calls.filter(c=>c.name==="dispatch_quest").length,0);
+});
+
+
+test('folder project tasks launch in the folder itself, never the first unrelated workspace, with exact scoped queue placement',async t=>{
+  const f=fixture(t),other=f.home+'/unrelated';mkdirSync(other);rmSync(f.home+'/.git',{recursive:true,force:true});
+  f.projects[0].projectKind='non_git';f.workspaces.unshift({id:'wrong-first',projectId:'project',name:'Another workspace',workspaceDirectory:other});
+  f.workspaces.push({id:'same-folder',projectId:'project',name:'Another session',workspaceDirectory:f.home});
+  const input={project:'project',prompt:'Organize these local notes',flow:'task',worker:'auto',newChat:true,requestId:randomUUID()};
+  const result=await f.handlers.get('clyde.launch')(input,{paseo:f.paseo});
+  const launch=f.calls.find(c=>c.name==='launch').args;
+  assert.equal(launch.directory,true);assert.equal(launch.cwd,f.home);
+  assert.notEqual(f.created[0].workspaceId,'wrong-first');assert.equal(existsSync(f.home+'/.git'),false);
+  const home=await f.handlers.get('clyde.home')({workspaceId:'ws-one'},{paseo:f.paseo});
+  assert.ok(home.data.tasks.some(task=>task.id===result.id));
+  f.workspaces.push({id:'foreign',projectId:'foreign-project',workspaceDirectory:other});
+  const otherHome=await f.handlers.get('clyde.home')({workspaceId:'foreign'},{paseo:f.paseo});
+  assert.ok(!otherHome.data.tasks.some(task=>task.id===result.id),'run belongs to its exact source directory');
+  assert.deepEqual(await f.handlers.get('clyde.launch')(input,{paseo:f.paseo}),result);
+});
+
+test('folder quest starts use the exact folder without a Git prerequisite or a workspace chooser and preserve placement across retry',async t=>{
+  const f=fixture(t);rmSync(f.home+'/.git',{recursive:true,force:true});f.projects[0].projectKind='non_git';
+  f.quest.project=f.home.split('/').at(-1).toLowerCase();f.workspaces.push({id:'same-folder',projectId:'project',name:'Second session',workspaceDirectory:f.home});
+  const input={quest:501,project:'project',requestId:randomUUID()},result=await f.invoke(input);
+  const launch=f.calls.find(c=>c.name==='launch').args;
+  assert.equal(launch.directory,true);assert.equal(launch.cwd,f.home);
+  assert.equal(f.saved('chat-runs.json')[result.id].job.directory,true);
+  f.restart();assert.deepEqual(await f.invoke(input),result);
+  assert.equal(f.created.length,1);assert.equal(existsSync(f.home+'/.git'),false);
+});
+
+test('existing project chat quest spawn derives directory mode from its verified native workspace',async t=>{
+  const f=fixture(t);rmSync(f.home+'/.git',{recursive:true,force:true});f.projects[0].projectKind='non_git';
+  f.quest.project=f.home.split('/').at(-1).toLowerCase();f.settings.scopedQuests=true;
+  await f.handlers.get('clyde.launch')({project:'project',prompt:'Folder task',flow:'task',worker:'auto',newChat:true,requestId:randomUUID()},{paseo:f.paseo});
+  const result=await f.handlers.get('clyde.spawn-quest')({agent:f.created[0].id,quest:501},{paseo:f.paseo});
+  const launch=f.calls.filter(c=>c.name==='launch').at(-1).args;
+  assert.equal(launch.directory,true);assert.equal(launch.cwd,f.home);
+  assert.equal(f.saved('chat-runs.json')[result.id].job.directory,true);
+});
+
+test('folder projects without a native workspace create chat placement at the exact root, and a stale run cannot be reused for another source directory',async t=>{
+  const f=fixture(t);rmSync(f.home+'/.git',{recursive:true,force:true});f.projects[0].projectKind='non_git';f.workspaces.length=0;
+  const input={project:'project',prompt:'Folder task',flow:'task',worker:'auto',newChat:true,requestId:randomUUID()};
+  const result=await f.handlers.get('clyde.launch')(input,{paseo:f.paseo});
+  assert.equal(f.calls.find(c=>c.name==='launch').args.cwd,f.home);
+  f.runs.get(result.id).repo='/another-source';
+  await assert.rejects(f.handlers.get('clyde.launch')(input,{paseo:f.paseo}),/another project workspace/);
 });

@@ -20,6 +20,7 @@ import type { Rung, Thread, Turn } from './types.ts'
 import { createWorktree } from './worktree.ts'
 
 export type StartOptions = {
+  directory?: boolean
   paseoParentId?:string
   title: string; prompt: string; cwd: string; rung: Rung; worktree?: boolean; readOnly?: boolean
   runId?: string; stage?: string; schema?: object; systemAppend?: string
@@ -103,7 +104,7 @@ export class Threads {
       id, title: opts.title || opts.prompt.trim().split('\n')[0].slice(0, 60), rung: opts.rung, cwd: opts.cwd, status: 'queued',
       queue: [opts.prompt], turns: [], createdAt: at, updatedAt: at,
     }
-    for (const k of ['runId', 'stage', 'readOnly', 'schema', 'systemAppend', 'mirrorTitle', 'parentThreadId'] as const) {
+    for (const k of ['directory', 'runId', 'stage', 'readOnly', 'schema', 'systemAppend', 'mirrorTitle', 'parentThreadId'] as const) {
       if (opts[k] !== undefined) (t as any)[k] = opts[k]
     }
     if(opts.paseoParentId && !opts.readOnly){t.paseoParentId=opts.paseoParentId;t.paseoAgentId=randomUUID()}
@@ -276,7 +277,7 @@ export class Threads {
       const run = t.paseoAgentId ? (input:TurnInput)=>runManagedWorker(t,input) : agent && !t.readOnly ? (input: TurnInput) => runPaseoTurn(agent, input) : (input: TurnInput) => this.backend(t.rung.backend).runTurn(input)
       out = await run({
         rung: t.rung, cwd: t.cwd, session: this.resumeSessions ? t.session : undefined,
-        prompt: this.preparePrompt ? this.preparePrompt(t, prompt) : this.withList(t, prompt), readOnly: t.readOnly, systemAppend: t.systemAppend,
+        prompt: this.preparePrompt ? this.preparePrompt(t, prompt) : this.withList(t, prompt), readOnly: t.readOnly, directory: t.directory, systemAppend: t.systemAppend,
         env: this.envFor(t), schema: t.schema, signal,
         onProgress: (line) => { t.progress = line },
         onSession: (session) => this.onSession(t, session),

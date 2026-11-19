@@ -22,6 +22,19 @@ export function memoryMaintenance(run:Run):boolean {
 
 export function workerPrompt(o: WorkerPromptInput): string {
   const { run, spec } = o
+  if (run.directory) {
+    return [
+      `You're the worker for stage ${spec.name} of clyde run ${run.id}, attempt ${o.attempt}. Operate only in the selected folder ${run.cwd}.`,
+      spec.readOnly ? "You are the final read-only reviewer. Inspect the relevant files and stage results without editing files or running commands that write." : planning(spec) ? 'Prepare a plan for review. Implementation starts only after user approval. Do not edit files during planning.' : 'Implement only this approved stage in this folder.',
+      'This is a folder workflow. Do not automatically initialize a repository, choose another project, create a worktree, commit or publish. Work only on requested files and follow explicit task instructions for subprojects or Git operations. Acceptance commands start in this exact folder.',
+      o.skillFile && `Read ${o.skillFile} for the quality gate. Repository or commit steps do not apply to this folder workflow.`,
+      spec.prompt.trim(),
+      `Stage criteria:\n${numbered(spec.criteria).replaceAll('repo root', 'selected folder root')}`,
+      spec.checks?.length && `The runtime runs these checks from ${run.cwd}:\n${spec.checks.join('\n')}`,
+      o.notes && `Feedback on the previous attempt:\n${o.notes}`,
+      `Return the result and evidence directly in one final fenced JSON block. No CLI progress or separate result file is required.\n\n${spec.resultTemplate ?? RESULT_BLOCK}`,
+    ].filter(Boolean).join('\n\n')
+  }
   if (planning(spec) && spec.extract && spec.resultTemplate) {
     return [
       `You're the worker for stage ${spec.name} of clyde run ${run.id}, attempt ${o.attempt}. Prepare a plan for review in ${run.cwd}, the worktree for ${run.repo}. Implementation starts only after the user approves it.`,
@@ -102,18 +115,18 @@ export function judgePrompt(o: JudgePromptInput): string {
       // fails every plan forever, so the planner gets sent back without end.
       ? 'This stage produces a plan, not code. Grade the plan in the artifact below against the gate, and be strict about the plan itself: vague slices, missing checks, gaps in the intent, or paths that don\'t exist fail. Don\'t ask for a diff, commits, test runs, or red and green evidence. Those come when each slice is built and judged. Read the repo to confirm the paths and commands the plan names.'
       : 'Grade the change against the gate and the requested scope. Verify it using the files, diff, and checks. If a later quality or review stage confirms the existing change is complete, it can pass without an additional edit. An inapplicable criterion needs a concrete reason. Be adversarial. Default to fail. A criterion passes only when you can point at its evidence in the diff, the check output, the files or memory. A claim with no evidence fails.',
-    planning(spec) ? `Requested change:\n${spec.prompt}\n\nClyde runs implementation, quality, cleanup, and review as separate gates. Grade the product slices against the requested change. Those built-in gates do not need separate plan slices. Grade each slice title and its acceptance array together. Commands already run at the repository root. Do not require the plan to repeat that location or command in the title.` : `Assigned work:\n${spec.prompt}`,
+    run.directory ? `This is a folder workflow restricted to ${run.cwd}. Start in this folder and inspect only files relevant to the requested work. Do not select another project, edit files or require unrequested commits. Acceptance commands run from this exact folder. Grade the requested criteria, relevant files and actual runtime checks. Requested work:\n${spec.prompt}` : planning(spec) ? `Requested change:\n${spec.prompt}\n\nClyde runs implementation, quality, cleanup, and review as separate gates. Grade the product slices against the requested change. Those built-in gates do not need separate plan slices. Grade each slice title and its acceptance array together. Commands already run at the repository root. Do not require the plan to repeat that location or command in the title.` : `Assigned work:\n${spec.prompt}`,
     `## The gate\n\n${numbered(spec.criteria)}`,
   ]
   const shown = o.diff.length > DIFF_IN_PROMPT ? `${o.diff.slice(0, DIFF_IN_PROMPT)}\n[The diff is cut here at ${DIFF_IN_PROMPT} of ${o.diff.length} characters. Read the files for the rest.]` : o.diff
   parts.push([
     '## The change',
     '',
-    `Your directory is ${run.cwd}, on branch ${run.branch}. The comparison base is ${o.base}.`,
+    run.directory ? `Selected folder: ${run.cwd}. No automatic folder scan or bulk diff is collected.` : `Your directory is ${run.cwd}, on branch ${run.branch}. The comparison base is ${o.base}.`,
     '',
-    o.commits ? `Commits since then:\n\n${o.commits}` : 'No commits since then.',
+    run.directory ? 'Inspect only files relevant to the requested criteria. Treat the worker report as claims to verify.' : o.commits ? `Commits since then:\n\n${o.commits}` : 'No commits since then.',
     '',
-    o.diff.trim() ? `The diff since ${o.base}, including uncommitted files:\n\n\`\`\`diff\n${shown.trimEnd()}\n\`\`\`` : `Nothing changed since ${o.base}.`,
+    o.diff.trim() ? `${run.directory ? 'Saved folder changes' : `The diff since ${o.base}, including uncommitted files`}:\n\n\`\`\`diff\n${shown.trimEnd()}\n\`\`\`` : run.directory ? 'No bulk filesystem evidence was collected.' : `Nothing changed since ${o.base}.`,
   ].join('\n'))
   if (o.checks.length) {
     parts.push(`## The checks\n\nThe runtime ran these in the directory.\n\n${o.checks.map(checkBlock).join('\n\n')}`)
@@ -179,6 +192,7 @@ export function approvalQuestion(run: Run, plan: Plan, entry: string): string {
 }
 
 export function finalQuestion(run: Run, o: { commits: number; review: string; verdict: string }): string {
+  if (run.directory) return `Run ${run.id} finished every stage in the selected folder ${run.cwd}. Review: ${sentence(firstLines(o.review) || 'no summary')} Judge verdict: ${o.verdict}. Approve to close the run.`
   return `Run ${run.id} finished every stage. The work is on branch ${run.branch} in ${run.cwd}, ${o.commits} commit${o.commits === 1 ? '' : 's'} since ${run.base.slice(0, 12)}. Review: ${sentence(firstLines(o.review) || 'no summary')} Judge verdict: ${o.verdict}. Approve to close the run. Pushing and the pull request stay with you.`
 }
 
@@ -229,6 +243,7 @@ export function slicePrompt(run: Run, plan: Plan, slice: Slice, skill: string): 
 }
 
 export function reviewPrompt(run: Run): string {
+  if (run.directory) return `Review the completed work read-only in the selected folder ${run.cwd}. Inspect affected files, callers, tests and docs. Verify the approved plan and acceptance checks. Do not edit files or perform unrequested Git operations. Review only the files and subprojects covered by the approved task. Report concrete findings with file and line, or confirm no actionable findings remain.`
   return [
     `Review every change on branch ${run.branch} since ${run.base}, where the run started. Pin the target to ${run.base} and HEAD.`,
     'Fix each confirmed finding with its own commit, and keep every acceptance check passing. List what you leave open with a file and a line.',

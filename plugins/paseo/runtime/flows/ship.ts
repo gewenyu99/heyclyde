@@ -48,6 +48,11 @@ export async function run(ctx: FlowCtx, input: ShipInput) {
     }
   }
   const checks = [...new Set(plan.slices.flatMap((s) => s.acceptance))]
+  if (ctx.run.directory) {
+    const review = await ctx.stage({ name: 'review', role: 'reviewer', route: 'audit', readOnly: true, prompt: reviewPrompt(ctx.run), criteria: ['Review the selected folder changes and all affected callers without editing files.', 'Every reported finding has a file, line and concrete evidence.', 'All acceptance checks pass and no actionable finding remains open.'], checks })
+    await ctx.ask(finalQuestion(ctx.run, { commits: 0, review: review.summary, verdict: review.passed ? 'pass' : 'fail' }))
+    return
+  }
   if (ctx.run.routes) {
     await auditChange(ctx, checks)
     if (ctx.run.auditedHead && input.draftPR === true) await publishDraft(ctx)

@@ -6,7 +6,6 @@ import { Pressable, Text, TextInput, View } from "react-native";
 import { launchRpc, projectsRpc, suggestProjectRpc, workerModels } from "../shared/clyde";
 import { palette } from "./brand.generated";
 import { formatRpcError, MIN_HIT_HEIGHT, scheme } from "./palette";
-import { FolderRepositories } from "./folder-repositories";
 import { AddProject } from "./add-project";
 import { requestId } from "./request-id";
 import { emptyComposer, type ComposerDraft } from "./board-state";
@@ -16,7 +15,7 @@ const workerLabel = (worker: Worker) => worker[0].toUpperCase() + worker.slice(1
 function catalogueOf(projects: readonly { id:string; slug?:string; path:string }[] | undefined) {
   return JSON.stringify((projects ?? []).map(project => [project.id, project.slug, project.path]).sort((a,b) => a[0]!.localeCompare(b[0]!)));
 }
-const isFolder=(project:{kind?:string}|undefined)=>project?.kind==="non_git";
+const selectable=(project:{kind?:string;eligible?:boolean})=>project.eligible!==false || project.kind==="non_git";
 export function Composer(
   { theme, onStarted, workspaceId, agentId, board = false, draftState, onDraftStateChange }: {
     theme: PluginTheme;
@@ -46,9 +45,9 @@ export function Composer(
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [routingBusy, setRoutingBusy] = useState(false);
   const pending = useRef<{key:string;id:string}|null>(form.pendingRequest);
-  const locked = useRef(false),routingLocked=useRef(false);
+  const locked = useRef(false),routingLocked=useRef(false),mounted=useRef(true);
   const revision = useRef(suggestion?.revision ?? 0), draft = useRef(text), modeRef = useRef(mode), projectRef = useRef(project);
-  useEffect(()=>()=>{revision.current++;routingLocked.current=false;},[]);
+  useEffect(()=>()=>{mounted.current=false;revision.current++;routingLocked.current=false;},[]);
   // Progress events can refetch projects without changing the routing candidates.
   const catalogue = catalogueOf(projects.data), previousCatalogue = useRef(suggestion?.catalogue ?? catalogue);
   useEffect(() => {
@@ -57,56 +56,36 @@ export function Composer(
     setSuggestion(undefined); setRoutingBusy(false);
   }, [catalogue]);
   const pinned=workspaceId && projects.data?.length===1?projects.data[0]:undefined;
-  const folderId=workspaceId?(isFolder(pinned)?pinned?.id:""):form.folderProject;
-  const repositoryProjects=useQuery({queryKey:["clyde","projects","all"],queryFn:()=>read({}),enabled:!!workspaceId && !!folderId});
-  const folder=(projects.data ?? []).find(p=>p.id===folderId && isFolder(p));
   const originPlace=pinned?.workspaces?.find(w=>w.id===workspaceId);
-  useEffect(()=>{
-    if(!folderId || !workspaceId || formRef.current.folderProject===folderId)return;
-    const different=!!formRef.current.folderProject;
-    revision.current++;modeRef.current="manual";if(different)projectRef.current="";
-    writeDraft({folderProject:folderId,mode:"manual",suggestion:undefined,...(different?{project:"",selectedWorkspace:""}:{})});
-  },[folderId,workspaceId]);
-  function pinnedFolderNow(){const rows=cache.getQueryState<NonNullable<typeof projects.data>>(projectKey)?.data;return !!workspaceId && rows?.length===1 && isFolder(rows[0]);}
   function changeDraft(value:string) {
     draft.current = value; revision.current++; routingLocked.current = false;
     writeDraft({text:value,suggestion:undefined,routingNote:""});setRoutingBusy(false);
   }
   function chooseProject(id:string, chosenWorkspace = "") {
-    if (locked.current) return;
+    if (locked.current || !mounted.current) return;
     routingLocked.current = false; revision.current++; modeRef.current = "manual"; projectRef.current = id;
-    const row=cache.getQueryState<NonNullable<typeof projects.data>>(projectKey)?.data?.find(p=>p.id===id);
-    const choosingFolder=isFolder(row);if(choosingFolder)projectRef.current="";
-    writeDraft({folderProject:choosingFolder?id:"",selectedWorkspace:choosingFolder?"":chosenWorkspace,mode:"manual",project:choosingFolder?"":id,suggestion:undefined,routingNote:"",chatId:"",menu:null});setRoutingBusy(false);setError("");
+    writeDraft({selectedWorkspace:chosenWorkspace,mode:"manual",project:id,suggestion:undefined,routingNote:"",chatId:"",menu:null});setRoutingBusy(false);setError("");
   }
   function chooseAuto() {
     if (locked.current) return;
     routingLocked.current = false; revision.current++; modeRef.current = "auto"; projectRef.current = "";
-    writeDraft({folderProject:"",selectedWorkspace:"",mode:"auto",project:"",suggestion:undefined,routingNote:"",menu:null});setRoutingBusy(false);setError("");
-  }
-  function chooseRepository(id:string){
-    if(locked.current)return;
-    revision.current++;routingLocked.current=false;modeRef.current="manual";projectRef.current=id;
-    writeDraft({folderProject:folderId || "",project:id,selectedWorkspace:"",mode:"manual",suggestion:undefined,routingNote:"",chatId:"",menu:null});setRoutingBusy(false);setError("");
-    void (workspaceId?repositoryProjects:projects).refetch();
+    writeDraft({selectedWorkspace:"",mode:"auto",project:"",suggestion:undefined,routingNote:"",menu:null});setRoutingBusy(false);setError("");
   }
   function currentTarget() {
     const state = cache.getQueryState<NonNullable<typeof projects.data>>(projectKey);
     if (!state?.data) return;
-    if(pinnedFolderNow())return cache.getQueryState<NonNullable<typeof projects.data>>(["clyde","projects","all"])?.data?.find(p=>p.id===projectRef.current && p.eligible!==false && !isFolder(p));
-    if (workspaceId) return state.data.length === 1 && state.data[0].eligible !== false && !isFolder(state.data[0]) ? state.data[0] : undefined;
-    if (modeRef.current === "manual") return state.data.find(p => p.id === projectRef.current && p.eligible !== false && !isFolder(p));
+    if (workspaceId) return state.data.length === 1 && selectable(state.data[0]) ? state.data[0] : undefined;
+    if (modeRef.current === "manual") return state.data.find(p => p.id === projectRef.current && selectable(p));
     if (!suggestion || suggestion.prompt !== draft.current || suggestion.revision !== revision.current || suggestion.catalogue !== catalogueOf(state.data)) return;
-    return state.data.find(p => p.id === suggestion.projectId && p.eligible !== false && !isFolder(p));
+    return state.data.find(p => p.id === suggestion.projectId && selectable(p));
   }
   const selected = currentTarget();
   const workspaceFor = (items: {id:string;name:string;path:string}[] = []) => {
-    const id = (pinnedFolderNow()?undefined:workspaceId) || formRef.current.selectedWorkspace;
-    return id ? items.find(w => w.id === id) : items.length === 1 ? items[0] : undefined;
+    const id = workspaceId || formRef.current.selectedWorkspace;
+    return id ? items.find(w => w.id === id) : undefined;
   };
   const place = workspaceFor(selected?.workspaces);
-  const pinnedCheckout=!!workspaceId && !pinnedFolderNow();
-  const needsWorkspace = !!selected && !pinnedCheckout && !place && (!!form.selectedWorkspace || (selected.workspaces?.length ?? 0) > 1);
+  const needsWorkspace = !!selected && !workspaceId && !!form.selectedWorkspace && !place;
 
   async function chooseFromTask() {
     if (!autoAvailable || modeRef.current !== "auto" || !draft.current.trim() || routingLocked.current || locked.current) return;
@@ -118,7 +97,7 @@ export function Composer(
       const result = await suggest({ prompt });
       const latest = cache.getQueryState<NonNullable<typeof projects.data>>(projectKey);
       if (requestRevision !== revision.current || draft.current !== prompt || modeRef.current !== "auto" || catalogueOf(latest?.data) !== requestCatalogue) return;
-      if (!result.projectId || !latest?.data?.some(p => p.id === result.projectId && p.eligible !== false && !isFolder(p))) {
+      if (!result.projectId || !latest?.data?.some(p => p.id === result.projectId && selectable(p))) {
         modeRef.current = "manual"; projectRef.current = "";
         setMode("manual"); setProject(""); setSuggestion(undefined);
         setRoutingNote(result.reason || "Choose a project manually."); setMenu("project");
@@ -133,14 +112,15 @@ export function Composer(
     } finally { if (requestRevision === revision.current) { routingLocked.current = false; setRoutingBusy(false); } }
   }
   const chats = selected?.chats ?? [];
-  const wantsNewChat = !agentId && (board || chatId === "__new__" || chats.length === 0);
+  const attachedAgent = agentId;
+  const wantsNewChat = !attachedAgent && (board || chatId === "__new__" || chats.length === 0);
   const selectedChat = wantsNewChat ? undefined : (chats.find((ch) => ch.id === chatId) ?? chats[0]);
-  const effectiveAgentId = agentId || selectedChat?.id || "";
+  const effectiveAgentId = attachedAgent || selectedChat?.id || "";
   const submit = async () => {
     const target = currentTarget();
     if (!target || !draft.current.trim() || locked.current || routingBusy) return;
-    const location = (pinnedFolderNow()?undefined:workspaceId) || workspaceFor(target.workspaces)?.id;
-    if (!location && (formRef.current.selectedWorkspace || (target.workspaces?.length ?? 0) > 1)) return;
+    const location = workspaceId || workspaceFor(target.workspaces)?.id;
+    if (!workspaceId && formRef.current.selectedWorkspace && !location) return;
     locked.current = true;
     setBusy(true);
     setError("");
@@ -253,9 +233,9 @@ export function Composer(
 
       <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
         {workspaceId && pinned && <Text style={{color:c.foreground,fontSize:13}}>{pinned.label || pinned.name}{originPlace?` · ${originPlace.name}`:""}</Text>}
-        {(!workspaceId || !pinnedCheckout) && control((folder?.label || folder?.name || selected?.label || selected?.name || (autoAvailable && mode === "auto" ? "Project · Auto" : "Choose a project")) + " ▾", () => setMenu(menu === "project" ? null : "project"), false, { expanded: menu === "project" })}
-        {board && !pinnedCheckout && selected && (selected.workspaces?.length ?? 0) > 0 &&
-          control((place?.name || "Choose workspace") + " ▾", () => setMenu(menu === "workspace" ? null : "workspace"), false, { expanded:menu === "workspace" })}
+        {(!workspaceId || !selected) && control((selected?.label || selected?.name || (autoAvailable && mode === "auto" ? "Project · Auto" : "Choose a project")) + " ▾", () => setMenu(menu === "project" ? null : "project"), false, { expanded: menu === "project" })}
+        {board && !workspaceId && selected && (selected.workspaces?.length ?? 0) > 0 &&
+          control((place?.name || (form.selectedWorkspace ? "Choose workspace" : "Project root")) + " ▾", () => setMenu(menu === "workspace" ? null : "workspace"), false, { expanded:menu === "workspace" })}
         {!board && !agentId && selected && control(
           "Chat · " + (wantsNewChat ? "New chat (auto)" : selectedChat!.title) + " ▾",
           () => setMenu(menu === "chat" ? null : "chat"),
@@ -289,11 +269,6 @@ export function Composer(
           </Text>
         </Pressable>
       </View>
-      {folder && <View style={{gap:6}}>
-        {selected && <Text style={{color:c.foreground,fontSize:13,fontWeight:"600"}}>Repository · {selected.label || selected.name}</Text>}
-        <FolderRepositories theme={theme} projectId={folder.id} onSelect={chooseRepository} />
-        {!!repositoryProjects.error && !!workspaceId && <Text accessibilityRole="alert" style={{color:c.statusDanger,fontSize:13}}>{formatRpcError(repositoryProjects.error)}</Text>}
-      </View>}
       {autoAvailable && mode === "auto" && selected && suggestion && <Text accessibilityLiveRegion="polite" style={{ color: c.foregroundMuted, fontSize: 13, lineHeight: 20 }}>Auto chose {selected.name}. {suggestion.reason}</Text>}
       {!!routingNote && <Text accessibilityLiveRegion="polite" style={{ color: c.foregroundMuted, fontSize: 13, lineHeight: 20 }}>{routingNote}</Text>}
       {flow === "ship" && worker !== "auto" && (
@@ -314,14 +289,14 @@ export function Composer(
             <Pressable
               key={p.id}
               accessibilityRole="button"
-              accessibilityState={{ selected: mode === "manual" && (folder?.id || selected?.id) === p.id, disabled: busy || (p.eligible === false && !isFolder(p)) }}
-              disabled={busy || (p.eligible === false && !isFolder(p))}
+              accessibilityState={{ selected: mode === "manual" && selected?.id === p.id, disabled: busy || !selectable(p) }}
+              disabled={busy || !selectable(p)}
               onPress={() => chooseProject(p.id)}
               style={{ padding: 8, minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}
             >
-              <Text style={{ color: mode === "manual" && (folder?.id || selected?.id) === p.id ? c.accent : c.foreground, fontWeight: "600", fontSize: 13 }}>{p.label || p.name}</Text>
+              <Text style={{ color: mode === "manual" && selected?.id === p.id ? c.accent : c.foreground, fontWeight: "600", fontSize: 13 }}>{p.label || p.name}</Text>
               <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>
-                {p.path}{p.eligible === false && p.ineligibleReason ? ` · ${p.ineligibleReason}` : ""}{!board ? ` · ${p.chats.length} open ${p.chats.length === 1 ? "chat" : "chats"}` : ""}
+                {p.path}{p.eligible === false && !selectable(p) && p.ineligibleReason ? ` · ${p.ineligibleReason}` : ""}{!board ? ` · ${p.chats.length} open ${p.chats.length === 1 ? "chat" : "chats"}` : ""}
               </Text>
             </Pressable>
           ))}
@@ -329,6 +304,10 @@ export function Composer(
         </View>
       )}
       {menu === "workspace" && <View style={{gap:4}}>
+        <Pressable accessibilityRole="button" accessibilityState={{selected:!form.selectedWorkspace,disabled:busy}} disabled={busy} onPress={()=>writeDraft({selectedWorkspace:"",menu:null})} style={{minHeight:MIN_HIT_HEIGHT,justifyContent:"center",padding:8}}>
+          <Text style={{fontSize:13,color:c.foreground,fontWeight:"600"}}>Project root</Text>
+          <Text style={{fontSize:12,color:c.foregroundMuted}}>{selected?.path}</Text>
+        </Pressable>
         {selected?.workspaces?.map(w=><Pressable key={w.id} accessibilityRole="button" accessibilityState={{selected:place?.id===w.id,disabled:busy}} disabled={busy}
           onPress={()=>writeDraft({selectedWorkspace:w.id,menu:null})} style={{minHeight:MIN_HIT_HEIGHT,justifyContent:"center",padding:8}}>
           <Text style={{fontSize:13,color:c.foreground,fontWeight:"600"}}>{w.name}</Text>
@@ -387,7 +366,7 @@ export function Composer(
         </Text>
       )}
       {projects.isSuccess && !projects.data.length && (
-        <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>Open a Git project in Paseo to start a task here.</Text>
+        <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>Open a project in Paseo to start a task here.</Text>
       )}
       {(error || projects.error) && (
         <Text accessibilityRole="alert" style={{ color: c.statusDanger, fontSize: 13 }}>

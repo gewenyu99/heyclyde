@@ -153,8 +153,8 @@ test("client TSX components obey typography floor, accessible controls, dedicate
   const composer = fs.readFileSync(path.join(clientDir, "composer.tsx"), "utf8");
   assert.match(composer, /board = false/);
   assert.match(composer, /!board && !agentId && selected && control/);
-  assert.match(composer, /!agentId && \(board \|\| chatId === "__new__" \|\| chats.length === 0\)/);
-  assert.match(composer, /const effectiveAgentId = agentId \|\| selectedChat\?\.id \|\| ""/);
+  assert.match(composer, /!attachedAgent && \(board \|\| chatId === "__new__" \|\| chats.length === 0\)/);
+  assert.match(composer, /const effectiveAgentId = attachedAgent \|\| selectedChat\?\.id \|\| ""/);
   assert.match(composer, /wantsNewChat \? \{ newChat: true \}/);
   assert.match(composer, /!board && menu === "chat"/);
   assert.match(composer, /New chat in /);

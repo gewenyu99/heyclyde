@@ -6,6 +6,7 @@ import { basename, join } from 'node:path';
 import type { PluginServerContext } from '@getpaseo/plugin/server';
 import { suggestProjectRpc } from '../shared/clyde.ts';
 import { projectEligibility } from './project-registry.ts';
+import {directorySlug} from './project-path.ts';
 
 type Candidate={id:string;name:string;slug:string};
 type Classification={projectId:string|null;reason:string};
@@ -88,16 +89,16 @@ export function suggestProject(server:PluginServerContext,options:{classify?:Cla
     });
     try{
       const {projects}=await bounded(paseo.projects.list());
-      const registered=projects.filter(p=>p.projectKind==='git' && typeof p.projectId==='string' && /^[a-zA-Z0-9_.:-]{1,256}$/.test(p.projectId));
+      const registered=projects.filter(p=>typeof p.projectId==='string' && /^[a-zA-Z0-9_.:-]{1,256}$/.test(p.projectId));
       if(registered.length>MAX_PROJECTS)return {reason:'Too many projects for Auto selection. Choose one explicitly.'};
       const checked=await bounded(Promise.all(registered.map(async p=>({p,...await projectEligibility(p)}))));
       const offered=checked.filter(p=>p.eligible).map(p=>p.p);
-      if(!offered.length)return {reason:'No available Git projects to select.'};
+      if(!offered.length)return {reason:'No available projects to select.'};
       if(offered.length>MAX_PROJECTS)return {reason:'Too many projects for Auto selection. Choose one explicitly.'};
       const candidates:Candidate[]=new Array(offered.length);
       let next=0;
       await bounded(Promise.all(Array.from({length:Math.min(4,offered.length)},async()=>{
-        while(next<offered.length){const i=next++,p=offered[i];candidates[i]={id:p.projectId,name:clean(p.projectDisplayName,160),slug:clean(await repoSlug(p.projectRootPath,abort.signal),120)};}
+        while(next<offered.length){const i=next++,p=offered[i];candidates[i]={id:p.projectId,name:clean(p.projectDisplayName,160),slug:clean(p.projectKind==='git'?await repoSlug(p.projectRootPath,abort.signal):directorySlug(p.projectRootPath),120)};}
       })));
       const raw=await bounded((options.classify??classifyProject)(prompt.trim(),candidates,abort.signal));
       if(!raw || typeof raw!=='object' || Array.isArray(raw))return {reason:'Auto could not identify a project. Choose one explicitly.'};

@@ -1,6 +1,6 @@
 /** clyde-flow's runtime: runs as JSON files, one driver per live run, asks, memory writes, and resume after a restart. */
 import { randomBytes } from 'node:crypto'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { lastJsonBlock } from '../backends/spawn.ts'
@@ -83,7 +83,7 @@ export class Runs {
   }
 
   /** track names a work list, like pointman, that gets an item linked to the run. */
-  async start(flowName: string, input: unknown, cwd?: string, track?: string, parentThreadId?: string, assignment?: string,paseoParentId?:string): Promise<Run> {
+  async start(flowName: string, input: unknown, cwd?: string, track?: string, parentThreadId?: string, assignment?: string,paseoParentId?:string, directory = false): Promise<Run> {
     if (this.closing) throw new HttpError(503, 'the daemon is closing')
     const flow = await loadFlow(flowName)
     try {
@@ -93,6 +93,8 @@ export class Runs {
       throw new HttpError(400, `bad input for flow ${flowName}: ${(err as Error).message}`)
     }
     const fromInput = (input as { cwd?: unknown })?.cwd
+    if (directory && (!cwd || (fromInput !== undefined && fromInput !== cwd))) throw new HttpError(400, 'Folder runs require the exact selected workspace cwd')
+    if (directory && (input as {draftPR?: boolean}).draftPR) throw new HttpError(400, 'Folder runs do not publish pull requests')
     const repoDir = typeof fromInput === 'string' && fromInput ? fromInput : cwd || process.cwd()
     if (assignment && !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(assignment)) throw new HttpError(400, 'Invalid assignment UUID')
     const id = assignment ? 'r-' + assignment : this.newId()
@@ -100,20 +102,25 @@ export class Runs {
     if (existing) return this.view(existing)
     let wt
     try {
-      wt = createWorktree(repoDir, id, titleOf(input, flowName), !parentThreadId && !paseoParentId)
+      if (directory) {
+        const folder = realpathSync(cwd!)
+        if (!statSync(folder).isDirectory()) throw new Error('Selected workspace is not a directory')
+        wt = { path: folder, repo: folder, branch: '', base: '' }
+      } else wt = createWorktree(repoDir, id, titleOf(input, flowName), !parentThreadId && !paseoParentId)
     } catch (err) {
-      throw new HttpError(400, `can't cut a worktree from ${repoDir}: ${firstLine((err as Error).message)}`)
+      throw new HttpError(400, `${directory ? 'cannot use selected folder' : "can't cut a worktree from"} ${repoDir}: ${firstLine((err as Error).message)}`)
     }
     const at = now()
     const run: Run = {
       id, flow: flowName, title: titleOf(input, flowName), status: 'running', input, cwd: wt.path, repo: wt.repo, branch: wt.branch,
+      ...(directory ? { directory: true } : {}),
       base: wt.base, stages: [], answers: [], asks: [], entries: [], plans: [], agents: {}, log: [], firstEvent: 0, createdAt: at, updatedAt: at,
       ...((flowName === 'ship' || flowName === 'task') && ((input as { routing?: Routing }).routing || !existsSync(join(clydeHome(), 'roles.json'))) ? { routes: {} } : {}),
       ...(paseoParentId ? {paseoParentId} : {}),
       ...(parentThreadId ? { parentThreadId } : {}),
     }
     this.runs.set(id, run)
-    run.firstEvent = this.emit(run, 'run.started', `Started run ${id} (${flowName}) "${run.title}" on branch ${run.branch}.`, { flow: flowName, branch: run.branch }).id
+    run.firstEvent = this.emit(run, 'run.started', `Started run ${id} (${flowName}) "${run.title}" ${directory ? "in folder " + run.cwd : "on branch " + run.branch}.`, { flow: flowName, branch: run.branch }).id
     this.save(run)
     if (track) this.ctx.threads.lists.add(track, [`Run ${id} (${flowName}): ${run.title}`], { runId: id })
     this.drive(run, flow)
@@ -281,8 +288,8 @@ export class Runs {
     if (why && status !== 'done') run.error = why
     this.save(run)
     if (status === 'done') {
-      this.emit(run, 'run.done', `Run ${run.id} (${run.flow}) is done on branch ${run.branch}.`, { branch: run.branch })
-      this.ctx.threads.lists.settle({ runId: run.id }, 'done', `Run ${run.id} is done on branch ${run.branch}.`)
+      this.emit(run, 'run.done', `Run ${run.id} (${run.flow}) is done ${run.directory ? 'in folder ' + run.cwd : 'on branch ' + run.branch}.`, { branch: run.branch })
+      this.ctx.threads.lists.settle({ runId: run.id }, 'done', `Run ${run.id} is done ${run.directory ? 'in folder ' + run.cwd : 'on branch ' + run.branch}.`)
     } else {
       this.emit(run, `run.${status}`, `Run ${run.id} (${run.flow}) ${status === 'failed' ? 'failed' : 'stopped'}: ${firstLine(why ?? '')}`, { error: why })
       this.ctx.threads.lists.settle({ runId: run.id }, 'blocked', `The run ${status === 'failed' ? 'failed' : 'stopped'}: ${firstLine(why ?? '') || status}`)
@@ -427,9 +434,10 @@ export class Driver {
   startThread(opts: { title: string; prompt: string; rung: Rung; stage?: string; readOnly?: boolean; schema?: object; list?: string[]; mirrorTitle?: string }): Thread {
     this.guard()
     const steering = this.run.steering?.join('\n')
-    const prompt = steering ? opts.prompt + '\nUser steering for this run:\n' + steering : opts.prompt
+    const boundary = this.run.directory ? `\nThis is a folder run. Operate only within ${this.run.cwd}. Start here and change only the requested files. Do not select an ancestor or sibling project. Do not automatically initialize a repository, create a worktree, commit or publish. Follow explicit task instructions for subprojects or Git operations. Checks start in this exact folder.\n` : ''
+    const prompt = (steering ? opts.prompt + '\nUser steering for this run:\n' + steering : opts.prompt) + boundary
     const origin=this.run.paseoParentId ?? readJson<Record<string,{agent:string}>>(join(clydeHome(),'chat-runs.json'))?.[this.run.id]?.agent
-    return this.threads.start({ ...opts, prompt, paseoParentId:origin, cwd: this.run.cwd, runId: this.run.id })
+    return this.threads.start({ ...opts, prompt, ...(this.run.directory ? { directory: true } : {}), paseoParentId:origin, cwd: this.run.cwd, runId: this.run.id })
   }
 
   /** Waits for a thread to go idle. A stop stops the thread too. A shutdown leaves it to the daemon. */

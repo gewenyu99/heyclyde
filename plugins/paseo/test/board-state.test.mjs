@@ -5,7 +5,7 @@ import test from 'node:test';
 const require=createRequire(import.meta.url),ts=require('typescript'),module={exports:{}};
 const code=ts.transpileModule(readFileSync(new URL('../client/board-state.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 new Function('require','module','exports',code)(name=>name==='@getpaseo/plugin'?{defineSettings:value=>value}:name==='@getpaseo/plugin/client'?{}:name==='../shared/clyde'?{workerModels:['auto','sol','sonnet','opus','astra','neon']}:require(name),module,module.exports);
-const {BoardStateSession,emptyBoard,emptyComposer,boardSettings,boardSettingsId}=module.exports;
+const {BoardStateSession,emptyBoard,emptyComposer,composerDraftSchema,boardSettings,boardSettingsId}=module.exports;
 const flush=async()=>{for(let i=0;i<20;i++)await Promise.resolve();};
 const scope='["host-a","workspace","workspace-1"]';
 function store(initial=emptyBoard(true)){
@@ -62,4 +62,9 @@ test('a failed device write keeps the local draft and can be retried without res
   session.update(previous=>({...previous,composer:{...previous.composer,text:'Keep this'}}));await flush();
   assert.match(session.snapshot.error,/save Clyde state/);assert.equal(session.snapshot.value.composer.text,'Keep this');
   service.fail=false;await session.retry();await flush();assert.equal(service.doc.board.composer.text,'Keep this');assert.equal(session.snapshot.error,'');
+});
+
+test('legacy staged child state restores the chosen directory itself and keeps the draft',()=>{
+  const saved=composerDraftSchema.parse({...emptyComposer(),folderProject:'directory',project:'child-repo',selectedWorkspace:'child-checkout',text:'Keep this prompt'});
+  assert.equal(saved.project,'directory');assert.equal(saved.selectedWorkspace,'');assert.equal(saved.text,'Keep this prompt');assert.equal('folderProject' in saved,false);
 });

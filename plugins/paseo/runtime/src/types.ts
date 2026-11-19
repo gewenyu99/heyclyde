@@ -14,6 +14,7 @@ export type Turn = {
 }
 
 export type Thread = {
+  directory?: boolean
   id: string; title: string; rung: Rung; cwd: string; worktree?: string; branch?: string; base?: string
   status: ThreadStatus; session?: string; queue: string[]; turns: Turn[]
   archivedAt?:string; paseoParentId?:string; paseoAgentId?:string

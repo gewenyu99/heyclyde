@@ -4,14 +4,19 @@ import { useEffect, useState } from "react";
 import { z } from "zod";
 import { workerModels } from "../shared/clyde";
 
-export const composerDraftSchema = z.object({
-  project:z.string().default(""),folderProject:z.string().default(""),selectedWorkspace:z.string().default(""),chatId:z.string().default(""),text:z.string().default(""),
+export const composerDraftSchema = z.preprocess(value=>{
+  if(value && typeof value==="object" && "folderProject" in value && typeof value.folderProject==="string" && value.folderProject){
+    return {...value,project:value.folderProject,selectedWorkspace:""};
+  }
+  return value;
+},z.object({
+  project:z.string().default(""),selectedWorkspace:z.string().default(""),chatId:z.string().default(""),text:z.string().default(""),
   flow:z.enum(["task","ship"]).default("task"),worker:z.enum(workerModels).default("auto"),
   doneWhen:z.string().default(""),showCriteria:z.boolean().default(false),allowNeon:z.boolean().default(false),
   mode:z.enum(["auto","manual"]).default("manual"),menu:z.enum(["project","workspace","chat","worker"]).nullable().default(null),routingNote:z.string().default(""),
   suggestion:z.object({projectId:z.string(),reason:z.string(),prompt:z.string(),revision:z.number(),catalogue:z.string()}).optional(),
   pendingRequest:z.object({key:z.string(),id:z.string()}).nullable().default(null),
-});
+}));
 export type ComposerDraft = z.infer<typeof composerDraftSchema>;
 export const boardStateSchema = z.object({
   picked:z.string().default(""),tab:z.enum(["board","agents","quests"]).default("board"),newTask:z.boolean().default(false),
