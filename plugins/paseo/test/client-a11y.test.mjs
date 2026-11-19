@@ -177,6 +177,7 @@ test("client TSX components obey typography floor, accessible controls, dedicate
   const brand = fs.readFileSync(path.join(clientDir, "brand.tsx"), "utf8");
   const recallSheet = fs.readFileSync(path.join(clientDir, "recall-sheet.tsx"), "utf8");
   const removeTask = fs.readFileSync(path.join(clientDir, "remove-task.tsx"), "utf8");
+  const workerPermissions = fs.readFileSync(path.join(clientDir, "worker-permissions.tsx"), "utf8");
 
   assert.match(runEvidence, /pullRequest/);
   assert.match(home, /pullRequest/);
@@ -202,8 +203,18 @@ test("client TSX components obey typography floor, accessible controls, dedicate
   assert.match(task, /stages\.map\(stage =>/);
   assert.match(task, /setPicked\(stage.stage\)/);
   assert.match(task, /<StageAttempts key=\{stage.stage\}/);
-  assert.match(task, /Review permission in Paseo/);
-  assert.match(task, /openAgent\(activity.permissionAgentId!/);
+  assert.match(task, /<WorkerPermissions key=\{view.id\}/);
+  assert.match(workerPermissions, /request.unsupported \? <View/);
+  assert.match(workerPermissions, /Review permission in Paseo/);
+  assert.match(workerPermissions, /request.options.map/);
+  assert.match(workerPermissions, /requestId: request.id, revision: request.revision, optionId/);
+  assert.match(workerPermissions, /request.input/);
+  assert.match(workerPermissions, /locked.current \|\| submitted/);
+  assert.match(workerPermissions, /pending !== null \|\| !agentId/);
+  assert.match(workerPermissions, /Retry loading permissions/);
+  assert.match(workerPermissions, /setSubmitted\(true\)/);
+  assert.match(workerPermissions, /refetchInterval: 3000/);
+  assert.match(workerPermissions, /request.id\}:\$\{request.revision/);
   assert.match(task, /check\.output/);
   assert.match(task, /past\.map\(a => <AttemptRow/);
   assert.doesNotMatch(task, /Open conversation in Paseo/);

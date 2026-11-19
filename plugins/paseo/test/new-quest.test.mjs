@@ -164,3 +164,14 @@ test("concurrent request reuse cannot create a quest for a different input",asyn
   assert.deepEqual(await same,await first);assert.equal(f.created.length,1);
   await assert.rejects(f.invoke({...input,workspaceId:"ws-one"}),/already belongs/);
 });
+
+test("failed quest runs abandon their real claim through existing settlement",async t=>{
+  t.mock.timers.enable({apis:["setInterval"]});
+  const f=fixture(t),result=await f.invoke({quest:501,project:"project",requestId:randomUUID()});
+  f.runs.get(result.id).status="failed";
+  t.mock.timers.tick(4000);
+  await waitFor(()=>f.calls.some(c=>c.name==="abandon_quest"));
+  assert.equal(f.saved("chat-runs.json")[result.id].job.complete,true);
+  assert.equal(f.quest.state,"open");
+  assert.equal(f.calls.filter(c=>c.name==="dispatch_quest").length,0);
+});

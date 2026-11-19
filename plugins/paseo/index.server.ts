@@ -1,3 +1,5 @@
+import { workerPermissions } from "./server/worker-permissions.ts";
+import { clydeLookupPolicy } from "./runtime/src/paseo-tool-policy.ts";
 import { isProjectChat, listAllAgents, projectSlug, residents } from "./server/residents.ts";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -5,7 +7,7 @@ import { mkdirSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { PluginHandlerContext, PluginServerContext } from "@getpaseo/plugin/server";
-import { call, ensureCompanion, follow, readJson } from "./server/daemon.ts";
+import { call, ensureCompanion, follow, readJson, updateWhenIdle } from "./server/daemon.ts";
 import { home, task, threadTask, transcript, type RawRun, type RawThread } from "./server/shape.ts";
 import { supervisorRpc, askSupervisorRpc, type SupervisorState, removeRpc, projectsRpc, launchRpc, openChatRpc, steerRpc, answerRpc, homeRpc, stopRpc, taskRpc, transcriptRpc, waitRpc, type Diff, type ProjectChat, type workerModels } from "./shared/clyde.ts";
 import { newQuestRpc, questProjectMatches } from "./shared/clyde.ts";
@@ -95,8 +97,8 @@ async function createProjectChat(
   const idempotencyKey = "clyde-launch-" + requestId;
   try {
     const handle = ws && paseo.workspaces?.ref
-      ? await paseo.workspaces.ref(ws.id).agents.create({ idempotencyKey, title, config: { provider } })
-      : await paseo.agents?.create?.({ cwd: chatCwd, idempotencyKey, title, config: { provider } });
+      ? await paseo.workspaces.ref(ws.id).agents.create({ idempotencyKey, title, config: { provider, toolPolicy: clydeLookupPolicy() } })
+      : await paseo.agents?.create?.({ cwd: chatCwd, idempotencyKey, title, config: { provider, toolPolicy: clydeLookupPolicy() } });
     if (!handle?.id) throw new Error(LAUNCH_CHAT_ERROR);
     return handle.id;
   } catch (err) {
@@ -166,10 +168,9 @@ async function resolveProjectChat(
 }
 
 export default function contribute(server: PluginServerContext) {
+  workerPermissions(server);
   const live = follow(ensureCompanion);
-  if (typeof readJson<{ pid?: number }>("daemon.json")?.pid === "number") {
-    void ensureCompanion().catch(() => {});
-  }
+  const cancelUpdate = typeof readJson<{ pid?: number }>("daemon.json")?.pid === "number" ? updateWhenIdle() : undefined;
   const residentControl = residents(server);
   type QuestStart = { quest:number;project:string;workspaceId?:string;agent?:string;id?:string };
   const questStarts = readJson<Record<string,QuestStart>>("quest-starts.json") ?? {};
@@ -395,5 +396,5 @@ export default function contribute(server: PluginServerContext) {
     if (projectChatError) throw projectChatError;
     throw new Error("Could not find or open a chat for this task. Open a chat in Paseo and try again.");
   });
-  return () => { residentControl.close(); live.close(); };
+  return () => { cancelUpdate?.(); residentControl.close(); live.close(); };
 }

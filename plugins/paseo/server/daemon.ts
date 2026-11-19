@@ -43,16 +43,34 @@ export function resolveCompanionBin(): string | null {
   return null;
 }
 
-let ensuring: Promise<void> | null = null;
+let ensuring: Promise<boolean> | null = null;
 
-/** Follows the daemon's event stream. Every event, and every reconnect, moves the revision and wakes the waiters. */
-export async function ensureCompanion() {
-  if (ensuring) return ensuring;
-  ensuring = (async () => {
-    const bin = resolveCompanionBin();
-    if (bin) await promisify(execFile)(process.execPath, [bin, "daemon", "ensure"], { timeout: 20_000 });
-  })().finally(() => { ensuring = null; });
+function ensureCurrent(): Promise<boolean> {
+  if (!ensuring) {
+    ensuring = (async () => {
+      const bin = resolveCompanionBin();
+      if (!bin) return true;
+      const { stdout } = await promisify(execFile)(process.execPath, [bin, "daemon", "ensure", "--status"], { timeout: 20_000 });
+      return stdout.trim() !== "deferred";
+    })().finally(() => { ensuring = null; });
+  }
   return ensuring;
+}
+
+export async function ensureCompanion() {
+  await ensureCurrent();
+}
+
+/** A busy companion stays in place. Recheck until the update can finish between runs. */
+export function updateWhenIdle(ensure = ensureCurrent, delay = 30_000) {
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout>;
+  async function check() {
+    const current = await ensure().catch(() => false);
+    if (!current && !stopped) timer = setTimeout(check, delay);
+  }
+  void check();
+  return () => { stopped = true; clearTimeout(timer); };
 }
 
 function info(): Info {

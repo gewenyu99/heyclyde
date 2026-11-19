@@ -1,6 +1,7 @@
 import {RemoveTask} from "./remove-task";
 import { OpenChatButton } from "./open-chat";
 import { RunEvidence } from "./run-evidence";
+import { WorkerPermissions } from "./worker-permissions";
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -340,6 +341,8 @@ export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = 
   const tries = selected ? view.attempts[selected.stage] || [] : [];
   const lastThread = tries[tries.length - 1]?.threadId;
   const activity = view.runActivity;
+  const [pendingFor, setPendingFor] = useState<string>();
+  const waiting = !!activity?.permissionAgentId && activity.permissionAgentId === pendingFor;
   return (
     <View style={{ gap: 14 }}>
       {!embeddedSupervisor && <Pressable accessibilityRole="button" onPress={back} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
@@ -357,9 +360,7 @@ export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = 
           <Text style={{ color: theme.colors.foreground, fontSize: 13, lineHeight: 20 }}>{activity.retryReason}</Text>
         </View>}
       </View>
-      {activity?.permissionAgentId && openAgent && <Pressable accessibilityRole="button" onPress={() => openAgent(activity.permissionAgentId!)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
-        <Text style={{ color: theme.colors.accent, fontSize: 14, fontWeight: "600" }}>Review permission in Paseo</Text>
-      </Pressable>}
+      {view.kind === "run" && activity?.permissionAgentId && <WorkerPermissions key={view.id} theme={theme} runId={view.id} openAgent={openAgent} onPending={setPendingFor} />}
         {view.question ? (
           <View style={{ borderLeftWidth: 2, borderLeftColor: t.amber.ink, paddingLeft: 12, marginTop: 12, gap: 8 }}>
             <Text style={{ color: theme.colors.foreground, fontWeight: "500", fontSize: 14 }}>{view.question}</Text>
@@ -485,11 +486,12 @@ export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = 
         <RunEvidence view={view} theme={theme} />
         {stages.map(stage => {
           const isSelected = stage.stage === selected?.stage;
+          const waitingForPermission = stage.status === "running" && waiting && stage.piece.id === view.selected;
           const label = pieces.length === 1 || stage.label === stage.piece.title ? stage.label : `${stage.piece.title} · ${stage.label}`;
           return <View key={stage.stage} style={{ borderLeftWidth: 2, borderLeftColor: isSelected ? theme.colors.accent : theme.colors.border, paddingLeft: 10 }}>
             <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: isSelected }} onPress={() => { setPicked(stage.stage); setShowTranscript(false); }} style={{ minHeight: MIN_HIT_HEIGHT, flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
               <Text style={{ color: theme.colors.foreground, fontSize: 14, fontWeight: "600", flexShrink: 1 }}>{label}</Text>
-              <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>{STATUS_LABEL[stage.status]}</Text>
+              <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>{waitingForPermission ? "Permission required" : STATUS_LABEL[stage.status]}</Text>
             </Pressable>
             {isSelected && <View style={{ gap: 6 }}>
               {stage.piece.doneWhen.filter(item => !view.completionCriteria?.includes(item)).map((item, i) =>

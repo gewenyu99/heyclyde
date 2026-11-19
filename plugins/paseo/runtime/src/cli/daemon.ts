@@ -1,10 +1,14 @@
 /** clyde daemon: runs the daemon in the foreground until SIGINT or SIGTERM. */
-import { ensureDaemon, healthy } from '../client.ts'
+import { ensureDaemon, healthy, isStaleHealth } from '../client.ts'
 import { clydeHome, readDaemonInfo } from '../config.ts'
 import { startDaemon } from '../daemon.ts'
 
 export async function main(argv: string[]): Promise<number> {
-  if (argv[0] === 'ensure') { await ensureDaemon({ restartIfStale: true }); return 0 }
+  if (argv[0] === 'ensure') {
+    const client = await ensureDaemon({ restartIfStale: true })
+    if (argv.includes('--status')) console.log(isStaleHealth(await client.health()) ? 'deferred' : 'current')
+    return 0
+  }
   const existing = readDaemonInfo()
   if (await healthy(existing)) {
     console.error(`clyde daemon is already running on port ${existing?.port}, pid ${existing?.pid}.`)

@@ -98,6 +98,10 @@ test('native workers use the parent project and reuse their private task workspa
   assert.equal(agent.child.parent, 'parent')
   assert.equal(agent.child.title, input.title)
   assert.equal(agent.child.background, true)
+  assert.deepEqual(agent.child.config.toolPolicy.preapproved, [
+    { kind: 'mcp', server: 'paseo', tool: 'clyde_recall' },
+    { kind: 'mcp', server: 'paseo', tool: 'clyde_recall_more' },
+  ])
   assert.equal(agent.child.config.modeId, 'full-access')
   assert.equal(agent.child.config.provider, 'antigravity/gemini-4-neon-high')
   assert.equal(agent.child.prompt, undefined)

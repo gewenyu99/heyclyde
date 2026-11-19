@@ -98,6 +98,18 @@ export const askSupervisorRpc = defineRpc({
   output: z.object({ ok: z.boolean() }),
 });
 
+const workerPermissionOption = z.object({ id:z.string(), label:z.string(), behavior:z.enum(["allow","deny"]), variant:z.enum(["primary","secondary","danger"]).optional() });
+const workerPermission = z.object({ id:z.string(), revision:z.string(), kind:z.string(), name:z.string(), title:z.string(), description:z.string().optional(), input:z.string().optional(), options:z.array(workerPermissionOption), unsupported:z.string().optional() });
+export const workerPermissionsRpc = defineRpc({
+  name:"clyde.worker-permissions",input:z.object({runId:z.string().min(1)}),
+  output:z.object({agentId:z.string().optional(),requests:z.array(workerPermission),error:z.string().optional()}),
+});
+export type WorkerPermissions = z.infer<typeof workerPermissionsRpc.output>;
+export const respondWorkerPermissionRpc = defineRpc({
+  name:"clyde.respond-worker-permission",input:z.object({runId:z.string().min(1),agentId:z.string().min(1),requestId:z.string().min(1),revision:z.string().min(1),optionId:z.string().min(1)}),
+  output:z.object({ok:z.literal(true)}),
+});
+
 /** A background agent's turns, read only. */
 export const transcriptRpc = defineRpc({
   name: "clyde.transcript",
