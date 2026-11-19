@@ -35,7 +35,7 @@ test('ordinary live tool requests show exact evidence and Allow once / Deny with
   const f=fixture(t),state=await f.read();
   assert.equal(state.agentId,'worker-1');assert.equal(state.requests.length,1);
   const item=state.requests[0];
-  assert.equal(item.title,'Run test command');assert.match(item.input,/npm test/);
+  assert.equal(item.title,'Run shell command');assert.match(item.description,/Run test command/);assert.match(item.input,/npm test/);
   assert.deepEqual(item.options.map(o=>[o.id,o.label]),[['allow-once','Allow once'],['deny','Deny']]);
   assert.equal(f.calls.filter(c=>c.method==='respond').length,0);
   assert.deepEqual(await f.respond(item),{ok:true});
@@ -137,4 +137,44 @@ test('provider-mismatched requests fail closed and SDK response errors leave the
   assert.equal((await f.read()).requests.length,1);
   f.snapshots.respond=async()=>{};
   assert.deepEqual(await f.respond(item,'deny'),{ok:true});
+});
+
+
+test('realistic brace-expansion permission shows the complete command once with its plain purpose and working directory',async t=>{
+  const f=fixture(t),command='ls -la /workspace/heyclyde/{plugins/paseo,plugins/paseo/server,plugins/paseo/client}';
+  Object.assign(f.request,{title:'Bash',description:'Brace expansion',input:{command,description:'List the Paseo plugin folders before updating the Board.'},detail:{type:'shell',command,cwd:'/workspace/heyclyde'},metadata:{}});
+  const item=(await f.read()).requests[0];
+  assert.equal(item.title,'Run shell command');
+  assert.match(item.description,/List the Paseo plugin folders/);
+  assert.match(item.description,/Brace expansion/);
+  assert.equal(item.input.split(command).length-1,1);
+  assert.match(item.input,/Working directory: \/workspace\/heyclyde/);
+  assert.doesNotMatch(item.input,/"input"|"detail"|"command"/);
+  assert.deepEqual(item.options.map(o=>o.id),['allow-once','deny']);
+  assert.equal(f.calls.filter(c=>c.method==='respond').length,0);
+});
+
+test('distinct permission metadata and mismatched command or cwd values remain visible before a response',async t=>{
+  const f=fixture(t);
+  Object.assign(f.request,{input:{command:'printf input-command',cwd:'/input-dir',timeout:120000,run_in_background:true,additionalPermissions:{network:true}},
+    detail:{type:'shell',command:'printf provider-command',cwd:'/provider-dir'},
+    metadata:{permissionMode:'ask',reason:'Brace expansion',scope:'workspace'},suggestions:[{type:'addRules',rules:['shell:printf']}],
+    actions:[{id:'allow-session',label:'Allow this session',behavior:'allow',intent:'implement_resume'},{id:'deny',label:'Deny',behavior:'deny'}]});
+  const item=(await f.read()).requests[0];
+  for(const value of ['Commands differ','Input command:','printf input-command','Provider detail command:','printf provider-command','/input-dir','/provider-dir','timeout','120000','run_in_background','additionalPermissions','network','permissionMode','scope','suggestions','shell:printf','implement_resume'])assert.ok(item.input.includes(value),value+' must be reviewable');
+  assert.equal(item.input.split('printf input-command').length-1,1);
+  assert.equal(item.input.split('printf provider-command').length-1,1);
+  await f.respond(item,'deny');
+  assert.deepEqual(f.calls.find(c=>c.method==='respond').input.response,{behavior:'deny',selectedActionId:'deny'});
+});
+
+test('deduplication allows fully displayed commands while oversized distinct metadata still forces native review',async t=>{
+  const f=fixture(t),command='printf '+ 'x'.repeat(5000);
+  Object.assign(f.request,{input:{command},detail:{type:'shell',command,cwd:'/workspace'}});
+  let item=(await f.read()).requests[0];
+  assert.equal(item.input.split(command).length-1,1);assert.equal(item.options.length,2);assert.doesNotMatch(item.input,/truncated/);
+  f.request.metadata={additionalPermissions:{network:true},importantContext:'y'.repeat(9000)};
+  item=(await f.read()).requests[0];
+  assert.equal(item.options.length,0);assert.match(item.input,/truncated/);
+  await assert.rejects(f.respond(item),/not offered/);
 });

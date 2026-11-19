@@ -8,28 +8,30 @@ import { formatRpcError, MIN_HIT_HEIGHT } from "./palette";
 
 type Request = WorkerPermissionsData["requests"][number];
 
-function PermissionRequest({ theme, request, runId, agentId, openAgent, onAnswered }: {
-  theme: PluginTheme; request: Request; runId: string; agentId?: string;
+function PermissionRequest({ theme, request, runId, agentId, openAgent, onAnswered, observedAt }: {
+  theme: PluginTheme; request: Request; runId: string; agentId?: string; observedAt: number;
   openAgent?: (id: string) => void; onAnswered: () => void;
 }) {
   const c = theme.colors;
   const respond = useRpc(respondWorkerPermissionRpc);
   const locked = useRef(false);
   const [pending, setPending] = useState<string | null>(null);
-  const [submitted, setSubmitted] = useState(false);
+  const [submittedAt, setSubmittedAt] = useState<number | null>(null);
+  const submitted = submittedAt !== null;
   const [error, setError] = useState("");
   async function answer(optionId: string) {
     if (!agentId || locked.current || submitted) return;
     locked.current = true; setPending(optionId); setError("");
     try {
       await respond({ runId, agentId, requestId: request.id, revision: request.revision, optionId });
-      setSubmitted(true);
+      setSubmittedAt(Date.now());
       onAnswered();
     } catch (e) { setError(formatRpcError(e)); }
     finally { locked.current = false; setPending(null); }
   }
   return <View style={{ gap: 8 }}>
     <Text accessibilityRole="header" style={{ color: c.foreground, fontSize: 15, fontWeight: "600", lineHeight: 22 }}>{request.title || request.name}</Text>
+    {!request.unsupported && !submitted && <Text accessibilityLiveRegion="polite" style={{ color: c.foregroundMuted, fontSize: 13 }}>{pending !== null ? "Sending your response…" : "Awaiting your decision"}</Text>}
     {!!request.description && request.description !== request.title && <Text selectable style={{ color: c.foreground, fontSize: 13, lineHeight: 20 }}>{request.description}</Text>}
     {!!request.input && request.input !== request.description && <Text selectable style={{ color: c.foreground, backgroundColor: c.surface2, padding: 10, borderRadius: 6, fontFamily: "Menlo", fontSize: 12, lineHeight: 18 }}>{request.input}</Text>}
     {request.unsupported ? <View style={{ gap: 6 }}>
@@ -38,7 +40,7 @@ function PermissionRequest({ theme, request, runId, agentId, openAgent, onAnswer
       {agentId && openAgent && <Pressable accessibilityRole="button" onPress={() => openAgent(agentId)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
         <Text style={{ color: c.accent, fontSize: 13, fontWeight: "600" }}>Review permission in Paseo</Text>
       </Pressable>}
-    </View> : submitted ? <Text accessibilityLiveRegion="polite" style={{ color: c.foregroundMuted, fontSize: 13 }}>Permission answered. Waiting for the worker…</Text>
+    </View> : submitted ? <Text accessibilityLiveRegion="polite" style={{ color: c.foregroundMuted, fontSize: 13 }}>{observedAt > submittedAt! ? "Response sent. Paseo still shows this request as pending." : "Response sent. Checking whether the request is resolved…"}</Text>
       : <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
         {request.options.map(option => {
           const disabled = pending !== null || !agentId;
@@ -67,6 +69,7 @@ export function WorkerPermissions({ theme, runId, openAgent, onPending, expected
   }, [pendingAgent, onPending]);
   function onAnswered() {
     setAnswered(true);
+    void query.refetch();
     void cache.invalidateQueries({ queryKey: ["clyde"] });
   }
   if (!error && !query.data?.requests.length && !answered && (!query.isPending || !expected)) return null;
@@ -78,7 +81,7 @@ export function WorkerPermissions({ theme, runId, openAgent, onPending, expected
         <Text style={{ color: theme.colors.accent, fontSize: 13 }}>Retry loading permissions</Text>
       </Pressable>
     </View>}
-    {!error && query.data?.requests.map(request => <PermissionRequest key={`${query.data?.agentId}:${request.id}:${request.revision}`} theme={theme} request={request} runId={runId} agentId={query.data?.agentId} openAgent={openAgent} onAnswered={onAnswered} />)}
-    {!query.isPending && !error && !query.data?.requests.length && answered && <Text accessibilityLiveRegion="polite" style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>Permission answered. The worker can continue.</Text>}
+    {!error && query.data?.requests.map(request => <PermissionRequest key={`${query.data?.agentId}:${request.id}:${request.revision}`} theme={theme} request={request} runId={runId} agentId={query.data?.agentId} openAgent={openAgent} onAnswered={onAnswered} observedAt={query.dataUpdatedAt} />)}
+    {!query.isPending && !error && !query.data?.requests.length && answered && <Text accessibilityLiveRegion="polite" style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>No pending worker permission requests.</Text>}
   </View>;
 }

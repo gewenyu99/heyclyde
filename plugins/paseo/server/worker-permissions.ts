@@ -30,10 +30,44 @@ function currentWorker(run:RawRun,threads:RawThread[]):RawThread|undefined {
   return worker;
 }
 const revision=(request:Request)=>createHash('sha256').update(JSON.stringify(request)).digest('hex');
-function inputText(request:Request):string|undefined {
-  if(request.input===undefined && request.detail===undefined)return;
-  return JSON.stringify({input:request.input,detail:request.detail},null,2);
+/** Collapse only identical shell command/cwd values; keep every distinct request field visible. */
+function presentation(request:Request):{title:string;description?:string;input?:string} {
+  const shell=request.kind==='tool' && (request.name.toLowerCase()==='bash' || request.detail?.type==='shell');
+  if(!shell){
+    const review={input:request.input,detail:request.detail,metadata:request.metadata,suggestions:request.suggestions,actions:request.actions};
+    return {title:request.title || request.name,description:request.description,input:Object.values(review).some(v=>v!==undefined)?JSON.stringify(review,null,2):undefined};
+  }
+  const source={...(request.input ?? {})},detail={...(request.detail ?? {})} as Record<string,unknown>;
+  const inputCommand=typeof source.command==='string'?source.command:undefined;
+  const detailCommand=typeof detail.command==='string'?detail.command:undefined;
+  const command=inputCommand ?? detailCommand;
+  const purposes=[source.description,request.description,request.title!==request.name?request.title:undefined]
+    .filter((v):v is string=>typeof v==='string' && !!v.trim() && v!==command);
+  const description=[...new Set(purposes)].join('\n') || undefined;
+  if(typeof source.description==='string')delete source.description;
+  if(inputCommand!==undefined)delete source.command;
+  if(detailCommand!==undefined)delete detail.command;
+  if(detail.type==='shell')delete detail.type;
+  const sections:string[]=[];
+  if(inputCommand!==undefined && detailCommand!==undefined && inputCommand!==detailCommand){
+    sections.push('Commands differ. Review both before deciding.\n\nInput command:\n'+inputCommand+'\n\nProvider detail command:\n'+detailCommand);
+  }else if(command!==undefined)sections.push(command);
+  const inputCwd=typeof source.cwd==='string'?source.cwd:undefined,detailCwd=typeof detail.cwd==='string'?detail.cwd:undefined;
+  if((inputCwd!==undefined || detailCwd!==undefined) && (inputCwd===undefined || detailCwd===undefined || inputCwd===detailCwd)){
+    sections.push('Working directory: '+(inputCwd ?? detailCwd));
+    if(inputCwd!==undefined)delete source.cwd;
+    if(detailCwd!==undefined)delete detail.cwd;
+  }
+  const extra:Record<string,unknown>={};
+  if(Object.keys(source).length)extra.input=source;
+  if(Object.keys(detail).length)extra.detail=detail;
+  if(request.metadata && Object.keys(request.metadata).length)extra.metadata=request.metadata;
+  if(request.suggestions?.length)extra.suggestions=request.suggestions;
+  if(request.actions?.length)extra.actions=request.actions;
+  if(Object.keys(extra).length)sections.push('Additional request details:\n'+JSON.stringify(extra,null,2));
+  return {title:'Run shell command',description,input:sections.join('\n\n') || undefined};
 }
+function inputText(request:Request):string|undefined {return presentation(request).input;}
 function options(request:Request):Option[] {
   // Never approve input that the board could only show partially, particularly shell commands.
   if((inputText(request)?.length ?? 0)>8000)return [];
@@ -57,9 +91,9 @@ function options(request:Request):Option[] {
   ];
 }
 function display(request:Request):WorkerPermissions['requests'][number] {
-  const choices=options(request),input=inputText(request);
-  return {id:request.id,revision:revision(request),kind:request.kind,name:request.name,title:request.title || request.name,
-    ...(request.description?{description:request.description}:{}),...(input?{input:input.length>8000?input.slice(0,7980)+'\n[truncated]':input}:{}),
+  const choices=options(request),view=presentation(request),input=view.input;
+  return {id:request.id,revision:revision(request),kind:request.kind,name:request.name,title:view.title,
+    ...(view.description?{description:view.description}:{}),...(input?{input:input.length>8000?input.slice(0,7980)+'\n[truncated]':input}:{}),
     options:choices.map(({response,...choice})=>choice),...(!choices.length?{unsupported:'Open the worker in Paseo to answer this request.'}:{})};
 }
 

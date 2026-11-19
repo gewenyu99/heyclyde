@@ -350,6 +350,7 @@ export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = 
         <Text style={{ color: theme.colors.accent, fontSize: 13 }}>‹ Back</Text>
       </Pressable>}
       <Text accessibilityRole="header" style={{ color: theme.colors.foreground, fontSize: 20, fontWeight: "700" }}>{view.name}</Text>
+      <OrchestrationFlow theme={theme} view={view} selectedStage={selected?.stage} onSelect={stage => { setPicked(stage); setShowTranscript(false); }} />
       <View accessibilityLiveRegion="polite" style={{ gap: 8 }}>
         <Text style={{ color: theme.colors.foreground, fontSize: 15, lineHeight: 22, fontWeight: "600" }}>{waiting ? "Worker needs your permission" : pendingFor === null && activity?.permissionAgentId ? "Worker is working on this task" : activity?.headline || view.summary || STATUS_LABEL[view.status]}</Text>
         {activity?.latestResult && <View style={{ gap: 5 }}>
@@ -361,7 +362,6 @@ export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = 
           <Text style={{ color: theme.colors.foreground, fontSize: 13, lineHeight: 20 }}>{activity.retryReason}</Text>
         </View>}
       </View>
-      <OrchestrationFlow theme={theme} view={view} selectedStage={selected?.stage} onSelect={stage => { setPicked(stage); setShowTranscript(false); }} />
       {view.kind === "run" && ["running", "asking", "sent-back"].includes(view.status) && <WorkerPermissions key={view.id} theme={theme} runId={view.id} openAgent={openAgent} onPending={setPendingFor} expected={!!activity?.permissionAgentId} />}
         {view.question ? (
           <View style={{ borderLeftWidth: 2, borderLeftColor: t.amber.ink, paddingLeft: 12, marginTop: 12, gap: 8 }}>

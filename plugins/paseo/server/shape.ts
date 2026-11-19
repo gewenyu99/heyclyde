@@ -312,6 +312,15 @@ function isPlanApproval(ask?: { kind?: string; question?: string }, question?: s
   return ask?.kind === "approve" && /^approve\b[^?\n]*\bplan\b/i.test(question ?? ask.question ?? "");
 }
 
+export function planApprovalStatus(r:RawRun):TaskView["planApproval"] {
+  const ask=r.asks?.findLast(ask=>isPlanApproval(ask));
+  if (!ask) return;
+  const plan=r.stages.findLast(stage=>/^plan(-\d+)?$/.test(stage.name));
+  if (plan && ask.askedAt < plan.startedAt) return;
+  if (ask.answer===undefined) return "asking";
+  return /^\s*(approved?|yes|y|ok|okay|lgtm|ship it|go( ahead)?)\s*[.!]*\s*$/i.test(ask.answer)?"passed":"sent-back";
+}
+
 export function home(threads: RawThread[], runs: RawRun[], agents: Record<string, string>, revision: number, now = new Date()): Home {
   const top = runs.filter((r) => !r.archivedAt && !r.parentThreadId && !TEST_TITLE.test(r.title));
   const needsYou: Ask[] = [];
@@ -391,7 +400,7 @@ export function task(r: RawRun, threads: RawThread[], agents: Record<string, str
     askKey:open?.key,retryable:open?.kind==="provider"||open?.kind==="limit",fullAccess:open?.kind==="provider"&&open.question.includes("allow Antigravity full access for this run"),
     verifiedNotes:r.verifiedNotes,completionCriteria:r.input?.criteria?.filter(value=>typeof value==="string" && value.trim()),
     commitReview: open?.kind === 'provider' && open.question.startsWith('Git needs permission to commit in the task worktree.'),
-    savedPlanIntent: r.plan?.intent, runActivity: activity,
+    savedPlanIntent: r.plan?.intent, runActivity: activity, planApproval: planApprovalStatus(r),
     goal: firstSentence(r.plan?.intent ?? r.input?.intent ?? r.input?.prompt, 220), summary: summary(r, all, activity),
     lastActivity: lastActivity(r, threads),
     question: r.status === "asking" ? r.question ?? open?.question : undefined, approve: isPlanApproval(open, r.question), branch: r.branch,
