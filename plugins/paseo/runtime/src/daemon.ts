@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto'
 import { mkdirSync, rmSync } from 'node:fs'
 import type http from 'node:http'
 import { DaemonClient, healthy } from './client.ts'
-import { daemonInfoPath, daemonPort, loadMemoryEnv, clydeHome, readDaemonInfo } from './config.ts'
+import { canonicalBin, daemonInfoPath, daemonPort, loadMemoryEnv, clydeHome, readDaemonInfo, runtimeFingerprint } from './config.ts'
 import { startDelivery } from './delivery.ts'
 import { startMemoryFlush } from './memory-flush.ts'
 import { EventLog } from './events.ts'
@@ -16,8 +16,10 @@ import { Threads } from './threads.ts'
 
 export type DaemonCtx = {
   threads: Threads; events: EventLog; memory: Memory | null; home: string; token: string
-  // The runs module sets this when it mounts, so /health can count runs.
+  bin: string; fingerprint: string
+  // The runs module sets these when it mounts, so /health can count runs.
   runCount: () => number
+  activeRunCount: () => number
   // Run before threads shut down when the daemon closes, in the order they were added.
   beforeClose: (() => Promise<void> | void)[]
 }
@@ -29,10 +31,12 @@ export async function startDaemon(opts: { port?: number } = {}): Promise<Daemon>
   mkdirSync(home, { recursive: true, mode: 0o700 })
   loadMemoryEnv()
   const token = randomBytes(32).toString('hex')
+  const bin = canonicalBin()
+  const fingerprint = runtimeFingerprint()
   const events = new EventLog()
   const memory = runtimeMemory()
   const threads = new Threads({ events, memory })
-  const ctx: DaemonCtx = { threads, events, memory, home, token, runCount: () => 0, beforeClose: [] }
+  const ctx: DaemonCtx = { threads, events, memory, home, token, bin, fingerprint, runCount: () => 0, activeRunCount: () => 0, beforeClose: [] }
   const table: Route[] = []
   const server = createServer(table, token)
   // The port comes first: a daemon that can't listen must not touch threads another daemon may own.

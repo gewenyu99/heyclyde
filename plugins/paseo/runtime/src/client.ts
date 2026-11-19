@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process'
 import { closeSync, mkdirSync, openSync, readFileSync } from 'node:fs'
 import http from 'node:http'
 import { join } from 'node:path'
-import { clydeBin, clydeHome, readDaemonInfo, type DaemonInfo } from './config.ts'
+import { canonicalBin, clydeBin, clydeHome, readDaemonInfo, runtimeFingerprint, type DaemonInfo } from './config.ts'
 import { request } from './request.ts'
 import type { ClydeEvent, Thread } from './types.ts'
 
@@ -124,21 +124,68 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-/** True when daemon.json names a daemon that answers /health as that same process. */
-export async function healthy(info: DaemonInfo | null): Promise<boolean> {
-  if (!info) return false
+export type HealthInfo = {
+  ok: boolean
+  version?: string
+  pid: number
+  bin?: string
+  fingerprint?: string
+  threads?: number
+  runs?: number
+  activeThreads?: number
+  activeRuns?: number
+  idle?: boolean
+}
+
+export async function daemonHealth(info: DaemonInfo | null): Promise<HealthInfo | null> {
+  if (!info) return null
   try {
     const h = await new DaemonClient(info).health()
-    return h?.ok === true && h.pid === info.pid
+    return h?.ok === true && h.pid === info.pid ? (h as HealthInfo) : null
+  } catch {
+    return null
+  }
+}
+
+/** True when daemon.json names a daemon that answers /health as that same process. */
+export async function healthy(info: DaemonInfo | null): Promise<boolean> {
+  return Boolean(await daemonHealth(info))
+}
+
+export function isStaleHealth(
+  health: HealthInfo | null | undefined,
+  expectedBin = canonicalBin(),
+  expectedFingerprint = runtimeFingerprint(),
+): boolean {
+  return !health || health.bin !== expectedBin || health.fingerprint !== expectedFingerprint
+}
+
+async function isDaemonIdle(client: DaemonClient, health: HealthInfo): Promise<boolean> {
+  if (typeof health.idle === 'boolean') return health.idle
+  try {
+    const [threads, runs] = await Promise.all([client.threads(), client.runs()])
+    return !threads.some((t) => t.status === 'running' || t.status === 'queued') && !runs.some((r) => r.status === 'running')
   } catch {
     return false
   }
 }
 
 /** The running daemon's client. Starts `clyde daemon` detached when none answers, and waits for it. */
-export async function ensureDaemon(timeoutMs = 15_000): Promise<DaemonClient> {
+export async function ensureDaemon(timeoutMsOrOpts: number | { timeoutMs?: number; restartIfStale?: boolean } = 15_000): Promise<DaemonClient> {
+  const timeoutMs = typeof timeoutMsOrOpts === 'number' ? timeoutMsOrOpts : (timeoutMsOrOpts.timeoutMs ?? 15_000)
+  const restartIfStale = typeof timeoutMsOrOpts === 'object' && timeoutMsOrOpts.restartIfStale === true
   const info = readDaemonInfo()
-  if (await healthy(info)) return new DaemonClient(info as DaemonInfo)
+  const h = await daemonHealth(info)
+  if (h && info) {
+    const client = new DaemonClient(info)
+    if (!restartIfStale || !isStaleHealth(h)) return client
+    if (typeof info.pid !== 'number' || info.pid <= 0 || info.pid === process.pid) return client
+    if (!(await isDaemonIdle(client, h))) return client
+    try { process.kill(info.pid, 'SIGTERM') } catch { /* Already stopped. */ }
+    const stopDeadline = Date.now() + Math.min(5_000, timeoutMs)
+    while (Date.now() < stopDeadline && (await healthy(info))) await sleep(100)
+    if (await healthy(info)) return client
+  }
   mkdirSync(clydeHome(), { recursive: true })
   const logPath = join(clydeHome(), 'daemon.log')
   const log = openSync(logPath, 'a')

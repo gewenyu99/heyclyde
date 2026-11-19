@@ -1,4 +1,5 @@
 import {RemoveTask} from "./remove-task";
+import { OpenChatButton } from "./open-chat";
 import { RunEvidence } from "./run-evidence";
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -610,17 +611,28 @@ export function TaskScreen({ theme, view, back, openAgent }: { theme: PluginThem
           <View style={{ borderLeftWidth: 2, borderLeftColor: t.amber.ink, paddingLeft: 12, marginTop: 12, gap: 8 }}>
             <Text style={{ color: theme.colors.foreground, fontWeight: "500", fontSize: 14 }}>{view.question}</Text>
             {view.retryable ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ disabled: retrying }}
-                disabled={retrying}
-                onPress={()=>void sendAnswer("retry",view.fullAccess)}
-                style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}
-              >
-                <Text style={{color:theme.colors.accent,fontWeight:"700",fontSize:13}}>
-                  {retrying ? "Retrying…" : view.fullAccess ? "Allow full access for this run and retry" : "Retry"}
-                </Text>
-              </Pressable>
+              <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: retrying }}
+                  disabled={retrying}
+                  onPress={()=>void sendAnswer("retry",view.fullAccess)}
+                  style={{
+                    backgroundColor: retrying ? theme.colors.surface2 : theme.colors.accent,
+                    borderWidth: retrying ? 1 : 0,
+                    borderColor: edge,
+                    borderRadius: 6,
+                    paddingHorizontal: 14,
+                    minHeight: MIN_HIT_HEIGHT,
+                    justifyContent: "center",
+                  }}
+                >
+                  <Text style={{color: retrying ? theme.colors.foregroundMuted : theme.colors.accentForeground, fontWeight:"700",fontSize:13}}>
+                    {retrying ? "Retrying…" : view.fullAccess ? "Allow full access for this run and retry" : "Retry"}
+                  </Text>
+                </Pressable>
+                <OpenChatButton theme={theme} kind={view.kind} id={view.id} openAgent={openAgent} onError={setRetryError} />
+              </View>
             ) : (
               <View style={{ gap: 8 }}>
                 <TextInput
@@ -690,10 +702,17 @@ export function TaskScreen({ theme, view, back, openAgent }: { theme: PluginThem
                       </Pressable>
                     );
                   })()}
+                  <OpenChatButton theme={theme} kind={view.kind} id={view.id} openAgent={openAgent} onError={setRetryError} />
                 </View>
               </View>
             )}
             {!!retryError && <Text accessibilityRole="alert" style={{color:theme.colors.statusDanger, fontSize:13}}>{retryError}</Text>}
+          </View>
+        ) : null}
+        {!view.question && view.status === "failed" && openAgent ? (
+          <View style={{ marginTop: 12, gap: 8 }}>
+            <OpenChatButton theme={theme} kind={view.kind} id={view.id} openAgent={openAgent} onError={setRetryError} />
+            {!!retryError && <Text accessibilityRole="alert" style={{ color: theme.colors.statusDanger, fontSize: 13 }}>{retryError}</Text>}
           </View>
         ) : null}
       </View>

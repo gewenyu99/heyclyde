@@ -4,8 +4,8 @@ import { spawn } from 'node:child_process'
 import { statSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { DaemonClient, DaemonError } from '../src/client.ts'
-import { readDaemonInfo } from '../src/config.ts'
+import { DaemonClient, DaemonError, ensureDaemon, isStaleHealth } from '../src/client.ts'
+import { canonicalBin, readDaemonInfo, runtimeFingerprint } from '../src/config.ts'
 import { startDaemon } from '../src/daemon.ts'
 import { request } from '../src/request.ts'
 import type { ClydeEvent } from '../src/types.ts'
@@ -23,7 +23,18 @@ test('every route but /health needs the bearer token', async () => {
   try {
     const health = await request('GET', h.url('/health'))
     assert.equal(health.status, 200)
-    assert.deepEqual(JSON.parse(health.text), { ok: true, version: '0.1.0', pid: process.pid, threads: 0, runs: 0 })
+    assert.deepEqual(JSON.parse(health.text), {
+      ok: true,
+      version: '0.1.0',
+      pid: process.pid,
+      bin: canonicalBin(),
+      fingerprint: runtimeFingerprint(),
+      threads: 0,
+      runs: 0,
+      activeThreads: 0,
+      activeRuns: 0,
+      idle: true,
+    })
     assert.equal((await request('GET', h.url('/threads'))).status, 401)
     assert.equal((await request('GET', h.url('/threads'), { headers: { authorization: 'Bearer nope' } })).status, 401)
     assert.equal((await request('GET', h.url('/events?since=0'))).status, 401)
@@ -159,5 +170,74 @@ test('a daemon killed mid-turn marks the thread failed on restart, and a send re
     assert.equal(second[second.indexOf('--resume') + 1], t.session)
   } finally {
     await d.close()
+  }
+})
+
+test('ensureDaemon({ restartIfStale: true }) restarts a stale idle daemon and leaves a busy stale daemon running', async () => {
+  assert.equal(isStaleHealth({ ok: true, pid: 1, bin: canonicalBin(), fingerprint: runtimeFingerprint() }), false)
+  assert.equal(isStaleHealth({ ok: true, pid: 1, bin: '/old/clyde.ts', fingerprint: runtimeFingerprint() }), true)
+  assert.equal(isStaleHealth({ ok: true, pid: 1, bin: canonicalBin(), fingerprint: 'stale' }), true)
+  assert.equal(isStaleHealth({ ok: true, pid: 1 }), true)
+
+  const fakeScript = `
+    import http from 'node:http'
+    import { writeFileSync } from 'node:fs'
+    import { join } from 'node:path'
+    const server = http.createServer((req, res) => {
+      res.setHeader('content-type', 'application/json')
+      if (req.url === '/health') {
+        return res.end(JSON.stringify({ ok: true, version: '0.1.0', pid: process.pid, bin: '/old/clyde.ts', fingerprint: 'stale', idle: process.env.FAKE_IDLE === '1' }))
+      }
+      res.end('[]')
+    })
+    server.listen(0, '127.0.0.1', () => {
+      const port = server.address().port
+      writeFileSync(join(process.env.CLYDE_HOME, 'daemon.json'), JSON.stringify({ pid: process.pid, port, token: 'stale-tok' }))
+    })
+    process.on('SIGTERM', () => { server.closeAllConnections(); server.close(() => process.exit(0)) })
+  `
+
+  // 1. Busy stale daemon is left untouched.
+  const prevPort = process.env.CLYDE_PORT
+  process.env.CLYDE_PORT = '0'
+  const busyEnv = setup([])
+  const busyChild = spawn(process.execPath, ['--input-type=module', '-e', fakeScript], {
+    env: { ...process.env, CLYDE_HOME: busyEnv.home, FAKE_IDLE: '0' },
+    detached: true,
+    stdio: 'ignore',
+  })
+  try {
+    await waitFor(() => readDaemonInfo()?.pid === busyChild.pid, 5000, 'busy fake daemon')
+    const kept = await ensureDaemon({ restartIfStale: true, timeoutMs: 5000 })
+    assert.equal(kept.info.pid, busyChild.pid, 'busy stale daemon must not be interrupted')
+  } finally {
+    try { process.kill(busyChild.pid as number, 'SIGKILL') } catch {}
+  }
+
+  // 2. Idle stale daemon is stopped via SIGTERM and replaced with a fresh daemon matching runtimeFingerprint.
+  const idleEnv = setup([])
+  const idleChild = spawn(process.execPath, ['--input-type=module', '-e', fakeScript], {
+    env: { ...process.env, CLYDE_HOME: idleEnv.home, FAKE_IDLE: '1' },
+    detached: true,
+    stdio: 'ignore',
+  })
+  let freshPid: number | undefined
+  try {
+    await waitFor(() => readDaemonInfo()?.pid === idleChild.pid, 5000, 'idle fake daemon')
+    const fresh = await ensureDaemon({ restartIfStale: true, timeoutMs: 10_000 })
+    freshPid = fresh.info.pid
+    assert.notEqual(freshPid, idleChild.pid, 'stale idle daemon should be replaced')
+    const h = await fresh.health()
+    assert.equal(h.bin, canonicalBin())
+    assert.equal(h.fingerprint, runtimeFingerprint())
+    assert.equal(h.idle, true)
+  } finally {
+    try { process.kill(idleChild.pid as number, 'SIGKILL') } catch {}
+    if (freshPid) {
+      try { process.kill(freshPid, 'SIGTERM') } catch {}
+      await waitFor(() => { try { process.kill(freshPid!, 0); return false } catch { return true } }, 5000, 'fresh daemon stop').catch(() => {})
+    }
+    if (prevPort === undefined) delete process.env.CLYDE_PORT
+    else process.env.CLYDE_PORT = prevPort
   }
 })

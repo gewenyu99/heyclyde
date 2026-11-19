@@ -1,9 +1,11 @@
 import { isProjectChat, listAllAgents, residents } from "./server/residents.ts";
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { realpathSync } from "node:fs";
 import type { PluginHandlerContext, PluginServerContext } from "@getpaseo/plugin/server";
 import { call, ensureCompanion, follow, readJson } from "./server/daemon.ts";
 import { home, task, threadTask, transcript, type RawRun, type RawThread } from "./server/shape.ts";
-import { removeRpc, projectsRpc, launchRpc, steerRpc, answerRpc, homeRpc, stopRpc, taskRpc, transcriptRpc, waitRpc, type Diff, type ProjectChat, type workerModels } from "./shared/clyde.ts";
+import { removeRpc, projectsRpc, launchRpc, openChatRpc, steerRpc, answerRpc, homeRpc, stopRpc, taskRpc, transcriptRpc, waitRpc, type Diff, type ProjectChat, type workerModels } from "./shared/clyde.ts";
 
 type PaseoApi = PluginHandlerContext["paseo"];
 type ProviderId = Parameters<PaseoApi["providers"]["listModels"]>[0];
@@ -113,8 +115,57 @@ function diffOf(r: RawRun): Diff | undefined {
   }
 }
 
+function canonicalPath(p?: string): string | undefined {
+  if (!p) return undefined;
+  try { return realpathSync(p); } catch { return p; }
+}
+
+function findProjectForPath(
+  targetPath: string | undefined,
+  projects: ProjectEntry[],
+  workspaces: WorkspaceEntry[],
+): { project: ProjectEntry; workspaces: WorkspaceEntry[] } | undefined {
+  const target = canonicalPath(targetPath);
+  if (!target) return undefined;
+  const gitProjects = projects.filter((p) => p.projectKind !== "non_git");
+  const projectById = new Map(gitProjects.map((p) => [p.projectId, p]));
+  const wsMatch = workspaces.find((w) => projectById.has(w.projectId) && canonicalPath(w.workspaceDirectory) === target);
+  const exactProject = (wsMatch ? projectById.get(wsMatch.projectId) : undefined)
+    ?? gitProjects.find((p) => canonicalPath(p.projectRootPath) === target);
+  const project = exactProject ?? gitProjects
+    .map((p) => ({ p, root: canonicalPath(p.projectRootPath) }))
+    .filter((x): x is { p: ProjectEntry; root: string } => Boolean(x.root) && target.startsWith(x.root + "/"))
+    .sort((a, b) => b.root.length - a.root.length)[0]?.p;
+  if (!project) return undefined;
+  return { project, workspaces: workspaces.filter((w) => w.projectId === project.projectId) };
+}
+
+async function resolveProjectChat(
+  paseo: PaseoApi,
+  allAgents: Awaited<ReturnType<typeof listAllAgents>>,
+  targetPath: string | undefined,
+  title: string,
+): Promise<{ agentId: string; created: boolean } | null> {
+  const [{ projects }, { entries: workspaces }] = await Promise.all([
+    paseo.projects.list(),
+    paseo.workspaces.list(),
+  ]);
+  const match = findProjectForPath(targetPath, projects, workspaces);
+  if (!match) return null;
+  const workspaceIds = new Set(match.workspaces.map((w) => w.id));
+  const chats = allAgents
+    .filter((a) => a.workspaceId && workspaceIds.has(a.workspaceId) && isProjectChat(a))
+    .sort((a, b) => (b.updatedAt ?? b.createdAt ?? "").localeCompare(a.updatedAt ?? a.createdAt ?? ""));
+  if (chats.length > 0) return { agentId: chats[0].id, created: false };
+  const agentId = await createProjectChat(paseo, match.project, match.workspaces, "auto", title, "open-chat-" + randomUUID());
+  return { agentId, created: true };
+}
+
 export default function contribute(server: PluginServerContext) {
   const live = follow(ensureCompanion);
+  if (typeof readJson<{ pid?: number }>("daemon.json")?.pid === "number") {
+    void ensureCompanion().catch(() => {});
+  }
   const residentControl = residents(server);
   server.handle(projectsRpc, async ({workspaceId}, {paseo}) => {
     const [{ projects }, { entries: workspaces }, agents] = await Promise.all([
@@ -215,6 +266,50 @@ export default function contribute(server: PluginServerContext) {
       await call("POST", kind === "run" ? `/runs/${safeId}/stop` : `/threads/${safeId}/stop`, {});
       return { ok: true };
     } catch (err) { return { ok: false, error: (err as Error).message }; }
+  });
+  server.handle(openChatRpc, async ({ kind, id }, { paseo }) => {
+    const safeId = encodeURIComponent(id);
+    const allAgents = await listAllAgents(paseo);
+    const liveById = new Map(allAgents.filter((a) => !a.archivedAt).map((a) => [a.id, a]));
+    if (kind === "thread") {
+      const thread = await call<RawThread>("GET", `/threads/${safeId}`);
+      const direct = [thread.paseoParentId, agents()[thread.id], thread.paseoAgentId].find(
+        (candidate): candidate is string => typeof candidate === "string" && liveById.has(candidate),
+      );
+      if (direct) return { agentId: direct };
+      const projectChat = await resolveProjectChat(paseo, allAgents, thread.cwd, thread.title || thread.id);
+      if (projectChat) return projectChat;
+      throw new Error("Could not find or open a chat for this task. Open a chat in Paseo and try again.");
+    }
+    const [run, threads] = await Promise.all([
+      call<RawRun>("GET", `/runs/${safeId}`),
+      call<RawThread[]>("GET", "/threads"),
+    ]);
+    const chatRuns = readJson<Record<string, { agent?: string }>>("chat-runs.json") ?? {};
+    const originId = run.paseoParentId ?? chatRuns[run.id]?.agent;
+    if (originId && liveById.has(originId)) {
+      await residentControl.openForRun(run, originId, paseo, false).catch(() => {});
+      return { agentId: originId };
+    }
+    let projectChatError: unknown;
+    const projectChat = await resolveProjectChat(paseo, allAgents, run.repo ?? run.cwd, run.title || run.id).catch((err) => {
+      projectChatError = err;
+      return null;
+    });
+    if (projectChat) {
+      const canReattach = !residentControl.isQuestRun(run.id);
+      if (canReattach && (run.status === "asking" || run.status === "running")) {
+        await call("POST", `/runs/${safeId}/parent`, { paseoParentId: projectChat.agentId }).catch(() => {});
+      }
+      await residentControl.openForRun(run, projectChat.agentId, paseo, canReattach).catch(() => {});
+      return projectChat;
+    }
+    const rep = run.stages[0]?.attempts[0]?.threadId;
+    const workerId = threads.findLast((t) => t.runId === run.id && !t.archivedAt && t.paseoAgentId && liveById.has(t.paseoAgentId))?.paseoAgentId
+      ?? (rep && agents()[rep] && liveById.has(agents()[rep]) ? agents()[rep] : undefined);
+    if (workerId) return { agentId: workerId };
+    if (projectChatError) throw projectChatError;
+    throw new Error("Could not find or open a chat for this task. Open a chat in Paseo and try again.");
   });
   return () => { residentControl.close(); live.close(); };
 }

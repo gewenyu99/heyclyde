@@ -177,6 +177,10 @@ test("client TSX components obey typography floor, accessible controls, chat pic
 
   assert.match(runEvidence, /pullRequest/);
   assert.match(home, /pullRequest/);
+  assert.match(home, /OpenChatButton/);
+  assert.match(task, /OpenChatButton/);
+  assert.match(sidecar, /OpenChatButton/);
+  assert.match(screen, /<HomeView\b[\s\S]*?openAgent=\{openAgent\}/);
 
   // Quest #46 client contrast, ARIA, keyboard, and chat-picker invariants.
   assert.match(brand, /export \{ scheme \}/);

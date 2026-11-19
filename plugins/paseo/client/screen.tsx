@@ -87,7 +87,7 @@ function Board(
       </Text>
     </Pressable>
   );
-  const queue = <Panel theme={theme}>{data ? <HomeView theme={theme} home={data} open={(k,i)=>setPicked(k+":"+i)}/> :
+  const queue = <Panel theme={theme}>{data ? <HomeView theme={theme} home={data} open={(k,i)=>setPicked(k+":"+i)} openAgent={openAgent}/> :
     <Text accessibilityRole={error ? "alert" : undefined} style={{color:error?c.statusDanger:c.foregroundMuted,fontSize:13}}>{error||"Loading tasks…"}</Text>}</Panel>;
   const workToReview = !!(data?.needsYou.length || data?.failedToday?.length || data?.doneToday.length || data?.running);
   return (

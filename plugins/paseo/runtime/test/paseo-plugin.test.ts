@@ -215,3 +215,36 @@ test('archived tasks disappear from approvals, running, failed and completed lis
   const h=home([thread({archivedAt:at(4),status:'running'})],[r,{...r,id:'f',status:'failed',endedAt:at(5)},{...r,id:'d',status:'done',endedAt:at(5)}],{},1,NOW)
   assert.deepEqual([h.needsYou.length,h.tasks.length,h.failedToday.length,h.doneToday.length],[0,0,0,0])
 })
+
+test('runAgentId skips unstarted failed worker threads and keeps the prior started worker', () => {
+  const run = shipRun({
+    status: 'asking',
+    stages: [
+      {
+        name: 'plan',
+        status: 'asking',
+        startedAt: at(20),
+        attempts: [attempt(1, 't-started'), attempt(2, 't-ghost')],
+      },
+    ],
+  })
+  const threads = [
+    thread({
+      id: 't-started',
+      runId: 'r-ship',
+      paseoAgentId: 'paseo-started',
+      status: 'idle',
+      turns: [{ n: 1, prompt: 'plan', startedAt: at(19), endedAt: at(18), ok: true, text: 'done' }],
+    }),
+    thread({
+      id: 't-ghost',
+      runId: 'r-ship',
+      paseoAgentId: 'paseo-ghost',
+      status: 'failed',
+      turns: [{ n: 1, prompt: 'plan', startedAt: at(5), endedAt: at(4), ok: false, error: 'The originating Paseo agent is unavailable' }],
+    }),
+  ]
+  assert.equal(task(run, threads, {}).agentId, 'paseo-started')
+  assert.equal(home(threads, [run], {}, 1, NOW).tasks[0].agentId, 'paseo-started')
+  assert.equal(task(run, [threads[1]], { 't-started': 'agent-fallback' }).agentId, 'agent-fallback')
+})

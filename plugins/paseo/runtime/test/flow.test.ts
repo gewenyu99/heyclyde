@@ -335,3 +335,22 @@ test('a judge from the same family still judges, and the run logs why', async ()
     await s.memory.close()
   }
 })
+
+test('POST /runs/:id/parent reattaches an asking run and rejects terminal runs with 409', async () => {
+  const s = await flowSetup('task-limit')
+  const { d, client } = await flowDaemon()
+  const status = (p: Promise<unknown>) => p.then(() => 200, (e: { status: number; message: string }) => `${e.status} ${e.message}`)
+  try {
+    const started: Run = await client.call('POST', '/runs', { flow: 'task', input: TASK, cwd: s.repo, paseoParentId: 'old-chat' })
+    const asking = await waitStatus(client, started.id, ['asking', 'done', 'failed'])
+    assert.equal(asking.status, 'asking')
+    const reattached: Run = await client.call('POST', `/runs/${started.id}/parent`, { paseoParentId: 'new-chat' })
+    assert.equal(reattached.paseoParentId, 'new-chat')
+    assert.equal((await client.run(started.id)).paseoParentId, 'new-chat')
+    await client.stopRun(started.id)
+    assert.equal(await status(client.call('POST', `/runs/${started.id}/parent`, { paseoParentId: 'later-chat' })), `409 run ${started.id} is stopped`)
+  } finally {
+    await d.close()
+    await s.memory.close()
+  }
+})

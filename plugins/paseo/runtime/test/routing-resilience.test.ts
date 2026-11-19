@@ -65,6 +65,7 @@ test('deterministicProviderFailure catches 400/model/version/auth/flag errors wi
   assert.ok(deterministicProviderFailure('unrecognized_model: claude-opus-5-5'))
   assert.ok(deterministicProviderFailure('error: unknown flag --json-schema'))
   assert.ok(deterministicProviderFailure('Authentication_error: Please log in first'))
+  assert.match(deterministicProviderFailure('The originating Paseo agent is unavailable') ?? '', /Open chat on this task to reattach/)
   assert.equal(deterministicProviderFailure('API Error: 503 temporary backend overload'), undefined)
   assert.equal(deterministicProviderFailure('The judge failed it: assertion failed'), undefined)
 })
@@ -95,6 +96,49 @@ test('runStage pauses after 1 attempt on deterministic provider error and resume
     const done = await waitStatus(client, started.id, ['done', 'failed'])
     assert.equal(done.status, 'done', done.question ?? done.error)
     assert.equal(done.stages[0].attempts.length, 2)
+  } finally {
+    await d.close()
+    await s.memory.close()
+  }
+})
+
+test('plan stage pauses after 3 consecutive missing-fenced-JSON failures and resumes on retry', async () => {
+  const s = await flowSetup('ship-auto')
+  const noPlanResult = { status: 'done', summary: 'drafted plan in prose', evidence: [] }
+  const goodPlan = {
+    intent: 'Write greet.txt',
+    slices: [{ id: 's1', title: 'Write greet.txt', acceptance: ['test -f greet.txt'] }],
+  }
+  const pass = {
+    verdict: 'pass',
+    criteria: [1, 2, 3, 4].map((i) => ({ criterion: `criterion ${i}`, pass: true, evidence: `checked ${i}` })),
+    notes: 'ok',
+  }
+  const noPlanReply = `Here is my plan in prose.\n\n\`\`\`json\n${JSON.stringify(noPlanResult)}\n\`\`\``
+  const goodPlanReply = `Now with plan.\n\n\`\`\`json\n${JSON.stringify({ ...noPlanResult, plan: goodPlan })}\n\`\`\``
+  writeFileSync(s.scenario, JSON.stringify({
+    turns: [
+      { match: 'worker for stage plan of', reply: noPlanReply },
+      { match: 'worker for stage plan of', reply: noPlanReply },
+      { match: 'worker for stage plan of', reply: noPlanReply },
+      { match: 'worker for stage plan of', reply: goodPlanReply },
+      { match: 'judge for stage plan of', json: pass },
+    ],
+  }))
+  const { d, client } = await flowDaemon()
+  try {
+    const started = await client.startRun('ship', { intent: 'Write greet.txt' }, s.repo)
+    const asking = await waitStatus(client, started.id, ['asking', 'failed'])
+    assert.equal(asking.status, 'asking', asking.error)
+    assert.equal(asking.asks[0].kind, 'provider')
+    assert.match(asking.asks[0].question, /missed the required output format 3 times in a row/)
+    assert.equal(asking.stages[0].attempts.length, 3)
+    await client.answer(started.id, 'retry')
+    const approval = await waitStatus(client, started.id, ['asking', 'failed', 'done'])
+    assert.equal(approval.status, 'asking', approval.error)
+    assert.equal(approval.asks.at(-1).kind, 'approve')
+    assert.equal(approval.stages[0].attempts.length, 4)
+    await client.stopRun(started.id)
   } finally {
     await d.close()
     await s.memory.close()

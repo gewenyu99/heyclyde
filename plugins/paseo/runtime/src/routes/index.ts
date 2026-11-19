@@ -14,7 +14,24 @@ export function routes(ctx: DaemonCtx): Route[] {
   return [
     {
       method: 'GET', path: '/health', public: true,
-      handle: () => ({ body: { ok: true, version: VERSION, pid: process.pid, threads: ctx.threads.threads.size, runs: ctx.runCount() } }),
+      handle: () => {
+        const activeThreads = [...ctx.threads.threads.values()].filter((t) => t.status === 'running' || t.status === 'queued').length
+        const activeRuns = ctx.activeRunCount()
+        return {
+          body: {
+            ok: true,
+            version: VERSION,
+            pid: process.pid,
+            bin: ctx.bin,
+            fingerprint: ctx.fingerprint,
+            threads: ctx.threads.threads.size,
+            runs: ctx.runCount(),
+            activeThreads,
+            activeRuns,
+            idle: activeThreads === 0 && activeRuns === 0,
+          },
+        }
+      },
     },
     { method: 'GET', path: '/events', handle: (req) => streamEvents(ctx, req) },
     ...threadRoutes(ctx),

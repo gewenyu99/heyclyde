@@ -551,6 +551,7 @@ export function residents(server: PluginServerContext) {
       if (row.archived) {
         delete row.archived;
         save();
+        chat.markAvailable(row.id);
       }
       const status = agent.pendingPermissions?.length ? "Waiting for approval"
         : agent.providerUnavailable ? "Provider unavailable" : agent.status;
@@ -599,7 +600,7 @@ export function residents(server: PluginServerContext) {
       if (row.confirmed && (!row.paused || row.offer?.assignment)) void advance(row);
     }
   }, 10000);
-  return {track:chat.track,context:async(id:string,task:string,paseo:PaseoApi)=>handoff(await chatRow(id,paseo),task,paseo,true),close:()=> {
+  return {track:chat.track,openForRun:chat.openForRun,isQuestRun:chat.isQuestRun,context:async(id:string,task:string,paseo:PaseoApi)=>handoff(await chatRow(id,paseo),task,paseo,true),close:()=> {
     chat.close();
     stopped = true;
     clearInterval(timer);

@@ -52,7 +52,7 @@ type Run = {
 };
 const priorityRank = (p: string) => ({ urgent: 0, high: 1, normal: 2, low: 3 } as Record<string, number>)[p] ?? 4;
 const keyFor = (text: string) => createHash("sha256").update(text).digest("hex").slice(0, 24);
-export function activity(server: PluginServerContext, rowFor: (id: string) => Resident | undefined) {
+export function activity(server: PluginServerContext, rowFor: (id: string) => (Resident & { archived?: boolean }) | undefined) {
   const dir = process.env.CLYDE_HOME || join(homedir(), ".clyde");
   const origins = readJson<Record<string, Origin>>("chat-runs.json") ?? {};
   type Vote = {
@@ -92,6 +92,8 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
   }
   const delivered = new Map<string, string>();
   const inFlight = new Set<string>();
+  const unavailableOrigins = new Set<string>();
+  const isUnknownAgent = (err: unknown) => /\bUnknown agent\b/i.test(String(err));
   let api: PaseoApi | undefined, closed = false, polling = false;
   const save = () => {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -101,6 +103,7 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
   };
   function track(run: string, agent: string, paseo?: PaseoApi, managedByResident = false) {
     if (paseo) api = paseo;
+    unavailableOrigins.delete(agent);
     if (!origins[run]) {
       origins[run] = { agent, ...(managedByResident ? { managedByResident: true } : {}) };
       save();
@@ -365,7 +368,15 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
       for (const [id, origin] of Object.entries(origins)) {
         try {
           const row = rowFor(origin.agent), job = origin.job, run = byId.get(id);
-          if (run) await asks(run, origin.agent);
+          const originDead = Boolean(row?.archived) || unavailableOrigins.has(origin.agent);
+          if (run && !originDead) {
+            try {
+              await asks(run, origin.agent);
+            } catch (err) {
+              if (isUnknownAgent(err)) unavailableOrigins.add(origin.agent);
+              else throw err;
+            }
+          }
           if (run?.status === "done" && row && !job && !origin.managedByResident && !origin.resultNote) {
             const evidence = [run.stages.at(-1)?.summary, run.auditedHead && "Audited " + run.auditedHead, run.id]
               .filter(Boolean).join("\n").slice(0, 1900);
@@ -379,7 +390,12 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
             const note = await agentCall(row, "remember", args);
             const entry = note.match(/^Remembered (\S+)\.(?:\s|$)/)?.[1];
             if (!entry) throw new Error("Waiting for acknowledged result note");
-            if (api) await memory(row.id, "remember", null, api, args);
+            if (api && !originDead && !unavailableOrigins.has(row.id)) {
+              await memory(row.id, "remember", null, api, args).catch((err) => {
+                if (isUnknownAgent(err)) unavailableOrigins.add(row.id);
+                else throw err;
+              });
+            }
             origin.resultNote = entry;
             save();
           }
@@ -430,6 +446,62 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
       polling = false;
     }
   }
+  const isQuestRun = (runId: string) => Boolean(origins[runId]?.job);
+  async function openForRun(
+    run: {
+      id: string;
+      title: string;
+      status: string;
+      archivedAt?: string;
+      error?: string;
+      updatedAt?: string;
+      asks?: { key?: string; kind: string; question: string; answer?: string }[];
+    },
+    agent: string,
+    paseo: PaseoApi,
+    reattachOrigin: boolean,
+  ) {
+    api = paseo;
+    unavailableOrigins.delete(agent);
+    if (reattachOrigin && !origins[run.id]?.job) {
+      origins[run.id] = { ...(origins[run.id] ?? {}), agent };
+      save();
+    } else if (!origins[run.id]) {
+      origins[run.id] = { agent };
+      save();
+    }
+    const normalizedAsks: Ask[] = (run.asks ?? []).filter(
+      (a): a is Ask => typeof a.key === "string" && a.key.length > 0,
+    );
+    if (normalizedAsks.length) {
+      await asks({
+        id: run.id,
+        title: run.title,
+        status: run.status,
+        archivedAt: run.archivedAt,
+        asks: normalizedAsks,
+        stages: [],
+      }, agent);
+    }
+    if (run.status === "failed") {
+      const why = (run.error ?? "Run failed").trim().split("\n")[0].slice(0, 220);
+      await append(agent, "failed-" + keyFor(run.id + "/" + why), {
+        kind: "notice",
+        text: `Task failed · ${run.title} (${run.id}): ${why}`,
+      });
+    } else if (reattachOrigin) {
+      const open = [...normalizedAsks].reverse().find((a) => a.answer === undefined);
+      const detail = open ? open.question.trim().split("\n")[0].slice(0, 220) : `status ${run.status}`;
+      await append(
+        agent,
+        "reattach-" + keyFor(run.id + "/" + agent + "/" + (open?.key ?? run.updatedAt ?? run.status)),
+        {
+          kind: "notice",
+          text: `Attached Clyde task ${run.id} (${run.title}) to this chat: ${detail}`,
+        },
+      );
+    }
+  }
   const timer = setInterval(() => {
     void tick();
     const next = Object.entries(votes).find(([key, v]) =>
@@ -439,6 +511,9 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
   }, 4000);
   return {
     track,
+    markAvailable: (agent: string) => { unavailableOrigins.delete(agent); },
+    isQuestRun,
+    openForRun,
     noteUsage,
     recall,
     notice: (agent: string, id: string, text: string) => append(agent, id, { kind: "notice", text }),

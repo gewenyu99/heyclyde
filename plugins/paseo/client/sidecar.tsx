@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { homeRpc, rosterRpc, taskRpc, type TaskCard } from "../shared/clyde";
 import { Composer } from "./composer";
+import { OpenChatButton } from "./open-chat";
 import { Quests } from "./quests";
 import { TaskScreen } from "./task";
 import { Lockup, clydeTheme } from "./brand";
@@ -15,6 +16,7 @@ export function Sidecar(props: PluginAgentPanelProps | PluginWorkspacePanelProps
   const { workspaceId } = props, theme = clydeTheme(props.theme), c = theme.colors;
   useLive();
   const origin = props.context === "agent" ? props.params.agentId : undefined;
+  const openAgent = props.navigation ? (agentId: string) => props.navigation!.openAgent({ agentId }) : undefined;
   const [chosen, setChosen] = useState(""),
     [tab, setTab] = useState<"Quests" | "New task" | "Runs">("Quests"),
     [id, setId] = useState("");
@@ -117,7 +119,7 @@ export function Sidecar(props: PluginAgentPanelProps | PluginWorkspacePanelProps
               <Text style={{ color: c.accent, fontSize: 13, fontWeight: "600" }}>‹ Runs</Text>
             </Pressable>
             {detail.data?.data
-              ? <TaskScreen theme={theme} view={detail.data.data} back={() => setId("")} openAgent={props.navigation ? (agentId) => props.navigation!.openAgent({ agentId }) : undefined} />
+              ? <TaskScreen theme={theme} view={detail.data.data} back={() => setId("")} openAgent={openAgent} />
               : (
                 <Text accessibilityRole={detailError ? "alert" : undefined} style={{ color: detailError ? c.statusDanger : c.foregroundMuted, fontSize: 13 }}>
                   {detailError || "Loading run…"}
@@ -131,28 +133,33 @@ export function Sidecar(props: PluginAgentPanelProps | PluginWorkspacePanelProps
               ? <Text accessibilityRole="alert" style={{ color: c.statusDanger, fontSize: 13 }}>{listError}</Text>
               : null}
             {orderedRuns.map((t) => (
-              <Pressable
+              <View
                 key={t.id}
-                accessibilityRole="button"
-                accessibilityLabel={`${t.name}, ${STATUS_LABEL[t.status]}`}
-                onPress={() => setId(t.id)}
                 style={{
-                  minHeight: MIN_HIT_HEIGHT,
-                  justifyContent: "center",
                   padding: 10,
                   borderRadius: 8,
                   borderWidth: 1,
                   borderColor: c.border,
                   backgroundColor: c.surface1,
-                  gap: 6,
+                  gap: 8,
                 }}
               >
-                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                  <Text numberOfLines={2} style={{ color: c.foreground, fontWeight: "600", fontSize: 13, flexShrink: 1 }}>{t.name}</Text>
-                  <Pill theme={theme} status={t.status} />
-                </View>
-                {!!t.current && <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12 }}>{t.current}</Text>}
-              </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`${t.name}, ${STATUS_LABEL[t.status]}`}
+                  onPress={() => setId(t.id)}
+                  style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center", gap: 6 }}
+                >
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                    <Text numberOfLines={2} style={{ color: c.foreground, fontWeight: "600", fontSize: 13, flexShrink: 1 }}>{t.name}</Text>
+                    <Pill theme={theme} status={t.status} />
+                  </View>
+                  {!!t.current && <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12 }}>{t.current}</Text>}
+                </Pressable>
+                {(t.status === "asking" || t.status === "failed") && openAgent ? (
+                  <OpenChatButton theme={theme} kind={t.kind} id={t.id} openAgent={openAgent} />
+                ) : null}
+              </View>
             ))}
             {homeData && orderedRuns.length === 0 && (
               <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>No runs in this workspace yet.</Text>

@@ -4,7 +4,7 @@ import { clydeHome, readDaemonInfo } from '../config.ts'
 import { startDaemon } from '../daemon.ts'
 
 export async function main(argv: string[]): Promise<number> {
-  if (argv[0] === 'ensure') { await ensureDaemon(); return 0 }
+  if (argv[0] === 'ensure') { await ensureDaemon({ restartIfStale: true }); return 0 }
   const existing = readDaemonInfo()
   if (await healthy(existing)) {
     console.error(`clyde daemon is already running on port ${existing?.port}, pid ${existing?.pid}.`)

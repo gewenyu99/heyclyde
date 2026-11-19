@@ -23,7 +23,7 @@ export type StageResult = { passed: boolean; attempts: number; verdict: Verdict;
 export type Attempt = {
   n: number; round: number; rung: Rung; threadId: string; startedAt: string; endedAt?: string
   ok?: boolean; reason?: string; result?: WorkerResult; checks?: Check[]; judgeId?: string; judgeRung?: Rung; verdict?: Verdict
-  providerError?:string; acceptedBlock?: string; limit?: string
+  providerError?:string; acceptedBlock?: string; limit?: string; extractError?: boolean
 }
 
 export type StageStatus = 'running' | 'asking' | 'passed' | 'skipped' | 'failed'

@@ -139,3 +139,85 @@ test("recall, user feedback and approvals stay in the origin chat; double spawn 
     }
   }
 });
+
+test("activity stops retrying Unknown agent origins and still records result notes for done runs", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "clyde-dead-origin-"));
+  const previous = { ...process.env };
+  Object.assign(process.env, { CLYDE_HOME: dir, CLYDE_CONFIG_DIR: dir, PASEO_HOME: dir });
+  const remembered = [];
+  let appendCalls = 0;
+  const server = createServer(async (req, res) => {
+    let raw = "";
+    for await (const chunk of req) raw += chunk;
+    const arg = raw ? JSON.parse(raw) : {};
+    res.setHeader("content-type", "application/json");
+    if (req.url === "/mcp") {
+      if (arg.method === "initialize") {
+        res.setHeader("mcp-session-id", "mock-dead-origin");
+        return res.end(JSON.stringify({ result: {} }));
+      }
+      if (arg.params?.name === "remember") {
+        remembered.push(arg.params.arguments);
+        return res.end(JSON.stringify({ result: { content: [{ text: "Remembered note-123." }] } }));
+      }
+      return res.end(JSON.stringify({ result: { content: [{ text: "OK" }] } }));
+    }
+    if (req.method === "GET" && req.url === "/runs") {
+      return res.end(JSON.stringify([{
+        id: "r-done-dead",
+        title: "Done with archived origin",
+        status: "done",
+        asks: [{ key: "plan:1", kind: "approve", question: "Approve?" }],
+        stages: [{ summary: "Finished cleanly" }],
+      }]));
+    }
+    res.end("{}");
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const port = server.address().port;
+  for (
+    const [file, value] of Object.entries({
+      url: "http://127.0.0.1:" + port,
+      token: "fixture",
+      "server-id": "host",
+      "daemon.json": JSON.stringify({ port, token: "fixture" }),
+      "chat-runs.json": JSON.stringify({ "r-done-dead": { agent: "dead-agent" } }),
+    })
+  ) writeFileSync(join(dir, file), value);
+
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const row = { id: "dead-agent", role: "Dev", provider: "codex", project: "test/repo", cwd: dir };
+  const api = {
+    agents: {
+      ref: () => ({
+        timeline: {
+          append: async () => {
+            appendCalls++;
+            throw new Error("DaemonRpcError: Request failed: Unknown agent 'dead-agent'");
+          },
+        },
+      }),
+    },
+  };
+  const act = activity({ handle: () => {} }, (id) => id === row.id ? row : undefined);
+  act.bind(api);
+  try {
+    t.mock.timers.tick(4000);
+    for (let i = 0; i < 40 && remembered.length === 0; i++) await new Promise((r) => setTimeout(r, 10));
+    assert.equal(remembered.length, 1, "done run still records its result note when origin timeline is gone");
+    assert.equal(appendCalls, 1, "first poll observes Unknown agent once");
+
+    t.mock.timers.tick(4000);
+    await new Promise((r) => setTimeout(r, 40));
+    assert.equal(appendCalls, 1, "subsequent polls do not spam timeline.append for dead origin");
+  } finally {
+    act.close();
+    t.mock.timers.reset();
+    server.closeAllConnections();
+    await new Promise((r) => server.close(r));
+    for (const k of ["CLYDE_HOME", "CLYDE_CONFIG_DIR", "PASEO_HOME"]) {
+      if (previous[k] === undefined) delete process.env[k];
+      else process.env[k] = previous[k];
+    }
+  }
+});

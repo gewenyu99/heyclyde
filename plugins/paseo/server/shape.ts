@@ -8,7 +8,7 @@ import type { Ask, AttemptView, Criterion, Home, Phase, Piece, Status, Step, Tas
 export type RawRung = { backend: string; model?: string; effort?: string };
 export type RawTurn = { n: number; prompt: string; startedAt: string; endedAt?: string; ok?: boolean; text?: string; error?:string };
 export type RawThread = {
-  archivedAt?:string; paseoAgentId?:string;
+  archivedAt?:string; paseoAgentId?:string; paseoParentId?: string;
   cwd?:string;
   id: string; title: string; status: string; rung: RawRung; runId?: string; stage?: string; readOnly?: boolean;
   parentThreadId?: string; progress?: string; createdAt: string; updatedAt: string; turns: RawTurn[];
@@ -27,7 +27,7 @@ export type RawStage = {
 export type RawAsk = { key?:string; kind: string; question: string; askedAt: string; answer?: string };
 export type RawSlice = { id: string; title?: string; acceptance?: string[] };
 export type RawRun = {
-  archivedAt?:string; verifiedNotes?:{id:string;title:string;sources:string[]}[];
+  archivedAt?:string; paseoParentId?: string; verifiedNotes?:{id:string;title:string;sources:string[]}[];
   repo?:string;
   routes?: Record<string, {model: string; reason: string}>; auditedHead?: string; pullRequest?: string;
   id: string; flow: string; title: string; status: string; input?: { intent?: string; prompt?: string; title?: string; criteria?: string[] };
@@ -182,11 +182,23 @@ function latestChecks(r:RawRun) {
   return r.stages.flatMap(stage => stage.attempts.at(-1)?.checks ?? []);
 }
 
+function workerStarted(t: RawThread): boolean {
+  if (t.status !== "failed") return true;
+  return Boolean(t.progress) || t.turns.some((turn) => turn.ok || Boolean(turn.text?.trim()));
+}
+
+function runAgentId(r: RawRun, threads: RawThread[], agents: Record<string, string>): string | undefined {
+  const rep = r.stages[0]?.attempts[0]?.threadId;
+  return (
+    threads.findLast((t) => t.runId === r.id && !t.archivedAt && t.paseoAgentId && workerStarted(t))?.paseoAgentId
+    ?? (rep ? agents[rep] : undefined)
+  );
+}
+
 function runCard(r: RawRun, agents: Record<string, string>, threads: RawThread[]): TaskCard {
   const all = steps(r, threads).flatMap((s) => s.pieces);
   const pips = all.map((p) => p.status);
   const live = all.find(isLive);
-  const rep = r.stages[0]?.attempts[0]?.threadId;
   const checks = latestChecks(r);
   const failedStage = r.stages.findLast(stage=>stage.status==="failed");
   return {
@@ -196,7 +208,7 @@ function runCard(r: RawRun, agents: Record<string, string>, threads: RawThread[]
     pips, ...counts(pips),
     current: r.status==="failed" ? firstSentence(r.error ?? failedStage?.attempts.at(-1)?.reason ?? "Run failed",180) : live ? `${live.id === "PLAN" || live.id === "TASK" ? "" : `${live.id} `}${live.title}${livePhase(live)}${live.progress ? ` — ${live.progress}` : ""}`
       : r.status === "done" ? (r.auditedHead ? "Audited "+r.auditedHead.slice(0,12) : "Finished") : "Waiting to start",
-    rung: live?.rung, startedAt: r.createdAt, endedAt: r.endedAt, lastActivity: lastActivity(r, threads), agentId: threads.findLast(t=>t.runId===r.id&&t.paseoAgentId)?.paseoAgentId ?? (rep ? agents[rep] : undefined),
+    rung: live?.rung, startedAt: r.createdAt, endedAt: r.endedAt, lastActivity: lastActivity(r, threads), agentId: runAgentId(r, threads, agents),
   };
 }
 
@@ -310,7 +322,6 @@ export function task(r: RawRun, threads: RawThread[], agents: Record<string, str
   for (const st of r.stages) attempts[st.name] = st.attempts.map(attemptView);
   const ids = new Set(r.stages.flatMap((st) => st.attempts.flatMap((a) => [a.threadId, a.judgeId].filter(Boolean) as string[])));
   const open = [...(r.asks ?? [])].reverse().find((a) => a.answer === undefined);
-  const rep = r.stages[0]?.attempts[0]?.threadId;
   return {
     kind: "run", id: r.id, name: r.title, status: runStatus(r), startedAt: r.createdAt,
     routing: Object.entries(r.routes ?? {}).map(([stage, s]) => stage + ": " + s.model + " · " + s.reason), auditedHead: r.auditedHead, pullRequest: r.pullRequest,
@@ -322,7 +333,7 @@ export function task(r: RawRun, threads: RawThread[], agents: Record<string, str
     steps: s, attempts, selected: (live ?? all.filter((p) => p.status !== "pending").slice(-1)[0] ?? all[0])?.id,
     passed: all.filter((p) => p.status === "passed").length, total: all.length,
     background: threads.filter((t) => !t.archivedAt && ids.has(t.id) && (t.status === "running" || t.status === "queued")).length,
-    agentId: threads.findLast(t=>t.runId===r.id&&t.paseoAgentId)?.paseoAgentId ?? (rep ? agents[rep] : undefined),
+    agentId: runAgentId(r, threads, agents),
   };
 }
 

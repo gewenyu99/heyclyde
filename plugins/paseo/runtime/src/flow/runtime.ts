@@ -147,6 +147,16 @@ export class Runs {
     return this.view(run)
   }
 
+  setParent(id: string, paseoParentId: string): Run {
+    const run = this.need(id)
+    if (run.archivedAt) throw new HttpError(409, 'Task has been removed')
+    if (TERMINAL.includes(run.status)) throw new HttpError(409, `run ${id} is ${run.status}`)
+    run.paseoParentId = paseoParentId
+    this.save(run)
+    this.emit(run, 'run.parent', `Reattached run ${run.id} to Paseo chat ${paseoParentId}`, { paseoParentId })
+    return this.view(run)
+  }
+
   stop(id: string): Run {
     const run = this.need(id)
     if (TERMINAL.includes(run.status)) return this.view(run)

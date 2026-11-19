@@ -161,3 +161,10 @@ export const removeRpc=defineRpc({name:"clyde.remove",input:z.object({kind:z.enu
 export const sharedBoardRpc=defineRpc({name:"clyde.shared-quests",input:z.object({}),output:z.object({quests:z.array(boardQuest),legacy:z.boolean()})});
 
 export const readNoteRpc=defineRpc({name:"clyde.read-note",input:z.object({agent:z.string(),id:z.string().min(1)}),output:z.object({text:z.string()})});
+
+/** Opens (or creates) a live Paseo chat to handle a run or thread that needs attention. */
+export const openChatRpc = defineRpc({
+  name: "clyde.open-chat",
+  input: z.object({ kind: z.enum(["run", "thread"]), id: z.string().min(1) }),
+  output: z.object({ agentId: z.string().min(1), created: z.boolean().optional() }),
+});

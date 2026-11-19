@@ -1,4 +1,5 @@
 import {RemoveTask} from "./remove-task";
+import { OpenChatButton } from "./open-chat";
 import {scheme} from "./brand";
 import {palette} from "./brand.generated";
 import type { PluginTheme } from "@getpaseo/plugin";
@@ -21,7 +22,7 @@ function Section({ theme, title, count }: { theme: PluginTheme; title: string; c
   );
 }
 
-function AskCard({ theme, ask, open }: { theme: PluginTheme; ask: Ask; open: OpenTask }) {
+function AskCard({ theme, ask, open, openAgent }: { theme: PluginTheme; ask: Ask; open: OpenTask; openAgent?: (id: string) => void }) {
   const send = useRpc(answerRpc);
   const client = useQueryClient();
   const [reply, setReply] = useState("");
@@ -92,15 +93,28 @@ function AskCard({ theme, ask, open }: { theme: PluginTheme; ask: Ask; open: Ope
         </View>
       ) : null}
       {ask.retryable ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ disabled: state.busy }}
-          disabled={state.busy}
-          onPress={() => void submit("retry", ask.fullAccess)}
-          style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}
-        >
-          <Text style={{ color: t.blue.ink, fontWeight: "700", fontSize: 13 }}>{ask.fullAccess ? "Allow full access for this run and retry" : "Retry"}</Text>
-        </Pressable>
+        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ disabled: state.busy }}
+            disabled={state.busy}
+            onPress={() => void submit("retry", ask.fullAccess)}
+            style={{
+              backgroundColor: state.busy ? theme.colors.surface2 : theme.colors.accent,
+              borderWidth: state.busy ? 1 : 0,
+              borderColor: paper.edge,
+              borderRadius: 6,
+              minHeight: MIN_HIT_HEIGHT,
+              justifyContent: "center",
+              paddingHorizontal: 14,
+            }}
+          >
+            <Text style={{ color: state.busy ? theme.colors.foregroundMuted : theme.colors.accentForeground, fontWeight: "700", fontSize: 13 }}>
+              {state.busy ? "Retrying…" : ask.fullAccess ? "Allow full access for this run and retry" : "Retry"}
+            </Text>
+          </Pressable>
+          <OpenChatButton theme={theme} kind={ask.kind} id={ask.id} openAgent={openAgent} onError={(error) => setState((s) => ({ ...s, error: error || undefined }))} />
+        </View>
       ) : (
         <>
           <Eyebrow theme={theme}>Reply</Eyebrow>
@@ -113,7 +127,7 @@ function AskCard({ theme, ask, open }: { theme: PluginTheme; ask: Ask; open: Ope
             placeholderTextColor={paper["ink-3"]}
             style={{ borderWidth: 1, borderColor: paper.edge, borderRadius: 6, paddingVertical: 8, paddingHorizontal: 10, marginTop: 4, minHeight: MIN_HIT_HEIGHT, fontSize: 14, color: theme.colors.foreground, backgroundColor: theme.colors.surface1 }}
           />
-          <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
             {ask.approve ? (
               <Pressable
                 accessibilityRole="button"
@@ -150,6 +164,7 @@ function AskCard({ theme, ask, open }: { theme: PluginTheme; ask: Ask; open: Ope
             >
               <Text style={{ color: replyDisabled ? theme.colors.foregroundMuted : theme.colors.foreground, fontSize: 12, fontWeight: "700" }}>{state.busy ? "Sending…" : "Send reply"}</Text>
             </Pressable>
+            <OpenChatButton theme={theme} kind={ask.kind} id={ask.id} openAgent={openAgent} onError={(error) => setState((s) => ({ ...s, error: error || undefined }))} />
           </View>
         </>
       )}
@@ -162,7 +177,7 @@ function AskCard({ theme, ask, open }: { theme: PluginTheme; ask: Ask; open: Ope
 // The same ten minutes the task view uses: a running task with no sign of life that long gets flagged.
 const quiet = (c: TaskCard) => c.status === "running" && !!c.lastActivity && Date.now() - Date.parse(c.lastActivity) > 10 * 60_000;
 
-function Card({ theme, card, open }: { theme: PluginTheme; card: TaskCard; open: OpenTask }) {
+function Card({ theme, card, open, openAgent }: { theme: PluginTheme; card: TaskCard; open: OpenTask; openAgent?: (id: string) => void }) {
   const featured = card.status === "running";
   const paper = palette[scheme(theme)];
   const t = tones(theme);
@@ -207,13 +222,18 @@ function Card({ theme, card, open }: { theme: PluginTheme; card: TaskCard; open:
             </Text>
           </Pressable>
         )}
+        {(card.status === "failed" || card.status === "asking") && openAgent ? (
+          <View style={{ marginTop: 8 }}>
+            <OpenChatButton theme={theme} kind={card.kind} id={card.id} openAgent={openAgent} />
+          </View>
+        ) : null}
       </View>
       <RemoveTask theme={theme} kind={card.kind} id={card.id} name={card.name} active={card.status === "running" || card.status === "asking" || card.status === "sent-back"} />
     </View>
   );
 }
 
-export function HomeView({ theme, home, open }: { theme: PluginTheme; home: Home; open: OpenTask }) {
+export function HomeView({ theme, home, open, openAgent }: { theme: PluginTheme; home: Home; open: OpenTask; openAgent?: (id: string) => void }) {
   const [showDone, setShowDone] = useState(false);
   const [expandWork, setExpandWork] = useState(false);
   const working = home.tasks.filter((c) => !home.needsYou.some((a) => a.kind === c.kind && a.id === c.id));
@@ -229,17 +249,17 @@ export function HomeView({ theme, home, open }: { theme: PluginTheme; home: Home
       {home.needsYou.length ? (
         <>
           <Section theme={theme} title="NEEDS YOU" count={`${home.needsYou.length}`} />
-          {home.needsYou.map((a) => <AskCard key={`${a.kind}:${a.id}:${a.askKey ?? a.askedAt}`} theme={theme} ask={a} open={open} />)}
+          {home.needsYou.map((a) => <AskCard key={`${a.kind}:${a.id}:${a.askKey ?? a.askedAt}`} theme={theme} ask={a} open={open} openAgent={openAgent} />)}
         </>
       ) : null}
       {failed.length > 0 && <Section theme={theme} title="FAILED TODAY" count={String(failed.length)} />}
-      {failed.map((card) => <Card key={card.kind + ":" + card.id} theme={theme} card={card} open={open} />)}
+      {failed.map((card) => <Card key={card.kind + ":" + card.id} theme={theme} card={card} open={open} openAgent={openAgent} />)}
       {working.length > 0 && (focus ? (
         <Pressable accessibilityRole="button" accessibilityState={{ expanded: listOpen }} onPress={() => setExpandWork(!expandWork)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
           <Section theme={theme} title={listOpen ? "▾ WORKING" : "▸ WORKING"} count={String(working.length)} />
         </Pressable>
       ) : <Section theme={theme} title="WORKING" count={String(working.length)} />)}
-      {listOpen && working.map((c) => <Card key={c.kind + ":" + c.id} theme={theme} card={c} open={open} />)}
+      {listOpen && working.map((c) => <Card key={c.kind + ":" + c.id} theme={theme} card={c} open={open} openAgent={openAgent} />)}
       {home.doneToday.length > 0 && (
         <Pressable accessibilityRole="button" accessibilityState={{ expanded: showDone }} onPress={() => setShowDone(!showDone)} style={{ marginTop: 20, minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
           <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, letterSpacing: 1.0, fontWeight: "700" }}>
@@ -247,7 +267,7 @@ export function HomeView({ theme, home, open }: { theme: PluginTheme; home: Home
           </Text>
         </Pressable>
       )}
-      {showDone ? <View style={{ marginTop: 12 }}>{home.doneToday.map((c) => <Card key={`${c.kind}:${c.id}`} theme={theme} card={c} open={open} />)}</View> : null}
+      {showDone ? <View style={{ marginTop: 12 }}>{home.doneToday.map((c) => <Card key={`${c.kind}:${c.id}`} theme={theme} card={c} open={open} openAgent={openAgent} />)}</View> : null}
     </View>
   );
 }

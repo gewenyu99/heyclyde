@@ -76,6 +76,10 @@ export async function runStage(d: Driver, spec: StageSpec): Promise<StageResult>
     notes = out.notes
     // Attempts that die within seconds aren't the worker trying and failing. Something underneath is broken, and with no
     // attempt cap the loop would spin thousands of times a minute, as it did on a Claude session limit.
+    const extractFails = consecutiveExtractFailures(rec.attempts)
+    if (!out.limit && !out.providerError && !out.acceptedBlock && extractFails >= EXTRACT_FAILS) {
+      out.providerError = `The worker missed the required output format ${extractFails} times in a row. ${rec.attempts.at(-1)?.reason ?? ''} Open chat or retry.`
+    }
     const spun = fastFailures(rec.attempts)
     if (!out.limit && !out.providerError && !out.acceptedBlock && spun >= FAST_FAILS) {
       out.providerError = `The worker failed to start ${spun} times. ${rec.attempts.at(-1)?.reason ?? ""} Fix the launch problem, then retry.`
@@ -152,9 +156,9 @@ async function attempt(d: Driver, spec: StageSpec, rec: StageRecord, rung: Rung,
     try {
       artifact = spec.extract({ text, result })
     } catch (err) {
-      return fail(d, a, (err as Error).message)
+      return fail(d, a, (err as Error).message, { extractError: true })
     }
-    if (artifact === undefined) return fail(d, a, "The worker's output doesn't hold what this stage makes.")
+    if (artifact === undefined) return fail(d, a, "The worker's output doesn't hold what this stage makes.", { extractError: true })
   }
   const checks: Check[] = []
   for (const cmd of spec.checks ?? []) checks.push({ cmd, ...(await d.check(cmd)) })
@@ -207,8 +211,8 @@ async function judge(d: Driver, spec: StageSpec, rec: StageRecord, a: Attempt, o
   return { verdict: null, errors }
 }
 
-function fail(d: Driver, a: Attempt, reason: string): Outcome {
-  Object.assign(a, { ok: false, reason, endedAt: now() })
+function fail(d: Driver, a: Attempt, reason: string, extra?: Partial<Attempt>): Outcome {
+  Object.assign(a, { ok: false, reason, endedAt: now(), ...extra })
   d.save()
   return { ok: false, notes: notesOf(a) }
 }
@@ -241,6 +245,7 @@ function resultOf(rec: StageRecord): StageResult {
 
 const FAST_MS = 30_000
 const FAST_FAILS = 3
+const EXTRACT_FAILS = 3
 
 /** How many of the latest attempts failed in a row, each within FAST_MS and with no verdict. */
 export function fastFailures(attempts: Attempt[]): number {
@@ -248,6 +253,17 @@ export function fastFailures(attempts: Attempt[]): number {
   for (let i = attempts.length - 1; i >= 0; i--) {
     const a = attempts[i]
     if (a.ok !== false || a.verdict || !a.endedAt || Date.parse(a.endedAt) - Date.parse(a.startedAt) > FAST_MS) break
+    n++
+  }
+  return n
+}
+
+/** How many of the latest attempts failed artifact extraction in a row with no verdict. */
+export function consecutiveExtractFailures(attempts: Attempt[]): number {
+  let n = 0
+  for (let i = attempts.length - 1; i >= 0; i--) {
+    const a = attempts[i]
+    if (a.ok !== false || a.verdict || !a.extractError) break
     n++
   }
   return n
@@ -261,6 +277,9 @@ export function permissionFailure(error:string):string|undefined {
 
 /** Detect deterministic launch/CLI/auth failures that cannot succeed by blindly retrying. */
 export function deterministicProviderFailure(error: string): string | undefined {
+  if (/The originating Paseo (?:agent|workspace) is unavailable|The originating Paseo agent has no workspace/i.test(error)) {
+    return `${firstLine(error)} Open chat on this task to reattach it to a live chat, then retry.`
+  }
   if (
     /API Error:\s*40[013]\b|does not support this model|unrecognized_model|unknown model|model_not_found|invalid_model|version\s+[\d.]+\s+or newer is required|Run ['"]?claude update['"]?|unknown (?:flag|option)|unrecognized option|not logged in|please log in|authentication_error|invalid[_ ]api[_ ]key|unauthorized/i
       .test(error)

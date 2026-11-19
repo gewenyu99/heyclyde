@@ -1,7 +1,8 @@
 /** Where clyde keeps its state, where the repo is, and the knobs that come from the environment. */
-import { readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export const VERSION = '0.1.0'
@@ -67,6 +68,40 @@ export function repoRoot(): string {
 /** The clyde entry point, run with node, so hooks and workers reach the same CLI whatever is on PATH. */
 export function clydeBin(): string {
   return join(harnessRoot(), 'bin', 'clyde.ts')
+}
+
+export function canonicalBin(): string {
+  const bin = clydeBin()
+  try { return realpathSync(bin) } catch { return bin }
+}
+
+export function runtimeFingerprint(root = harnessRoot()): string {
+  const hash = createHash('sha256')
+  let base: string
+  if (root === harnessRoot()) {
+    base = canonicalBin()
+  } else {
+    try { base = realpathSync(root) } catch { base = root }
+  }
+  hash.update(base + '\n')
+  const walk = (dir: string) => {
+    let entries: string[]
+    try { entries = readdirSync(dir).sort() } catch { return }
+    for (const name of entries) {
+      const full = join(dir, name)
+      let st
+      try { st = statSync(full) } catch { continue }
+      if (st.isDirectory()) {
+        walk(full)
+      } else if (st.isFile()) {
+        hash.update(relative(root, full).replaceAll('\\', '/') + '\n')
+        hash.update(readFileSync(full))
+        hash.update('\n')
+      }
+    }
+  }
+  for (const sub of ['bin', 'src', 'flows']) walk(join(root, sub))
+  return hash.digest('hex').slice(0, 16)
 }
 
 export function daemonInfoPath(): string {
