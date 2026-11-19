@@ -160,6 +160,10 @@ export const projectsRpc = defineRpc({
   input:z.object({workspaceId:z.string().optional()}),
   output:z.array(z.object({id:z.string(),name:z.string(),slug:z.string(),path:z.string(),chats:z.array(projectChat),workspaces:z.array(z.object({id:z.string(),name:z.string(),path:z.string()}))})),
 });
+export const suggestProjectRpc = defineRpc({
+  name:"clyde.suggest-project",input:z.object({prompt:z.string().trim().min(1).max(12000)}),
+  output:z.object({projectId:z.string().optional(),reason:z.string().min(1).max(300)}),
+});
 export const workerModels = ["auto", "sol", "sonnet", "opus", "astra", "neon"] as const;
 export const launchRpc = defineRpc({
   name:"clyde.launch", input:z.object({project:z.string().min(1),workspaceId:z.string().optional(),prompt:z.string().trim().min(1).max(12000),criteria:z.array(z.string().trim().min(1).max(4000)).max(64).optional(),

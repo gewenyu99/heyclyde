@@ -1,15 +1,18 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
-import { launchRpc, projectsRpc, workerModels } from "../shared/clyde";
+import { launchRpc, projectsRpc, suggestProjectRpc, workerModels } from "../shared/clyde";
 import { palette } from "./brand.generated";
 import { formatRpcError, MIN_HIT_HEIGHT, scheme } from "./palette";
 import { requestId } from "./request-id";
 
 type Worker = typeof workerModels[number];
 const workerLabel = (worker: Worker) => worker[0].toUpperCase() + worker.slice(1);
+function catalogueOf(projects: readonly { id:string; slug?:string; path:string }[] | undefined) {
+  return JSON.stringify((projects ?? []).map(project => [project.id, project.slug, project.path]).sort((a,b) => a[0]!.localeCompare(b[0]!)));
+}
 export function Composer(
   { theme, onStarted, workspaceId, agentId, board = false }: {
     theme: PluginTheme;
@@ -19,9 +22,10 @@ export function Composer(
     onStarted: (id: string) => void;
   },
 ) {
-  const c = theme.colors, edge = palette[scheme(theme)].edge, read = useRpc(projectsRpc), launch = useRpc(launchRpc), cache = useQueryClient();
+  const c = theme.colors, edge = palette[scheme(theme)].edge, read = useRpc(projectsRpc), launch = useRpc(launchRpc), suggest = useRpc(suggestProjectRpc), cache = useQueryClient();
+  const projectKey = ["clyde", "projects", workspaceId ?? "all"];
   const projects = useQuery({
-    queryKey: ["clyde", "projects", workspaceId ?? "all"],
+    queryKey: projectKey,
     queryFn: () => read({ workspaceId }),
   });
   const [project, setProject] = useState(""),
@@ -35,27 +39,86 @@ export function Composer(
   const [allowNeon, setAllowNeon] = useState(false);
   const pending = useRef<{ key: string; id: string } | null>(null);
   const locked = useRef(false);
-  // A global board has no active workspace. Its first project is just a list item.
-  const selected = workspaceId
-    ? projects.data?.length === 1 ? projects.data[0] : undefined
-    : projects.data?.find((p) => p.id === project);
+  const routingLocked = useRef(false);
+  const autoAvailable = board && !workspaceId;
+  const [mode, setMode] = useState<"auto" | "manual">(autoAvailable ? "auto" : "manual");
+  const [routingBusy, setRoutingBusy] = useState(false), [routingNote, setRoutingNote] = useState("");
+  const [suggestion, setSuggestion] = useState<{ projectId:string; reason:string; prompt:string; revision:number; catalogue:string }>();
+  const revision = useRef(0), draft = useRef(text), modeRef = useRef(mode), projectRef = useRef(project);
+  // Progress events can refetch projects without changing the routing candidates.
+  const catalogue = catalogueOf(projects.data), previousCatalogue = useRef(catalogue);
+  useEffect(() => {
+    if (catalogue === previousCatalogue.current) return;
+    previousCatalogue.current = catalogue; revision.current++; routingLocked.current = false;
+    setSuggestion(undefined); setRoutingBusy(false);
+  }, [catalogue]);
+  function changeDraft(value:string) {
+    draft.current = value; revision.current++; routingLocked.current = false;
+    setText(value); setSuggestion(undefined); setRoutingBusy(false); setRoutingNote("");
+  }
+  function chooseProject(id:string) {
+    if (locked.current) return;
+    routingLocked.current = false; revision.current++; modeRef.current = "manual"; projectRef.current = id;
+    setMode("manual"); setProject(id); setSuggestion(undefined); setRoutingBusy(false); setRoutingNote(""); setError("");
+    setChatId(""); setMenu(null);
+  }
+  function chooseAuto() {
+    if (locked.current) return;
+    routingLocked.current = false; revision.current++; modeRef.current = "auto"; projectRef.current = "";
+    setMode("auto"); setProject(""); setSuggestion(undefined); setRoutingBusy(false); setRoutingNote(""); setError(""); setMenu(null);
+  }
+  function currentTarget() {
+    const state = cache.getQueryState<NonNullable<typeof projects.data>>(projectKey);
+    if (!state?.data) return;
+    if (workspaceId) return state.data.length === 1 ? state.data[0] : undefined;
+    if (modeRef.current === "manual") return state.data.find(p => p.id === projectRef.current);
+    if (!suggestion || suggestion.prompt !== draft.current || suggestion.revision !== revision.current || suggestion.catalogue !== catalogueOf(state.data)) return;
+    return state.data.find(p => p.id === suggestion.projectId);
+  }
+  const selected = currentTarget();
+  async function chooseFromTask() {
+    if (!autoAvailable || modeRef.current !== "auto" || !draft.current.trim() || routingLocked.current || locked.current) return;
+    const state = cache.getQueryState<NonNullable<typeof projects.data>>(projectKey);
+    if (!state?.data?.length) return;
+    const requestRevision = ++revision.current, prompt = draft.current, requestCatalogue = catalogueOf(state.data);
+    routingLocked.current = true; setRoutingBusy(true); setRoutingNote(""); setError("");
+    try {
+      const result = await suggest({ prompt });
+      const latest = cache.getQueryState<NonNullable<typeof projects.data>>(projectKey);
+      if (requestRevision !== revision.current || draft.current !== prompt || modeRef.current !== "auto" || catalogueOf(latest?.data) !== requestCatalogue) return;
+      if (!result.projectId || !latest?.data?.some(p => p.id === result.projectId)) {
+        modeRef.current = "manual"; projectRef.current = "";
+        setMode("manual"); setProject(""); setSuggestion(undefined);
+        setRoutingNote(result.reason || "Choose a project manually."); setMenu("project");
+        return;
+      }
+      setSuggestion({ projectId:result.projectId, reason:result.reason, prompt, revision:requestRevision, catalogue:requestCatalogue });
+    } catch {
+      if (requestRevision !== revision.current || modeRef.current !== "auto" || catalogueOf(cache.getQueryState<NonNullable<typeof projects.data>>(projectKey)?.data) !== requestCatalogue) return;
+      modeRef.current = "manual"; projectRef.current = "";
+      setMode("manual"); setProject(""); setSuggestion(undefined); setMenu("project");
+      setRoutingNote("Couldn’t choose a project. Select one manually.");
+    } finally { if (requestRevision === revision.current) { routingLocked.current = false; setRoutingBusy(false); } }
+  }
   const chats = selected?.chats ?? [];
   const wantsNewChat = !agentId && (board || chatId === "__new__" || chats.length === 0);
   const selectedChat = wantsNewChat ? undefined : (chats.find((ch) => ch.id === chatId) ?? chats[0]);
   const effectiveAgentId = agentId || selectedChat?.id || "";
   const submit = async () => {
-    if (!selected || !text.trim() || locked.current) return;
+    const target = currentTarget();
+    if (!target || !draft.current.trim() || locked.current || routingBusy) return;
     locked.current = true;
     setBusy(true);
     setError("");
+    const prompt = draft.current;
     const criteria = doneWhen.split("\n").map((line) => line.trim()).filter(Boolean);
-    const key = JSON.stringify([selected.id, workspaceId ?? "", effectiveAgentId || "__new__", text, flow, worker, criteria, allowNeon]);
+    const key = JSON.stringify([target.id, workspaceId ?? "", effectiveAgentId || "__new__", prompt, flow, worker, criteria, allowNeon]);
     if (pending.current?.key !== key) pending.current = { key, id: requestId() };
     try {
       const run = await launch({
-        project: selected.id,
+        project: target.id,
         ...(workspaceId ? { workspaceId } : {}),
-        prompt: text,
+        prompt,
         criteria,
         allowAntigravityFullAccess: worker === "neon" && allowNeon,
         flow,
@@ -66,7 +129,7 @@ export function Composer(
       });
       pending.current = null;
       setAllowNeon(false);
-      setText("");
+      changeDraft("");
       setDoneWhen("");
       setShowCriteria(false);
       void cache.invalidateQueries({ queryKey: ["clyde"] });
@@ -98,7 +161,8 @@ export function Composer(
       <Text style={{ fontSize: 13, fontWeight: "600", color: active ? c.surface1 : c.foreground }}>{label}</Text>
     </Pressable>
   );
-  const inactive = busy || !selected || !text.trim();
+  const needsRouting = autoAvailable && mode === "auto" && !selected;
+  const inactive = busy || routingBusy || !text.trim() || (!selected && !needsRouting) || !projects.data?.length;
   return (
     <View style={{ gap: 16 }}>
       <View
@@ -122,7 +186,7 @@ export function Composer(
         accessibilityLabel="Task instructions"
         multiline
         value={text}
-        onChangeText={setText}
+        onChangeText={changeDraft}
         editable={!busy}
         placeholder={flow === "ship"
           ? "Describe the feature you want to plan…"
@@ -151,7 +215,7 @@ export function Composer(
       </Pressable>}
 
       <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-        {workspaceId && selected ? <Text style={{ color: c.foreground, fontSize: 13 }}>{selected.name}</Text> : control((selected?.name || "Choose a project") + " ▾", () => setMenu(menu === "project" ? null : "project"), false, { expanded: menu === "project" })}
+        {workspaceId && selected ? <Text style={{ color: c.foreground, fontSize: 13 }}>{selected.name}</Text> : control((selected?.name || (autoAvailable && mode === "auto" ? "Project · Auto" : "Choose a project")) + " ▾", () => setMenu(menu === "project" ? null : "project"), false, { expanded: menu === "project" })}
         {!board && !agentId && selected && control(
           "Chat · " + (wantsNewChat ? "New chat (auto)" : selectedChat!.title) + " ▾",
           () => setMenu(menu === "chat" ? null : "chat"),
@@ -169,7 +233,7 @@ export function Composer(
           accessibilityRole="button"
           accessibilityState={{ disabled: inactive }}
           disabled={inactive}
-          onPress={() => void submit()}
+          onPress={() => { if (needsRouting) void chooseFromTask(); else void submit(); }}
           style={{
             minHeight: MIN_HIT_HEIGHT,
             justifyContent: "center",
@@ -181,13 +245,15 @@ export function Composer(
           }}
         >
           <Text style={{ color: inactive ? c.foregroundMuted : c.accentForeground, fontWeight: "700", fontSize: 13 }}>
-            {busy ? "Starting…" : flow === "ship" ? "Start planning" : "Start task"}
+            {busy ? "Starting…" : routingBusy ? "Choosing project…" : needsRouting ? "Choose project" : flow === "ship" ? "Start planning" : "Start task"}
           </Text>
         </Pressable>
       </View>
+      {autoAvailable && mode === "auto" && selected && suggestion && <Text accessibilityLiveRegion="polite" style={{ color: c.foregroundMuted, fontSize: 13, lineHeight: 20 }}>Auto chose {selected.name}. {suggestion.reason}</Text>}
+      {!!routingNote && <Text accessibilityLiveRegion="polite" style={{ color: c.foregroundMuted, fontSize: 13, lineHeight: 20 }}>{routingNote}</Text>}
       {flow === "ship" && worker !== "auto" && (
         <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>
-          Plans with Opus or Astra, builds with {workerLabel(worker)}, and audits with Carbon.
+          Implementation worker: {workerLabel(worker)}.
         </Text>
       )}
       {worker==="neon" && <Pressable accessibilityRole="checkbox" accessibilityState={{checked:allowNeon,disabled:busy}} disabled={busy} onPress={()=>setAllowNeon(!allowNeon)} style={{minHeight:MIN_HIT_HEIGHT,justifyContent:"center"}}>
@@ -196,21 +262,21 @@ export function Composer(
       </Pressable>}
       {menu === "project" && (
         <View style={{ gap: 5 }}>
+          {autoAvailable && <Pressable accessibilityRole="button" accessibilityState={{ selected: mode === "auto", disabled: busy }} disabled={busy} onPress={chooseAuto} style={{ padding: 8, minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
+            <Text style={{ color: mode === "auto" ? c.accent : c.foreground, fontSize: 13, fontWeight: "600" }}>Auto · choose from this task</Text>
+          </Pressable>}
           {projects.data?.map((p) => (
             <Pressable
               key={p.id}
               accessibilityRole="button"
-              accessibilityState={{ selected: selected?.id === p.id }}
-              onPress={() => {
-                setProject(p.id);
-                setChatId("");
-                setMenu(null);
-              }}
+              accessibilityState={{ selected: mode === "manual" && selected?.id === p.id, disabled: busy }}
+              disabled={busy}
+              onPress={() => chooseProject(p.id)}
               style={{ padding: 8, minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}
             >
-              <Text style={{ color: selected?.id === p.id ? c.accent : c.foreground, fontWeight: "600", fontSize: 13 }}>{p.name}</Text>
+              <Text style={{ color: mode === "manual" && selected?.id === p.id ? c.accent : c.foreground, fontWeight: "600", fontSize: 13 }}>{p.name}</Text>
               <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>
-                {p.path} · {p.chats.length} open {p.chats.length === 1 ? "chat" : "chats"}
+                {p.path}{!board ? ` · ${p.chats.length} open ${p.chats.length === 1 ? "chat" : "chats"}` : ""}
               </Text>
             </Pressable>
           ))}
