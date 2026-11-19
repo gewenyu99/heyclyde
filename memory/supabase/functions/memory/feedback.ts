@@ -62,6 +62,9 @@ export const reminderLine = (rids: string[]) =>
 
 /** A receipt only authorizes a card vote on this retrieval. A host can render the card outside the original MCP session. */
 export async function cardVoteReceipt(session: string, retrieval: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(["clyde-card-vote-v1", session, retrieval])));
-  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2,"0")).join("");
+  const secret = (typeof Deno !== "undefined" ? Deno.env.get("MEMORY_CARD_RECEIPT_SECRET") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") : "") || "clyde-card-vote-v1";
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(JSON.stringify(["clyde-card-vote-v1", session, retrieval])));
+  return Array.from(new Uint8Array(sig), byte => byte.toString(16).padStart(2, "0")).join("");
 }

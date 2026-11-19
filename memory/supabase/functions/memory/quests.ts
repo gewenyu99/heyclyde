@@ -302,6 +302,11 @@ export async function claimQuest(who: Who, args: Record<string, unknown>) {
     if (q.state === "done" || q.state === "abandoned") throw new Refused(`Quest #${id} is ${q.state}, so it can't be claimed.`);
     const mine = q.state === "claimed" && q.claimed_by === who.name && q.claimed_device === who.principal;
     if (q.state === "claimed" && !mine) throw new Refused(`Quest #${id} is already claimed by ${q.claimed_by} until ${hhmm(q.lease_until)}.`);
+    if (!mine && who.name.startsWith("paseo-")) {
+      const [dispatched] = await tx`select id from memory.quest where state = 'claimed' and claimed_by = ${who.name}
+        and claimed_device = ${who.principal} and dispatch_id is not null limit 1`;
+      if (dispatched) throw new Refused(`Finish or release dispatched quest #${dispatched.id} before claiming another.`);
+    }
     if (!mayClaim(q, who)) throw new Refused(`Quest #${id} is for ${q.assignee}, so ${who.name} can't claim it.`);
     const match = questMatches(whoToQuestAgent(who), q, { checkAssignee: true });
     if (!match.ok) throw new Refused(`Quest #${id} doesn't match ${who.name}: ${match.reason}.`);
@@ -389,7 +394,7 @@ export async function completeQuest(who: Who, args: Record<string, unknown>) {
   return await sql.begin(async (tx) => {
     await held(tx, id, who);
     await tx`update memory.quest set state = 'done', evidence = ${evidence}, result_entry = ${entry}, history_entry = ${history},
-      lease_until = null, closed_at = now(), updated_at = now() where id = ${id}`;
+      dispatch_id = null, dispatch_run = null, lease_until = null, closed_at = now(), updated_at = now() where id = ${id}`;
     await tx`insert into memory.quest_note (quest_id, author, device, kind, body) values (${id}, ${who.name}, ${who.principal}, 'done', ${evidence})`;
     for (const f of files) {
       await tx`insert into memory.quest_blob (quest_id, name, sha256, role) values (${id}, ${f.name}, ${f.sha256}, 'evidence')
@@ -421,11 +426,11 @@ export async function abandonQuest(who: Who, args: Record<string, unknown>) {
     const { q, release } = await role(tx);
     if (release) {
       await tx`update memory.quest set state = 'open', claimed_by = null, claimed_device = null, claimed_session = null, claimed_at = null,
-        lease_until = null, updated_at = now() where id = ${id}`;
+        dispatch_id = null, dispatch_run = null, lease_until = null, updated_at = now() where id = ${id}`;
       await tx`insert into memory.quest_note (quest_id, author, device, kind, body) values (${id}, ${who.name}, ${who.principal}, 'release', ${reason})`;
       return `Released quest #${id}: ${q.title}. It's open on the board again, with your reason in its notes.`;
     }
-    await tx`update memory.quest set state = 'abandoned', lease_until = null, closed_at = now(), updated_at = now() where id = ${id}`;
+    await tx`update memory.quest set state = 'abandoned', dispatch_id = null, dispatch_run = null, lease_until = null, closed_at = now(), updated_at = now() where id = ${id}`;
     await tx`insert into memory.quest_note (quest_id, author, device, kind, body) values (${id}, ${who.name}, ${who.principal}, 'abandon', ${reason})`;
     return `Withdrew quest #${id}: ${q.title}. It's abandoned and no one can claim it.`;
   });
@@ -477,10 +482,11 @@ export async function board(principal: string, agent: string, mode: "start" | "p
   await reopenExpired();
   const [seen] = await sql`select last_quest from memory.board_seen where principal = ${principal} and agent = ${agent}`;
   const after = mode === "prompt" ? Number(seen?.last_quest ?? 0) : 0;
-  const who = { name: agent, family: agentName(agent) };
+  const who = { name: scope?.name ?? agent, family: scope?.family ?? agentName(agent) };
+  const assignees = [...new Set([...claimants(who), agent])];
   const matcher = scope ?? { name: who.name, family: who.family, principal };
   const rawQuests = await sql`select q.* from memory.quest q
-    where q.state = 'open' and q.id > ${after} and q.context = any(${contextsFor(ctx)}::text[]) and q.assignee = any(${claimants(who)}::text[])
+    where q.state = 'open' and q.id > ${after} and q.context = any(${contextsFor(ctx)}::text[]) and q.assignee = any(${assignees}::text[])
     order by array_position(array['urgent', 'high', 'normal', 'low'], q.priority), q.id desc limit 100`;
   const matchedQuests = rawQuests.filter((q) => questMatches(matcher, q, { checkAssignee: true }).ok);
   const quests = matchedQuests.slice(0, BOARD_LINES);
@@ -530,17 +536,21 @@ export async function dispatchQuest(who: Who, args: Record<string, unknown>) {
   return await sql.begin(async tx => {
     await tx`select pg_advisory_xact_lock(hashtext(memory.owner_default()::text), hashtext(${who.name}))`;
     const [mine] = await tx`select * from memory.quest where state = 'claimed' and claimed_by = ${who.name}
-      and claimed_device = ${who.principal} and dispatch_id is not null for update`;
+      and claimed_device = ${who.principal} order by (dispatch_id is not null) desc, id asc limit 1 for update`;
     const describe = (q: Row) => JSON.stringify({ id: Number(q.id), title: q.title, brief: q.brief, done_when: q.done_when,
       priority: q.priority, assignment: q.state === "claimed" ? q.dispatch_id : null, run: q.state === "claimed" ? q.dispatch_run : null });
     if (action === "ack" || action === "renew") {
-      if (!mine || mine.dispatch_id !== args.assignment || mine.id.toString() !== String(args.id)) throw new Refused("Assignment lease lost.");
+      if (!mine || !mine.dispatch_id || mine.dispatch_id !== args.assignment || mine.id.toString() !== String(args.id)) throw new Refused("Assignment lease lost.");
       const run = s(args.run);
       if (!/^r-[a-z0-9-]{8,64}$/.test(run) || (mine.dispatch_run && mine.dispatch_run !== run)) throw new Refused("Run does not match the assignment.");
       await tx`update memory.quest set dispatch_run = ${run}, lease_until = now() + interval '2 hours' where id = ${mine.id}`;
       return describe({ ...mine, dispatch_run: run });
     }
-    if (mine) return describe(mine);
+    if (mine) {
+      if (mine.dispatch_id) return describe(mine);
+      if (action === "peek") return "null";
+      throw new Refused(`Finish or release claimed quest #${mine.id} before auto-dispatching another.`);
+    }
     const rows = await tx`select *, xmin::text as revision from memory.quest where state = 'open'
       and (assignee = ${who.name} or tags && ${areas}::text[])
       and not (id = any(${passed}::bigint[]) and priority in ('normal','low'))

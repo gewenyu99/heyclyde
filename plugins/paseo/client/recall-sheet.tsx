@@ -11,7 +11,7 @@ export function RecallSheet(
   { theme, packet, onVote }: {
     theme: PluginTheme;
     packet: Packet;
-    onVote: (v: Vote) => Promise<{ pendingSync?: boolean }>;
+    onVote?: (v: Vote) => Promise<{ pendingSync?: boolean }>;
   },
 ) {
   const p = palette[scheme(theme)];
@@ -22,7 +22,7 @@ export function RecallSheet(
   const [queued, setQueued] = useState(packet.pendingSync ?? false);
   const choice = selected ?? packet.choice;
   async function vote(value: Vote) {
-    if (pending || choice === value) return;
+    if (!onVote || pending || choice === value) return;
     setPending(true);
     try {
       const result = await onVote(value);
@@ -140,30 +140,32 @@ export function RecallSheet(
             ))}
           </View>
         )}
-        <View
-          style={{
-            paddingHorizontal: 15,
-            paddingVertical: 10,
-            borderTopWidth: 1,
-            borderColor: p.rule,
-            flexDirection: "row",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: 7,
-          }}
-        >
-          {action("That helped", "helpful")}
-          {action("That didn’t", "nothing_useful")}
-          {(pending || choice) && (
-            <Text accessibilityLiveRegion="polite" style={{ color: p["ink-3"], fontSize: 12 }}>
-              {pending
-                ? "Saving…"
-                : (packet.choice === choice ? packet.pendingSync : queued)
-                ? "Saved on this host"
-                : "Feedback recorded"}
-            </Text>
-          )}
-        </View>
+        {onVote && (
+          <View
+            style={{
+              paddingHorizontal: 15,
+              paddingVertical: 10,
+              borderTopWidth: 1,
+              borderColor: p.rule,
+              flexDirection: "row",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 7,
+            }}
+          >
+            {action("That helped", "helpful")}
+            {action("That didn’t", "nothing_useful")}
+            {(pending || choice) && (
+              <Text accessibilityLiveRegion="polite" style={{ color: p["ink-3"], fontSize: 12 }}>
+                {pending
+                  ? "Saving…"
+                  : (packet.choice === choice ? packet.pendingSync : queued)
+                  ? "Saved on this host"
+                  : "Feedback recorded"}
+              </Text>
+            )}
+          </View>
+        )}
         {!!error && (
           <Text accessibilityRole="alert" style={{ color: p.bad, paddingHorizontal: 15, paddingBottom: 10 }}>
             {error}

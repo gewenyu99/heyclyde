@@ -59,11 +59,19 @@ export function step(entry: { confidence: number; trial: boolean }, outcome: Out
   return Math.round(Math.min(CEILING, Math.max(FLOOR, entry.confidence + delta)) * 1e6) / 1e6;
 }
 
+export type CardVote = "helpful" | "nothing_useful" | null;
+
 /** The outcome each shown entry gets from one recall's signals, in the order shown. An entry with several signals takes the
- * strongest, and a tie goes to the negative one. Ignored needs feedback that named other entries, so a recall nobody gave
- * feedback on moves nothing. */
+ * strongest, and a tie goes to the negative one. A whole-recall card vote applies independently to any shown entry that has
+ * no per-note rating. Ignored needs feedback that named other entries, so a recall nobody gave feedback on moves nothing. */
 export function outcomesOf(
-  { shown, named, opened, blamed }: { shown: string[]; named: Map<string, Outcome>; opened: Set<string>; blamed: string | null },
+  { shown, named, opened, blamed, cardVote = null }: {
+    shown: string[];
+    named: Map<string, Outcome>;
+    opened: Set<string>;
+    blamed: string | null;
+    cardVote?: CardVote;
+  },
 ): Map<string, Outcome> {
   const out = new Map<string, Outcome>();
   for (const id of shown) {
@@ -75,6 +83,10 @@ export function outcomesOf(
     if (signals.length) {
       signals.sort((a, b) => Math.abs(WEIGHT[b]) - Math.abs(WEIGHT[a]) || WEIGHT[a] - WEIGHT[b]);
       out.set(id, signals[0]);
+    } else if (cardVote === "helpful") {
+      out.set(id, "used");
+    } else if (cardVote === "nothing_useful") {
+      out.set(id, "irrelevant");
     } else if (named.size) out.set(id, "ignored");
   }
   return out;
@@ -230,12 +242,15 @@ async function learnOwner(limit: number): Promise<Done> {
         continue;
       }
     }
-    // What the agent said about this recall's entries, and which of them it opened in the same session soon after.
+    // What the agent said about this recall's entries, any whole-recall card vote, and which entries were opened soon after.
     const named = new Map<string, Outcome>();
     for (const f of await sql`select entry_id, verdict from memory.feedback
         where retrieval_id = ${r.id} and source = 'agent' and entry_id is not null order by id`) {
       if (shown.includes(f.entry_id) && SAYS[f.verdict]) named.set(f.entry_id, SAYS[f.verdict]);
     }
+    const [cardRow] = await sql`select verdict from memory.feedback
+        where retrieval_id = ${r.id} and source = 'card' order by id desc limit 1`;
+    const cardVote: CardVote = cardRow?.verdict === "helpful" || cardRow?.verdict === "nothing_useful" ? cardRow.verdict : null;
     const opened = new Set<string>(r.mcp_session && shown.length
       ? (await sql`select distinct payload->>'entry_id' as id from memory.event
           where session_id = ${r.mcp_session} and event = 'get_entry' and received_at > ${r.created_at}
@@ -243,7 +258,7 @@ async function learnOwner(limit: number): Promise<Done> {
         .map((e) => e.id as string).filter((id) => shown.includes(id))
       : []);
     const blamed = read?.pushback && read.cause && shown.includes(read.cause) ? read.cause : null;
-    const outcomes = outcomesOf({ shown, named, opened, blamed });
+    const outcomes = outcomesOf({ shown, named, opened, blamed, cardVote });
     const sizes = await stepsOf(r.param_set);
     // R43: what was used, by the agent's outcome or Wen's confirmation from the console, in the order the recall showed it.
     const confirmed = new Set<string>((await sql`select entry_id from memory.feedback where retrieval_id = ${r.id} and source = 'wen'
@@ -267,7 +282,12 @@ async function learnOwner(limit: number): Promise<Done> {
       }
       for (const [id, outcome] of outcomes) {
         const trial = onTrial.includes(id);
-        const why = id === blamed && outcome === "wrong" ? "Wen pushed back on it" : WHY[outcome];
+        const fromCard = !named.has(id) && !opened.has(id) && id !== blamed && cardVote !== null;
+        const why = id === blamed && outcome === "wrong"
+          ? "Wen pushed back on it"
+          : fromCard
+          ? (cardVote === "helpful" ? "the recall card was rated helpful" : "the recall card was rated not useful")
+          : WHY[outcome];
         await setConfidence(tx, id, (c) => step({ confidence: c, trial }, outcome, sizes), `${trial ? "on trial: " : ""}${why}`, r.id);
       }
       if (await coUse(tx, r, shown, used)) linked = true;

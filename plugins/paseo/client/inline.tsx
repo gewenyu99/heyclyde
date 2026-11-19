@@ -23,15 +23,16 @@ export function InlineActivity({ agentId, item, theme }: PluginTimelineItemProps
     refetchInterval: (q) => q.state.data?.pendingSync ? 60000 : false,
   });
   if (data.kind === "recall") {
+    const canVote = !data.native || Boolean(data.receipt);
     return (
       <RecallSheet
         theme={theme}
         packet={{ ...data, ...(local.data?.choice ? local.data : {}) }}
-        onVote={async (verdict) => {
+        onVote={canVote ? async (verdict) => {
           const result = await feedback({ agent: agentId, retrieval: rid, verdict, receipt: data.receipt });
           cache.setQueryData(key, { choice: verdict, pendingSync: result.pendingSync });
           return result;
-        }}
+        } : undefined}
       />
     );
   }

@@ -425,6 +425,20 @@ test('Paseo dispatchprioritizes urgent work, fences acknowledgements, and recove
   sql(`update memory.quest set lease_until = now() - interval '1 hour' where id = ${urgent}`);
   assert.equal(JSON.parse((await session.send('dispatch_quest',{action:'peek',areas:[tag]})).text).assignment,job.assignment);
   assert.equal(quest(normal).state,'open');
+  // Exclusive manual vs automatic claim: while holding a dispatched quest, manual claim of another quest is refused.
+  assert.ok((await session.send('claim_quest', { id: normal })).error);
+  // Stale acked lease (>24h past lease_until) reopens and clears dispatch_id/dispatch_run cleanly.
+  sql(`update memory.quest set lease_until = now() - interval '25 hours' where id = ${urgent}`);
+  assert.equal(JSON.parse((await session.send('dispatch_quest', { action: 'peek', areas: [tag] })).text).id, urgent);
+  const reopened = quest(urgent);
+  assert.equal(reopened.state, 'open');
+  assert.equal(reopened.dispatch_id, null);
+  assert.equal(reopened.dispatch_run, null);
+  // Conversely, a manual claim blocks auto-dispatch until released or completed.
+  assert.equal((await session.send('claim_quest', { id: normal })).error, false);
+  assert.equal((await session.send('dispatch_quest', { action: 'peek', areas: [tag] })).text, 'null');
+  assert.ok((await session.send('dispatch_quest', { action: 'claim', id: urgent, areas: [tag] })).error);
+  assert.equal((await session.send('abandon_quest', { id: normal, reason: 'done testing exclusivity' })).error, false);
 });
 
 // ------------------------------------------------------------------ the tests below empty tables or reset every quest
@@ -483,6 +497,12 @@ test('R47 the hook inbox shows a new quest once', { skip: SKIP }, async () => {
   assert.ok(lines(first.text).length <= 5, first.text)
   assert.equal(first.text.split(`quest #${id}`).length - 1, 1, first.text)
   assert.equal((await bed.call('GET', '/messages/claude', hookAuth(hookToken))).text, '')
+
+  // Quest #43: a quest assigned by named agent appears on that agent's SessionStart board via its client family hook.
+  const namedId = await post(poster, { context: 'work', for: 'r47-hook', title: `Named target ${nonce()}` })
+  const namedBoard = await bed.call('POST', '/hooks/SessionStart?agent=claude', hookAuth(hookToken), { session_id: `r47-named-${nonce()}` })
+  assert.equal(namedBoard.status, 200, namedBoard.text)
+  assert.ok(namedBoard.text.includes(`quest #${namedId}`), `expected named quest #${namedId} on board: ${namedBoard.text}`)
 })
 
 test('R47 all reaches registered agents and claude and codex, never unregistered names', { skip: SKIP }, async () => {

@@ -4,7 +4,7 @@
  * reminder lines. No database.
  */
 import assert from 'node:assert/strict'
-import { checkFeedback, feedbackFooter, reminderLine } from '../../../memory/supabase/functions/memory/feedback.ts'
+import { cardVoteReceipt, checkFeedback, feedbackFooter, reminderLine } from '../../../memory/supabase/functions/memory/feedback.ts'
 import { outcomesOf, step } from '../../../memory/supabase/functions/memory/learn.ts'
 import { resolveParams } from '../../../memory/supabase/functions/memory/params.ts'
 import { renderTrialItem } from '../../../memory/supabase/functions/memory/trial.ts'
@@ -85,6 +85,45 @@ Deno.test('outcomesOf: with no feedback naming any entry nothing is ignored, and
   const got = outcomesOf({ shown: ['a', 'b', 'c'], named: new Map([['a', 'used']]), opened: new Set(['b']), blamed: null })
   assert.deepEqual([...got], [['a', 'used'], ['b', 'opened'], ['c', 'ignored']])
   assert.deepEqual([...outcomesOf({ shown: ['a', 'b'], named: new Map(), opened: new Set(), blamed: 'b' })], [['b', 'wrong']])
+})
+
+Deno.test('outcomesOf: whole-recall cardVote applies independently of per-note ratings', () => {
+  assert.deepEqual(
+    [...outcomesOf({ shown: ['a', 'b'], named: new Map(), opened: new Set(), blamed: null, cardVote: 'helpful' })],
+    [['a', 'used'], ['b', 'used']],
+  )
+  assert.deepEqual(
+    [...outcomesOf({ shown: ['a', 'b'], named: new Map(), opened: new Set(), blamed: null, cardVote: 'nothing_useful' })],
+    [['a', 'irrelevant'], ['b', 'irrelevant']],
+  )
+  // Per-note rating takes precedence for named entries while cardVote guides unrated entries.
+  assert.deepEqual(
+    [...outcomesOf({ shown: ['a', 'b'], named: new Map([['a', 'wrong']]), opened: new Set(), blamed: null, cardVote: 'helpful' })],
+    [['a', 'wrong'], ['b', 'used']],
+  )
+  assert.deepEqual(
+    [...outcomesOf({ shown: ['a', 'b'], named: new Map([['a', 'used']]), opened: new Set(), blamed: null, cardVote: 'nothing_useful' })],
+    [['a', 'used'], ['b', 'irrelevant']],
+  )
+})
+
+Deno.test('cardVoteReceipt: returns HMAC-SHA256 hex bound to session, retrieval, and secret', async () => {
+  const prev = Deno.env.get('MEMORY_CARD_RECEIPT_SECRET')
+  try {
+    Deno.env.set('MEMORY_CARD_RECEIPT_SECRET', 'secret-a')
+    const r1 = await cardVoteReceipt('sess-1', '12345678-1234-4234-8234-123456789abc')
+    const r2 = await cardVoteReceipt('sess-1', '12345678-1234-4234-8234-123456789abc')
+    const rDiffSess = await cardVoteReceipt('sess-2', '12345678-1234-4234-8234-123456789abc')
+    assert.match(r1, /^[a-f0-9]{64}$/)
+    assert.equal(r1, r2)
+    assert.notEqual(r1, rDiffSess)
+    Deno.env.set('MEMORY_CARD_RECEIPT_SECRET', 'secret-b')
+    const rDiffSecret = await cardVoteReceipt('sess-1', '12345678-1234-4234-8234-123456789abc')
+    assert.notEqual(r1, rDiffSecret)
+  } finally {
+    if (prev === undefined) Deno.env.delete('MEMORY_CARD_RECEIPT_SECRET')
+    else Deno.env.set('MEMORY_CARD_RECEIPT_SECRET', prev)
+  }
 })
 
 // R33 (#37): the feedback call's checks.
