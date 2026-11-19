@@ -855,7 +855,7 @@ test('queue: the tool surface only grows, and the console API, export and import
     JSON.parse((await call('POST', '/mcp', { ...bearer(memory.token), 'mcp-session-id': session }, { jsonrpc: '2.0', id, method, params })).text).result
   const tools: Record<string, any> = Object.fromEntries((await rpc(2, 'tools/list')).tools.map((t: any) => [t.name, t]))
   assert.deepEqual(Object.keys(tools).sort(),
-    ['abandon_quest', 'ack_messages', 'check_messages', 'claim_quest', 'complete_quest', 'dismiss_messages', 'feedback', 'get_blob', 'get_entry',
+    ['abandon_quest', 'ack_messages', 'check_messages', 'claim_quest', 'complete_quest', 'dismiss_messages', 'dispatch_quest', 'feedback', 'get_blob', 'get_entry',
       'list_quests', 'post_message', 'post_quest', 'recall', 'recall_more', 'register_agent', 'remember', 'update_quest', 'upload_blob'])
   assert.deepEqual(tools.post_message.inputSchema.required, ['to', 'body'])
   assert.deepEqual(tools.recall.inputSchema.required, ['query'])

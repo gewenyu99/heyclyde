@@ -166,6 +166,7 @@ test("R49: no route returns another owner's rows", { skip: SKIP }, async () => {
     update_quest: { id: Number(bQid), note: 'A was here.' },
     complete_quest: { id: Number(bQid), evidence: 'A says so.', entry_id: aId },
     abandon_quest: { id: Number(bQid), reason: 'A gives up.' },
+    dispatch_quest: { action: 'peek', areas: ['none'] },
   }
   const list = JSON.parse((await bed.call('POST', '/mcp', bearer(A.token), { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })).text)
   const tools: string[] = list.result.tools.map((t: { name: string }) => t.name)

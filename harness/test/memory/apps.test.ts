@@ -87,7 +87,7 @@ test('R67 a UI client gets the card links and resources', { skip: SKIP }, async 
     assert.equal(t._meta['openai/outputTemplate'], t._meta.ui.resourceUri, t.name)
   }
   const plain = tools.filter((t) => !(t.name in CARD_TOOLS))
-  assert.equal(plain.length, 6)
+  assert.equal(plain.length, 7)
   for (const t of plain) assert.equal(t._meta, undefined, t.name)
   const resources = (await s.rpc('resources/list')).result.resources as any[]
   assert.equal(resources.length, 6)
