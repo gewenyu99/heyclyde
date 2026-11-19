@@ -227,6 +227,7 @@ function Card({ theme, card, open, openAgent }: { theme: PluginTheme; card: Task
 
 export function HomeView({ theme, home, open, openAgent }: { theme: PluginTheme; home: Home; open: OpenTask; openAgent?: (id: string) => void }) {
   const [showDone, setShowDone] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const working = home.tasks.filter((c) => !home.needsYou.some((a) => a.kind === c.kind && a.id === c.id));
   const failed = home.failedToday ?? [];
   return (
@@ -250,6 +251,17 @@ export function HomeView({ theme, home, open, openAgent }: { theme: PluginTheme;
           </Text>
         </Pressable>
       )}
+      {!!home.pastRuns?.length && <View>
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: showHistory }} onPress={() => setShowHistory(!showHistory)}
+          style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
+          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>{showHistory ? "▾" : "▸"} Task history</Text>
+        </Pressable>
+        {showHistory && home.pastRuns.map(run => <Pressable key={run.id} accessibilityRole="button" onPress={() => open("run", run.id)}
+          style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingVertical: 8 }}>
+          <Text style={{ color: theme.colors.foreground, fontSize: 14 }}>{run.name}</Text>
+          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>{run.status} · {new Date(run.endedAt).toLocaleDateString()}</Text>
+        </Pressable>)}
+      </View>}
       {showDone ? <View style={{ marginTop: 12 }}>{home.doneToday.map((c) => <Card key={`${c.kind}:${c.id}`} theme={theme} card={c} open={open} openAgent={openAgent} />)}</View> : null}
     </View>
   );

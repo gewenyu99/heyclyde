@@ -302,7 +302,7 @@ test('activity reports pending decisions and terminal outcomes without obsolete 
     [{ status: 'asking', asks: [{ kind: 'approve', question: 'Approve this plan?', askedAt: at(1) }] }, { headline: 'Waiting for plan approval', latestResult: 'Fixed the export.' }],
     [{ status: 'asking', question: 'Which export format?' }, { headline: 'Waiting for your answer', latestResult: 'Fixed the export.' }],
     [{ status: 'failed', error: 'Build command exited 1' }, { headline: 'Build command exited 1', latestResult: 'Fixed the export.' }],
-    [{ status: 'stopped' }, { headline: 'Stopped by you', latestResult: 'Fixed the export.' }],
+    [{ status: 'stopped' }, { headline: 'Run stopped', latestResult: 'Fixed the export.' }],
     [{ status: 'done' }, { headline: 'Finished', latestResult: 'Fixed the export.' }],
   ]
   for (const [extra, expected] of cases) assert.deepEqual(task(taskRun(stage, extra), [], {}).runActivity, expected)
@@ -322,4 +322,16 @@ test('current worker failure differs from rejection and passed attempts do not c
   assert.deepEqual(task(taskRun(taskStage([
     attempt(1, 'worker', { reason: 'Old reason.', verdict: { verdict: 'pass', criteria: [pass] } }), attempt(2, 'next'),
   ])), [], {}).runActivity, { headline: 'Worker is working on the task (attempt 2)' })
+})
+
+test('task history reopens stopped and older runs and excludes removed work', () => {
+  const old = at(3 * 24 * 60)
+  const h = home([], [
+    shipRun({ id: 'stop', status: 'stopped', endedAt: at(1) }),
+    shipRun({ id: 'old', status: 'done', endedAt: old }),
+    shipRun({ id: 'removed', status: 'failed', endedAt: old, archivedAt: old }),
+    shipRun({ id: 'today', status: 'done', endedAt: at(1) }),
+  ], {}, 1, NOW)
+  assert.deepEqual(h.pastRuns?.map(r => r.id), ['stop', 'old'])
+  assert.deepEqual(h.doneToday.map(r => r.id), ['today'])
 })

@@ -206,7 +206,7 @@ function runActivity(r: RawRun, threads: RawThread[]): NonNullable<TaskView["run
   const latestResult = result && !/^(done|completed|finished|success|task (done|completed)|no result posted yet)[.!]?$/i.test(result) ? result : undefined;
   const activity = (headline: string, retryReason?: string) => ({ headline, ...(latestResult ? { latestResult } : {}), ...(retryReason ? { retryReason } : {}) });
   if (r.status === "done") return activity(r.auditedHead ? "Audited " + r.auditedHead.slice(0, 12) : "Finished");
-  if (r.status === "stopped") return activity("Stopped by you");
+  if (r.status === "stopped") return activity("Run stopped");
   if (r.status === "failed") return activity(firstSentence(r.error || attempt?.reason || "Run failed", 180));
   if (r.status === "asking") {
     const open = [...(r.asks ?? [])].reverse().find(a => a.answer === undefined);
@@ -332,6 +332,9 @@ export function home(threads: RawThread[], runs: RawRun[], agents: Record<string
     tasks: cards.filter(live).sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
     failedToday: cards.filter(c=>c.status==="failed").sort((a,b)=>(b.endedAt??"").localeCompare(a.endedAt??"")),
     doneToday: cards.filter(c => c.status==="done" && !needsYou.some(a=>a.kind===c.kind && a.id===c.id)).sort((a, b) => (b.endedAt ?? "").localeCompare(a.endedAt ?? "")),
+    pastRuns: top.filter(r => r.status === "stopped" || (["done", "failed"].includes(r.status) && !sameDay(r.endedAt, now)))
+      .map(r => ({ id: r.id, name: r.title, status: r.status, endedAt: r.endedAt ?? r.updatedAt }))
+      .sort((a, b) => b.endedAt.localeCompare(a.endedAt)),
     background, running: cards.filter((c) => c.status === "running" || c.status==="sent-back").length, revision,
   };
 }

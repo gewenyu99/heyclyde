@@ -20,6 +20,7 @@ export type TaskCard = {
 
 export type Home = {
   needsYou: Ask[]; tasks: TaskCard[]; doneToday: TaskCard[]; failedToday: TaskCard[];
+  pastRuns?: { id: string; name: string; status: string; endedAt: string }[];
   background: number; running: number; revision: number;
 };
 
