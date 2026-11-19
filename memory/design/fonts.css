@@ -1,6 +1,1 @@
-/* Clyde's typefaces, self-hosted at memory.heyclyde.me/_clyde/fonts/ (files in memory/proxy/public/_clyde/fonts,
-   subset to Latin, OFL licenses beside them). Artifacts and chat cards that can't reach those files load the same
-   families from Google Fonts instead: Bricolage Grotesque (opsz,wght), Geist (wght), Geist Mono (wght). */
-@font-face { font-family: "Bricolage Grotesque"; src: url(/_clyde/fonts/bricolage-grotesque.woff2) format("woff2"); font-weight: 200 800; font-display: swap; }
-@font-face { font-family: "Geist"; src: url(/_clyde/fonts/geist.woff2) format("woff2"); font-weight: 100 900; font-display: swap; }
-@font-face { font-family: "Geist Mono"; src: url(/_clyde/fonts/geist-mono.woff2) format("woff2"); font-weight: 100 900; font-display: swap; }
+../../design/fonts.css

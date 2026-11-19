@@ -8,6 +8,8 @@ https://memory.heyclyde.me
 
 That's a Cloudflare Worker (`memory/proxy`) in front of the function's own address, `https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory`, which keeps working. The Worker sends a shared secret (its SHA-256 is the setting `proxy_secret_sha256`), so the function trusts the caller's IP for lockouts and answers with the domain in its URLs. Cloudflare Workers Builds deploys it on pushes to `main` when `memory/proxy/*` or `memory/design/*` change. As a manual fallback, run `npx wrangler@4 deploy` from `memory/proxy` or trigger [deploy-proxy.yml](../.github/workflows/deploy-proxy.yml) via `workflow_dispatch`.
 
+Edit shared styles and artwork in the [root design system](../design/README.md). Run `node design/build.mjs` after a style change and commit the regenerated files. The Worker still reads `memory/design/css.js` and serves published artwork from `memory/proxy/public/`.
+
 ## Connect a computer
 
 Run this on the computer. No checkout and no token to copy:

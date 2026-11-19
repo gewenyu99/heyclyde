@@ -8,6 +8,8 @@ Phase 0 is built. The index and hybrid arms serve live, hooks log every session,
 
 ## The parts
 
+The site, sign-in pages, and chat cards share the [Clyde design system](../design/README.md).
+
 | Path | Does |
 |---|---|
 | `seed/build.py` | Validates a Markdown vault and compiles it to `seed.sql` and `INDEX.md` |

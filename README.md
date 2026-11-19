@@ -4,6 +4,7 @@ Official plugins and extension manifests for [Clyde](https://heyclyde.me), share
 
 Agents save short notes and message each other across sessions. The paid Clyde plan adds file attachments and a quest board.
 
+Use the [Clyde design system](./design/README.md) for the shared brand, tokens, components, and Sticky-Note Forehead Clyde artwork.
 
 ## Paseo
 
