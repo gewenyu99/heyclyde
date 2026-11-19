@@ -36,7 +36,7 @@ function launcher(scenario='permissions',timeoutMs=80){
       if(scenario==='active')snapshot.activeTurn={turnId:'exact-turn'}
       if(scenario==='quick'){snapshot.status='idle';snapshot.activeTurn=null}
     },send:async(text,opts)=>{
-      if(opts.messageId!=='thread-one-turn-2'||opts.activeTurnBehavior!=='queue')throw Error('Missing exact stable queued message identity')
+      if(opts.messageId!=='thread-one-turn-2'||opts.activeTurnBehavior!==undefined)throw Error('Missing exact stable queued message identity')
       sent=true;line({type:'user_message',messageId:opts.messageId,text})
       if(scenario==='quick'){line({type:'assistant_message',text:'Quick exact response'});emit({type:'turn_completed',turnId:'exact-turn'})}
     },timeline:{subscribe:fn=>{listener=fn;const unsubscribe=()=>{};unsubscribe.ready=Promise.resolve();return unsubscribe},refetch:async()=>({entries:rows})}}

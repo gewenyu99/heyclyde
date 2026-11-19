@@ -129,7 +129,7 @@ try{
   })
   await unsubscribe.ready
   sent=true
-  await child.send(input.prompt,{messageId:input.messageId,activeTurnBehavior:'queue'})
+  await child.send(input.prompt,{messageId:input.messageId})
   console.log(JSON.stringify({started:child.id}))
   let remaining=input.timeoutMs,lastTick=Date.now(),wasPermission=false
   while(!aborted){
