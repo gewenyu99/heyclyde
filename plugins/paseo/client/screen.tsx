@@ -2,11 +2,12 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import type { PluginScreenProps, PluginWorkspacePanelProps, PluginTab } from "@getpaseo/plugin/client";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { homeRpc, taskRpc } from "../shared/clyde";
 import {Quests} from "./quests";
 import { Composer } from "./composer";
+import { useBoardState } from "./board-state";
 import { Roster } from "./roster";
 import { HomeView } from "./home";
 import { useLive } from "./nodes";
@@ -32,9 +33,6 @@ function Panel({ theme, children }: { theme: PluginTheme; children: ReactNode })
   );
 }
 
-// Screens remount on navigation. Workspace tabs also carry Paseo-persisted state.
-const lastTask = new Map<string, string>();
-
 function Board(
   { theme: hostTheme, layout, navigation, workspaceId, initialTask, selectionKey, panelTab }:
     & Pick<PluginScreenProps, "theme" | "layout" | "navigation">
@@ -44,23 +42,13 @@ function Board(
   useLive();
   const openAgent=navigation ? (agentId:string)=>navigation.openAgent({agentId}):undefined;
   const readHome = useRpc(homeRpc), readTask = useRpc(taskRpc);
-  const [picked, setSelected] = useState(() => {
-    if (initialTask) return initialTask;
-    if (typeof panelTab?.state === "string") return panelTab.state;
-    return lastTask.get(selectionKey) ?? "";
-  }),
-    [width, setWidth] = useState(0),
-    [newTask, setNewTask] = useState(false),
-    [mobilePane, setMobilePane] = useState<"task" | "chat">("task"),
-    [tab, setTab] = useState<"board" | "agents" | "quests">("board");
-  useEffect(() => {
-    if (initialTask) lastTask.set(selectionKey, initialTask);
-  }, [initialTask, selectionKey]);
-  function setPicked(next: string) {
-    setSelected(next);
-    lastTask.set(selectionKey, next);
-    panelTab?.setState(next);
-  }
+  const persisted=useBoardState(selectionKey,!workspaceId,panelTab,initialTask);
+  const {picked,newTask,mobilePane,tab}=persisted.value;
+  const [width,setWidth]=useState(0);
+  function setPicked(picked:string){persisted.set({picked,mobilePane:"task"});}
+  const setNewTask=(newTask:boolean)=>persisted.set({newTask});
+  const setMobilePane=(mobilePane:"task"|"chat")=>persisted.set({mobilePane});
+  const setTab=(tab:"board"|"agents"|"quests")=>persisted.set({tab});
   const c = theme.colors, wide = width >= 860, inset = width >= 650 ? 20 : 12;
   const home = useQuery({
     queryKey: ["clyde", "home", workspaceId ?? "all"],
@@ -68,12 +56,11 @@ function Board(
     refetchInterval: 10000,
   });
   const [kind, id] = picked.split(":");
-  useEffect(() => { setMobilePane("task"); }, [picked]);
   const selectedTask = !!id && (kind === "run" || kind === "thread");
   const task = useQuery({
     queryKey: ["clyde", "task", kind, id],
     queryFn: () => readTask({ kind: kind as "run" | "thread", id }),
-    enabled: selectedTask,
+    enabled: persisted.ready && selectedTask,
     refetchInterval: 5000,
   });
   const data = home.data?.data;
@@ -110,6 +97,10 @@ function Board(
   const queue = <Panel theme={theme}>{data ? <HomeView theme={theme} home={data} open={(k,i)=>setPicked(k+":"+i)} openAgent={openAgent}/> :
     <Text accessibilityRole={error ? "alert" : undefined} style={{color:error?c.statusDanger:c.foregroundMuted,fontSize:13}}>{error||"Loading tasks…"}</Text>}</Panel>;
   const workToReview = !!(data?.needsYou.length || data?.failedToday?.length || data?.running || data?.tasks.length);
+  if(!persisted.ready)return <View style={{flex:1,padding:inset,backgroundColor:c.surface0,gap:8}}>
+    <Text accessibilityLiveRegion="polite" style={{color:c.foregroundMuted,fontSize:13}}>{persisted.error || "Restoring Clyde…"}</Text>
+    {!!persisted.error && <Pressable accessibilityRole="button" onPress={()=>void persisted.retry()} style={{minHeight:MIN_HIT_HEIGHT,justifyContent:"center"}}><Text style={{color:c.accent,fontSize:13}}>Retry restoring</Text></Pressable>}
+  </View>;
   return (
     <View
       style={{ flex: 1, minHeight: 0, backgroundColor: c.surface0, padding: inset, gap: 12 }}
@@ -143,6 +134,10 @@ function Board(
             {nav("quests","Quests")}{nav("agents", "Agents")}
           </View>
         </View>
+        {!!persisted.error && <View style={{gap:4}}>
+          <Text accessibilityRole="alert" style={{color:c.statusDanger,fontSize:13}}>{persisted.error}</Text>
+          <Pressable accessibilityRole="button" onPress={()=>void persisted.retry()} style={{minHeight:MIN_HIT_HEIGHT,justifyContent:"center"}}><Text style={{color:c.accent,fontSize:13}}>Retry saving</Text></Pressable>
+        </View>}
         {selectedTask
           ? (
             <View style={{ flex: 1, minHeight: 0, gap: 10 }}>
@@ -167,7 +162,7 @@ function Board(
                 </Panel>
               </ScrollView>
               {kind === "run" && <View style={{ display: !wide && mobilePane === "task" ? "none" : "flex", flex: wide ? 2 : 1, minWidth: wide ? 320 : 0, minHeight: 0, borderWidth: 1, borderColor: c.border, borderRadius: 12, overflow: "hidden", backgroundColor: c.surface1 }}>
-                <SupervisorChat key={id} theme={theme} runId={id} />
+                <SupervisorChat key={id} theme={theme} runId={id} draft={persisted.value.supervisorDrafts[id] ?? ""} onDraftChange={text=>persisted.set(previous=>({...previous,supervisorDrafts:{...previous.supervisorDrafts,[id]:text}}))} />
               </View>}
               </View>
             </View>
@@ -186,7 +181,7 @@ function Board(
                 <Text style={{ color: c.accent, fontSize: 14, fontWeight: "600" }}>{newTask ? "Close new task" : "+ New task"}</Text>
               </Pressable>}
               {(!workToReview || newTask) && <Panel theme={theme}>
-                <Composer board theme={theme} workspaceId={workspaceId} onStarted={(run) => { setNewTask(false); setPicked("run:" + run); }} />
+                <Composer board theme={theme} workspaceId={workspaceId} draftState={persisted.value.composer} onDraftStateChange={composer=>persisted.set(previous=>({...previous,composer:typeof composer==="function"?composer(previous.composer):composer}))} onStarted={(run) => { setNewTask(false); setPicked("run:" + run); }} />
               </Panel>}
               {!workToReview && queue}
             </View>

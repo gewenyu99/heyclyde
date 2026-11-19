@@ -6,7 +6,9 @@ import { Pressable, Text, TextInput, View } from "react-native";
 import { launchRpc, projectsRpc, suggestProjectRpc, workerModels } from "../shared/clyde";
 import { palette } from "./brand.generated";
 import { formatRpcError, MIN_HIT_HEIGHT, scheme } from "./palette";
+import { AddProject } from "./add-project";
 import { requestId } from "./request-id";
+import { emptyComposer, type ComposerDraft } from "./board-state";
 
 type Worker = typeof workerModels[number];
 const workerLabel = (worker: Worker) => worker[0].toUpperCase() + worker.slice(1);
@@ -14,11 +16,13 @@ function catalogueOf(projects: readonly { id:string; slug?:string; path:string }
   return JSON.stringify((projects ?? []).map(project => [project.id, project.slug, project.path]).sort((a,b) => a[0]!.localeCompare(b[0]!)));
 }
 export function Composer(
-  { theme, onStarted, workspaceId, agentId, board = false }: {
+  { theme, onStarted, workspaceId, agentId, board = false, draftState, onDraftStateChange }: {
     theme: PluginTheme;
     workspaceId?: string;
     agentId?: string;
     board?: boolean;
+    draftState?: ComposerDraft;
+    onDraftStateChange?: (draft:ComposerDraft|((previous:ComposerDraft)=>ComposerDraft))=>void;
     onStarted: (id: string) => void;
   },
 ) {
@@ -28,27 +32,25 @@ export function Composer(
     queryKey: projectKey,
     queryFn: () => read({ workspaceId }),
   });
-  const [project, setProject] = useState(""),
-    [chatId, setChatId] = useState(""),
-    [text, setText] = useState(""),
-    [flow, setFlow] = useState<"task" | "ship">("task");
-  const [worker, setWorker] = useState<Worker>("auto"), [menu, setMenu] = useState<"project" | "chat" | "worker" | null>(null);
-  const [busy, setBusy] = useState(false), [error, setError] = useState("");
-  const [doneWhen, setDoneWhen] = useState("");
-  const [showCriteria, setShowCriteria] = useState(false);
-  const [allowNeon, setAllowNeon] = useState(false);
-  const pending = useRef<{ key: string; id: string } | null>(null);
-  const locked = useRef(false);
-  const routingLocked = useRef(false);
   const autoAvailable = board && !workspaceId;
-  const [mode, setMode] = useState<"auto" | "manual">(autoAvailable ? "auto" : "manual");
-  const [routingBusy, setRoutingBusy] = useState(false), [routingNote, setRoutingNote] = useState("");
-  const [suggestion, setSuggestion] = useState<{ projectId:string; reason:string; prompt:string; revision:number; catalogue:string }>();
-  const revision = useRef(0), draft = useRef(text), modeRef = useRef(mode), projectRef = useRef(project);
+  const [localDraft,setLocalDraft]=useState(()=>draftState ?? emptyComposer(autoAvailable));
+  const form=draftState ?? localDraft, formRef=useRef(form);formRef.current=form;
+  function writeDraft(patch:Partial<ComposerDraft>){const next={...formRef.current,...patch};formRef.current=next;setLocalDraft(next);onDraftStateChange?.(next);}
+  const {project,chatId,text,flow,worker,menu,doneWhen,showCriteria,allowNeon,mode,routingNote,suggestion}=form;
+  const setProject=(project:string)=>writeDraft({project}),setChatId=(chatId:string)=>writeDraft({chatId}),setText=(text:string)=>writeDraft({text});
+  const setFlow=(flow:"task"|"ship")=>writeDraft({flow}),setWorker=(worker:Worker)=>writeDraft({worker}),setMenu=(menu:ComposerDraft["menu"])=>writeDraft({menu});
+  const setDoneWhen=(doneWhen:string)=>writeDraft({doneWhen}),setShowCriteria=(showCriteria:boolean)=>writeDraft({showCriteria}),setAllowNeon=(allowNeon:boolean)=>writeDraft({allowNeon});
+  const setMode=(mode:"auto"|"manual")=>writeDraft({mode}),setRoutingNote=(routingNote:string)=>writeDraft({routingNote}),setSuggestion=(suggestion:ComposerDraft["suggestion"])=>writeDraft({suggestion});
+  const [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const [routingBusy, setRoutingBusy] = useState(false);
+  const pending = useRef<{key:string;id:string}|null>(form.pendingRequest);
+  const locked = useRef(false),routingLocked=useRef(false);
+  const revision = useRef(suggestion?.revision ?? 0), draft = useRef(text), modeRef = useRef(mode), projectRef = useRef(project);
+  useEffect(()=>()=>{revision.current++;routingLocked.current=false;},[]);
   // Progress events can refetch projects without changing the routing candidates.
-  const catalogue = catalogueOf(projects.data), previousCatalogue = useRef(catalogue);
+  const catalogue = catalogueOf(projects.data), previousCatalogue = useRef(suggestion?.catalogue ?? catalogue);
   useEffect(() => {
-    if (catalogue === previousCatalogue.current) return;
+    if (!projects.data || catalogue === previousCatalogue.current) return;
     previousCatalogue.current = catalogue; revision.current++; routingLocked.current = false;
     setSuggestion(undefined); setRoutingBusy(false);
   }, [catalogue]);
@@ -70,10 +72,10 @@ export function Composer(
   function currentTarget() {
     const state = cache.getQueryState<NonNullable<typeof projects.data>>(projectKey);
     if (!state?.data) return;
-    if (workspaceId) return state.data.length === 1 ? state.data[0] : undefined;
-    if (modeRef.current === "manual") return state.data.find(p => p.id === projectRef.current);
+    if (workspaceId) return state.data.length === 1 && state.data[0].eligible !== false ? state.data[0] : undefined;
+    if (modeRef.current === "manual") return state.data.find(p => p.id === projectRef.current && p.eligible !== false);
     if (!suggestion || suggestion.prompt !== draft.current || suggestion.revision !== revision.current || suggestion.catalogue !== catalogueOf(state.data)) return;
-    return state.data.find(p => p.id === suggestion.projectId);
+    return state.data.find(p => p.id === suggestion.projectId && p.eligible !== false);
   }
   const selected = currentTarget();
   async function chooseFromTask() {
@@ -86,7 +88,7 @@ export function Composer(
       const result = await suggest({ prompt });
       const latest = cache.getQueryState<NonNullable<typeof projects.data>>(projectKey);
       if (requestRevision !== revision.current || draft.current !== prompt || modeRef.current !== "auto" || catalogueOf(latest?.data) !== requestCatalogue) return;
-      if (!result.projectId || !latest?.data?.some(p => p.id === result.projectId)) {
+      if (!result.projectId || !latest?.data?.some(p => p.id === result.projectId && p.eligible !== false)) {
         modeRef.current = "manual"; projectRef.current = "";
         setMode("manual"); setProject(""); setSuggestion(undefined);
         setRoutingNote(result.reason || "Choose a project manually."); setMenu("project");
@@ -113,7 +115,8 @@ export function Composer(
     const prompt = draft.current;
     const criteria = doneWhen.split("\n").map((line) => line.trim()).filter(Boolean);
     const key = JSON.stringify([target.id, workspaceId ?? "", effectiveAgentId || "__new__", prompt, flow, worker, criteria, allowNeon]);
-    if (pending.current?.key !== key) pending.current = { key, id: requestId() };
+    if (pending.current?.key !== key) { pending.current = { key, id: requestId() }; writeDraft({pendingRequest:pending.current}); }
+    const launchRequestId=pending.current.id;
     try {
       const run = await launch({
         project: target.id,
@@ -125,13 +128,15 @@ export function Composer(
         worker,
         agentId: effectiveAgentId || undefined,
         ...(wantsNewChat ? { newChat: true } : {}),
-        requestId: pending.current.id,
+        requestId: launchRequestId,
       });
       pending.current = null;
-      setAllowNeon(false);
-      changeDraft("");
-      setDoneWhen("");
-      setShowCriteria(false);
+      const complete=(current:ComposerDraft):ComposerDraft=>{
+        const same=current.text===prompt && current.pendingRequest?.id===launchRequestId;
+        return {...current,pendingRequest:current.pendingRequest?.id===launchRequestId?null:current.pendingRequest,...(same?{text:"",doneWhen:"",showCriteria:false,allowNeon:false,suggestion:undefined}:{})};
+      };
+      const completed=complete(formRef.current);formRef.current=completed;setLocalDraft(completed);onDraftStateChange?.(complete);
+      revision.current++;draft.current=completed.text;
       void cache.invalidateQueries({ queryKey: ["clyde"] });
       onStarted(run.id);
     } catch (e) {
@@ -215,7 +220,7 @@ export function Composer(
       </Pressable>}
 
       <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-        {workspaceId && selected ? <Text style={{ color: c.foreground, fontSize: 13 }}>{selected.name}</Text> : control((selected?.name || (autoAvailable && mode === "auto" ? "Project · Auto" : "Choose a project")) + " ▾", () => setMenu(menu === "project" ? null : "project"), false, { expanded: menu === "project" })}
+        {workspaceId && selected ? <Text style={{ color: c.foreground, fontSize: 13 }}>{selected.name}</Text> : control((selected?.label || selected?.name || (autoAvailable && mode === "auto" ? "Project · Auto" : "Choose a project")) + " ▾", () => setMenu(menu === "project" ? null : "project"), false, { expanded: menu === "project" })}
         {!board && !agentId && selected && control(
           "Chat · " + (wantsNewChat ? "New chat (auto)" : selectedChat!.title) + " ▾",
           () => setMenu(menu === "chat" ? null : "chat"),
@@ -269,17 +274,18 @@ export function Composer(
             <Pressable
               key={p.id}
               accessibilityRole="button"
-              accessibilityState={{ selected: mode === "manual" && selected?.id === p.id, disabled: busy }}
-              disabled={busy}
+              accessibilityState={{ selected: mode === "manual" && selected?.id === p.id, disabled: busy || p.eligible === false }}
+              disabled={busy || p.eligible === false}
               onPress={() => chooseProject(p.id)}
               style={{ padding: 8, minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}
             >
-              <Text style={{ color: mode === "manual" && selected?.id === p.id ? c.accent : c.foreground, fontWeight: "600", fontSize: 13 }}>{p.name}</Text>
+              <Text style={{ color: mode === "manual" && selected?.id === p.id ? c.accent : c.foreground, fontWeight: "600", fontSize: 13 }}>{p.label || p.name}</Text>
               <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>
-                {p.path}{!board ? ` · ${p.chats.length} open ${p.chats.length === 1 ? "chat" : "chats"}` : ""}
+                {p.path}{p.eligible === false && p.ineligibleReason ? ` · ${p.ineligibleReason}` : ""}{!board ? ` · ${p.chats.length} open ${p.chats.length === 1 ? "chat" : "chats"}` : ""}
               </Text>
             </Pressable>
           ))}
+          {!workspaceId && <AddProject theme={theme} onSelected={chooseProject} />}
         </View>
       )}
       {!board && menu === "chat" && (

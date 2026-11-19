@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import type { PluginServerContext } from '@getpaseo/plugin/server';
 import { suggestProjectRpc } from '../shared/clyde.ts';
+import { projectEligibility } from './project-registry.ts';
 
 type Candidate={id:string;name:string;slug:string};
 type Classification={projectId:string|null;reason:string};
@@ -87,7 +88,10 @@ export function suggestProject(server:PluginServerContext,options:{classify?:Cla
     });
     try{
       const {projects}=await bounded(paseo.projects.list());
-      const offered=projects.filter(p=>p.projectKind!=='non_git' && typeof p.projectId==='string' && /^[a-zA-Z0-9_.:-]{1,256}$/.test(p.projectId));
+      const registered=projects.filter(p=>p.projectKind==='git' && typeof p.projectId==='string' && /^[a-zA-Z0-9_.:-]{1,256}$/.test(p.projectId));
+      if(registered.length>MAX_PROJECTS)return {reason:'Too many projects for Auto selection. Choose one explicitly.'};
+      const checked=await bounded(Promise.all(registered.map(async p=>({p,...await projectEligibility(p)}))));
+      const offered=checked.filter(p=>p.eligible).map(p=>p.p);
       if(!offered.length)return {reason:'No available Git projects to select.'};
       if(offered.length>MAX_PROJECTS)return {reason:'Too many projects for Auto selection. Choose one explicitly.'};
       const candidates:Candidate[]=new Array(offered.length);
@@ -103,7 +107,8 @@ export function suggestProject(server:PluginServerContext,options:{classify?:Cla
       if(result.projectId===null)return {reason};
       if(!candidates.some(p=>p.id===result.projectId))return {reason:'Auto did not select an offered project. Choose one explicitly.'};
       const fresh=await bounded(paseo.projects.list());
-      if(!fresh.projects.some(p=>p.projectId===result.projectId && p.projectKind!=='non_git'))return {reason:'The suggested project is no longer available. Choose another project.'};
+      const selected=fresh.projects.find(p=>p.projectId===result.projectId);
+      if(!selected || !(await bounded(projectEligibility(selected))).eligible)return {reason:'The suggested project is no longer available. Choose another project.'};
       return {projectId:result.projectId,reason};
     }catch{return {reason:abort.signal.aborted?'Auto selection timed out. Choose a project or try again.':'Auto selection is unavailable. Choose a project explicitly.'};}
     finally{clearTimeout(timer);active--;}

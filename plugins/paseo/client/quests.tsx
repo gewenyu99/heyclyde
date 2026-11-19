@@ -28,7 +28,7 @@ export function Quests({ theme, agent: activeAgent, workspaceId, onStarted }: {
   const projects = useQuery({ queryKey: ["clyde", "projects", workspaceId ?? "all"], queryFn: () => readProjects({ workspaceId }), enabled: expanded !== null });
   const currentQuest = query.data?.quests.find(q => q.id === expanded);
   // Match the server's canonical slug; project names and path basenames can collide.
-  const targets = (projects.data ?? []).filter(p => questProjectMatches(p.slug, currentQuest?.project));
+  const targets = (projects.data ?? []).filter(p => p.eligible !== false && questProjectMatches(p.slug, currentQuest?.project));
   const target = targets.find(p => p.id === project) ?? (targets.length === 1 ? targets[0] : undefined);
   const workspaces = target?.workspaces ?? [];
   const targetWorkspace = workspaceId || workspaces.find(w => w.id === workspace)?.id || (workspaces.length === 1 ? workspaces[0].id : undefined);

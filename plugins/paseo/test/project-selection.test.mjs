@@ -1,14 +1,23 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync,readFileSync,rmSync,writeFileSync } from 'node:fs';
+import { mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import test from 'node:test';
+import test,{after} from 'node:test';
+import {execFileSync} from 'node:child_process';
 import { classifyProject,suggestProject } from '../server/project-selection.ts';
+
+const repositories=mkdtempSync(join(tmpdir(),'clyde-eligible-projects-'));
+after(()=>rmSync(repositories,{recursive:true,force:true}));
+for(const name of ['clyde','website']){
+  const path=join(repositories,name);mkdirSync(path);
+  execFileSync('git',['init','-q',path]);
+  execFileSync('git',['-C',path,'-c','user.name=test','-c','user.email=test@example.test','-c','commit.gpgsign=false','commit','--allow-empty','-qm','initial']);
+}
 
 function fixture(options={}){
   let handler;
   suggestProject({handle:(_rpc,fn)=>{handler=fn;}},options);
-  const projects=[{projectId:'one',projectDisplayName:'Clyde',projectRootPath:'/not-present/clyde',projectKind:'git'},{projectId:'two',projectDisplayName:'Website',projectRootPath:'/not-present/website',projectKind:'git'}];
+  const projects=[{projectId:'one',projectDisplayName:'Clyde',projectRootPath:join(repositories,'clyde'),projectKind:'git'},{projectId:'two',projectDisplayName:'Website',projectRootPath:join(repositories,'website'),projectKind:'git'}];
   const paseo={projects:{list:async()=>({projects})}};
   return {projects,paseo,invoke:prompt=>handler({prompt},{paseo})};
 }
@@ -16,7 +25,7 @@ function fixture(options={}){
 test('Auto offers only authoritative bounded project IDs, names and canonical slugs and validates selection',async()=>{
   let seen;
   const f=fixture({classify:async(prompt,projects)=>{seen={prompt,projects};return {projectId:'one',reason:'The task names Clyde.'};}});
-  f.projects.push({projectId:'nongit',projectDisplayName:'Notes',projectRootPath:'/private/secret',projectKind:'non_git'});
+  f.projects.push({projectId:'nongit',projectDisplayName:'Notes',projectRootPath:'/private/secret',projectKind:'non_git'},{projectId:'stale-git',projectDisplayName:'Missing checkout',projectRootPath:'/not-present/checkout',projectKind:'git'});
   assert.deepEqual(await f.invoke('Fix Clyde'),{projectId:'one',reason:'The task names Clyde.'});
   assert.deepEqual(Object.keys(seen.projects[0]).sort(),['id','name','slug']);
   assert.equal(seen.projects.length,2);

@@ -158,7 +158,11 @@ export type ProjectChat = z.infer<typeof projectChat>;
 export const projectsRpc = defineRpc({
   name:"clyde.projects",
   input:z.object({workspaceId:z.string().optional()}),
-  output:z.array(z.object({id:z.string(),name:z.string(),slug:z.string(),path:z.string(),chats:z.array(projectChat),workspaces:z.array(z.object({id:z.string(),name:z.string(),path:z.string()}))})),
+  output:z.array(z.object({id:z.string(),name:z.string(),label:z.string(),kind:z.string(),eligible:z.boolean(),ineligibleReason:z.string().optional(),slug:z.string(),path:z.string(),chats:z.array(projectChat),workspaces:z.array(z.object({id:z.string(),name:z.string(),path:z.string()}))})),
+});
+export const openProjectRpc = defineRpc({
+  name:"clyde.open-project",input:z.object({path:z.string().trim().min(1).max(4096),requestId:z.string().uuid()}),
+  output:z.object({projectId:z.string(),workspaceId:z.string().optional(),path:z.string()}),
 });
 export const suggestProjectRpc = defineRpc({
   name:"clyde.suggest-project",input:z.object({prompt:z.string().trim().min(1).max(12000)}),

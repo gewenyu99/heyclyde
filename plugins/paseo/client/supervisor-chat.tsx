@@ -8,7 +8,7 @@ import { askSupervisorRpc, supervisorRpc } from "../shared/clyde";
 import { formatRpcError, MIN_HIT_HEIGHT } from "./palette";
 import { requestId } from "./request-id";
 
-export function SupervisorChat({ theme, runId }: { theme: PluginTheme; runId: string }) {
+export function SupervisorChat({ theme, runId, draft: savedDraft, onDraftChange }: { theme: PluginTheme; runId: string; draft?: string; onDraftChange?: (text:string)=>void }) {
   const c = theme.colors;
   const read = useRpc(supervisorRpc), ask = useRpc(askSupervisorRpc);
   const conversation = useQuery({
@@ -16,7 +16,9 @@ export function SupervisorChat({ theme, runId }: { theme: PluginTheme; runId: st
     queryFn: () => read({ id: runId }),
     refetchInterval: query => query.state.data?.busy ? 1200 : 5000,
   });
-  const [draft, setDraft] = useState("");
+  const [localDraft, setLocalDraft] = useState("");
+  const draft = savedDraft ?? localDraft;
+  const setDraft = onDraftChange ?? setLocalDraft;
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState("");
   const pending = useRef<{ text: string; id: string } | null>(null);

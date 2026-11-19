@@ -1,3 +1,4 @@
+import { projectRegistry } from "./server/project-registry.ts";
 import { currentActivity, workspaceActivity } from "./server/current-activity.ts";
 import { suggestProject } from "./server/project-selection.ts";
 import { workerPermissions } from "./server/worker-permissions.ts";
@@ -11,7 +12,7 @@ import { join } from "node:path";
 import type { PluginHandlerContext, PluginServerContext } from "@getpaseo/plugin/server";
 import { call, ensureCompanion, follow, readJson, updateWhenIdle } from "./server/daemon.ts";
 import { home, task, threadTask, transcript, type RawRun, type RawThread } from "./server/shape.ts";
-import { supervisorRpc, askSupervisorRpc, type SupervisorState, removeRpc, projectsRpc, launchRpc, openChatRpc, steerRpc, answerRpc, homeRpc, stopRpc, taskRpc, transcriptRpc, waitRpc, type Diff, type ProjectChat, type workerModels } from "./shared/clyde.ts";
+import { supervisorRpc, askSupervisorRpc, type SupervisorState, removeRpc, launchRpc, openChatRpc, steerRpc, answerRpc, homeRpc, stopRpc, taskRpc, transcriptRpc, waitRpc, type Diff, type workerModels } from "./shared/clyde.ts";
 import { newQuestRpc, questProjectMatches } from "./shared/clyde.ts";
 
 type PaseoApi = PluginHandlerContext["paseo"];
@@ -192,42 +193,7 @@ export default function contribute(server: PluginServerContext) {
     writeFileSync(path+".tmp",JSON.stringify(questStarts),{mode:0o600});
     renameSync(path+".tmp",path);
   };
-  server.handle(projectsRpc, async ({workspaceId}, {paseo}) => {
-    const [{ projects }, { entries: workspaces }, agents] = await Promise.all([
-      paseo.projects.list(),
-      paseo.workspaces.list(),
-      listAllAgents(paseo),
-    ]);
-    const workspace = workspaceId ? workspaces.find((w) => w.id === workspaceId) : undefined;
-    const projectByWorkspace = new Map(workspaces.map((w) => [w.id, w.projectId]));
-    const chatsByProject = new Map<string, ProjectChat[]>();
-    for (const a of agents) {
-      if (!isProjectChat(a) || !a.workspaceId) continue;
-      if (workspaceId && a.workspaceId !== workspaceId) continue;
-      const pid = projectByWorkspace.get(a.workspaceId);
-      if (!pid) continue;
-      const fallback = a.provider.charAt(0).toUpperCase() + a.provider.slice(1) + " chat · " + a.id.slice(0, 6);
-      const list = chatsByProject.get(pid) ?? [];
-      list.push({
-        id: a.id,
-        title: (a.title ?? "").trim() || fallback,
-        provider: a.provider,
-        updatedAt: a.updatedAt ?? a.createdAt ?? "",
-      });
-      chatsByProject.set(pid, list);
-    }
-    return projects
-      .filter((p) => (!workspaceId || p.projectId === workspace?.projectId) && p.projectKind !== "non_git")
-      .map((p) => ({
-        id: p.projectId,
-        name: p.projectDisplayName,
-        slug: projectSlug(p.projectRootPath),
-        path: p.projectRootPath,
-        workspaces: workspaces.filter(w=>w.projectId===p.projectId && (!workspaceId || w.id===workspaceId) && !w.background && !w.internal && !w.archivingAt && !(w as {archivedAt?:string|null}).archivedAt)
-          .map(w=>({id:w.id,name:w.title || w.name || w.id,path:w.workspaceDirectory})),
-        chats: (chatsByProject.get(p.projectId) ?? []).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
-      }));
-  });
+  projectRegistry(server);
   server.handle(newQuestRpc, async (input, {paseo}) => {
     const {quest,project,workspaceId,requestId}=input;
     const known=questStarts[requestId];
