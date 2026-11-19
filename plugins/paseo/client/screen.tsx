@@ -7,7 +7,7 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { homeRpc, taskRpc } from "../shared/clyde";
 import {Quests} from "./quests";
 import { Composer } from "./composer";
-import { useBoardState } from "./board-state";
+import { useBoardState, type ComposerDraft } from "./board-state";
 import { Roster } from "./roster";
 import { HomeView } from "./home";
 import { useLive } from "./nodes";
@@ -49,6 +49,9 @@ function Board(
   const setNewTask=(newTask:boolean)=>persisted.set({newTask});
   const setMobilePane=(mobilePane:"task"|"chat")=>persisted.set({mobilePane});
   const setTab=(tab:"board"|"agents"|"quests")=>persisted.set({tab});
+  function saveComposer(update:ComposerDraft|((previous:ComposerDraft)=>ComposerDraft)){
+    persisted.set(previous=>{const composer=typeof update==="function"?update(previous.composer):update;return {...previous,composer,newTask:previous.newTask || !!composer.text || !!composer.doneWhen};});
+  }
   const c = theme.colors, wide = width >= 860, inset = width >= 650 ? 20 : 12;
   const home = useQuery({
     queryKey: ["clyde", "home", workspaceId ?? "all"],
@@ -181,7 +184,7 @@ function Board(
                 <Text style={{ color: c.accent, fontSize: 14, fontWeight: "600" }}>{newTask ? "Close new task" : "+ New task"}</Text>
               </Pressable>}
               {(!workToReview || newTask) && <Panel theme={theme}>
-                <Composer board theme={theme} workspaceId={workspaceId} draftState={persisted.value.composer} onDraftStateChange={composer=>persisted.set(previous=>({...previous,composer:typeof composer==="function"?composer(previous.composer):composer}))} onStarted={(run) => { setNewTask(false); setPicked("run:" + run); }} />
+                <Composer board theme={theme} workspaceId={workspaceId} draftState={persisted.value.composer} onDraftStateChange={saveComposer} onStarted={(run) => { setNewTask(false); setPicked("run:" + run); }} />
               </Panel>}
               {!workToReview && queue}
             </View>

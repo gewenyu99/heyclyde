@@ -230,7 +230,14 @@ test("client TSX components obey typography floor, accessible controls, dedicate
   assert.match(task, /view.kind === "run" && view.status === "running" && <Steering/);
   assert.doesNotMatch(task, />Home<|Clyde \/ Task \//);
   assert.equal((screen.match(/<Roster\b/g) ?? []).length, 1, "Roster appears only on Agents tab");
-  assert.match(screen, /\[mobilePane, setMobilePane\]/);
+  assert.match(screen, /mobilePane,tab}=persisted.value/);
+  const boardState = fs.readFileSync(path.join(clientDir, "board-state.ts"), "utf8");
+  assert.match(boardState, /scope:"device"/);
+  assert.match(boardState, /useSettings\(definition\)/);
+  assert.match(screen, /useBoardState\(selectionKey/);
+  assert.match(screen, /draftState=\{persisted.value.composer\}/);
+  assert.match(screen, /supervisorDrafts\[id\]/);
+  assert.doesNotMatch(boardState, /localStorage/);
   assert.match(screen, /display: !wide && mobilePane === "task" \? "none" : "flex"/);
   assert.match(screen, /\(!workToReview \|\| newTask\) && <Panel/);
   assert.match(task, /!embeddedSupervisor && !activity\?\.permissionAgentId && <OpenChatButton/);

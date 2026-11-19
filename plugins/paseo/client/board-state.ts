@@ -5,10 +5,10 @@ import { z } from "zod";
 import { workerModels } from "../shared/clyde";
 
 export const composerDraftSchema = z.object({
-  project:z.string().default(""),chatId:z.string().default(""),text:z.string().default(""),
+  project:z.string().default(""),folderProject:z.string().default(""),selectedWorkspace:z.string().default(""),chatId:z.string().default(""),text:z.string().default(""),
   flow:z.enum(["task","ship"]).default("task"),worker:z.enum(workerModels).default("auto"),
   doneWhen:z.string().default(""),showCriteria:z.boolean().default(false),allowNeon:z.boolean().default(false),
-  mode:z.enum(["auto","manual"]).default("manual"),menu:z.enum(["project","chat","worker"]).nullable().default(null),routingNote:z.string().default(""),
+  mode:z.enum(["auto","manual"]).default("manual"),menu:z.enum(["project","workspace","chat","worker"]).nullable().default(null),routingNote:z.string().default(""),
   suggestion:z.object({projectId:z.string(),reason:z.string(),prompt:z.string(),revision:z.number(),catalogue:z.string()}).optional(),
   pendingRequest:z.object({key:z.string(),id:z.string()}).nullable().default(null),
 });
@@ -79,7 +79,7 @@ export class BoardStateSession {
   retry=async()=>{this.attempted=undefined;await this.driver?.reload();void this.flush();};
   private async flush(){
     const driver=this.driver;
-    if(this.writing || !this.dirty || !this.snapshot.ready || driver?.status!=="ready" || !driver.revision || driver.revision===this.attempted)return;
+    if(this.writing || !this.dirty || !this.snapshot.ready || driver?.status!=="ready" || driver.revision===undefined || driver.revision===this.attempted)return;
     const value=this.snapshot.value;this.writing=true;this.attempted=driver.revision;
     let saved=false;
     try{saved=await driver.save({scope:this.scope,board:value},driver.revision);}

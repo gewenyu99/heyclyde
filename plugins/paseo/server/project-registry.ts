@@ -5,6 +5,7 @@ import { isAbsolute } from 'node:path';
 import type { PluginHandlerContext,PluginServerContext } from '@getpaseo/plugin/server';
 import { openProjectRpc,projectsRpc,type ProjectChat } from '../shared/clyde.ts';
 import { isProjectChat,listAllAgents } from './residents.ts';
+import { registerFolderRepos } from './folder-repositories.ts';
 
 type Paseo=PluginHandlerContext['paseo'];
 type Project=Awaited<ReturnType<Paseo['projects']['list']>>['projects'][number];
@@ -18,7 +19,7 @@ export async function verifyRepository(path:string):Promise<string> {
   if(!root || !statSync(root).isDirectory())throw new Error('The selected project directory is unavailable.');
   let result:string;
   try{result=await git(root,['rev-parse','--show-toplevel','--verify','HEAD']);}
-  catch{throw new Error('Select an existing Git repository with an initial commit.');}
+  catch(error){throw new Error('Select an existing Git repository with an initial commit.',{cause:error});}
   const [reported,head]=result.split('\n');
   if(canonical(reported)!==root)throw new Error('Select the Git repository root, rather than a subfolder.');
   if(!/^[a-f0-9]{40,64}$/i.test(head??''))throw new Error('The selected Git repository needs an initial commit.');
@@ -36,6 +37,7 @@ export async function canonicalProjectSlug(root:string):Promise<string> {
 }
 
 export function projectRegistry(server:PluginServerContext):void {
+  registerFolderRepos(server,{verifyRepository,canonicalProjectSlug});
   const requestPaths=new Map<string,string>();
   const opening=new Map<string,Promise<{projectId:string;workspaceId?:string;path:string}>>();
   server.handle(projectsRpc,async({workspaceId},{paseo})=>{
