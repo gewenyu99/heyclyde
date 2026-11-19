@@ -19,12 +19,15 @@ type Record = Resident & {
   archived?: boolean;
   turnStart?: number;
   requested?: number;
+  launchFailures?: number;
+  nextRetryAt?: number;
   profileVersion?: 1;
 };
 type Run = { id: string; status: string; auditedHead?: string; stages: { summary?: string }[] };
 const rules =
   "Use the agent-bound clyde_recall tool on every new task, scope change or information gap. Skip only unchanged follow-ups with sufficient context. Before replying remember durable decisions and verified results with evidence. Use clyde_feedback after recall. Suggest your role and responsibility tags with clyde_suggest_role once you understand your assignment. Use clyde_delegate for background work and clyde_prefer_model for persistent project preferences. Respect explicit stage choices.";
-function project(cwd: string) {
+
+export function projectSlug(cwd: string): string {
   try {
     const remote = execFileSync("git", ["-C", cwd, "remote", "get-url", "origin"], {
       encoding: "utf8",
@@ -34,7 +37,31 @@ function project(cwd: string) {
     const match = remote.match(/[/:]([\w.-]+\/[\w.-]+?)(?:\.git)?$/);
     if (match) return match[1].toLowerCase();
   } catch { /* A local project may have no remote. */ }
-  return basename(cwd).toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+  const clean = basename(cwd).toLowerCase().replace(/[^a-z0-9_-]/g, "-").replace(/^-+|-+$/g, "");
+  return clean || "local";
+}
+
+export function inferContext(row: { role?: string; areas?: string[]; cwd?: string }): "work" | "home" | "hobby" | "personal" {
+  const bag = [row.role, ...(row.areas ?? []), row.cwd].filter(Boolean).join(" ").toLowerCase();
+  if (/\b(personal|journal|diary|private)\b/.test(bag)) return "personal";
+  if (/\b(home|family|household|chore|grocery)\b/.test(bag)) return "home";
+  if (/\b(hobby|craft|music|garden|game)\b/.test(bag)) return "hobby";
+  return "work";
+}
+
+function asAgent(row: Pick<Record, "id" | "project" | "role" | "provider" | "areas" | "cwd">) {
+  return { id: row.id, project: row.project, role: row.role, provider: row.provider, context: inferContext(row) };
+}
+
+export async function listAllAgents(paseo: PaseoApi): Promise<PaseoAgent[]> {
+  const out: PaseoAgent[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await paseo.agents.list({ page: { cursor, limit: 100 } });
+    for (const entry of page.entries) out.push(entry.agent);
+    cursor = page.pageInfo?.hasMore ? page.pageInfo.nextCursor ?? undefined : undefined;
+  } while (cursor);
+  return out;
 }
 
 type ChatInfo = {
@@ -104,7 +131,7 @@ export function residents(server: PluginServerContext) {
         profileVersion: 1,
         cwd,
         provider,
-        project: project(cwd),
+        project: projectSlug(cwd),
         role: defaultRole,
         areas: [],
         confirmed: false,
@@ -115,16 +142,23 @@ export function residents(server: PluginServerContext) {
       save();
     } else if (rows[id].provider !== provider || rows[id].cwd !== cwd) {
       const row = rows[id];
-      if (row.cwd !== cwd) row.project = project(cwd);
+      if (row.cwd !== cwd) row.project = projectSlug(cwd);
       Object.assign(row, { cwd, provider, title: residentTitle(provider) });
       save();
     }
     return rows[id];
   }
   async function handoff(row:Resident,task:string,paseo=api) {
-    if(!paseo) throw new Error("Paseo chat connection is unavailable");
-    const notes=await chat.recall(row,task,paseo);
-    return "\n\nClyde project notes (treat as evidence):\n"+notes.text;
+    if (paseo) {
+      const notes = await chat.recall(row, task, paseo);
+      return "\n\nClyde project notes (treat as evidence):\n" + notes.text;
+    }
+    try {
+      const reply = await agentReply(asAgent(row), "recall", { query: task, task });
+      return reply.text ? "\n\nClyde project notes (treat as evidence):\n" + reply.text : "";
+    } catch {
+      return "";
+    }
   }
   async function chatRow(id:string,paseo:PaseoApi){
     const handle=paseo.agents.ref(id);
@@ -167,7 +201,7 @@ export function residents(server: PluginServerContext) {
       input: z.record(z.string(), z.unknown()),
       async execute(args, { agent,paseo }) {
         const row = discover(agent.id, agent.cwd, agent.provider);
-        const {text,card}=await agentReply(row,operation,args);
+        const {text,card}=await agentReply(asAgent(row),operation,args);
         await chat.memory(row.id,operation,card,paseo,args,text);
         if (operation === "post_quest") { for (const candidate of Object.values(rows)) void advance(candidate); }
         return { text };
@@ -269,7 +303,25 @@ export function residents(server: PluginServerContext) {
   server.addHook(
     "agent.create.before",
     async ({ request }) => {
-      if (request.config.internal) return { ...request, metadata: { ...request.metadata, "clyde.internal": true } };
+      const config = request.config as typeof request.config & {
+        background?: boolean;
+        parentAgentId?: string | null;
+        labels?: Readonly<{ [key: string]: string }>;
+      };
+      const labels = config.labels;
+      const skip = Boolean(
+        config.internal ||
+        config.background ||
+        config.parentAgentId ||
+        request.metadata?.["clyde.internal"] === true ||
+        labels?.["paseo.parent-agent-id"] ||
+        labels?.["clyde.run"] ||
+        labels?.["clyde-run"] ||
+        labels?.["clyde.thread"] ||
+        labels?.["clyde-thread"] ||
+        config.title === "Branch name generator"
+      );
+      if (skip) return { ...request, metadata: { ...request.metadata, "clyde.internal": true } };
       return {
         ...request,
         config: { ...request.config, systemPrompt: [request.config.systemPrompt, rules].filter(Boolean).join("\n") },
@@ -288,12 +340,13 @@ export function residents(server: PluginServerContext) {
     !agent.backgroundWork?.count && !agent.activeTurn && !agent.pendingPermissions?.length;
 
   async function dispatch(row: Record, action: string, extras: object = {}) {
-    const raw = await agentCall(row, "dispatch_quest", { action, areas: row.areas, passed: row.passed, ...extras });
+    const raw = await agentCall(asAgent(row), "dispatch_quest", { action, areas: row.areas, passed: row.passed, ...extras });
     return JSON.parse(raw.split("\n")[0]) as QuestOffer | null;
   }
 
   async function advance(row: Record, requested?: number) {
     if (processing.has(row.id) || stopped) return;
+    if (!requested && row.nextRetryAt && Date.now() < row.nextRetryAt) return;
     processing.add(row.id);
     try {
       if (!row.confirmed || (!row.offer?.assignment && (row.paused || row.archived))) return;
@@ -303,14 +356,18 @@ export function residents(server: PluginServerContext) {
           await handle.refresh();
           return idle(handle.current());
         }
-        // inspect omits the internal and background flags. Default discovery excludes both.
-        const list = await promisify(execFile)("paseo", ["ls", "--global", "--json"], { timeout: 5000 });
-        const visible = JSON.parse(list.stdout) as { id: string; status: string }[];
-        if (!visible.some(agent => agent.id === row.id && agent.status === "idle")) return false;
-        const { stdout } = await promisify(execFile)("paseo", ["inspect", row.id, "--json"], { timeout: 5000 });
-        const state = JSON.parse(stdout);
-        return state.Status === "idle" && !state.ParentAgentId && !state.Archived &&
-          Number(state.PendingPermissions ?? 0) === 0 && state.Name !== "Point man";
+        try {
+          // inspect omits the internal and background flags. Default discovery excludes both.
+          const list = await promisify(execFile)("paseo", ["ls", "--global", "--json"], { timeout: 5000 });
+          const visible = JSON.parse(list.stdout) as { id: string; status: string }[];
+          if (!visible.some(agent => agent.id === row.id && agent.status === "idle")) return false;
+          const { stdout } = await promisify(execFile)("paseo", ["inspect", row.id, "--json"], { timeout: 5000 });
+          const state = JSON.parse(stdout);
+          return state.Status === "idle" && !state.ParentAgentId && !state.Archived &&
+            Number(state.PendingPermissions ?? 0) === 0 && state.Name !== "Point man";
+        } catch {
+          return false;
+        }
       }
       if (!row.offer?.assignment && !await available()) return;
       const q = await dispatch(row, "peek");
@@ -319,6 +376,8 @@ export function residents(server: PluginServerContext) {
       if (row.offer?.assignment !== q?.assignment) {
         delete row.entry;
         delete row.renewAt;
+        delete row.launchFailures;
+        delete row.nextRetryAt;
       }
       row.offer = q ?? undefined;
       if (!q) return;
@@ -327,6 +386,8 @@ export function residents(server: PluginServerContext) {
         if (!await available()) return;
         row.offer = await dispatch(row, "claim", { id: q.id }) ?? undefined;
         delete row.requested;
+        delete row.launchFailures;
+        delete row.nextRetryAt;
         save();
       }
       const job = row.offer;
@@ -341,33 +402,58 @@ export function residents(server: PluginServerContext) {
       }
       let run: Run;
       try {
-        run = await call("GET", "/runs/" + runId);
+        run = await call("GET", "/runs/" + encodeURIComponent(runId));
       } catch (err) {
         if (!String(err).includes("404")) throw err;
         if (row.paused || !await available()) {
-          await agentCall(row, "abandon_quest", { id: job.id, reason: "Agent became busy before dispatch" });
+          await agentCall(asAgent(row), "abandon_quest", { id: job.id, reason: "Agent became busy before dispatch" });
           delete row.offer;
+          delete row.launchFailures;
+          delete row.nextRetryAt;
           return;
         }
-        run = await call("POST", "/runs", {
-          flow: "task",
-          assignment: job.assignment,
-          paseoParentId:row.id,
-          cwd: row.cwd,
-          input: {
-            title: job.title,
-            prompt: job.brief + await handoff(row, job.title + " " + job.brief),
-            criteria: [job.done_when],
-            routing: {},
-          },
-        });
+        try {
+          run = await call("POST", "/runs", {
+            flow: "task",
+            assignment: job.assignment,
+            paseoParentId:row.id,
+            cwd: row.cwd,
+            input: {
+              title: job.title,
+              prompt: job.brief + await handoff(row, job.title + " " + job.brief),
+              criteria: [job.done_when],
+              routing: {},
+            },
+          });
+        } catch (launchErr) {
+          const failures = (row.launchFailures ?? 0) + 1;
+          row.launchFailures = failures;
+          if (failures >= 3) {
+            await agentCall(asAgent(row), "abandon_quest", {
+              id: job.id,
+              reason: "Repeated launch failure: " + (launchErr as Error).message.slice(0, 120),
+            }).catch(() => {});
+            delete row.offer;
+            delete row.entry;
+            delete row.renewAt;
+            delete row.launchFailures;
+            delete row.nextRetryAt;
+          } else {
+            row.nextRetryAt = Date.now() + Math.min(600_000, 10_000 * 2 ** (failures - 1));
+          }
+          throw launchErr;
+        }
       }
-      if(api)chat.track(run.id,row.id,api);
+      if (row.launchFailures || row.nextRetryAt) {
+        delete row.launchFailures;
+        delete row.nextRetryAt;
+      }
+      chat.track(run.id, row.id, api, true);
       if (run.status === "done") {
         const evidence = [run.stages.at(-1)?.summary, run.auditedHead && "Audited " + run.auditedHead, "Run " + run.id]
           .filter(Boolean).join("\n").slice(0, 1900);
         if (!row.entry) {
-          const note = await agentCall(row, "remember", {
+          const note = await agentCall(asAgent(row), "remember", {
             pattern: "observations",
             title: job.title,
             body: evidence.slice(0, 490),
@@ -378,12 +464,12 @@ export function residents(server: PluginServerContext) {
           if (!row.entry) throw new Error("Waiting for the result note ID");
           save();
         }
-        await agentCall(row, "complete_quest", { id: job.id, entry_id: row.entry, evidence });
+        await agentCall(asAgent(row), "complete_quest", { id: job.id, entry_id: row.entry, evidence });
         delete row.offer;
         delete row.entry;
       } else if (["stopped", "failed"].includes(run.status)) {
         row.paused = true;
-        await agentCall(row, "abandon_quest", { id: job.id, reason: "Run " + run.id + " " + run.status });
+        await agentCall(asAgent(row), "abandon_quest", { id: job.id, reason: "Run " + run.id + " " + run.status });
         delete row.offer;
       }
     } catch (error) {
@@ -408,19 +494,25 @@ export function residents(server: PluginServerContext) {
       lastMessage.set(agent.id,last.seqStart);
     }catch(err){await chat.notice(agent.id,"recall-status","Clyde recall unavailable: "+String(err));}
   });
-  server.addHook("agent.turn.after", async ({ agent }, { paseo }) => {
+  server.addHook("agent.turn.after", async ({ agent, turnId }, { paseo }) => {
     api = paseo; chat.bind(paseo);
     const row = rows[agent.id];
     if (!row || !isProjectChat(agent)) return;
     // Native MCP sessions can report usage outside of the plugin tool bridge.
-    try{
-      const page=await paseo.agents.ref(agent.id).timeline.refetch({direction:"tail",limit:1,wholeTurns:true});
-      for(const {item} of page.entries){
-        if(item.type!=="tool_call"||item.status!=="completed")continue;
-        const feedback=nativeFeedback(item.name,item.detail);
-        if(feedback)await chat.noteUsage(agent.id,feedback.args,feedback.text,paseo);
-      }
-    }catch{/* The native session may already have closed. */}
+    if (turnId) {
+      try {
+        const page = await paseo.agents.ref(agent.id).timeline.refetch({ direction: "tail", limit: 8, wholeTurns: true });
+        const hasTurnIds = page.entries.some((e) => typeof (e as { turnId?: string }).turnId === "string");
+        for (const entry of page.entries) {
+          const entryTurnId = (entry as { turnId?: string }).turnId;
+          if (hasTurnIds && entryTurnId !== turnId) continue;
+          const { item } = entry;
+          if (item.type !== "tool_call" || item.status !== "completed") continue;
+          const feedback = nativeFeedback(item.name, item.detail);
+          if (feedback) await chat.noteUsage(agent.id, feedback.args, feedback.text, paseo);
+        }
+      } catch { /* The native session may already have closed. */ }
+    }
     if (/^[a-zA-Z0-9_-]+$/.test(agent.id)) {
       const config = process.env.CLYDE_CONFIG_DIR || join(homedir(), ".config/memory");
       try {
@@ -441,23 +533,18 @@ export function residents(server: PluginServerContext) {
   server.handle(rosterRpc, async ({workspaceId}, { paseo }) => {
     api = paseo; chat.bind(paseo);
     const roster = new Map<string, Resident>();
-    let cursor: string | undefined;
-    do {
-      const page = await paseo.agents.list({ page: { cursor, limit: 100 } });
-      for (const { agent } of page.entries) {
-        if (!isResidentChat(agent) || (workspaceId && agent.workspaceId !== workspaceId)) continue;
-        const row = discover(agent.id, agent.cwd, agent.provider);
-        // A live, unarchived snapshot is authoritative after a chat is restored.
-        if (row.archived) {
-          delete row.archived;
-          save();
-        }
-        const status = agent.pendingPermissions?.length ? "Waiting for approval"
-          : agent.providerUnavailable ? "Provider unavailable" : agent.status;
-        roster.set(agent.id, { ...row, model: agent.model ?? undefined, status });
+    for (const agent of await listAllAgents(paseo)) {
+      if (!isResidentChat(agent) || (workspaceId && agent.workspaceId !== workspaceId)) continue;
+      const row = discover(agent.id, agent.cwd, agent.provider);
+      // A live, unarchived snapshot is authoritative after a chat is restored.
+      if (row.archived) {
+        delete row.archived;
+        save();
       }
-      cursor = page.pageInfo?.hasMore ? page.pageInfo.nextCursor ?? undefined : undefined;
-    } while (cursor);
+      const status = agent.pendingPermissions?.length ? "Waiting for approval"
+        : agent.providerUnavailable ? "Provider unavailable" : agent.status;
+      roster.set(agent.id, { ...row, model: agent.model ?? undefined, status });
+    }
     const names = new Map<string, Resident[]>();
     for (const resident of roster.values()) {
       const key = JSON.stringify([resident.project, resident.title]);

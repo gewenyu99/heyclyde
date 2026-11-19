@@ -6,10 +6,12 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const WAIT_MS = 20_000;
 const RECONNECT_MS = 3_000;
+const CALL_TIMEOUT_MS = 15_000;
 
 type Info = { port: number; token: string };
 
@@ -25,33 +27,76 @@ export function readJson<T>(name: string): T | null {
   }
 }
 
+export function resolveCompanionBin(): string | null {
+  const bundled = join(dirname(fileURLToPath(import.meta.url)), "..", "runtime", "bin", "clyde.ts");
+  if (existsSync(bundled)) return bundled;
+  try {
+    const path = join(process.env.PASEO_HOME || join(homedir(), ".paseo"), "config.json");
+    const source = JSON.parse(readFileSync(path, "utf8")).plugins?.clyde;
+    if (source?.source === "directory" && source.path) {
+      const configured = join(source.path, "runtime", "bin", "clyde.ts");
+      if (existsSync(configured)) return configured;
+    }
+  } catch { /* Config file is optional. */ }
+  return null;
+}
+
+let ensuring: Promise<void> | null = null;
+
+/** Follows the daemon's event stream. Every event, and every reconnect, moves the revision and wakes the waiters. */
+export async function ensureCompanion() {
+  if (ensuring) return ensuring;
+  ensuring = (async () => {
+    const bin = resolveCompanionBin();
+    if (bin) await promisify(execFile)(process.execPath, [bin, "daemon", "ensure"], { timeout: 20_000 });
+  })().finally(() => { ensuring = null; });
+  return ensuring;
+}
+
 function info(): Info {
   const i = readJson<Info>("daemon.json");
   if (!i) throw new Error("clyde isn't running on this machine. Run clyde up.");
   return i;
 }
 
-export async function call<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
-  const i = info();
-  const res = await fetch(`http://127.0.0.1:${i.port}${path}`, {
-    method, headers: { authorization: `Bearer ${i.token}`, ...(body ? { "content-type": "application/json" } : {}) },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const text = await res.text();
-  if (!res.ok) throw new Error(`clyde answered ${res.status} for ${path}: ${text.slice(0, 200)}`);
-  return JSON.parse(text) as T;
+export async function call<T>(
+  method: "GET" | "POST",
+  path: string,
+  body?: unknown,
+  opts?: { recover?: false | (() => Promise<void>); timeoutMs?: number },
+): Promise<T> {
+  const recoverFn = opts?.recover === false ? null : (opts?.recover ?? ensureCompanion);
+  const timeoutMs = opts?.timeoutMs ?? CALL_TIMEOUT_MS;
+  const once = async () => {
+    const i = info();
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), timeoutMs);
+    try {
+      const res = await fetch(`http://127.0.0.1:${i.port}${path}`, {
+        method,
+        headers: { authorization: `Bearer ${i.token}`, ...(body ? { "content-type": "application/json" } : {}) },
+        body: body ? JSON.stringify(body) : undefined,
+        signal: abort.signal,
+      });
+      const text = await res.text();
+      if (!res.ok) throw new Error(`clyde answered ${res.status} for ${path}: ${text.slice(0, 200)}`);
+      return JSON.parse(text) as T;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  try {
+    return await once();
+  } catch (err) {
+    const msg = String(err);
+    const offline = msg.includes("clyde isn't running") || msg.includes("ECONNREFUSED") || msg.includes("fetch failed");
+    if (!recoverFn || !offline) throw err;
+    await recoverFn();
+    return await once();
+  }
 }
 
 export type Live = { revision(): number; wait(after: number, ms?: number): Promise<number>; close(): void };
-
-/** Follows the daemon's event stream. Every event, and every reconnect, moves the revision and wakes the waiters. */
-export async function ensureCompanion() {
-  const path=join(process.env.PASEO_HOME || join(homedir(),".paseo"),"config.json");
-  const source=JSON.parse(readFileSync(path,"utf8")).plugins?.clyde;
-  if(source?.source!=="directory" || !source.path)return;
-  const bin=join(source.path,"runtime","bin","clyde.ts");
-  if(existsSync(bin))await promisify(execFile)("node",[bin,"daemon","ensure"],{timeout:20000});
-}
 
 export function follow(recover?:()=>Promise<void>): Live {
   let lastRecovery=0;

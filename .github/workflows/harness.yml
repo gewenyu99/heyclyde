@@ -34,6 +34,34 @@ jobs:
       - name: Tier 1, worker and workspace tests
         run: npm test
 
+  paseo:
+    name: Paseo plugin and runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Paseo plugin devDependencies
+        run: npm --prefix plugins/paseo ci
+      - name: Paseo plugin typecheck and unit tests
+        run: npm --prefix plugins/paseo run typecheck && npm --prefix plugins/paseo test
+      - name: Paseo runtime test suite
+        run: npm --prefix plugins/paseo/runtime test
+      - name: Package tarball and verify clean unpack
+        run: |
+          pkg_dir="$(mktemp -d)"
+          tarball="$(cd plugins/paseo && npm pack --pack-destination "$pkg_dir" | tail -n 1)"
+          unpack="$pkg_dir/unpacked"
+          mkdir -p "$unpack"
+          tar -xzf "$pkg_dir/$tarball" -C "$unpack"
+          for rel in paseo-plugin.json index.client.tsx index.server.ts runtime/bin/clyde.ts runtime/package.json; do
+            test -f "$unpack/package/$rel"
+          done
+          node "$unpack/package/runtime/bin/clyde.ts" help >/dev/null
+          rm -rf "$pkg_dir"
+
   memory:
     name: Memory and tier 3
     runs-on: ubuntu-latest

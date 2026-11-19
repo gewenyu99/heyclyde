@@ -3,7 +3,7 @@
  * Only top-level work is a task. Workers, judges and reviewers are background agents, counted and never listed.
  * A task's pieces are what its plan says to do, titled in plain words. The skills that build a piece are its phases.
  */
-import type { Ask, AttemptView, Criterion, Home, Phase, Piece, Status, Step, TaskCard, TaskView, Transcript } from "../shared/clyde";
+import type { Ask, AttemptView, Criterion, Home, Phase, Piece, Status, Step, TaskCard, TaskView, Transcript } from "../shared/clyde.ts";
 
 export type RawRung = { backend: string; model?: string; effort?: string };
 export type RawTurn = { n: number; prompt: string; startedAt: string; endedAt?: string; ok?: boolean; text?: string; error?:string };
@@ -29,7 +29,7 @@ export type RawSlice = { id: string; title?: string; acceptance?: string[] };
 export type RawRun = {
   archivedAt?:string; verifiedNotes?:{id:string;title:string;sources:string[]}[];
   repo?:string;
-  routes?: Record<string, {model: string; reason: string}>; auditedHead?: string;
+  routes?: Record<string, {model: string; reason: string}>; auditedHead?: string; pullRequest?: string;
   id: string; flow: string; title: string; status: string; input?: { intent?: string; prompt?: string; title?: string; criteria?: string[] };
   error?: string; parentThreadId?: string; branch?: string; base?: string; cwd?: string; stages: RawStage[]; question?: string; asks?: RawAsk[];
   plan?: { intent?: string; slices?: RawSlice[] }; createdAt: string; updatedAt: string; endedAt?: string;
@@ -191,6 +191,7 @@ function runCard(r: RawRun, agents: Record<string, string>, threads: RawThread[]
   const failedStage = r.stages.findLast(stage=>stage.status==="failed");
   return {
     checkSummary:checks.length ? `${checks.filter(c=>c.code===0).length}/${checks.length} stage checks passed` : undefined,
+    pullRequest: r.pullRequest,
     kind: "run", id: r.id, name: r.title, why: firstSentence(r.input?.intent ?? r.input?.prompt), status: r.status==="running" && live?.status==="sent-back" ? "sent-back" : runStatus(r),
     pips, ...counts(pips),
     current: r.status==="failed" ? firstSentence(r.error ?? failedStage?.attempts.at(-1)?.reason ?? "Run failed",180) : live ? `${live.id === "PLAN" || live.id === "TASK" ? "" : `${live.id} `}${live.title}${livePhase(live)}${live.progress ? ` — ${live.progress}` : ""}`
@@ -231,6 +232,10 @@ function threadAsk(t: RawThread, now: Date): Ask | null {
   return { kind: "thread", id: t.id, task: t.title, why: firstSentence(t.turns[0]?.prompt), question, askedAt: last.endedAt, approve: false };
 }
 
+function isPlanApproval(ask?: { kind?: string; question?: string }, question?: string): boolean {
+  return ask?.kind === "approve" && /^approve\b[^?\n]*\bplan\b/i.test(question ?? ask.question ?? "");
+}
+
 export function home(threads: RawThread[], runs: RawRun[], agents: Record<string, string>, revision: number, now = new Date()): Home {
   const top = runs.filter((r) => !r.archivedAt && !r.parentThreadId && !TEST_TITLE.test(r.title));
   const needsYou: Ask[] = [];
@@ -238,7 +243,7 @@ export function home(threads: RawThread[], runs: RawRun[], agents: Record<string
     if (r.status !== "asking") continue;
     const open = [...(r.asks ?? [])].reverse().find((a) => a.answer === undefined);
     const question = r.question ?? open?.question ?? "";
-    const approve = open?.kind==="approve" && /^approve\b[^?\n]*\bplan\b/i.test(question);
+    const approve = isPlanApproval(open, question);
     needsYou.push({
       retryable:open?.kind==="provider"||open?.kind==="limit",fullAccess:open?.kind==="provider"&&question.includes("allow Antigravity full access for this run"),askKey:open?.key,blockedStage:r.stages.findLast(s=>s.status==="asking")?.name,
       kind: "run", id: r.id, task: r.title, why: firstSentence(r.input?.intent ?? r.input?.prompt),
@@ -256,7 +261,7 @@ export function home(threads: RawThread[], runs: RawRun[], agents: Record<string
     ...top.filter((r) => r.status === "running" || r.status === "asking" || (["done","failed"].includes(r.status) && sameDay(r.endedAt, now))).map((r) => runCard(r, agents, threads)),
     ...solo.filter((t) => t.status === "running" || t.status === "queued" || (["idle","failed"].includes(t.status) && sameDay(t.turns[t.turns.length - 1]?.endedAt, now))).map((t) => threadCard(t, agents)),
   ];
-  const background = threads.filter((t) => !standalone(t) && !TEST_TITLE.test(t.title) && (t.status === "running" || t.status === "queued")).length;
+  const background = threads.filter((t) => !t.archivedAt && !standalone(t) && !TEST_TITLE.test(t.title) && (t.status === "running" || t.status === "queued")).length;
   return {
     needsYou: needsYou.sort((a, b) => a.askedAt.localeCompare(b.askedAt)),
     tasks: cards.filter(live).sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
@@ -308,15 +313,15 @@ export function task(r: RawRun, threads: RawThread[], agents: Record<string, str
   const rep = r.stages[0]?.attempts[0]?.threadId;
   return {
     kind: "run", id: r.id, name: r.title, status: runStatus(r), startedAt: r.createdAt,
-    routing: Object.entries(r.routes ?? {}).map(([stage, s]) => stage + ": " + s.model + " · " + s.reason), auditedHead: r.auditedHead,
+    routing: Object.entries(r.routes ?? {}).map(([stage, s]) => stage + ": " + s.model + " · " + s.reason), auditedHead: r.auditedHead, pullRequest: r.pullRequest,
     askKey:open?.key,retryable:open?.kind==="provider"||open?.kind==="limit",fullAccess:open?.kind==="provider"&&open.question.includes("allow Antigravity full access for this run"),
     verifiedNotes:r.verifiedNotes,completionCriteria:r.input?.criteria?.filter(value=>typeof value==="string" && value.trim()),
     goal: firstSentence(r.plan?.intent ?? r.input?.intent ?? r.input?.prompt, 220), summary: summary(r, all, live),
     lastActivity: lastActivity(r, threads),
-    question: r.status === "asking" ? r.question ?? open?.question : undefined, approve: open?.kind === "approve", branch: r.branch,
+    question: r.status === "asking" ? r.question ?? open?.question : undefined, approve: isPlanApproval(open, r.question), branch: r.branch,
     steps: s, attempts, selected: (live ?? all.filter((p) => p.status !== "pending").slice(-1)[0] ?? all[0])?.id,
     passed: all.filter((p) => p.status === "passed").length, total: all.length,
-    background: threads.filter((t) => ids.has(t.id) && (t.status === "running" || t.status === "queued")).length,
+    background: threads.filter((t) => !t.archivedAt && ids.has(t.id) && (t.status === "running" || t.status === "queued")).length,
     agentId: threads.findLast(t=>t.runId===r.id&&t.paseoAgentId)?.paseoAgentId ?? (rep ? agents[rep] : undefined),
   };
 }

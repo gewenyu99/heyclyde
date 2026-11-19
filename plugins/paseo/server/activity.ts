@@ -25,6 +25,7 @@ import { call, readJson } from "./daemon.ts";
 
 type Origin = {
   agent: string;
+  managedByResident?: boolean;
   resultNote?: string;
   job?: {
     quest: number;
@@ -97,10 +98,13 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
     writeFileSync(file + ".tmp", JSON.stringify(origins), { mode: 0o600 });
     renameSync(file + ".tmp", file);
   };
-  function track(run: string, agent: string, paseo: PaseoApi) {
-    api = paseo;
+  function track(run: string, agent: string, paseo?: PaseoApi, managedByResident = false) {
+    if (paseo) api = paseo;
     if (!origins[run]) {
-      origins[run] = { agent };
+      origins[run] = { agent, ...(managedByResident ? { managedByResident: true } : {}) };
+      save();
+    } else if (managedByResident && !origins[run].managedByResident) {
+      origins[run].managedByResident = true;
       save();
     }
   }
@@ -326,12 +330,14 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
         await launch(...existing);
         return { id: existing[0] };
       }
+      const owner = rowFor(agent);
+      if (!owner) throw new Error("Open the project chat before starting a quest.");
       const item: BoardQuest | undefined = (await board(agent)).find((q) => q.id === quest);
       if (!item) throw new Error("This quest is no longer open");
       const run = "r-" + randomUUID(),
         origin: Origin = {
           agent,
-          job: { quest, title: item.title, brief: item.brief, criterion: item.done_when, cwd: rowFor(agent)!.cwd },
+          job: { quest, title: item.title, brief: item.brief, criterion: item.done_when, cwd: owner.cwd },
         };
       origins[run] = origin;
       save();
@@ -359,7 +365,7 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
         try {
           const row = rowFor(origin.agent), job = origin.job, run = byId.get(id);
           if (run) await asks(run, origin.agent);
-          if (run?.status === "done" && row && !job && !origin.resultNote) {
+          if (run?.status === "done" && row && !job && !origin.managedByResident && !origin.resultNote) {
             const evidence = [run.stages.at(-1)?.summary, run.auditedHead && "Audited " + run.auditedHead, run.id]
               .filter(Boolean).join("\n").slice(0, 1900);
             const args = {
@@ -395,6 +401,7 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
                 title: job.title,
                 body: evidence.slice(0, 490),
                 evidence,
+                project_slug: row.project,
               });
               job.note = note.match(/^Remembered (\S+)\./)?.[1];
               save();

@@ -1,11 +1,37 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 
-export type Identity = { id: string; project: string; role: string; provider: string };
+export type Identity = { id: string; project: string; role: string; provider: string; context?: string };
 const MAX_SESSIONS = 512;
 const sessions = new Map<string, Promise<string>>();
+
+function readConfigValue(dir: string, file: string): string {
+  const path = join(dir, file);
+  let value = "";
+  try {
+    value = readFileSync(path, "utf8").trim();
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new Error("Clyde isn't connected on this machine. Run `clyde install` or sign in first.");
+    }
+    throw err;
+  }
+  if (!value) throw new Error(`Clyde config file ${file} is empty. Run \`clyde install\` to reconnect.`);
+  return value;
+}
+
+function readServerId(): string {
+  const path = join(process.env.PASEO_HOME || join(homedir(), ".paseo"), "server-id");
+  try {
+    if (existsSync(path)) {
+      const value = readFileSync(path, "utf8").trim();
+      if (value) return value;
+    }
+  } catch { /* Fall back to host fingerprint below. */ }
+  return createHash("sha256").update(hostname() || "local").digest("hex").slice(0, 16);
+}
 
 export async function agentReply(agent: Identity, tool: string, args: Record<string, unknown>) {
   return scopedReply(agent,tool,args);
@@ -15,16 +41,17 @@ export async function sharedBoardReply(args:Record<string,unknown>) {
 }
 async function scopedReply(agent:Identity|null,tool:string,args:Record<string,unknown>){
   const config = process.env.CLYDE_CONFIG_DIR || join(homedir(), ".config/memory");
-  const token = readFileSync(join(config, "token"), "utf8").trim();
-  const base = readFileSync(join(config, "url"), "utf8").trim().replace(/\/$/, "");
+  const token = readConfigValue(config, "token");
+  const base = readConfigValue(config, "url").replace(/\/$/, "");
   const url = new URL(base + "/mcp");
   if (url.protocol !== "https:" && !["127.0.0.1", "localhost"].includes(url.hostname)) {
     throw new Error("Clyde requires HTTPS");
   }
-  const host = readFileSync(join(process.env.PASEO_HOME || join(homedir(), ".paseo"), "server-id"), "utf8").trim();
+  const host = readServerId();
   const hash = (...parts: string[]) => createHash("sha256").update(JSON.stringify(parts)).digest("hex");
   const name = agent ? "paseo-"+hash(host,agent.id).slice(0,32) : "clyde-paseo-board";
-  const key = hash(base,token,name,agent?.project??"",agent?.role??"");
+  const realm = agent?.context ?? "work";
+  const key = hash(base, token, name, agent?.project ?? "", agent?.role ?? "", agent?.provider ?? "", realm);
   async function rpc(method: string, params: object, session?: string) {
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), 10000);
@@ -68,7 +95,7 @@ async function scopedReply(agent:Identity|null,tool:string,args:Record<string,un
           arguments: {
             name,
             surface: "paseo",
-            context: "work",
+            context: realm,
             type: "coding",
             harness: agent.provider,
             description: agent.role,

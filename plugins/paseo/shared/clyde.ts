@@ -13,7 +13,7 @@ export type Ask = {
 /** One top-level task: a run the point man started, or a standalone point-man thread. */
 export type TaskCard = {
   kind: "run" | "thread"; id: string; name: string; why: string; status: Status;
-  checkSummary?:string;
+  checkSummary?:string; pullRequest?: string;
   pips: Status[]; passed: number; running: number; sentBack: number; pending: number;
   current: string; rung?: string; startedAt: string; endedAt?: string; lastActivity?: string; agentId?: string;
 };
@@ -50,7 +50,7 @@ export type AttemptView = {
 export type TaskView = {
   verifiedNotes?:{id:string;title:string;sources:string[]}[];
   retryable?:boolean; fullAccess?:boolean; askKey?:string; completionCriteria?: string[];
-  routing?: string[]; auditedHead?: string;
+  routing?: string[]; auditedHead?: string; pullRequest?: string;
   kind: "run" | "thread"; id: string; name: string; status: Status; startedAt: string; summary: string;
   question?: string; approve: boolean; branch?: string;
   goal: string; lastActivity?: string; diff?: Diff;
@@ -117,13 +117,23 @@ export const residentRpc = defineRpc({ name: "clyde.resident", input: z.object({
 
 export const steerRpc = defineRpc({name:"clyde.steer",input:z.object({id:z.string(),text:z.string().trim().min(1)}),output:z.object({ok:z.boolean()})});
 
+export const projectChat = z.object({
+  id: z.string(),
+  title: z.string(),
+  provider: z.string(),
+  updatedAt: z.string(),
+});
+export type ProjectChat = z.infer<typeof projectChat>;
+
 export const projectsRpc = defineRpc({
-  name:"clyde.projects", input:z.object({workspaceId:z.string().optional()}), output:z.array(z.object({id:z.string(),name:z.string(),path:z.string()})),
+  name:"clyde.projects",
+  input:z.object({workspaceId:z.string().optional()}),
+  output:z.array(z.object({id:z.string(),name:z.string(),path:z.string(),chats:z.array(projectChat)})),
 });
 export const workerModels = ["auto", "sol", "sonnet", "opus", "astra", "neon"] as const;
 export const launchRpc = defineRpc({
   name:"clyde.launch", input:z.object({project:z.string().min(1),prompt:z.string().trim().min(1).max(12000),criteria:z.array(z.string().trim().min(1).max(4000)).max(64).optional(),
-    allowAntigravityFullAccess:z.boolean().optional(),flow:z.enum(["task","ship"]),worker:z.enum(workerModels),requestId:z.string().uuid(),agentId:z.string().optional()}),
+    allowAntigravityFullAccess:z.boolean().optional(),flow:z.enum(["task","ship"]),worker:z.enum(workerModels),requestId:z.string().uuid(),agentId:z.string().optional(),newChat:z.boolean().optional()}),
   output:z.object({id:z.string()}),
 });
 

@@ -5,10 +5,8 @@
   "files": [
     "paseo-plugin.json",
     "OVERVIEW.md",
-    "index.client.ts",
     "index.client.tsx",
     "index.server.ts",
-    "index.server.tsx",
     "client/",
     "server/",
     "shared/",
@@ -17,6 +15,7 @@
     "runtime/flows/",
     "runtime/pi/",
     "runtime/package.json",
+    "runtime/package-lock.json",
     "skills/"
   ],
   "scripts": {
