@@ -1,4 +1,5 @@
 import type { PluginTheme } from "@getpaseo/plugin";
+import { Markdown } from "@getpaseo/plugin/client/ui";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
 import { useRef, useState } from "react";
@@ -53,7 +54,9 @@ export function SupervisorChat({ theme, runId }: { theme: PluginTheme; runId: st
         {state?.messages.map((message, index) => (
           <View key={index} style={{ padding: 10, gap: 4, borderRadius: 6, backgroundColor: message.role === "user" ? c.surface2 : c.surface0 }}>
             <Text style={{ fontSize: 12, fontWeight: "600", color: c.foregroundMuted }}>{message.role === "user" ? "You" : "Clyde"}</Text>
-            <Text selectable style={{ fontSize: 14, lineHeight: 21, color: c.foreground }}>{message.text}</Text>
+            {message.role === "assistant"
+              ? <Markdown>{message.text}</Markdown>
+              : <Text selectable style={{ fontSize: 14, lineHeight: 21, color: c.foreground }}>{message.text}</Text>}
           </View>
         ))}
       </ScrollView>

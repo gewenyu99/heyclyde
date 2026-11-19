@@ -229,13 +229,19 @@ function runActivity(r: RawRun, threads: RawThread[]): NonNullable<TaskView["run
   const reviewer = threads.find(t => t.id === attempt?.judgeId);
   const active = (t?: RawThread) => t?.status === "running" || t?.status === "queued";
   if (attempt?.verdict?.verdict === "pass") return activity(`Review passed for ${label}`);
+  // Only the currently running worker's own exact launcher marker can offer a permission link.
+  // Older helpers did not clear this marker on resolution, so describe the request rather than claiming a live block.
+  const permission = worker?.progress?.match(/^Permission requested in Paseo worker ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i)?.[1];
+  if (permission && worker?.paseoAgentId === permission && worker.runId === r.id && !worker.archivedAt && !worker.readOnly && worker.status === "running" && stage.status === "running" && !attempt?.result && !attempt?.endedAt && !attempt?.verdict && attempt?.ok !== false && !attempt?.judgeId) {
+    return { ...activity(`Permission requested by worker for ${label}${round}`, reason), permissionAgentId: worker.paseoAgentId };
+  }
   if (attempt?.judgeId && !attempt.verdict && active(reviewer)) return activity(`Reviewer is checking ${label}${round}`, reason);
   if (rejected && !active(worker)) {
     const outcome = interrupted(attempt!) ? "was interrupted" : attempt?.verdict?.verdict === "fail" || attempt?.checks?.some(c => c.code !== 0) ? "was sent back" : "failed";
     return activity(`${capitalize(label)} ${outcome}${round}`, reason);
   }
   if (!active(worker) && (attempt?.result || attempt?.endedAt || worker?.status === "idle")) return activity(`Waiting for review of ${label}${round}`, reason);
-  const progress = worker?.progress && worker.progress !== "SessionEnd" ? firstSentence(worker.progress, 140) : undefined;
+  const progress = worker?.progress && worker.progress !== "SessionEnd" && !worker.progress.startsWith("Permission requested in Paseo worker ") ? firstSentence(worker.progress, 140) : undefined;
   return activity(`Worker is ${reason ? "retrying" : "working on"} ${label}${round}${progress ? ` — ${progress}` : ""}`, reason);
 }
 

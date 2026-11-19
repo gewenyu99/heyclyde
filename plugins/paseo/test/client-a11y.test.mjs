@@ -198,14 +198,22 @@ test("client TSX components obey typography floor, accessible controls, dedicate
   assert.match(task, /activity\?\.headline \|\| view.summary/);
   assert.match(task, /Latest finding/);
   assert.match(task, /Why it was sent back/);
-  assert.match(task, /\{details && <View[\s\S]*?<Meta[\s\S]*?<RunEvidence[\s\S]*?<FlowDiagram[\s\S]*?<Legend/);
+  assert.doesNotMatch(task, /FlowDiagram|PhaseBar|PieceDetail|function Meta|function Legend|\[details, setDetails\]/);
+  assert.match(task, /stages\.map\(stage =>/);
+  assert.match(task, /setPicked\(stage.stage\)/);
+  assert.match(task, /<StageAttempts key=\{stage.stage\}/);
+  assert.match(task, /Review permission in Paseo/);
+  assert.match(task, /openAgent\(activity.permissionAgentId!/);
+  assert.match(task, /check\.output/);
+  assert.match(task, /past\.map\(a => <AttemptRow/);
+  assert.doesNotMatch(task, /Open conversation in Paseo/);
   assert.match(task, /view.kind === "run" && view.status === "running" && <Steering/);
   assert.doesNotMatch(task, />Home<|Clyde \/ Task \//);
   assert.equal((screen.match(/<Roster\b/g) ?? []).length, 1, "Roster appears only on Agents tab");
   assert.match(screen, /\[mobilePane, setMobilePane\]/);
   assert.match(screen, /display: !wide && mobilePane === "task" \? "none" : "flex"/);
   assert.match(screen, /\(!workToReview \|\| newTask\) && <Panel/);
-  assert.match(task, /!embeddedSupervisor && <OpenChatButton/);
+  assert.match(task, /!embeddedSupervisor && !activity\?\.permissionAgentId && <OpenChatButton/);
 
   // Quest #46 client contrast, ARIA, keyboard, and chat-picker invariants.
   assert.match(brand, /export \{ scheme \}/);
@@ -224,7 +232,7 @@ test("client TSX components obey typography floor, accessible controls, dedicate
   assert.match(screen, /accessibilityRole="tablist"/);
   assert.match(sidecar, /accessibilityRole="tablist"/);
   assert.match(quests, /accessibilityRole="tablist"/);
-  assert.match(task, /STATUS_LABEL\[p\.status\]/);
+  assert.match(task, /STATUS_LABEL\[stage\.status\]/);
   assert.match(home, /STATUS_LABEL\[card\.status\]/);
   assert.match(sidecar, /STATUS_LABEL\[t\.status\]/);
   assert.match(sidecar, /const needsCount = needsSet\.size/);

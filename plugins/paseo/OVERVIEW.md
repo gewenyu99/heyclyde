@@ -1,6 +1,6 @@
 # Clyde
 
-Type `/clyde` in a Paseo project chat to open Clyde beside it. The right panel has three tabs.
+Open **Clyde** in the sidebar for the board across projects. In a workspace, choose **+ → Clyde**, use the Command Center, or type `/clyde` to open a Clyde tab beside your chat. The compact Explorer panel also offers these controls.
 
 - **Quests** opens your shared board across projects. Active includes open and claimed work. Search by number, title, project or tag. A chat’s confirmed responsibilities and scope determine which quests it can claim. Select a quest to read its brief and completion criteria, then choose **Start task from quest** to claim it and launch a background run.
 - **New task** starts work in an isolated Git worktree. Choose **Quick task** for a bounded change or **Plan a feature** to review the design first. Leave the worker on **Auto** or select one yourself.
@@ -14,7 +14,9 @@ The [Clyde design system](../../design/README.md) supplies the logo, typography 
 
 ## Returning to work
 
-The board shows how many tasks finished today and how many await a reply. Open decisions and today’s failures appear first. On the full-screen **Board**, starting or opening a run shows the task and **Chat with Clyde** together. Ask about a failed attempt, saved plan, or check while the worker continues. Reopen the run to resume the same conversation. The task shows what the worker or reviewer is doing, the latest finding, and why a retry was requested. Pending decisions appear inline. Expand **Run details** for checks, attempt history, worker instructions, and stop controls. Open a run to see its completion criteria, audited revision when available, and check results from the latest attempt at each stage. Failed checks show their command and exit code; expand the evidence for the output. Model routing and transcripts are available on demand.
+Selecting a run opens its stages, latest finding, checks, and supervisor conversation. Switching to another workspace tab and back restores the selected task. **Back to board** returns to the queue. Open a stopped or older run from **Task history**.
+
+Ask **Chat with Clyde** about an attempt or saved plan while the worker continues. Replies use Paseo’s Markdown renderer. Pending decisions appear on the task. If a worker requests permission, **Review permission in Paseo** opens that worker. Select a stage to inspect its attempts and transcript.
 
 ## Routing
 

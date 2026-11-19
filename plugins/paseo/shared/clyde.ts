@@ -54,7 +54,7 @@ export type TaskView = {
   routing?: string[]; auditedHead?: string; pullRequest?: string;
   kind: "run" | "thread"; id: string; name: string; status: Status; startedAt: string; summary: string;
   question?: string; approve: boolean; branch?: string;
-  runActivity?: { headline: string; latestResult?: string; retryReason?: string };
+  runActivity?: { headline: string; latestResult?: string; retryReason?: string; permissionAgentId?: string };
   savedPlanIntent?: string; goal: string; lastActivity?: string; diff?: Diff;
   steps: Step[]; attempts: Record<string, AttemptView[]>; selected?: string;
   passed: number; total: number; background: number; agentId?: string;

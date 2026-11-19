@@ -89,6 +89,7 @@ try{
       await child.refresh()
     }while(child.pendingPermissions?.length && !aborted && Date.now()<deadline)
     if(aborted || Date.now()>=deadline){await stop();throw Error('Paseo worker stopped while awaiting permission')}
+    console.log(JSON.stringify({progress:'Paseo worker resumed after permission request'}))
     result=await child.waitForFinish(Math.max(1,deadline-Date.now()))
   }
   if(result.status!=='idle'){

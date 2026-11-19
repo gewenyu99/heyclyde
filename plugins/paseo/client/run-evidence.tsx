@@ -17,6 +17,9 @@ export function RunEvidence({ view, theme }: { view: TaskView; theme: PluginThem
   });
   const failed = checks.filter((check) => check.code !== 0);
   const visible = expanded ? checks : failed.slice(0, 2);
+  const criteria = (view.completionCriteria ?? []).filter(item => item !== view.goal && item !== view.name);
+  const hasVerification = !!(checks.length || view.auditedHead || view.verifiedNotes?.length);
+  if (!criteria.length && !hasVerification && !prUrl) return null;
   return (
     <View style={{ gap: 7, marginTop: 12 }}>
       {prUrl && (
@@ -31,16 +34,15 @@ export function RunEvidence({ view, theme }: { view: TaskView; theme: PluginThem
           </Text>
         </Pressable>
       )}
-      {!!view.completionCriteria?.length &&
-        !(view.completionCriteria.length === 1 && view.completionCriteria[0] === view.goal) && (
+      {!!criteria.length && (
         <View style={{ gap: 3 }}>
           <Text style={{ color: c.foregroundMuted, fontSize: 12, fontWeight: "700" }}>DONE WHEN</Text>
-          {view.completionCriteria.map((criterion, i) => (
+          {criteria.map((criterion, i) => (
             <Text key={i} style={{ color: c.foreground, fontSize: 13, lineHeight: 19 }}>{criterion}</Text>
           ))}
         </View>
       )}
-      <Text style={{ color: c.foregroundMuted, fontSize: 12, fontWeight: "700" }}>VERIFICATION</Text>
+      {hasVerification && <Text style={{ color: c.foreground, fontSize: 14, fontWeight: "600" }}>Verification</Text>}
       {!!view.verifiedNotes?.length && (
         <>
           <Pressable
@@ -96,7 +98,7 @@ export function RunEvidence({ view, theme }: { view: TaskView; theme: PluginThem
             ))}
           </>
         )
-        : !view.verifiedNotes?.length && !prUrl && <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>No stage check results recorded.</Text>}
+        : null}
     </View>
   );
 }

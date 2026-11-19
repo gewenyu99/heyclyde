@@ -1,5 +1,5 @@
 import type { PluginTheme } from "@getpaseo/plugin";
-import type { PluginScreenProps } from "@getpaseo/plugin/client";
+import type { PluginScreenProps, PluginWorkspacePanelProps, PluginTab } from "@getpaseo/plugin/client";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
@@ -32,22 +32,35 @@ function Panel({ theme, children }: { theme: PluginTheme; children: ReactNode })
   );
 }
 
+// Screens remount on navigation. Workspace tabs also carry Paseo-persisted state.
+const lastTask = new Map<string, string>();
+
 function Board(
-  { theme: hostTheme, layout, navigation, workspaceId, initialTask = "" }:
+  { theme: hostTheme, layout, navigation, workspaceId, initialTask, selectionKey, panelTab }:
     & Pick<PluginScreenProps, "theme" | "layout" | "navigation">
-    & { workspaceId?: string; initialTask?: string },
+    & { workspaceId?: string; initialTask?: string; selectionKey: string; panelTab?: PluginTab },
 ) {
   const theme=clydeTheme(hostTheme);
   useLive();
   const openAgent=navigation ? (agentId:string)=>navigation.openAgent({agentId}):undefined;
   const readHome = useRpc(homeRpc), readTask = useRpc(taskRpc);
-  const [picked, setPicked] = useState(initialTask),
+  const [picked, setSelected] = useState(() => {
+    if (initialTask) return initialTask;
+    if (typeof panelTab?.state === "string") return panelTab.state;
+    return lastTask.get(selectionKey) ?? "";
+  }),
     [width, setWidth] = useState(0),
     [newTask, setNewTask] = useState(false),
     [mobilePane, setMobilePane] = useState<"task" | "chat">("task"),
     [tab, setTab] = useState<"board" | "agents" | "quests">("board");
-  // Screen params can change while Paseo keeps this component mounted.
-  useEffect(() => { setPicked(initialTask); setTab("board"); }, [initialTask]);
+  useEffect(() => {
+    if (initialTask) lastTask.set(selectionKey, initialTask);
+  }, [initialTask, selectionKey]);
+  function setPicked(next: string) {
+    setSelected(next);
+    lastTask.set(selectionKey, next);
+    panelTab?.setState(next);
+  }
   const c = theme.colors, wide = width >= 860, inset = width >= 650 ? 20 : 12;
   const home = useQuery({
     queryKey: ["clyde", "home", workspaceId ?? "all"],
@@ -182,5 +195,11 @@ function Board(
   );
 }
 export function ClydeScreen(props: PluginScreenProps) {
-  return <Board {...props} initialTask={props.params.task} />;
+  const key = JSON.stringify([props.host.id, "screen"]);
+  return <Board key={key + (props.params.task ?? "")} {...props} initialTask={props.params.task} selectionKey={key} />;
+}
+
+export function ClydeWorkspacePanel(props: PluginWorkspacePanelProps) {
+  const key = JSON.stringify([props.host.id, "workspace", props.workspaceId]);
+  return <Board key={key} {...props} panelTab={props.tab} selectionKey={key} />;
 }

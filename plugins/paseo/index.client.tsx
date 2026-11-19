@@ -10,10 +10,9 @@ import { scheme, clydeTheme } from "./client/brand";
 import {artwork} from "./client/brand.generated";
 import {clydeIcon} from "./client/icon";
 import { Sidecar } from "./client/sidecar";
-import { ClydeScreen } from "./client/screen";
+import { ClydeScreen, ClydeWorkspacePanel } from "./client/screen";
 import { tones, useLive } from "./client/nodes";
 import { homeRpc } from "./shared/clyde";
-
 function Badge({ n, label, tone }: { n: number; label: string; tone: { ink: string; soft: string } }) {
   if (!n) return null;
   return (
@@ -60,10 +59,11 @@ export default function contribute(client: PluginClientContext) {
   }});
   client.addTimelineRenderer({kind:"clyde-activity",version:1,schema:activitySchema,Component:InlineActivity});
   client.addSlashCommand({name:"clyde-recall",context:"agent",description:"Recall Clyde memory in this chat",argumentHint:"what to recall",onSubmit:async ctx=>{await ctx.rpc(recallRpc,{agent:ctx.agent.id,query:ctx.args.trim()||"Recent decisions for this project"});}});
-  client.addWorkspacePanel({id:"board",title:"Clyde",icon:clydeIcon,locations:["workspace","explorer"],Component:Sidecar});
+  client.addWorkspacePanel({id:"board",title:"Clyde",icon:clydeIcon,locations:["workspace"],Component:ClydeWorkspacePanel});
+  client.addWorkspacePanel({id:"sidecar",title:"Clyde sidecar",icon:clydeIcon,locations:["explorer"],Component:Sidecar});
   client.addAgentPanel({id:"chat-board",title:"Clyde quests",icon:clydeIcon,locations:["explorer"],Component:Sidecar});
-  client.addSlashCommand({name:"clyde",context:"agent",description:"Open Clyde beside this chat",argumentHint:"",onSubmit:ctx=>ctx.openPanel("chat-board",{location:"explorer"})});
-  client.addCommandCenterItem({id:"beside-chat",icon:clydeIcon,title:"Open Clyde beside chat",context:"workspace",onSelect:ctx=>ctx.openPanel("board",{location:"explorer"})});
+  client.addSlashCommand({name:"clyde",context:"workspace",description:"Open Clyde as a workspace tab",argumentHint:"",onSubmit:ctx=>ctx.openPanel("board",{location:"workspace"})});
+  client.addCommandCenterItem({id:"beside-chat",icon:clydeIcon,title:"Open Clyde workspace tab",context:"workspace",onSelect:ctx=>ctx.openPanel("board",{location:"workspace"})});
   client.addScreen({ id: "clyde", title: "Clyde", Component: ClydeScreen });
   client.addSidebarHeaderItem({ id: "clyde", title: "Clyde", Component: ClydeItem });
   return () => {};

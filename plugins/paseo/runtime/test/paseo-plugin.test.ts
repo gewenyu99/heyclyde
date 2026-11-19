@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { createServer, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -334,4 +335,73 @@ test('task history reopens stopped and older runs and excludes removed work', ()
   ], {}, 1, NOW)
   assert.deepEqual(h.pastRuns?.map(r => r.id), ['stop', 'old'])
   assert.deepEqual(h.doneToday.map(r => r.id), ['today'])
+})
+
+
+const permissionAgent = 'ba8856e8-59c6-4e17-8c79-1d5168b8d731'
+const permissionWorker = (extra: Partial<RawThread> = {}) => thread({
+  id: 'worker', runId: 'r-ship', stage: 'task', status: 'running', paseoAgentId: permissionAgent,
+  progress: 'Permission requested in Paseo worker ' + permissionAgent, ...extra,
+})
+
+test('current managed worker permission request offers only its verified Paseo agent', () => {
+  const r = taskRun(taskStage([attempt(1, 'worker')]))
+  const worker = permissionWorker()
+  assert.deepEqual(task(r, [worker], {}).runActivity, {
+    headline: 'Permission requested by worker for the task', permissionAgentId: permissionAgent,
+  })
+  assert.equal(home([worker], [r], {}, 1, NOW).tasks[0].current, 'Permission requested by worker for the task')
+  for (const extra of [
+    { paseoAgentId: undefined }, { paseoAgentId: 'another-agent' }, { runId: 'another-run' },
+    { archivedAt: at(1) }, { readOnly: true }, { status: 'queued' }, { status: 'idle' }, { status: 'failed' },
+    { progress: 'Permission requested in Paseo worker ' + permissionAgent + ' trailing text' },
+    { progress: 'Permission requested in Paseo worker https://example.com' },
+  ]) {
+    const activity = task(r, [permissionWorker(extra)], {}).runActivity!
+    assert.equal(activity.permissionAgentId, undefined)
+    assert.doesNotMatch(activity.headline, /ba8856e8|Permission requested in Paseo/)
+  }
+})
+
+test('resolved, historical, reviewed and terminal permission requests have no permission action', () => {
+  const worker = permissionWorker()
+  const r = taskRun(taskStage([attempt(1, 'worker')]))
+  assert.deepEqual(task(r, [{ ...worker, progress: 'Paseo worker resumed after permission request' }], {}).runActivity, {
+    headline: 'Worker is working on the task — Paseo worker resumed after permission request',
+  })
+  for (const run of [
+    taskRun(taskStage([attempt(1, 'worker'), attempt(2, 'next')])),
+    taskRun(taskStage([attempt(1, 'worker')], 'passed')),
+    taskRun(taskStage([attempt(1, 'worker', { endedAt: at(1) })])),
+    taskRun(taskStage([attempt(1, 'worker', { result: { status: 'done', summary: 'Done.', evidence: [] } })])),
+    taskRun(taskStage([attempt(1, 'worker', { judgeId: 'reviewer' })])),
+    ...['done', 'stopped', 'failed', 'asking'].map(status => ({ ...r, status })),
+  ]) assert.equal(task(run, [worker], {}).runActivity?.permissionAgentId, undefined)
+})
+
+test('native launcher clears permission progress as soon as Paseo resolves the request', () => {
+  const base = mkdtempSync(join(tmpdir(), 'clyde-permission-'))
+  const dist = join(base, 'cli/dist'), sdk = join(base, 'client/dist')
+  mkdirSync(join(dist, 'utils'), { recursive: true })
+  mkdirSync(sdk, { recursive: true })
+  writeFileSync(join(base, 'package.json'), '{"type":"module"}')
+  writeFileSync(join(dist, 'utils/daemon-target.js'), 'export const selectDaemonTarget=()=>({})')
+  writeFileSync(join(dist, 'utils/client.js'), 'export const connectToDaemon=async()=>({close:async()=>{}})')
+  writeFileSync(join(sdk, 'index.js'), `
+    let waits=0
+    const child={id:${JSON.stringify(permissionAgent)},cwd:${JSON.stringify(base)},pendingPermissions:[],refresh:async()=>{},send:async()=>{},
+      waitForFinish:async()=>++waits===1?{status:'permission'}:{status:'idle',lastMessage:'finished'}}
+    export const createPaseoApi=()=>({agents:{ref:id=>id==='parent'?{refresh:async()=>{},current:()=>({provider:'codex'})}:child}})
+  `)
+  const output = execFileSync(process.execPath, [new URL('../src/paseo-worker.mjs', import.meta.url).pathname, dist], {
+    input: JSON.stringify({ first: false, id: permissionAgent, parent: 'parent', cwd: base, backend: 'codex', prompt: 'continue', timeoutMs: 5000 }),
+    encoding: 'utf8',
+  })
+  const events = output.trim().split('\n').map(line => JSON.parse(line))
+  assert.deepEqual(events, [
+    { started: permissionAgent },
+    { progress: 'Permission requested in Paseo worker ' + permissionAgent },
+    { progress: 'Paseo worker resumed after permission request' },
+    { ok: true, text: 'finished' },
+  ])
 })
