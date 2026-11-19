@@ -134,7 +134,7 @@ test("R49: no route returns another owner's rows", { skip: SKIP }, async () => {
   const bRecall = (await b.tool('recall', { query: `B ${MB}` })).text
   const bRid = /^retrieval (\S+)/.exec(bRecall)![1]
   assert.ok(!(await b.tool('post_message', { to: 'claude', body: `B message ${MB}` })).error)
-  const bQuest = (await b.tool('post_quest', { title: `B quest ${MB}`, brief: `B brief ${MB}`, done_when: 'Never.' })).text
+  const bQuest = (await b.tool('post_quest', { title: `B quest ${MB}`, brief: `B brief ${MB}`, done_when: 'Never.', tags: ['isolation'] })).text
   const bQid = /#(\d+)/.exec(bQuest)![1]
   const [bMsg] = sql(`select id from memory.message where owner_id = '${B.id}' and body like '%${MB}%'`)
   // One id both hold.
@@ -166,13 +166,21 @@ test("R49: no route returns another owner's rows", { skip: SKIP }, async () => {
     update_quest: { id: Number(bQid), note: 'A was here.' },
     complete_quest: { id: Number(bQid), evidence: 'A says so.', entry_id: aId },
     abandon_quest: { id: Number(bQid), reason: 'A gives up.' },
-    dispatch_quest: { action: 'peek', areas: ['none'] },
+    dispatch_quest: { action: 'peek', areas: ['isolation'] },
   }
   const list = JSON.parse((await bed.call('POST', '/mcp', bearer(A.token), { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })).text)
   const tools: string[] = list.result.tools.map((t: { name: string }) => t.name)
   // Each answer, with what A itself sent: an answer may name an id A asked about ("No entry <id>"), never one it didn't.
   const texts: { text: string; sent: string }[] = []
   for (const name of tools) texts.push({ text: `${name}: ${(await a.tool(name, ARGS[name] ?? {})).text}`, sent: JSON.stringify(ARGS[name] ?? {}) })
+  // Registered Paseo agent exercises dispatch_quest SQL paths with matching tag to prove tenant isolation on memory.quest.
+  const aPaseo = await bed.mcp(A.token)
+  assert.ok(!(await aPaseo.tool('register_agent', { name: `paseo-${nonce()}`, context: 'both', surface: 'paseo', description: 'A Paseo.' })).error)
+  const peekRes = await aPaseo.tool('dispatch_quest', { action: 'peek', areas: ['isolation'] })
+  assert.equal(peekRes.text, 'null')
+  const claimRes = await aPaseo.tool('dispatch_quest', { action: 'claim', id: Number(bQid), areas: ['isolation'] })
+  assert.equal(claimRes.text, 'null')
+  texts.push({ text: `paseo_peek: ${peekRes.text}`, sent: '' }, { text: `paseo_claim: ${claimRes.text}`, sent: bQid })
   texts.push({ text: (await a.tool('get_entry', { id: 'shared-note' })).text, sent: '' })
   for (const event of ['SessionStart', 'UserPromptSubmit', 'PostToolUse']) {
     texts.push({ text: (await http('POST', `/hooks/${event}?agent=claude`, A.token, { session_id: `ra-${nonce()}`, prompt: 'hello', tool_name: 'Read' })).text, sent: '' })

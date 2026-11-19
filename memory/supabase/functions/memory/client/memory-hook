@@ -26,14 +26,18 @@
 # checkout's copy carries a placeholder, which counts as dev.
 VERSION=@MEMORY_VERSION@
 dir=$HOME/.config/memory
-pinned=$(cat "$dir/url" 2>/dev/null)
-url=${MEMORY_URL:-$pinned}
+canon_url() {
+  u=${1%/}
+  case $u in https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory) printf 'https://memory.heyclyde.me' ;; *) printf '%s' "$u" ;; esac
+}
+pinned=$(canon_url "$(cat "$dir/url" 2>/dev/null)")
+url=$(canon_url "${MEMORY_URL:-$pinned}")
 if [ -n "${MEMORY_TOKEN:-}" ]; then
   token=$MEMORY_TOKEN
 else
   token=$(cat "$dir/token" 2>/dev/null)
   # Installed credentials are pinned to the configured server origin; never send ~/.config/memory/token to an untrusted MEMORY_URL.
-  [ -n "$pinned" ] && [ "${url%/}" = "${pinned%/}" ] || exit 0
+  [ -n "$pinned" ] && [ "$url" = "$pinned" ] || exit 0
 fi
 [ -n "$1" ] && [ -n "$url" ] && [ -n "$token" ] || exit 0
 
@@ -127,7 +131,7 @@ header() { tr 'A-Z' 'a-z' < "$heads" | tr -d '\r' | sed -n "/^$1:/{s/^[^:]*: *//
 server=$(header x-memory-client-latest)
 status=$(header x-memory-client-status)
 [ "$heads" = /dev/null ] || rm -f "$heads"
-pinned=$(cat "$dir/url" 2>/dev/null)
+pinned=$(canon_url "$(cat "$dir/url" 2>/dev/null)")
 if [ "$url" = "$pinned" ] && isver "$server" && isver "$VERSION"; then
   if newer "$server" "$VERSION"; then
     if [ "$0" = "$dir/memory-hook" ] && [ -z "$(find "$dir/update-failed" -mmin -10 2>/dev/null)" ]; then

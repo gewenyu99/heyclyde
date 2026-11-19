@@ -470,26 +470,40 @@ Deno.test('Antigravity call_mcp_tool normalizes ServerName+ToolName for remember
     assert.equal(held.decision, 'continue')
     assert.equal(JSON.parse(readFileSync(join(h.dir, 'state', 'paseo-agy-worker-1.json'), 'utf8')).outcome, 'held')
 
-    // Clyde's remember via call_mcp_tool clears check_before_reply and writes the saved receipt.
+    // Clyde's remember via call_mcp_tool clears check_before_reply and writes the saved receipt, including JSON-encoded args.
     h.run('antigravity', 'PreInvocation', {
       conversationId: 'agy-1',
       workspacePaths: ['/work/clyde'],
-      lastUserInput: 'Fix the hook credential pinning and verify',
+      lastUserInput: '<USER_REQUEST>\nFix the hook credential pinning and verify\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\nThe current local time is: 2026-11-18T20:30:00-05:00.\n</ADDITIONAL_METADATA>',
     }, 2010, paseoEnv)
     h.run('antigravity', 'PostToolUse', {
       conversationId: 'agy-1',
-      toolCall: { name: 'call_mcp_tool', args: { ServerName: 'clyde', ToolName: 'remember', Arguments: { title: 'Pinned token' } } },
+      toolCall: {
+        name: 'call_mcp_tool',
+        args: { ServerName: '"clyde"', ToolName: '"remember"', Arguments: JSON.stringify({ title: 'Pinned token' }) },
+      },
     }, 2012, paseoEnv)
     const allowed = JSON.parse(h.run('antigravity', 'Stop', { conversationId: 'agy-1' }, 2013, paseoEnv))
     assert.deepEqual(allowed, { decision: 'allow' })
     assert.equal(JSON.parse(readFileSync(join(h.dir, 'state', 'paseo-agy-worker-1.json'), 'utf8')).outcome, 'saved')
 
-    // Unchanged follow-ups in Paseo mode must not re-nudge recall; changed follow-ups do.
+    // Mid-turn PreInvocation with a new timestamp inside ADDITIONAL_METADATA stays deduped via USER_REQUEST extraction.
+    const deduped = JSON.parse(h.run('antigravity', 'PreInvocation', {
+      conversationId: 'agy-1',
+      workspacePaths: ['/work/clyde'],
+      lastUserInput: '<USER_REQUEST>\nFix the hook credential pinning and verify\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\nThe current local time is: 2026-11-18T20:30:05-05:00.\n</ADDITIONAL_METADATA>',
+    }, 2015, paseoEnv))
+    assert.deepEqual(deduped, {})
+
+    // Unchanged follow-ups (even wrapped in Antigravity + Paseo preamble) in Paseo mode must not re-nudge recall; changed follow-ups do.
     for (const [i, follow] of ['continue', 'run it again', 'ship it', 'looks good', 'yes!'].entries()) {
+      const wrapped = i === 4
+        ? `<USER_REQUEST>\nUse the agent-bound clyde_recall tool on every new task, scope change or information gap. Respect explicit stage choices.\n\n${follow}\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\nThe current local time is: 2026-11-18T20:31:0${i}-05:00.\n</ADDITIONAL_METADATA>`
+        : follow
       const out = JSON.parse(h.run('antigravity', 'PreInvocation', {
         conversationId: 'agy-1',
         workspacePaths: ['/work/clyde'],
-        lastUserInput: follow,
+        lastUserInput: wrapped,
       }, 2020 + i, paseoEnv))
       const msg = out.injectSteps?.[0]?.ephemeralMessage ?? ''
       assert.doesNotMatch(msg, /recall/, `Paseo unchanged follow-up "${follow}" must not re-nudge recall`)

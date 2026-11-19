@@ -978,7 +978,7 @@ export function appPage(path, nonce) {
     `</main>`;
 
   const footer = `<footer class="foot"><div class="wrap"><span class="brand">${MARK(22)}clyde</span>` +
-    `<nav><a href="/docs">Docs</a><a href="/faq">FAQ</a><a href="mailto:support@heyclyde.me">support@heyclyde.me</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="${DESIGN_URL}">Design system</a></nav>` +
+    `<nav aria-label="Footer"><a href="/docs">Docs</a><a href="/faq">FAQ</a><a href="mailto:support@heyclyde.me">support@heyclyde.me</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="${DESIGN_URL}">Design system</a></nav>` +
     `<span class="legal">${LEGAL}</span></div></footer>`;
 
   return {

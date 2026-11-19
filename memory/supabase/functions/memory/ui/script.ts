@@ -216,7 +216,7 @@ function openEntry(btn, m, holder, card) {
   }, function (e) {
     btn.disabled = false;
     if (isNoIpc(e)) { noIpc = true; openLocal(btn, m, holder, card); return; }
-    holder.hidden = false; add(holder, h("p", { class: "c-say is-bad", text: e.message })); resized();
+    holder.hidden = false; add(holder, h("p", { class: "c-say is-bad", role: "alert", text: e.message })); resized();
   });
 }
 function preview(btn, a) {
@@ -229,8 +229,8 @@ function preview(btn, a) {
     add(box, d && d.artifact ? artifactView(d.artifact, true).el : h("p", { class: "c-text", text: textOf(r) })); resized();
   }, function (e) {
     box.textContent = "";
-    if (isNoIpc(e)) { noIpc = true; add(box, h("p", { class: "c-say is-muted", text: "Actions can't send from this card right now, so ask your agent in chat." })); resized(); return; }
-    add(box, h("p", { class: "c-say is-bad", text: e.message })); resized();
+    if (isNoIpc(e)) { noIpc = true; add(box, h("p", { class: "c-say is-muted", role: "status", "aria-live": "polite", text: "Actions can't send from this card right now, so ask your agent in chat." })); resized(); return; }
+    add(box, h("p", { class: "c-say is-bad", role: "alert", text: e.message })); resized();
   });
 }
 function artifactView(a, startOpen, onFlip) {

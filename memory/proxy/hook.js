@@ -144,9 +144,27 @@ sid = str(data.get("conversationId") or data.get("session_id") or data.get("conv
 wpaths = data.get("workspacePaths") or data.get("workspace_roots") or []
 cwd = str(data.get("cwd") or (wpaths[0] if isinstance(wpaths, list) and wpaths else "") or "")
 prompt = str(data.get("prompt") or data.get("lastUserInput") or "")
+m_req = re.search(r"<USER_REQUEST>\\s*(.*?)\\s*</USER_REQUEST>", prompt, re.S)
+if m_req:
+    prompt = m_req.group(1)
+prompt = re.sub(r"^\\s*Use the agent-bound clyde_recall tool on every new task[^\\n]*Respect explicit stage choices\\.\\s*", "", prompt)
+
+def unq(v):
+    if isinstance(v, str) and len(v) >= 2 and v[0] in (chr(34), "{", "["):
+        try:
+            return json.loads(v)
+        except Exception:
+            return v
+    return v
+
 tc = data.get("toolCall") if isinstance(data.get("toolCall"), dict) else {}
 tname = str(data.get("tool_name") or tc.get("name") or "")
-tinput = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else (tc.get("args") if isinstance(tc.get("args"), dict) else {})
+if isinstance(data.get("tool_input"), dict):
+    tinput = data["tool_input"]
+elif isinstance(tc.get("args"), dict):
+    tinput = {k: unq(v) for k, v in tc["args"].items()}
+else:
+    tinput = {}
 # Antigravity runs every MCP tool through call_mcp_tool, with ServerName, ToolName, and Arguments in args.
 if tname == "call_mcp_tool":
     mcp_server = str(tinput.get("ServerName") or tinput.get("serverName") or tinput.get("server_name") or tinput.get("server") or "").strip()
@@ -156,7 +174,7 @@ if tname == "call_mcp_tool":
             tname = f"mcp_{mcp_server}_{mcp_tool}"
         else:
             tname = mcp_tool
-    mcp_args = tinput.get("Arguments") or tinput.get("arguments")
+    mcp_args = unq(tinput.get("Arguments") if "Arguments" in tinput else tinput.get("arguments"))
     if isinstance(mcp_args, dict):
         tinput = mcp_args
 
@@ -624,8 +642,12 @@ cfg = pathlib.Path(os.environ.get("CLYDE_CONFIG_DIR") or pathlib.Path.home().joi
 env_tok = (os.environ.get("MEMORY_TOKEN") or "").strip()
 tok = env_tok or cfg.joinpath("token").read_text().strip()
 host = socket.gethostname().split(".")[0].lower() or "local"
-pinned = cfg.joinpath("url").read_text().strip().rstrip("/") if cfg.joinpath("url").exists() else "https://memory.heyclyde.me"
-base = (os.environ.get("MEMORY_URL") or pinned).strip().rstrip("/")
+RAW = "https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory"
+def norm(u):
+    u = (u or "").strip().rstrip("/")
+    return "https://memory.heyclyde.me" if u == RAW else u
+pinned = norm(cfg.joinpath("url").read_text() if cfg.joinpath("url").exists() else "https://memory.heyclyde.me")
+base = norm(os.environ.get("MEMORY_URL") or pinned)
 if not env_tok and base != pinned:
     raise SystemExit("Refusing to send installed Clyde token to a different MEMORY_URL.")
 url = base + "/mcp"

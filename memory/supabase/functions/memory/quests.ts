@@ -294,6 +294,9 @@ export async function claimQuest(who: Who, args: Record<string, unknown>) {
   }
   await reopenExpired();
   return await sql.begin(async (tx) => {
+    if (who.name.startsWith("paseo-")) {
+      await tx`select pg_advisory_xact_lock(hashtext(memory.owner_default()::text), hashtext(${who.name}))`;
+    }
     const [q] = await tx`select * from memory.quest where id = ${id} for update skip locked`;
     if (!q) {
       const [there] = await tx`select id from memory.quest where id = ${id}`;

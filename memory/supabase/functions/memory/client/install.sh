@@ -427,7 +427,20 @@ write(path, dump(doc))
 }
 
 if [ -z "$UPDATE" ]; then
-  TOKEN=${MEMORY_TOKEN:-$(cat "$DIR/token" 2>/dev/null || true)}
+  if [ -n "${MEMORY_TOKEN:-}" ]; then
+    TOKEN=$MEMORY_TOKEN
+  else
+    pinned=$(cat "$DIR/url" 2>/dev/null || true)
+    case $pinned in
+      https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory|https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory/) pinned=https://memory.heyclyde.me ;;
+    esac
+    pinned=${pinned%/}
+    if [ -z "$pinned" ] || [ "${URL%/}" = "$pinned" ]; then
+      TOKEN=$(cat "$DIR/token" 2>/dev/null || true)
+    else
+      TOKEN=
+    fi
+  fi
   if [ -n "$TOKEN" ] && [ "$(probe "$TOKEN")" = 200 ]; then
     echo "This computer is already connected as $DEVICE, so no sign-in. Refreshing its apps' setup."
   else

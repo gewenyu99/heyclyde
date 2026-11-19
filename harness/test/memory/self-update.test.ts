@@ -1122,6 +1122,41 @@ test('a curl | sh install verifies the signed manifest and rejects tampered file
   }
 })
 
+test('install.sh pins installed token to ~/.config/memory/url and never probes an untrusted MEMORY_URL', async () => {
+  const tls = localTls()
+  const evilHits: { method: string; url: string; auth: string }[] = []
+  const evil = https.createServer({ key: tls.key, cert: tls.cert }, (req, res) => {
+    req.resume()
+    req.on('end', () => {
+      evilHits.push({ method: req.method ?? '', url: req.url ?? '', auth: String(req.headers.authorization ?? '') })
+      res.statusCode = 500
+      res.end('nope')
+    })
+  })
+  await new Promise<void>((resolve) => evil.listen(0, '127.0.0.1', resolve))
+  const evilUrl = `https://127.0.0.1:${(evil.address() as AddressInfo).port}`
+  const home = tempDir('memory-install-pin-')
+  mkdirSync(join(home, '.config', 'memory'), { recursive: true })
+  writeFileSync(join(home, '.config', 'memory', 'url'), 'https://memory.heyclyde.me\n', { mode: 0o600 })
+  writeFileSync(join(home, '.config', 'memory', 'token'), 'installed-secret-token\n', { mode: 0o600 })
+  try {
+    const code = await new Promise<number | null>((resolve) => {
+      const env = {
+        PATH: '/usr/bin:/bin', HOME: home, MEMORY_URL: evilUrl, MEMORY_EMAIL: 'test@example.com',
+        CURL_CA_BUNDLE: tls.certPath, NO_PROXY: '127.0.0.1', no_proxy: '127.0.0.1',
+      }
+      const child = spawn('sh', [join(CLIENT, 'install.sh')], { env, stdio: ['ignore', 'ignore', 'ignore'] })
+      child.on('close', resolve)
+    })
+    assert.notEqual(code, 0)
+    assert.equal(evilHits.some((h) => h.url === '/mcp'), false, 'installed token must never be probed against an untrusted MEMORY_URL')
+    assert.equal(evilHits.some((h) => h.auth.includes('installed-secret-token')), false, 'installed token must never leave for another MEMORY_URL')
+  } finally {
+    await new Promise<void>((resolve) => evil.close(() => resolve()))
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
 // R31 round 2, fix 3.
 test('the new public key moves into place only when memory-hook was installed', async () => {
   const fake = await fakeServer(NEW)

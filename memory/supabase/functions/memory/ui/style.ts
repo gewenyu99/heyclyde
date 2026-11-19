@@ -48,8 +48,8 @@ button.c-sum:focus-visible,button.c-qsum:focus-visible{outline:none;box-shadow:v
 button.c-art{cursor:pointer}button.c-art:hover{border-color:var(--cl-carbon);color:var(--cl-ink)}
 button.c-art:focus-visible{outline:none;box-shadow:var(--cl-focus)}
 .c-i{width:14px;height:14px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.cl-btn.c-wrong[aria-pressed=true]{color:var(--cl-bad);border-color:var(--cl-bad);background:var(--cl-bad-wash);transform:none;box-shadow:none}
-.cl-btn.c-used[aria-pressed=true]{color:var(--cl-ok);border-color:var(--cl-ok);background:var(--cl-ok-wash);transform:none;box-shadow:none}
+.cl-btn.c-wrong[aria-pressed=true]{color:var(--cl-bad);border-color:var(--cl-bad);background:var(--cl-bad-wash);transform:none;box-shadow:none;opacity:1}
+.cl-btn.c-used[aria-pressed=true]{color:var(--cl-ok);border-color:var(--cl-ok);background:var(--cl-ok-wash);transform:none;box-shadow:none;opacity:1}
 .c-meter{width:32px;height:4px;border-radius:2px;background:var(--cl-paper-2);overflow:hidden;display:inline-block;vertical-align:middle;margin-right:6px}
 .c-meter i{display:block;height:100%;background:var(--cl-ink-2)}
 .c-detail{display:grid;gap:var(--cl-space-2);padding-top:var(--cl-space-2);border-top:1px dashed var(--cl-rule)}

@@ -4,7 +4,7 @@
  * reminder lines. No database.
  */
 import assert from 'node:assert/strict'
-import { cardVoteReceipt, checkFeedback, feedbackFooter, reminderLine } from '../../../memory/supabase/functions/memory/feedback.ts'
+import { cardVoteReceipt, checkFeedback, feedbackFooter, reminderLine, verifyCardVoteReceipt } from '../../../memory/supabase/functions/memory/feedback.ts'
 import { outcomesOf, step } from '../../../memory/supabase/functions/memory/learn.ts'
 import { resolveParams } from '../../../memory/supabase/functions/memory/params.ts'
 import { renderTrialItem } from '../../../memory/supabase/functions/memory/trial.ts'
@@ -117,9 +117,16 @@ Deno.test('cardVoteReceipt: returns HMAC-SHA256 hex bound to session, retrieval,
     assert.match(r1, /^[a-f0-9]{64}$/)
     assert.equal(r1, r2)
     assert.notEqual(r1, rDiffSess)
+    assert.equal(await verifyCardVoteReceipt('sess-1', '12345678-1234-4234-8234-123456789abc', r1), true)
+    assert.equal(await verifyCardVoteReceipt('sess-2', '12345678-1234-4234-8234-123456789abc', r1), false)
+    const flipped = (r1[0] === '0' ? '1' : '0') + r1.slice(1)
+    assert.equal(await verifyCardVoteReceipt('sess-1', '12345678-1234-4234-8234-123456789abc', flipped), false)
+    assert.equal(await verifyCardVoteReceipt('sess-1', '12345678-1234-4234-8234-123456789abc', 'not-hex'), false)
+    assert.equal(await verifyCardVoteReceipt('sess-1', '12345678-1234-4234-8234-123456789abc', null), false)
     Deno.env.set('MEMORY_CARD_RECEIPT_SECRET', 'secret-b')
     const rDiffSecret = await cardVoteReceipt('sess-1', '12345678-1234-4234-8234-123456789abc')
     assert.notEqual(r1, rDiffSecret)
+    assert.equal(await verifyCardVoteReceipt('sess-1', '12345678-1234-4234-8234-123456789abc', r1), false)
   } finally {
     if (prev === undefined) Deno.env.delete('MEMORY_CARD_RECEIPT_SECRET')
     else Deno.env.set('MEMORY_CARD_RECEIPT_SECRET', prev)

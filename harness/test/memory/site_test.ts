@@ -594,6 +594,7 @@ Deno.test('mobile nav, workspace accessibility, and accurate docs hook claims', 
   assert.ok(graph.includes('for="sup-id"'), 'superseded replacement input has an associated label')
   assert.ok(graph.includes('for="ag-nick-'), 'agent form inputs have associated labels')
   assert.ok(graph.includes("el.setAttribute('aria-live'"), 'workspace notices announce via aria-live')
+  assert.ok(graph.includes('<nav aria-label="Footer">'), 'workspace footer nav has accessible label')
 })
 
 // R79 (like-vincent #84), Wen 2026-11-17: "memory, message board, agent coordination, all the keywords". Each phrase someone

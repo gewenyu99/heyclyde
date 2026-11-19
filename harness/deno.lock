@@ -1,7 +1,17 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@std/encoding@1": "1.0.11",
+    "jsr:@supabase/functions-js@2": "2.119.0",
     "npm:postgres@3.4.7": "3.4.7"
+  },
+  "jsr": {
+    "@std/encoding@1.0.11": {
+      "integrity": "e7cef2f0b3153bccc17431e7c864a1de03a4b6d9647389c43e08aaa775d37385"
+    },
+    "@supabase/functions-js@2.119.0": {
+      "integrity": "b2fe1ac6373ec1e59d7e3375e674e5c7f068cfe90abb7acc744f8a0501dd5ba3"
+    }
   },
   "npm": {
     "postgres@3.4.7": {

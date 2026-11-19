@@ -13,7 +13,7 @@ import * as store from "./blobs.ts";
 import { MEDIA_TYPE_RE, Refused, SCOPE_RE } from "./write.ts";
 import { redact, redactText } from "./redact.ts";
 import { relevanceWithVersion, screen } from "./judge.ts";
-import { cardVoteReceipt, BAD_VERDICT, checkFeedback, feedbackFooter, REMIND_MAX, reminderLine, VERDICTS } from "./feedback.ts";
+import { BAD_VERDICT, checkFeedback, feedbackFooter, REMIND_MAX, reminderLine, VERDICTS, verifyCardVoteReceipt } from "./feedback.ts";
 import { renderTrialItem, TRIAL_CHANCES } from "./trial.ts";
 import { provenanceLines, type Viewer } from "./provenance.ts";
 import { classifyPromptShift } from "./nudge.ts";
@@ -452,7 +452,7 @@ export async function agentFeedback(session: string, args: Record<string, unknow
     const verdict = args.verdict;
     if ((verdict !== "helpful" && verdict !== "nothing_useful") || args.entry_id || args.entries || args.items) return "Not logged: choose a verdict for the whole recall.";
     const [recall] = await sql`select mcp_session from memory.retrieval where id = ${id} and owner_id = memory.owner_default()`;
-    if (!recall?.mcp_session || (recall.mcp_session !== session && args.card_receipt !== await cardVoteReceipt(recall.mcp_session, id))) return `No retrieval ${id}.`;
+    if (!recall?.mcp_session || (recall.mcp_session !== session && !(await verifyCardVoteReceipt(recall.mcp_session, id, args.card_receipt)))) return `No retrieval ${id}.`;
     return await sql.begin(async tx => {
       await tx`select pg_advisory_xact_lock(hashtext(${id}))`;
       const [prior] = await tx`select id from memory.feedback where retrieval_id = ${id} and source = 'card' limit 1`;

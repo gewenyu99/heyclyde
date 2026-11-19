@@ -211,6 +211,8 @@ test('Quest #47: MCP cards wire vote state, live status regions, form labels, an
   assert.ok(recallHtml.includes('role:"status"') || recallHtml.includes('"role":"status"') || recallHtml.includes('role: "status"'), 'recall status uses role=status')
   assert.ok(recallHtml.includes('"aria-live": "polite"') || recallHtml.includes('"aria-live":"polite"'), 'recall status uses aria-live=polite')
   assert.ok(recallHtml.includes('"aria-pressed"') && recallHtml.includes('c-used') && recallHtml.includes('c-wrong'), 'recall vote buttons expose aria-pressed and vote classes')
+  assert.ok(CARD_CSS.includes('.cl-btn.c-used[aria-pressed=true]') && CARD_CSS.includes('opacity:1'), 'pressed vote button preserves WCAG contrast when disabled')
+  assert.ok(recallHtml.includes('role:"alert"') || recallHtml.includes('role: "alert"'), 'async card errors use role=alert')
   const questsHtml = cardHtml('quests')
   assert.ok(questsHtml.includes('for: evId') && questsHtml.includes('for: enId'), 'quest completion form associates labels with inputs')
   assert.ok(questsHtml.includes('(open ? fold : sum).focus()'), 'expand/collapse preserves keyboard focus')
