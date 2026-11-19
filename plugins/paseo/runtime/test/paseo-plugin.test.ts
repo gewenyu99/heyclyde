@@ -77,7 +77,7 @@ test('home lists only top-level live work; workers, judges, test threads and sto
   const h = home(threads, runs, { 't-plan': 'agent-1' }, 7, NOW)
   assert.deepEqual(h.tasks.map((t) => t.id).sort(), ['r-ship', 't-solo'])
   const ship = h.tasks.find((t) => t.id === 'r-ship')!
-  assert.equal(ship.current, 'S1 s1 · good — running npm test')
+  assert.equal(ship.current, 'Worker is retrying s1 · good (attempt 2) — running npm test')
   assert.equal(ship.agentId, 'agent-1')
   assert.equal(ship.why, 'Build a tic tac toe API.')
   assert.equal(ship.pips.length, 4)
@@ -114,7 +114,7 @@ test('the task view keeps worker evidence beside the judge verdict per criterion
   assert.deepEqual(first.criteria.map((c) => [c.criterion, c.result]), [['Checks green', 'pass'], ['Guards probed', 'fail']])
   assert.equal(v.background, 1)
   assert.equal(v.goal, 'Build a tic tac toe API.')
-  assert.equal(v.summary, '1 of 4 pieces have passed. s1 is back with its worker after 1 failed verdict.')
+  assert.equal(v.summary, '1 of 4 pieces have passed. Worker is retrying s1 · good (attempt 2).')
 })
 
 function fakeDaemon() {
@@ -247,4 +247,79 @@ test('runAgentId skips unstarted failed worker threads and keeps the prior start
   assert.equal(task(run, threads, {}).agentId, 'paseo-started')
   assert.equal(home(threads, [run], {}, 1, NOW).tasks[0].agentId, 'paseo-started')
   assert.equal(task(run, [threads[1]], { 't-started': 'agent-fallback' }).agentId, 'agent-fallback')
+})
+
+const taskRun = (stage: RawRun['stages'][number], extra: Partial<RawRun> = {}): RawRun => shipRun({ flow: 'task', plan: undefined, stages: [stage], ...extra })
+const taskStage = (attempts: RawRun['stages'][number]['attempts'], status = 'running') => ({ name: 'task', status, startedAt: at(20), attempts })
+
+test('run activity explains a worker retry with the latest result and precise rejection', () => {
+  const r = taskRun(taskStage([
+    attempt(1, 'first', { result: { status: 'done', summary: 'Identified a missing archived-chat test.', evidence: [] }, verdict: { verdict: 'fail', criteria: [fail] } }),
+    attempt(2, 'second'),
+  ]))
+  const threads = [thread({ id: 'second', runId: r.id, status: 'running' })]
+  assert.deepEqual(task(r, threads, {}).runActivity, {
+    headline: 'Worker is retrying the task (attempt 2)',
+    latestResult: 'Identified a missing archived-chat test.',
+    retryReason: 'no game-over probe',
+  })
+  assert.equal(home(threads, [r], {}, 1, NOW).tasks[0].current, task(r, threads, {}).runActivity?.headline)
+})
+
+test('reviewer status wins over completed worker progress during a retry', () => {
+  const r = taskRun(taskStage([
+    attempt(1, 'first', { reason: 'The judge needs evidence.', ok: false }),
+    attempt(2, 'second', { ok: true, judgeId: 'judge', result: { status: 'done', summary: 'Added evidence.', evidence: [] } }),
+  ]))
+  assert.deepEqual(task(r, [thread({ id: 'second', progress: 'SessionEnd' }), thread({ id: 'judge', status: 'running' })], {}).runActivity, {
+    headline: 'Reviewer is checking the task (attempt 2)', latestResult: 'Added evidence.', retryReason: 'The judge needs evidence.',
+  })
+})
+
+test('checks and interruptions explain retries without inventing judge verdicts', () => {
+  for (const [previous, reason] of [
+    [attempt(1, 'first', { checks: [{ cmd: 'npm test', code: 1, output: 'failed' }] }), 'npm test exited 1'],
+    [attempt(1, 'first', { ok: false, reason: 'Lost when the daemon stopped.' }), 'Lost when the daemon stopped.'],
+  ] as const) {
+    const r = taskRun(taskStage([previous, attempt(2, 'second')]))
+    assert.deepEqual(task(r, [], {}).runActivity, { headline: 'Worker is retrying the task (attempt 2)', retryReason: reason })
+  }
+})
+
+test('passed retry clears its rejection while an independent audit is active', () => {
+  const r = taskRun(taskStage([
+    attempt(1, 'first', { ok: false, reason: 'Missing evidence.' }),
+    attempt(2, 'second', { verdict: { verdict: 'pass', criteria: [pass] }, result: { status: 'done', summary: 'Added the missing evidence.', evidence: [] } }),
+  ], 'passed'))
+  const audit = thread({ id: 'audit', title: 'r-ship Audit abc123', runId: r.id, readOnly: true, status: 'running' })
+  assert.deepEqual(task(r, [audit], {}).runActivity, { headline: 'Reviewer is auditing the result', latestResult: 'Added the missing evidence.' })
+  assert.deepEqual(task(r, [], {}).runActivity, { headline: 'Finalizing run', latestResult: 'Added the missing evidence.' })
+})
+
+test('activity reports pending decisions and terminal outcomes without obsolete retry reasons', () => {
+  const stage = taskStage([attempt(1, 'first', { ok: false, reason: 'Old rejection.' }), attempt(2, 'second', { result: { status: 'done', summary: 'Fixed the export.', evidence: [] } })])
+  const cases: [Partial<RawRun>, { headline: string; latestResult: string }][] = [
+    [{ status: 'asking', asks: [{ kind: 'approve', question: 'Approve this plan?', askedAt: at(1) }] }, { headline: 'Waiting for plan approval', latestResult: 'Fixed the export.' }],
+    [{ status: 'asking', question: 'Which export format?' }, { headline: 'Waiting for your answer', latestResult: 'Fixed the export.' }],
+    [{ status: 'failed', error: 'Build command exited 1' }, { headline: 'Build command exited 1', latestResult: 'Fixed the export.' }],
+    [{ status: 'stopped' }, { headline: 'Stopped by you', latestResult: 'Fixed the export.' }],
+    [{ status: 'done' }, { headline: 'Finished', latestResult: 'Fixed the export.' }],
+  ]
+  for (const [extra, expected] of cases) assert.deepEqual(task(taskRun(stage, extra), [], {}).runActivity, expected)
+})
+
+test('activity distinguishes initial work and waiting review and omits boilerplate results', () => {
+  assert.deepEqual(task(taskRun(taskStage([attempt(1, 'worker')])), [], {}).runActivity, { headline: 'Worker is working on the task' })
+  assert.deepEqual(task(taskRun(taskStage([attempt(1, 'worker', { result: { status: 'done', summary: 'Done.', evidence: [] } })])), [], {}).runActivity, { headline: 'Waiting for review of the task' })
+  assert.deepEqual(task(shipRun({ stages: [] }), [], {}).runActivity, { headline: 'Waiting to start' })
+})
+
+
+test('current worker failure differs from rejection and passed attempts do not cause obsolete retries', () => {
+  assert.deepEqual(task(taskRun(taskStage([attempt(1, 'worker', { ok: false, reason: 'Provider unavailable.' })])), [], {}).runActivity, {
+    headline: 'The task failed', retryReason: 'Provider unavailable.',
+  })
+  assert.deepEqual(task(taskRun(taskStage([
+    attempt(1, 'worker', { reason: 'Old reason.', verdict: { verdict: 'pass', criteria: [pass] } }), attempt(2, 'next'),
+  ])), [], {}).runActivity, { headline: 'Worker is working on the task (attempt 2)' })
 })

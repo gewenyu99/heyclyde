@@ -563,7 +563,7 @@ function StopButton({ theme, view }: { theme: PluginTheme; view: TaskView }) {
   );
 }
 
-export function TaskScreen({ theme, view, back, openAgent }: { theme: PluginTheme; view: TaskView; back: () => void; openAgent?: (id: string) => void }) {
+export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = false }: { theme: PluginTheme; view: TaskView; back: () => void; openAgent?: (id: string) => void; embeddedSupervisor?: boolean }) {
   const answer=useRpc(answerRpc), cache=useQueryClient();
   const [reply,setReply]=useState(""),[retryError,setRetryError]=useState(""),[retrying,setRetrying]=useState(false);
   const t = tones(theme);
@@ -575,38 +575,30 @@ export function TaskScreen({ theme, view, back, openAgent }: { theme: PluginThem
   }
   const [picked, setPicked] = useState<string | undefined>();
   const [details, setDetails] = useState(false);
-  const [showRouting,setShowRouting]=useState(false);
+  const [showTranscript, setShowTranscript] = useState(false);
+  const [showPlan, setShowPlan] = useState(false);
   const all = view.steps.flatMap((s) => s.pieces);
   const piece = all.find((p) => p.id === (picked ?? view.selected)) ?? all[0];
   const tries = piece ? piece.phases.flatMap((ph) => view.attempts[ph.stage] ?? []) : [];
   const lastThread = tries[tries.length - 1]?.threadId;
+  const activity = view.runActivity;
   return (
-    <View>
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
-        <View style={{ flexShrink: 1 }}>
-          <Pressable accessibilityRole="button" onPress={back} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}><Eyebrow theme={theme}>{`Clyde / Task / ${STATUS_LABEL[view.status]}`}</Eyebrow></Pressable>
-          <Text accessibilityRole="header" style={{ color: theme.colors.foreground, fontSize: 23, fontWeight: "700", marginTop: 4 }}>{view.name}</Text>
-          <Meta theme={theme} view={view} />
-        </View>
-        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-          <RemoveTask theme={theme} kind={view.kind} id={view.id} name={view.name} active={["running","asking","sent-back"].includes(view.status)} onRemoved={back}/>
-          {view.status === "running" || view.status === "asking" ? <StopButton theme={theme} view={view} /> : null}
-          <Pressable accessibilityRole="button" onPress={back} style={{ borderWidth: 1, borderColor: edge, borderRadius: 6, minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingHorizontal: 12 }}>
-            <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "600" }}>Home</Text>
-          </Pressable>
-        </View>
+    <View style={{ gap: 14 }}>
+      {!embeddedSupervisor && <Pressable accessibilityRole="button" onPress={back} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
+        <Text style={{ color: theme.colors.accent, fontSize: 13 }}>‹ Back</Text>
+      </Pressable>}
+      <Text accessibilityRole="header" style={{ color: theme.colors.foreground, fontSize: 20, fontWeight: "700" }}>{view.name}</Text>
+      <View accessibilityLiveRegion="polite" style={{ gap: 8 }}>
+        <Text style={{ color: theme.colors.foreground, fontSize: 15, lineHeight: 22, fontWeight: "600" }}>{activity?.headline || view.summary || STATUS_LABEL[view.status]}</Text>
+        {activity?.latestResult && <View style={{ gap: 5 }}>
+          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "600" }}>Latest finding</Text>
+          <FormattedBody theme={theme} text={activity.latestResult} />
+        </View>}
+        {activity?.retryReason && <View style={{ gap: 5 }}>
+          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "600" }}>Why it was sent back</Text>
+          <Text style={{ color: theme.colors.foreground, fontSize: 13, lineHeight: 20 }}>{activity.retryReason}</Text>
+        </View>}
       </View>
-
-      <View style={{ borderBottomWidth: 1, borderBottomColor: theme.colors.border, paddingVertical: 20 }}>
-
-        {view.goal ? <Text style={{ color: theme.colors.foreground, marginTop: 10, lineHeight: 20, fontSize: 14, fontWeight: "500" }}>{view.goal}</Text> : null}
-        <Text style={{ color: theme.colors.foregroundMuted, marginTop: 6, lineHeight: 20, fontSize: 13 }}>{view.summary}</Text>
-        {view.kind === "run" && view.status === "running" && <Steering id={view.id} theme={theme}/>}
-        <RunEvidence view={view} theme={theme}/>
-        {!!view.routing?.length && <Pressable accessibilityRole="button" accessibilityState={{expanded:showRouting}} onPress={()=>setShowRouting(!showRouting)} style={{marginTop:12, minHeight: MIN_HIT_HEIGHT, justifyContent: "center"}}>
-          <Text style={{color:theme.colors.accent,fontSize:13, fontWeight:"600"}}>Why these agents? {showRouting?"▴":"▾"}</Text>
-        </Pressable>}
-        {showRouting && view.routing?.map(line => <Text key={line} style={{color:theme.colors.foregroundMuted, fontSize:13}}>{line}</Text>)}
         {view.question ? (
           <View style={{ borderLeftWidth: 2, borderLeftColor: t.amber.ink, paddingLeft: 12, marginTop: 12, gap: 8 }}>
             <Text style={{ color: theme.colors.foreground, fontWeight: "500", fontSize: 14 }}>{view.question}</Text>
@@ -631,7 +623,7 @@ export function TaskScreen({ theme, view, back, openAgent }: { theme: PluginThem
                     {retrying ? "Retrying…" : view.fullAccess ? "Allow full access for this run and retry" : "Retry"}
                   </Text>
                 </Pressable>
-                <OpenChatButton theme={theme} kind={view.kind} id={view.id} openAgent={openAgent} onError={setRetryError} />
+                {!embeddedSupervisor && <OpenChatButton theme={theme} kind={view.kind} id={view.id} openAgent={openAgent} onError={setRetryError} />}
               </View>
             ) : (
               <View style={{ gap: 8 }}>
@@ -702,61 +694,55 @@ export function TaskScreen({ theme, view, back, openAgent }: { theme: PluginThem
                       </Pressable>
                     );
                   })()}
-                  <OpenChatButton theme={theme} kind={view.kind} id={view.id} openAgent={openAgent} onError={setRetryError} />
+                  {!embeddedSupervisor && <OpenChatButton theme={theme} kind={view.kind} id={view.id} openAgent={openAgent} onError={setRetryError} />}
                 </View>
               </View>
             )}
             {!!retryError && <Text accessibilityRole="alert" style={{color:theme.colors.statusDanger, fontSize:13}}>{retryError}</Text>}
           </View>
         ) : null}
-        {!view.question && view.status === "failed" && openAgent ? (
+        {!embeddedSupervisor && !view.question && view.status === "failed" && openAgent ? (
           <View style={{ marginTop: 12, gap: 8 }}>
             <OpenChatButton theme={theme} kind={view.kind} id={view.id} openAgent={openAgent} onError={setRetryError} />
             {!!retryError && <Text accessibilityRole="alert" style={{ color: theme.colors.statusDanger, fontSize: 13 }}>{retryError}</Text>}
           </View>
         ) : null}
-      </View>
 
-      <View style={{ paddingVertical: 20 }}>
-        <Text accessibilityRole="header" style={{color:theme.colors.foreground,fontSize:17,fontWeight:"700"}}>Plan</Text>
-        <Text style={{ color: theme.colors.foreground, fontSize: 16, fontWeight: "700", marginTop: 10 }}>
-          {count(view.total, "piece", true)} in {count(view.steps.length, "row")}
-        </Text>
-        <FlowDiagram theme={theme} view={view} selected={piece?.id} select={setPicked} />
-        <Legend theme={theme} />
-      </View>
-
-      {piece ? (
-        <View style={{ borderTopWidth: 1, borderTopColor: theme.colors.border, paddingVertical: 20 }}>
-          <Ladder theme={theme} level="L2" label="Selected piece" />
-          <PieceDetail theme={theme} view={view} piece={piece} />
-        </View>
-      ) : null}
-
-      <View style={{ borderTopWidth: 1, borderTopColor: theme.colors.border, paddingVertical: 20 }}>
-        <Ladder theme={theme} level="L3" label="Details" />
-        <View style={{ borderWidth: 1, borderColor: theme.colors.border, borderRadius: 8, marginTop: 10, overflow: "hidden" }}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ expanded: details }}
-            onPress={() => setDetails(!details)}
-            style={{ paddingHorizontal: 12, minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}
-          >
-            <Text style={{ color: theme.colors.foreground, fontSize: 12, fontWeight: "700" }}>
-              {details ? "▾" : "▸"} Transcript of the agent on this piece
-            </Text>
-          </Pressable>
-          {details && lastThread ? <Transcript theme={theme} threadId={lastThread} tries={tries} /> : null}
-        </View>
-        {view.agentId && openAgent ? (
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => openAgent(view.agentId!)}
-            style={{ marginTop: 8, minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}
-          >
-            <Text style={{ color: t.blue.ink, fontSize: 13, fontWeight: "700" }}>Open this task's conversation in Paseo</Text>
-          </Pressable>
-        ) : null}
+      {view.savedPlanIntent && <View>
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: showPlan }} onPress={() => setShowPlan(!showPlan)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
+          <Text style={{ color: theme.colors.accent, fontSize: 13, fontWeight: "600" }}>{showPlan ? "Hide saved plan" : "View saved plan"}</Text>
+        </Pressable>
+        {showPlan && <FormattedBody theme={theme} text={view.savedPlanIntent} />}
+      </View>}
+      <View style={{ borderTopWidth: 1, borderTopColor: theme.colors.border }}>
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: details }} onPress={() => setDetails(!details)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
+          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13, fontWeight: "600" }}>{details ? "▾ Run details" : "▸ Run details"}</Text>
+        </Pressable>
+        {details && <View style={{ gap: 14 }}>
+          <Meta theme={theme} view={view} />
+          {view.goal ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13, lineHeight: 20 }}>{view.goal}</Text> : null}
+          <RunEvidence view={view} theme={theme} />
+          {view.routing?.map(line => <Text key={line} style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>{line}</Text>)}
+          {view.total > 0 && <View>
+            <FlowDiagram theme={theme} view={view} selected={piece?.id} select={setPicked} />
+            <Legend theme={theme} />
+          </View>}
+          {piece && <PieceDetail theme={theme} view={view} piece={piece} />}
+          {lastThread && <View>
+            <Pressable accessibilityRole="button" accessibilityState={{ expanded: showTranscript }} onPress={() => setShowTranscript(!showTranscript)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
+              <Text style={{ color: theme.colors.accent, fontSize: 13 }}>{showTranscript ? "Hide agent transcript" : "View agent transcript"}</Text>
+            </Pressable>
+            {showTranscript && <Transcript theme={theme} threadId={lastThread} tries={tries} />}
+          </View>}
+          {view.kind === "run" && view.status === "running" && <Steering id={view.id} theme={theme} />}
+          <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
+            {(view.status === "running" || view.status === "asking") && <StopButton theme={theme} view={view} />}
+            <RemoveTask theme={theme} kind={view.kind} id={view.id} name={view.name} active={["running", "asking", "sent-back"].includes(view.status)} onRemoved={back} />
+            {view.agentId && openAgent && <Pressable accessibilityRole="button" onPress={() => openAgent(view.agentId!)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
+              <Text style={{ color: theme.colors.accent, fontSize: 13 }}>Open conversation in Paseo</Text>
+            </Pressable>}
+          </View>
+        </View>}
       </View>
     </View>
   );

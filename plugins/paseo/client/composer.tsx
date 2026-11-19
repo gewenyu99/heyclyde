@@ -6,21 +6,16 @@ import { Pressable, Text, TextInput, View } from "react-native";
 import { launchRpc, projectsRpc, workerModels } from "../shared/clyde";
 import { palette } from "./brand.generated";
 import { formatRpcError, MIN_HIT_HEIGHT, scheme } from "./palette";
+import { requestId } from "./request-id";
 
 type Worker = typeof workerModels[number];
 const workerLabel = (worker: Worker) => worker[0].toUpperCase() + worker.slice(1);
-function requestId() {
-  // This is an idempotency key, not a credential. Some native clients lack crypto.randomUUID.
-  return globalThis.crypto?.randomUUID?.() ?? "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const n = Math.floor(Math.random() * 16);
-    return (c === "x" ? n : (n & 3) | 8).toString(16);
-  });
-}
 export function Composer(
-  { theme, onStarted, workspaceId, agentId }: {
+  { theme, onStarted, workspaceId, agentId, board = false }: {
     theme: PluginTheme;
     workspaceId?: string;
     agentId?: string;
+    board?: boolean;
     onStarted: (id: string) => void;
   },
 ) {
@@ -40,9 +35,9 @@ export function Composer(
   const [allowNeon, setAllowNeon] = useState(false);
   const pending = useRef<{ key: string; id: string } | null>(null);
   const locked = useRef(false);
-  const selected = projects.data?.find((p) => p.id === project) ?? projects.data?.find((p) => p.chats.length > 0) ?? projects.data?.[0];
+  const selected = projects.data?.find((p) => p.id === project) ?? (!board ? projects.data?.find((p) => p.chats.length > 0) : undefined) ?? projects.data?.[0];
   const chats = selected?.chats ?? [];
-  const wantsNewChat = !agentId && (chatId === "__new__" || chats.length === 0);
+  const wantsNewChat = !agentId && (board || chatId === "__new__" || chats.length === 0);
   const selectedChat = wantsNewChat ? undefined : (chats.find((ch) => ch.id === chatId) ?? chats[0]);
   const effectiveAgentId = agentId || selectedChat?.id || "";
   const submit = async () => {
@@ -154,7 +149,7 @@ export function Composer(
 
       <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
         {control((selected?.name || "Select project") + " ▾", () => setMenu(menu === "project" ? null : "project"), false, { expanded: menu === "project" })}
-        {!agentId && selected && control(
+        {!board && !agentId && selected && control(
           "Chat · " + (wantsNewChat ? "New chat (auto)" : selectedChat!.title) + " ▾",
           () => setMenu(menu === "chat" ? null : "chat"),
           false,
@@ -218,7 +213,7 @@ export function Composer(
           ))}
         </View>
       )}
-      {menu === "chat" && (
+      {!board && menu === "chat" && (
         <View style={{ gap: 5 }}>
           {chats.map((ch) => (
             <Pressable
@@ -264,7 +259,7 @@ export function Composer(
           )}
         </View>
       )}
-      {!agentId && selected && chats.length === 0 && (
+      {!board && !agentId && selected && chats.length === 0 && (
         <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>
           No open chats in {selected.name} yet. Clyde will open one when you start.
         </Text>

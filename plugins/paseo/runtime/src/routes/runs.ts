@@ -15,7 +15,7 @@ function text(value: unknown, field: string): string {
 export function runRoutes(ctx: DaemonCtx): Route[] {
   const runs = new Runs(ctx)
   ctx.runCount = () => runs.runs.size
-  ctx.activeRunCount = () => [...runs.runs.values()].filter((r) => r.status === 'running').length
+  ctx.activeRunCount = () => [...runs.runs.values()].filter((r) => r.status === 'running' || runs.supervisors.conversations.get(r.id)?.pending).length
   // Runs stop before threads, so no driver reads a dying thread as a failed attempt.
   ctx.beforeClose.push(() => runs.shutdown())
   setImmediate(() => runs.resume())
@@ -36,6 +36,11 @@ export function runRoutes(ctx: DaemonCtx): Route[] {
       },
     },
     { method: 'POST', path: '/runs/:id/steer', handle: req => ({body:runs.steer(req.params.id,text(req.body?.text,'text'))}) },
+    { method: 'GET', path: '/runs/:id/supervisor', handle: req => ({ body: runs.supervisors.view(req.params.id) }) },
+    { method: 'POST', path: '/runs/:id/supervisor', handle: req => {
+      runs.supervisors.send(req.params.id, req.body?.text, req.body?.requestId)
+      return { status: 202, body: { ok: true } }
+    } },
     { method: 'POST', path: '/runs/:id/parent', handle: req => ({ body: runs.setParent(req.params.id, text(req.body?.paseoParentId, 'paseoParentId')) }) },
     { method:'POST', path:'/runs/:id/archive', handle:req=>({body:runs.archive(req.params.id)}) },
     { method: 'GET', path: '/runs/:id', handle: (req) => ({ body: runs.view(runs.need(req.params.id)) }) },

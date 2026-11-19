@@ -195,19 +195,72 @@ function runAgentId(r: RawRun, threads: RawThread[], agents: Record<string, stri
   );
 }
 
+/** Current activity comes from the latest attempt of the current stage, never a historical failure. */
+function runActivity(r: RawRun, threads: RawThread[]): NonNullable<TaskView["runActivity"]> {
+  const stage = r.stages.findLast(s => s.status === "running" || s.status === "asking") ?? r.stages.at(-1);
+  const attempt = stage?.attempts.at(-1);
+  const label = stage ? stageLabel(stage, r) : "task";
+  const currentResult = stage?.summary || [...(stage?.attempts ?? [])].reverse().find(a => a.result?.summary)?.result?.summary;
+  // Boilerplate completion tokens do not explain what the worker produced.
+  const result = firstSentence(currentResult, 360);
+  const latestResult = result && !/^(done|completed|finished|success|task (done|completed)|no result posted yet)[.!]?$/i.test(result) ? result : undefined;
+  const activity = (headline: string, retryReason?: string) => ({ headline, ...(latestResult ? { latestResult } : {}), ...(retryReason ? { retryReason } : {}) });
+  if (r.status === "done") return activity(r.auditedHead ? "Audited " + r.auditedHead.slice(0, 12) : "Finished");
+  if (r.status === "stopped") return activity("Stopped by you");
+  if (r.status === "failed") return activity(firstSentence(r.error || attempt?.reason || "Run failed", 180));
+  if (r.status === "asking") {
+    const open = [...(r.asks ?? [])].reverse().find(a => a.answer === undefined);
+    return activity(isPlanApproval(open, r.question) ? "Waiting for plan approval" : "Waiting for your answer");
+  }
+  const attemptIds = new Set(r.stages.flatMap(s => s.attempts.flatMap(a => [a.threadId, a.judgeId])));
+  const extra = threads.findLast(t => t.runId === r.id && !t.archivedAt && !attemptIds.has(t.id) && (t.status === "running" || t.status === "queued"));
+  if (extra && (!stage || stage.status === "passed" || stage.status === "skipped")) return activity(/\baudit\b/i.test(extra.title) ? "Reviewer is auditing the result" : extra.readOnly ? "Reviewer is checking the result" : "Worker is finalizing the result");
+  if (!stage) return activity("Waiting to start");
+  if (stage.status === "passed" || stage.status === "skipped") return activity("Finalizing run");
+  const previous = stage.attempts.at(-2);
+  const rejected = attempt?.verdict?.verdict === "fail" || attempt?.ok === false || attempt?.checks?.some(c => c.code !== 0);
+  const retry = rejected ? attempt : previous;
+  const unresolved = attempt?.verdict?.verdict !== "pass";
+  const reason = unresolved && retry && retry.verdict?.verdict !== "pass" && (retry.reason || retry.verdict?.verdict === "fail" || retry.checks?.some(c => c.code !== 0))
+    ? firstSentence(retry.reason || retry.verdict?.criteria.filter(c => !c.pass).map(c => c.evidence || c.criterion).join("; ") || retry.verdict?.notes || retry.checks?.filter(c => c.code !== 0).map(c => `${c.cmd} exited ${c.code}`).join("; "), 360)
+    : undefined;
+  const round = attempt && stage.attempts.length > 1 ? ` (attempt ${attempt.n})` : "";
+  const worker = threads.find(t => t.id === attempt?.threadId);
+  const reviewer = threads.find(t => t.id === attempt?.judgeId);
+  const active = (t?: RawThread) => t?.status === "running" || t?.status === "queued";
+  if (attempt?.verdict?.verdict === "pass") return activity(`Review passed for ${label}`);
+  if (attempt?.judgeId && !attempt.verdict && active(reviewer)) return activity(`Reviewer is checking ${label}${round}`, reason);
+  if (rejected && !active(worker)) {
+    const outcome = interrupted(attempt!) ? "was interrupted" : attempt?.verdict?.verdict === "fail" || attempt?.checks?.some(c => c.code !== 0) ? "was sent back" : "failed";
+    return activity(`${capitalize(label)} ${outcome}${round}`, reason);
+  }
+  if (!active(worker) && (attempt?.result || attempt?.endedAt || worker?.status === "idle")) return activity(`Waiting for review of ${label}${round}`, reason);
+  const progress = worker?.progress && worker.progress !== "SessionEnd" ? firstSentence(worker.progress, 140) : undefined;
+  return activity(`Worker is ${reason ? "retrying" : "working on"} ${label}${round}${progress ? ` — ${progress}` : ""}`, reason);
+}
+
+function capitalize(text: string): string { return text.charAt(0).toUpperCase() + text.slice(1); }
+
+function stageLabel(stage: RawStage, run: RawRun): string {
+  const [name, sliceId] = stage.name.split(":");
+  const slice = run.plan?.slices?.find(s => s.id === sliceId);
+  if (sliceId) return `${slice?.title || sliceId} · ${PHASE_LABEL[name] || name}`;
+  if (/^plan(-\d+)?$/.test(name)) return "the plan";
+  if (name === "review") return "the whole branch";
+  return name === "task" ? "the task" : name;
+}
+
 function runCard(r: RawRun, agents: Record<string, string>, threads: RawThread[]): TaskCard {
   const all = steps(r, threads).flatMap((s) => s.pieces);
   const pips = all.map((p) => p.status);
   const live = all.find(isLive);
   const checks = latestChecks(r);
-  const failedStage = r.stages.findLast(stage=>stage.status==="failed");
   return {
     checkSummary:checks.length ? `${checks.filter(c=>c.code===0).length}/${checks.length} stage checks passed` : undefined,
     pullRequest: r.pullRequest,
     kind: "run", id: r.id, name: r.title, why: firstSentence(r.input?.intent ?? r.input?.prompt), status: r.status==="running" && live?.status==="sent-back" ? "sent-back" : runStatus(r),
     pips, ...counts(pips),
-    current: r.status==="failed" ? firstSentence(r.error ?? failedStage?.attempts.at(-1)?.reason ?? "Run failed",180) : live ? `${live.id === "PLAN" || live.id === "TASK" ? "" : `${live.id} `}${live.title}${livePhase(live)}${live.progress ? ` — ${live.progress}` : ""}`
-      : r.status === "done" ? (r.auditedHead ? "Audited "+r.auditedHead.slice(0,12) : "Finished") : "Waiting to start",
+    current: runActivity(r, threads).headline,
     rung: live?.rung, startedAt: r.createdAt, endedAt: r.endedAt, lastActivity: lastActivity(r, threads), agentId: runAgentId(r, threads, agents),
   };
 }
@@ -300,18 +353,13 @@ function attemptView(a: RawAttempt): AttemptView {
   };
 }
 
-function summary(r: RawRun, all: Piece[], live?: Piece): string {
+function summary(r: RawRun, all: Piece[], activity: NonNullable<TaskView["runActivity"]>): string {
   const passed = all.filter((p) => p.status === "passed").length;
   if (r.status === "failed") return r.error || "The run failed.";
   if (r.status === "stopped") return "The run was stopped.";
   const where = all.length ? `${passed} of ${all.length} pieces have passed.` : "";
   if (r.status === "done") return where || "Run finished.";
-  const now = r.status === "asking" ? "It is waiting on you."
-    : !live ? ""
-    : live.status === "asking" ? `${live.title} is waiting on you.`
-    : live.status === "sent-back" ? `${live.title} is back with its worker after ${live.sentBack} failed verdict${live.sentBack === 1 ? "" : "s"}.`
-    : `Working on ${live.title}${livePhase(live).replace(" · ", ", ")}.`;
-  return [where, now].filter(Boolean).join(" ");
+  return [where, activity.headline + "."].filter(Boolean).join(" ");
 }
 
 export function task(r: RawRun, threads: RawThread[], agents: Record<string, string>): TaskView {
@@ -322,12 +370,14 @@ export function task(r: RawRun, threads: RawThread[], agents: Record<string, str
   for (const st of r.stages) attempts[st.name] = st.attempts.map(attemptView);
   const ids = new Set(r.stages.flatMap((st) => st.attempts.flatMap((a) => [a.threadId, a.judgeId].filter(Boolean) as string[])));
   const open = [...(r.asks ?? [])].reverse().find((a) => a.answer === undefined);
+  const activity = runActivity(r, threads);
   return {
     kind: "run", id: r.id, name: r.title, status: runStatus(r), startedAt: r.createdAt,
     routing: Object.entries(r.routes ?? {}).map(([stage, s]) => stage + ": " + s.model + " · " + s.reason), auditedHead: r.auditedHead, pullRequest: r.pullRequest,
     askKey:open?.key,retryable:open?.kind==="provider"||open?.kind==="limit",fullAccess:open?.kind==="provider"&&open.question.includes("allow Antigravity full access for this run"),
     verifiedNotes:r.verifiedNotes,completionCriteria:r.input?.criteria?.filter(value=>typeof value==="string" && value.trim()),
-    goal: firstSentence(r.plan?.intent ?? r.input?.intent ?? r.input?.prompt, 220), summary: summary(r, all, live),
+    savedPlanIntent: r.plan?.intent, runActivity: activity,
+    goal: firstSentence(r.plan?.intent ?? r.input?.intent ?? r.input?.prompt, 220), summary: summary(r, all, activity),
     lastActivity: lastActivity(r, threads),
     question: r.status === "asking" ? r.question ?? open?.question : undefined, approve: isPlanApproval(open, r.question), branch: r.branch,
     steps: s, attempts, selected: (live ?? all.filter((p) => p.status !== "pending").slice(-1)[0] ?? all[0])?.id,

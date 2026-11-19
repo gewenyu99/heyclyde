@@ -14,7 +14,7 @@ The [Clyde design system](../../design/README.md) supplies the logo, typography 
 
 ## Returning to work
 
-The board shows how many tasks finished today and how many await a reply. Open decisions and today’s failures appear first. Use **Open chat** on any item that needs your attention to jump straight into its Paseo chat, or open a project chat if the original was archived. Open a run to see its completion criteria, audited revision when available, and check results from the latest attempt at each stage. Failed checks show their command and exit code; expand the evidence for the output. Model routing and transcripts are available on demand.
+The board shows how many tasks finished today and how many await a reply. Open decisions and today’s failures appear first. On the full-screen **Board**, starting or opening a run shows the task and **Chat with Clyde** together. Ask about a failed attempt, saved plan, or check while the worker continues. Reopen the run to resume the same conversation. The task shows what the worker or reviewer is doing, the latest finding, and why a retry was requested. Pending decisions appear inline. Expand **Run details** for checks, attempt history, worker instructions, and stop controls. Open a run to see its completion criteria, audited revision when available, and check results from the latest attempt at each stage. Failed checks show their command and exit code; expand the evidence for the output. Model routing and transcripts are available on demand.
 
 ## Routing
 

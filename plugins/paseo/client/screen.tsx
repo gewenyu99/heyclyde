@@ -2,7 +2,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import type { PluginScreenProps } from "@getpaseo/plugin/client";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { homeRpc, taskRpc } from "../shared/clyde";
 import {Quests} from "./quests";
@@ -11,6 +11,7 @@ import { Roster } from "./roster";
 import { HomeView } from "./home";
 import { useLive } from "./nodes";
 import { formatRpcError, MIN_HIT_HEIGHT } from "./palette";
+import { SupervisorChat } from "./supervisor-chat";
 import { TaskScreen } from "./task";
 import {Lockup,clydeTheme} from "./brand";
 
@@ -22,7 +23,7 @@ function Panel({ theme, children }: { theme: PluginTheme; children: ReactNode })
         borderColor: theme.colors.border,
         borderWidth: 1,
         borderRadius: 12,
-        padding: 20,
+        padding: 16,
         gap: 6,
       }}
     >
@@ -42,18 +43,24 @@ function Board(
   const readHome = useRpc(homeRpc), readTask = useRpc(taskRpc);
   const [picked, setPicked] = useState(initialTask),
     [width, setWidth] = useState(0),
+    [newTask, setNewTask] = useState(false),
+    [mobilePane, setMobilePane] = useState<"task" | "chat">("task"),
     [tab, setTab] = useState<"board" | "agents" | "quests">("board");
-  const c = theme.colors, wide = width >= 760, inset = width >= 650 ? 28 : 14;
+  // Screen params can change while Paseo keeps this component mounted.
+  useEffect(() => { setPicked(initialTask); setTab("board"); }, [initialTask]);
+  const c = theme.colors, wide = width >= 860, inset = width >= 650 ? 20 : 12;
   const home = useQuery({
     queryKey: ["clyde", "home", workspaceId ?? "all"],
     queryFn: () => readHome({ workspaceId }),
     refetchInterval: 10000,
   });
   const [kind, id] = picked.split(":");
+  useEffect(() => { setMobilePane("task"); }, [picked]);
+  const selectedTask = !!id && (kind === "run" || kind === "thread");
   const task = useQuery({
     queryKey: ["clyde", "task", kind, id],
     queryFn: () => readTask({ kind: kind as "run" | "thread", id }),
-    enabled: !!id,
+    enabled: selectedTask,
     refetchInterval: 5000,
   });
   const data = home.data?.data;
@@ -89,14 +96,12 @@ function Board(
   );
   const queue = <Panel theme={theme}>{data ? <HomeView theme={theme} home={data} open={(k,i)=>setPicked(k+":"+i)} openAgent={openAgent}/> :
     <Text accessibilityRole={error ? "alert" : undefined} style={{color:error?c.statusDanger:c.foregroundMuted,fontSize:13}}>{error||"Loading tasks…"}</Text>}</Panel>;
-  const workToReview = !!(data?.needsYou.length || data?.failedToday?.length || data?.doneToday.length || data?.running);
+  const workToReview = !!(data?.needsYou.length || data?.failedToday?.length || data?.running || data?.tasks.length);
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: c.surface0 }}
+    <View
+      style={{ flex: 1, minHeight: 0, backgroundColor: c.surface0, padding: inset, gap: 12 }}
       onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
-      contentContainerStyle={{ alignItems: "center", padding: inset }}
     >
-      <View style={{ width: "100%", maxWidth: 1180, gap: 18 }}>
         <View
           style={{
             flexDirection: "row",
@@ -106,7 +111,7 @@ function Board(
             gap: 10,
             borderBottomWidth: 1,
             borderColor: c.border,
-            paddingBottom: 16,
+            paddingBottom: 8,
           }}
         >
           <Lockup theme={theme} width={104}/>
@@ -125,57 +130,55 @@ function Board(
             {nav("quests","Quests")}{nav("agents", "Agents")}
           </View>
         </View>
-        {picked && id
+        {selectedTask
           ? (
-            <Panel theme={theme}>
-              <Pressable accessibilityRole="button" onPress={() => setPicked("")} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
-                <Text style={{ color: c.accent, fontSize: 14, fontWeight: "600" }}>‹ Back to board</Text>
-              </Pressable>
-              {task.data?.data
-                ? (
-                  <TaskScreen
-                    theme={theme}
-                    view={task.data.data}
-                    back={() => setPicked("")}
-                    openAgent={navigation ? (agentId) => navigation.openAgent({ agentId }) : undefined}
-                  />
-                )
-                : (
-                  <Text
-                    accessibilityRole={task.error || task.data?.error ? "alert" : undefined}
-                    style={{ color: task.error || task.data?.error ? c.statusDanger : c.foregroundMuted, fontSize: 13 }}
-                  >
-                    {task.error ? formatRpcError(task.error) : task.data?.error ? formatRpcError(task.data.error) : "Opening task…"}
-                  </Text>
-                )}
-            </Panel>
+            <View style={{ flex: 1, minHeight: 0, gap: 10 }}>
+              {!wide && kind === "run" && <View accessibilityRole="tablist" style={{ flexDirection: "row", gap: 8 }}>
+                {(["task", "chat"] as const).map(pane => <Pressable key={pane} accessibilityRole="tab" accessibilityState={{ selected: mobilePane === pane }} onPress={() => setMobilePane(pane)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingHorizontal: 14, backgroundColor: mobilePane === pane ? c.surface1 : "transparent", borderRadius: 6 }}>
+                  <Text style={{ color: mobilePane === pane ? c.foreground : c.foregroundMuted, fontSize: 14, fontWeight: "600" }}>{pane === "task" ? "Task" : "Chat"}</Text>
+                </Pressable>)}
+              </View>}
+              <View style={{ flex: 1, minHeight: 0, flexDirection: wide ? "row" : "column", gap: 12 }}>
+              <ScrollView key={picked} style={{ display: !wide && kind === "run" && mobilePane === "chat" ? "none" : "flex", flex: kind === "run" ? (wide ? 3 : 1) : 1, minHeight: 0 }} contentContainerStyle={{ paddingBottom: 16 }}>
+                <Panel theme={theme}>
+                  {(kind === "run" || !task.data?.data) && <Pressable accessibilityRole="button" onPress={() => setPicked("")} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
+                    <Text style={{ color: c.accent, fontSize: 14, fontWeight: "600" }}>‹ Back to board</Text>
+                  </Pressable>}
+                  {task.data?.data ? (
+                    <TaskScreen key={picked} theme={theme} view={task.data.data} back={() => setPicked("")} openAgent={openAgent} embeddedSupervisor={kind === "run"} />
+                  ) : (
+                    <Text accessibilityRole={task.error || task.data?.error ? "alert" : undefined} style={{ color: task.error || task.data?.error ? c.statusDanger : c.foregroundMuted, fontSize: 13 }}>
+                      {task.error ? formatRpcError(task.error) : task.data?.error ? formatRpcError(task.data.error) : "Opening task…"}
+                    </Text>
+                  )}
+                </Panel>
+              </ScrollView>
+              {kind === "run" && <View style={{ display: !wide && mobilePane === "task" ? "none" : "flex", flex: wide ? 2 : 1, minWidth: wide ? 320 : 0, minHeight: 0, borderWidth: 1, borderColor: c.border, borderRadius: 12, overflow: "hidden", backgroundColor: c.surface1 }}>
+                <SupervisorChat key={id} theme={theme} runId={id} />
+              </View>}
+              </View>
+            </View>
           )
-          : tab === "quests" ? <Panel theme={theme}><Quests theme={theme} onStarted={run=>setPicked("run:"+run)}/></Panel> : tab === "agents"
+          : <ScrollView style={{ flex: 1, minHeight: 0 }} contentContainerStyle={{ paddingBottom: 20 }}>
+          {tab === "quests" ? <Panel theme={theme}><Quests theme={theme} onStarted={run=>setPicked("run:"+run)}/></Panel> : tab === "agents"
           ? (
             <Panel theme={theme}>
               <Roster theme={theme} workspaceId={workspaceId} openAgent={openAgent} />
             </Panel>
           )
           : (
-            <View style={{ flexDirection: wide ? "row" : "column", alignItems: "stretch", gap: 16 }}>
-              <View style={{ flex: wide ? 2 : undefined, minWidth: 0, gap: 14 }}>
-                {workToReview && queue}
-                <Panel theme={theme}>
-                  <Composer theme={theme} workspaceId={workspaceId} onStarted={(run) => setPicked("run:" + run)} />
-                </Panel>
-                {!workToReview && queue}
-              </View>
-              {wide && (
-                <View style={{ flex: 1, minWidth: 220 }}>
-                  <Panel theme={theme}>
-                    <Roster theme={theme} workspaceId={workspaceId} openAgent={openAgent} />
-                  </Panel>
-                </View>
-              )}
+            <View style={{ gap: 14 }}>
+              {workToReview && queue}
+              {workToReview && <Pressable accessibilityRole="button" accessibilityState={{ expanded: newTask }} onPress={() => setNewTask(!newTask)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
+                <Text style={{ color: c.accent, fontSize: 14, fontWeight: "600" }}>{newTask ? "Close new task" : "+ New task"}</Text>
+              </Pressable>}
+              {(!workToReview || newTask) && <Panel theme={theme}>
+                <Composer board theme={theme} workspaceId={workspaceId} onStarted={(run) => { setNewTask(false); setPicked("run:" + run); }} />
+              </Panel>}
+              {!workToReview && queue}
             </View>
-          )}
-      </View>
-    </ScrollView>
+          )}</ScrollView>}
+    </View>
   );
 }
 export function ClydeScreen(props: PluginScreenProps) {

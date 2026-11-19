@@ -17,7 +17,7 @@ function Section({ theme, title, count }: { theme: PluginTheme; title: string; c
   return (
     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 28, marginBottom: 12 }}>
       <Text style={{ color: theme.colors.foreground, fontSize: 12, letterSpacing: 1.0, fontWeight: "700" }}>{title}</Text>
-      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>{count}</Text>
+
     </View>
   );
 }
@@ -74,24 +74,12 @@ function AskCard({ theme, ask, open, openAgent }: { theme: PluginTheme; ask: Ask
           </Pressable>
         )}
       </View>
-      {ask.plan?.length ? (
-        <View style={{ marginBottom: 12, gap: 3 }}>
-          <Text style={{ color: paper["ink-2"], fontSize: 12, fontWeight: "700", letterSpacing: 0.4 }}>THE PLAN · {ask.plan.length} SLICES</Text>
-          {ask.plan.slice(0, showPlan ? undefined : 6).map((line) => (
-            <Text key={line} numberOfLines={1} style={{ color: paper.ink, fontSize: 12 }}>{line}</Text>
-          ))}
-          {ask.plan.length > 6 ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ expanded: showPlan }}
-              onPress={() => setShowPlan(!showPlan)}
-              style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}
-            >
-              <Text style={{ color: t.blue.ink, fontSize: 12, fontWeight: "600" }}>{showPlan ? "Show less" : `Show all ${ask.plan.length}`}</Text>
-            </Pressable>
-          ) : null}
-        </View>
-      ) : null}
+      {ask.plan?.length ? <View style={{ marginBottom: 8 }}>
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: showPlan }} onPress={() => setShowPlan(!showPlan)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
+          <Text style={{ color: t.blue.ink, fontSize: 13, fontWeight: "600" }}>{showPlan ? "Hide plan" : "View plan"}</Text>
+        </Pressable>
+        {showPlan && ask.plan.map((line, index) => <Text key={index} style={{ color: paper.ink, fontSize: 13, lineHeight: 20 }}>{line}</Text>)}
+      </View> : null}
       {ask.retryable ? (
         <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <Pressable
@@ -222,7 +210,11 @@ function Card({ theme, card, open, openAgent }: { theme: PluginTheme; card: Task
             </Text>
           </Pressable>
         )}
-        {(card.status === "failed" || card.status === "asking") && openAgent ? (
+        {card.status === "failed" ? (
+          <Pressable accessibilityRole="button" onPress={() => open(card.kind, card.id)} style={{ marginTop: 8, minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
+            <Text style={{ color: theme.colors.accent, fontSize: 13, fontWeight: "700" }}>Open task</Text>
+          </Pressable>
+        ) : card.status === "asking" && openAgent ? (
           <View style={{ marginTop: 8 }}>
             <OpenChatButton theme={theme} kind={card.kind} id={card.id} openAgent={openAgent} />
           </View>
@@ -235,35 +227,26 @@ function Card({ theme, card, open, openAgent }: { theme: PluginTheme; card: Task
 
 export function HomeView({ theme, home, open, openAgent }: { theme: PluginTheme; home: Home; open: OpenTask; openAgent?: (id: string) => void }) {
   const [showDone, setShowDone] = useState(false);
-  const [expandWork, setExpandWork] = useState(false);
   const working = home.tasks.filter((c) => !home.needsYou.some((a) => a.kind === c.kind && a.id === c.id));
   const failed = home.failedToday ?? [];
-  const focus = home.needsYou.length + failed.length > 0;
-  const listOpen = !focus || expandWork;
   return (
     <View>
       <Text accessibilityRole="header" style={{ color: theme.colors.foreground, fontSize: 18, fontWeight: "700" }}>Work queue</Text>
-      <Text accessibilityLiveRegion="polite" style={{ color: theme.colors.foregroundMuted, marginTop: 6, fontSize: 13 }}>
-        {home.doneToday.length} finished today · {home.needsYou.length} awaiting your reply{failed.length ? ` · ${failed.length} failed today` : ""}
-      </Text>
       {home.needsYou.length ? (
         <>
-          <Section theme={theme} title="NEEDS YOU" count={`${home.needsYou.length}`} />
+          <Section theme={theme} title="Needs you" count={`${home.needsYou.length}`} />
           {home.needsYou.map((a) => <AskCard key={`${a.kind}:${a.id}:${a.askKey ?? a.askedAt}`} theme={theme} ask={a} open={open} openAgent={openAgent} />)}
         </>
       ) : null}
-      {failed.length > 0 && <Section theme={theme} title="FAILED TODAY" count={String(failed.length)} />}
+      {failed.length > 0 && <Section theme={theme} title="Failed" count={String(failed.length)} />}
       {failed.map((card) => <Card key={card.kind + ":" + card.id} theme={theme} card={card} open={open} openAgent={openAgent} />)}
-      {working.length > 0 && (focus ? (
-        <Pressable accessibilityRole="button" accessibilityState={{ expanded: listOpen }} onPress={() => setExpandWork(!expandWork)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
-          <Section theme={theme} title={listOpen ? "▾ WORKING" : "▸ WORKING"} count={String(working.length)} />
-        </Pressable>
-      ) : <Section theme={theme} title="WORKING" count={String(working.length)} />)}
-      {listOpen && working.map((c) => <Card key={c.kind + ":" + c.id} theme={theme} card={c} open={open} openAgent={openAgent} />)}
+      {working.length > 0 && <Section theme={theme} title="Working" count={String(working.length)} />}
+      {working.map((c) => <Card key={c.kind + ":" + c.id} theme={theme} card={c} open={open} openAgent={openAgent} />)}
+      {!working.length && !home.needsYou.length && !failed.length && <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13, marginTop: 12 }}>No active tasks.</Text>}
       {home.doneToday.length > 0 && (
         <Pressable accessibilityRole="button" accessibilityState={{ expanded: showDone }} onPress={() => setShowDone(!showDone)} style={{ marginTop: 20, minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
           <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, letterSpacing: 1.0, fontWeight: "700" }}>
-            {showDone ? "▾" : "▸"} DONE TODAY · {home.doneToday.length}
+            {showDone ? "▾" : "▸"} Finished today · {home.doneToday.length}
           </Text>
         </Pressable>
       )}

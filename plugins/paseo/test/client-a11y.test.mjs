@@ -122,7 +122,7 @@ test("formatRpcError and safeHttpsUrl sanitize daemon errors and PR URLs", () =>
   assert.equal(safeHttpsUrl(""), null);
 });
 
-test("client TSX components obey typography floor, accessible controls, chat picker, inline replies, and PR links", () => {
+test("client TSX components obey typography floor, accessible controls, dedicated Board chats, inline replies, and PR links", () => {
   const clientDir = path.join(ROOT, "client");
   const tsxFiles = [
     path.join(ROOT, "index.client.tsx"),
@@ -151,10 +151,13 @@ test("client TSX components obey typography floor, accessible controls, chat pic
   }
 
   const composer = fs.readFileSync(path.join(clientDir, "composer.tsx"), "utf8");
-  assert.match(composer, /menu === "chat"/);
-  assert.match(composer, /effectiveAgentId/);
+  assert.match(composer, /board = false/);
+  assert.match(composer, /!board && !agentId && selected && control/);
+  assert.match(composer, /!agentId && \(board \|\| chatId === "__new__" \|\| chats.length === 0\)/);
+  assert.match(composer, /const effectiveAgentId = agentId \|\| selectedChat\?\.id \|\| ""/);
+  assert.match(composer, /wantsNewChat \? \{ newChat: true \}/);
+  assert.match(composer, /!board && menu === "chat"/);
   assert.match(composer, /New chat in /);
-  assert.match(composer, /No open chats in .* yet\. Clyde will open one when you start\./);
 
   const task = fs.readFileSync(path.join(clientDir, "task.tsx"), "utf8");
   assert.equal(/Open decision on board/.test(task), false, "task.tsx must answer questions inline");
@@ -181,6 +184,28 @@ test("client TSX components obey typography floor, accessible controls, chat pic
   assert.match(task, /OpenChatButton/);
   assert.match(sidecar, /OpenChatButton/);
   assert.match(screen, /<HomeView\b[\s\S]*?openAgent=\{openAgent\}/);
+
+  assert.match(screen, /<Composer board theme=/);
+  assert.match(sidecar, /<Composer theme=\{theme\} workspaceId=\{workspaceId\} agentId=\{origin\}/);
+  assert.match(home, /Open task/);
+  assert.match(screen, /<SupervisorChat key=\{id\} theme=\{theme\} runId=\{id\}/);
+  assert.match(screen, /flexDirection: wide \? "row" : "column"/);
+  assert.match(screen, /useEffect\(\(\) => \{ setPicked\(initialTask\)/);
+  assert.match(task, /view\.savedPlanIntent/);
+  assert.match(task, /View saved plan/);
+  assert.match(task, /showPlan && <FormattedBody/);
+  assert.match(task, /const activity = view.runActivity/);
+  assert.match(task, /activity\?\.headline \|\| view.summary/);
+  assert.match(task, /Latest finding/);
+  assert.match(task, /Why it was sent back/);
+  assert.match(task, /\{details && <View[\s\S]*?<Meta[\s\S]*?<RunEvidence[\s\S]*?<FlowDiagram[\s\S]*?<Legend/);
+  assert.match(task, /view.kind === "run" && view.status === "running" && <Steering/);
+  assert.doesNotMatch(task, />Home<|Clyde \/ Task \//);
+  assert.equal((screen.match(/<Roster\b/g) ?? []).length, 1, "Roster appears only on Agents tab");
+  assert.match(screen, /\[mobilePane, setMobilePane\]/);
+  assert.match(screen, /display: !wide && mobilePane === "task" \? "none" : "flex"/);
+  assert.match(screen, /\(!workToReview \|\| newTask\) && <Panel/);
+  assert.match(task, /!embeddedSupervisor && <OpenChatButton/);
 
   // Quest #46 client contrast, ARIA, keyboard, and chat-picker invariants.
   assert.match(brand, /export \{ scheme \}/);

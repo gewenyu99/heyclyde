@@ -20,6 +20,7 @@ import { answerEntry, entry, parsePlan, planEntry, projectEntry, refused, type P
 import { firstLine } from './prompts.ts'
 import { sh } from './shell.ts'
 import { deterministicProviderFailure, permissionFailure, runStage } from './stage.ts'
+import { Supervisors } from './supervisor.ts'
 import type { AgentResult, AskKind, AskRecord, FlowCtx, FlowModule, Run, RunStatus } from './types.ts'
 
 export type { Run } from './types.ts'
@@ -71,11 +72,13 @@ export class Runs {
   runs = new Map<string, Run>()
   live = new Map<string, Live>()
   closing = false
+  supervisors: Supervisors
 
   constructor(ctx: DaemonCtx) {
     this.ctx = ctx
     this.dir = join(clydeHome(), 'runs')
     for (const r of readJsonDir<Run>(this.dir)) if (r?.id) this.runs.set(r.id, r)
+    this.supervisors = new Supervisors(ctx, id => this.view(this.need(id)))
     active = this
   }
 
@@ -215,6 +218,7 @@ export class Runs {
   /** Stops every driver without touching run state, so each run resumes on the next start. */
   async shutdown(): Promise<void> {
     this.closing = true
+    await this.supervisors.shutdown()
     for (const live of this.live.values()) {
       live.reason ??= 'shutdown'
       live.abort.abort()
@@ -295,6 +299,7 @@ export class Runs {
   steer(id: string, note: string) {
     const run = this.need(id)
     if (TERMINAL.includes(run.status)) throw new HttpError(409, 'Run has finished')
+    if (run.status === 'asking') throw new HttpError(409, 'The run is waiting for a decision; use the explicit answer control')
     const override = /^\/route\s+(planner|worker|specReview|audit|verify)\s+(\S+)\s*$/.exec(note)
     if (override) {
       if (!run.routes) throw new HttpError(409,'This run uses legacy role ladders')
@@ -309,7 +314,6 @@ export class Runs {
       this.emit(run, 'run.routed', 'Pinned ' + model + ' for ' + stage)
       return this.view(run)
     }
-    if (run.status === 'asking') return this.answer(id, note, 'paseo')
     run.steering ??= []
     run.steering.push(note)
     this.save(run)

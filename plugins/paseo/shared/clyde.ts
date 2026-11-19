@@ -53,7 +53,8 @@ export type TaskView = {
   routing?: string[]; auditedHead?: string; pullRequest?: string;
   kind: "run" | "thread"; id: string; name: string; status: Status; startedAt: string; summary: string;
   question?: string; approve: boolean; branch?: string;
-  goal: string; lastActivity?: string; diff?: Diff;
+  runActivity?: { headline: string; latestResult?: string; retryReason?: string };
+  savedPlanIntent?: string; goal: string; lastActivity?: string; diff?: Diff;
   steps: Step[]; attempts: Record<string, AttemptView[]>; selected?: string;
   passed: number; total: number; background: number; agentId?: string;
 };
@@ -78,6 +79,22 @@ export const taskRpc = defineRpc({
   name: "clyde.task",
   input: z.object({ kind: z.enum(["run", "thread"]), id: z.string() }),
   output: z.custom<Result<TaskView>>(),
+});
+
+const supervisorInput = z.object({ id: z.string().min(1) });
+const supervisorState = z.object({
+  messages: z.array(z.object({ role: z.enum(["user", "assistant"]), text: z.string() })),
+  busy: z.boolean(),
+  error: z.string().optional(),
+});
+export type SupervisorState = z.infer<typeof supervisorState>;
+export const supervisorRpc = defineRpc({
+  name: "clyde.supervisor", input: supervisorInput, output: supervisorState,
+});
+export const askSupervisorRpc = defineRpc({
+  name: "clyde.ask-supervisor",
+  input: supervisorInput.extend({ text: z.string().trim().min(1).max(8000), requestId: z.string().uuid() }),
+  output: z.object({ ok: z.boolean() }),
 });
 
 /** A background agent's turns, read only. */

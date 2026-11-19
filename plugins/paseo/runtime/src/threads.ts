@@ -30,6 +30,8 @@ export type StartOptions = {
 
 export type ThreadsOptions = {
   events: EventLog; memory?: Memory | null; maxTurns?: number; backend?: (name: string) => Backend; lists?: Lists
+  dir?: string; resumeSessions?: boolean
+  preparePrompt?: (thread: Thread, prompt: string) => string
 }
 
 // Follow-up turns in a row for open items, and Stop hook refusals per turn. Both stop there, so a stuck model can end.
@@ -59,11 +61,15 @@ export class Threads {
   handoffs = new Map<string, Promise<void>>()
   mirrorImports = new Map<string, Promise<void>>()
   closing = false
+  resumeSessions: boolean
+  preparePrompt?: ThreadsOptions['preparePrompt']
 
   constructor(opts: ThreadsOptions) {
     this.events = opts.events
     this.memory = opts.memory ?? null
-    this.dir = join(clydeHome(), 'threads')
+    this.dir = opts.dir ?? join(clydeHome(), 'threads')
+    this.resumeSessions = opts.resumeSessions ?? true
+    this.preparePrompt = opts.preparePrompt
     this.cap = opts.maxTurns ?? maxTurns()
     this.backend = opts.backend ?? backendByName
     for (const t of readJsonDir<Thread>(this.dir)) if (t?.id) this.threads.set(t.id, t)
@@ -269,7 +275,8 @@ export class Threads {
       const agent = mirrorName(t, clydeHome()) ? readJson<Record<string, string>>(join(clydeHome(), 'paseo-threads.json'))?.[t.id] : undefined
       const run = t.paseoAgentId ? (input:TurnInput)=>runManagedWorker(t,input) : agent && !t.readOnly ? (input: TurnInput) => runPaseoTurn(agent, input) : (input: TurnInput) => this.backend(t.rung.backend).runTurn(input)
       out = await run({
-        rung: t.rung, cwd: t.cwd, session: t.session, prompt: this.withList(t, prompt), readOnly: t.readOnly, systemAppend: t.systemAppend,
+        rung: t.rung, cwd: t.cwd, session: this.resumeSessions ? t.session : undefined,
+        prompt: this.preparePrompt ? this.preparePrompt(t, prompt) : this.withList(t, prompt), readOnly: t.readOnly, systemAppend: t.systemAppend,
         env: this.envFor(t), schema: t.schema, signal,
         onProgress: (line) => { t.progress = line },
         onSession: (session) => this.onSession(t, session),

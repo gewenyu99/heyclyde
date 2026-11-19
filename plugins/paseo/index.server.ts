@@ -5,7 +5,7 @@ import { realpathSync } from "node:fs";
 import type { PluginHandlerContext, PluginServerContext } from "@getpaseo/plugin/server";
 import { call, ensureCompanion, follow, readJson } from "./server/daemon.ts";
 import { home, task, threadTask, transcript, type RawRun, type RawThread } from "./server/shape.ts";
-import { removeRpc, projectsRpc, launchRpc, openChatRpc, steerRpc, answerRpc, homeRpc, stopRpc, taskRpc, transcriptRpc, waitRpc, type Diff, type ProjectChat, type workerModels } from "./shared/clyde.ts";
+import { supervisorRpc, askSupervisorRpc, type SupervisorState, removeRpc, projectsRpc, launchRpc, openChatRpc, steerRpc, answerRpc, homeRpc, stopRpc, taskRpc, transcriptRpc, waitRpc, type Diff, type ProjectChat, type workerModels } from "./shared/clyde.ts";
 
 type PaseoApi = PluginHandlerContext["paseo"];
 type ProviderId = Parameters<PaseoApi["providers"]["listModels"]>[0];
@@ -246,6 +246,12 @@ export default function contribute(server: PluginServerContext) {
       const run = await call<RawRun>("GET", `/runs/${safeId}`);
       return { data: { ...task(run, threads, agents()), diff: diffOf(run) } };
     } catch (err) { return failed(err); }
+  });
+  server.handle(supervisorRpc, ({ id }) =>
+    call<SupervisorState>("GET", `/runs/${encodeURIComponent(id)}/supervisor`));
+  server.handle(askSupervisorRpc, async ({ id, text, requestId }) => {
+    await call("POST", `/runs/${encodeURIComponent(id)}/supervisor`, { text, requestId });
+    return { ok: true };
   });
   server.handle(transcriptRpc, async ({ threadId }) => {
     try { return { data: transcript(await call<RawThread>("GET", `/threads/${encodeURIComponent(threadId)}`)) }; } catch (err) { return failed(err); }
