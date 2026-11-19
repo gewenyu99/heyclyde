@@ -9,6 +9,7 @@ export const profiles = {
   sonnet: { backend: 'claude', model: 'claude-sonnet-5-5', effort: 'high' },
   opus: { backend: 'claude', model: 'claude-opus-5-5', effort: 'high' },
   astra: { backend: 'codex', model: 'gpt-6.2-astra', effort: 'high' },
+  neon: { backend: 'antigravity', model: 'gemini-4-neon-high', effort: 'high' },
   fable: { backend: 'claude', model: 'claude-fable-5-2', effort: 'high' },
   orchestrator: { backend: 'antigravity', model: 'gemini-pro-orchestrator', effort: 'high' },
   carbon: { backend: 'antigravity', model: 'gemini-4-carbon-high', effort: 'high' },

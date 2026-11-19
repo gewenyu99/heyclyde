@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { carbonAuditor, inferRouting, select, validateRouting } from '../src/routing.ts'
+import { carbonAuditor, inferRouting, profiles, select, validateRouting } from '../src/routing.ts'
 import { claudeArgs } from '../src/backends/claude.ts'
 import type { TurnInput } from '../src/backends/types.ts'
 const report = (sourceId: string, remainingPct: number, id = 'five_hour') => ({
@@ -26,6 +26,14 @@ test('one choice respects explicit pins, exhausted limits, comparable windows an
 test('Fable receives file readers only in review sessions', () => {
   const args = claudeArgs({ rung: { model: 'claude-fable-5-2' }, readOnly: true } as TurnInput, 'test', false)
   assert.equal(args[args.indexOf('--tools') + 1], 'Read,Grep,Glob')
+})
+
+test('a Neon worker pin routes to the Antigravity Neon High model', () => {
+  const routing = { overrides: { worker: 'neon' } } as const
+  validateRouting(routing)
+  const worker = select('worker', routing, {})
+  assert.equal(worker.pinned, true)
+  assert.deepEqual(profiles[worker.model], { backend: 'antigravity', model: 'gemini-4-neon-high', effort: 'high' })
 })
 
 test('audits select only the Carbon orchestrator advertised by this host', () => {

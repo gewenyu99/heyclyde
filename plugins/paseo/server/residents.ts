@@ -143,7 +143,7 @@ export function residents(server: PluginServerContext) {
       };
     },
   });
-  const model = z.enum(["opus", "astra", "sol", "sonnet", "fable", "carbon", "orchestrator"]);
+  const model = z.enum(["opus", "astra", "sol", "sonnet", "neon", "fable", "carbon", "orchestrator"]);
   const preference = defineAgentTool({
     name: "clyde_prefer_model",
     description:
@@ -205,10 +205,8 @@ export function residents(server: PluginServerContext) {
     api = context.paseo;
     if (request.background || request.labels["paseo.parent-agent-id"] || request.purpose === "history") return;
     const row = discover(request.agentId, request.title, request.cwd, request.provider);
-    void agentCall(row, "check_messages", {}).catch((err) => {
-      row.error = err.message;
-      save();
-    });
+    // Prewarm the agent's memory session. A failed recall is reported in the chat when a turn needs it.
+    void agentCall(row, "check_messages", {}).catch(() => {});
     return {
       ...request,
       tools: [...request.tools, ...memory, suggest, delegate, preference],
@@ -258,6 +256,7 @@ export function residents(server: PluginServerContext) {
       if (!row.offer?.assignment && !await available()) return;
       const q = await dispatch(row, "peek");
       if (stopped) return;
+      delete row.pickupError;
       if (row.offer?.assignment !== q?.assignment) {
         delete row.entry;
         delete row.renewAt;
@@ -327,9 +326,8 @@ export function residents(server: PluginServerContext) {
         await agentCall(row, "abandon_quest", { id: job.id, reason: "Run " + run.id + " " + run.status });
         delete row.offer;
       }
-      delete row.error;
     } catch (error) {
-      row.error = (error as Error).message;
+      row.pickupError = (error as Error).message;
     } finally {
       processing.delete(row.id);
       if (!stopped) save();
@@ -348,7 +346,7 @@ export function residents(server: PluginServerContext) {
       const task=last.item.text;
       await handoff(row,task,paseo);
       lastMessage.set(agent.id,last.seqStart);
-    }catch(err){row.error=String(err);await chat.notice(agent.id,"recall-status","Clyde recall unavailable: "+row.error);}
+    }catch(err){await chat.notice(agent.id,"recall-status","Clyde recall unavailable: "+String(err));}
   });
   server.addHook("agent.turn.after", async ({ agent }, { paseo }) => {
     api = paseo; chat.bind(paseo);
@@ -403,7 +401,8 @@ export function residents(server: PluginServerContext) {
       }
     } else row.paused = input.action === "pause";
     save();
-    await advance(row, input.action === "start" ? input.questId : undefined);
+    const pickup = advance(row, input.action === "start" ? input.questId : undefined);
+    if (input.action !== "confirm") await pickup;
     return { ok: true };
   });
   const timer = setInterval(() => {

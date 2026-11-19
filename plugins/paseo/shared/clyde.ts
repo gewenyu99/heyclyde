@@ -107,7 +107,7 @@ export const stopRpc = defineRpc({
 
 export type QuestOffer = { id: number; title: string; brief: string; done_when: string; priority: string; assignment: string | null; run: string | null };
 export type Resident = { id: string; title: string; cwd: string; provider: string; project: string; role: string; areas: string[];
-  confirmed: boolean; paused: boolean; offer?: QuestOffer; error?: string; memory: string };
+  confirmed: boolean; paused: boolean; offer?: QuestOffer; pickupError?: string; memory: string };
 export const rosterRpc = defineRpc({ name: "clyde.roster", input: z.object({workspaceId:z.string().optional()}), output: z.custom<Resident[]>() });
 export const residentRpc = defineRpc({ name: "clyde.resident", input: z.object({ id: z.string(), action: z.enum(["confirm","pause","resume","start","pass"]),
   areas: z.array(z.string().min(1).max(40)).max(32).optional(), role: z.string().trim().min(1).max(160).optional(), questId: z.number().int().optional() }), output: z.object({ ok: z.boolean() }) });
@@ -117,9 +117,10 @@ export const steerRpc = defineRpc({name:"clyde.steer",input:z.object({id:z.strin
 export const projectsRpc = defineRpc({
   name:"clyde.projects", input:z.object({workspaceId:z.string().optional()}), output:z.array(z.object({id:z.string(),name:z.string(),path:z.string()})),
 });
+export const workerModels = ["auto", "sol", "sonnet", "opus", "astra", "neon"] as const;
 export const launchRpc = defineRpc({
   name:"clyde.launch", input:z.object({project:z.string().min(1),prompt:z.string().trim().min(1).max(12000),
-    flow:z.enum(["task","ship"]),worker:z.enum(["auto","sol","sonnet","opus","astra"]),requestId:z.string().uuid(),agentId:z.string().optional()}),
+    flow:z.enum(["task","ship"]),worker:z.enum(workerModels),requestId:z.string().uuid(),agentId:z.string().optional()}),
   output:z.object({id:z.string()}),
 });
 

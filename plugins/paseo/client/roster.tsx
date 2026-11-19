@@ -65,7 +65,12 @@ function Row({ agent, theme, refresh }: { agent: Resident; theme: PluginTheme; r
             <Text style={{ color: theme.colors.foreground }}>{agent.role} · {agent.areas.join(", ")}</Text>
             {button(
               agent.confirmed ? "Edit responsibilities" : "Review suggested responsibilities",
-              () => setEditing(true),
+              () => {
+                setRole(agent.role);
+                setAreas(agent.areas.join(", "));
+                setError("");
+                setEditing(true);
+              },
             )}
             {agent.confirmed &&
               button(
@@ -86,7 +91,10 @@ function Row({ agent, theme, refresh }: { agent: Resident; theme: PluginTheme; r
           {button("Pass", () => void action("pass"))}
         </View>
       )}
-      {(error || agent.error) && <Text style={{ color: theme.colors.statusDanger }}>{error || agent.error}</Text>}
+      {error && <Text style={{ color: theme.colors.statusDanger }}>{error}</Text>}
+      {!editing && agent.pickupError && (
+        <Text style={{ color: theme.colors.statusDanger }}>Quest pickup unavailable. {agent.pickupError}</Text>
+      )}
     </View>
   );
 }

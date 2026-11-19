@@ -3,9 +3,10 @@ import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
-import { launchRpc, projectsRpc } from "../shared/clyde";
+import { launchRpc, projectsRpc, workerModels } from "../shared/clyde";
 
-type Worker = "auto" | "sol" | "sonnet" | "opus" | "astra";
+type Worker = typeof workerModels[number];
+const workerLabel = (worker: Worker) => worker[0].toUpperCase() + worker.slice(1);
 function requestId() {
   // This is an idempotency key, not a credential. Some native clients lack crypto.randomUUID.
   return globalThis.crypto?.randomUUID?.() ?? "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
@@ -125,7 +126,7 @@ export function Composer(
       <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
         {control((selected?.name || "Select project") + " ▾", () => setMenu(menu === "project" ? null : "project"))}
         {control(
-          "Worker · " + (worker === "auto" ? "Auto" : worker) + " ▾",
+          "Worker · " + workerLabel(worker) + " ▾",
           () => setMenu(menu === "worker" ? null : "worker"),
         )}
         <View style={{ flexGrow: 1 }} />
@@ -167,8 +168,8 @@ export function Composer(
       )}
       {menu === "worker" && (
         <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
-          {(["auto", "sol", "sonnet", "opus", "astra"] as const).map((w) =>
-            control(w, () => {
+          {workerModels.map((w) =>
+            control(workerLabel(w), () => {
               setWorker(w);
               setMenu(null);
             }, worker === w)
