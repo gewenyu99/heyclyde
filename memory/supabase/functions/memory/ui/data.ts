@@ -1,3 +1,4 @@
+import {cardVoteReceipt} from "../feedback.ts";
 // R67: what a card shows, as plain data. Each tool's card is built from the rows its text came from, through the same
 // redaction, so a card never shows what the text hides: a private entry is its title only, a private blob is withheld, and
 // a recall card lists only what that recall delivered to this MCP session. The text result itself is never touched.
@@ -62,7 +63,7 @@ async function recallCard(c: CardCall) {
     ? new Map((await sql`select id, chances_left from memory.entry where id = any(${trial}::text[])`).map((x) => [x.id as string, Number(x.chances_left)]))
     : new Map<string, number>();
   return {
-    retrieval_id: rid, query: String(r.query ?? ""), degraded: r.degraded ?? null, page: r.parent_id ? "more" : "packet",
+    retrieval_id: rid, card_receipt: await cardVoteReceipt(c.session, rid), query: String(r.query ?? ""), degraded: r.degraded ?? null, page: r.parent_id ? "more" : "packet",
     items: [
       ...main.filter((id) => id in rows && canReadEntry(scope, rows[id])).map((id) => memoryCard(rows[id])),
       ...trial.filter((id) => id in rows && canReadEntry(scope, rows[id])).map((id) => memoryCard(rows[id], true, left.get(id) ?? null)),

@@ -159,12 +159,12 @@ test('R67 multi-item cards cap at top three by default with a show-more button',
 
 test('R67 card buttons call the tools, and degrade cleanly when host tool IPC is missing', { skip: NO_CHROME }, () => {
   const report = run(frames('light', 640, {
-    recall: ['article[data-id="e-1"] button.c-sum', 'article[data-id="e-1"] button.c-used', 'div.c-foot button.cl-btn--primary', 'article[data-id="e-1"] button.c-open'],
+    recall: ['div.c-foot button.cl-btn--primary', 'article[data-id="e-1"] button.c-open'],
     quests: ['article[data-quest="12"] button.c-qsum', 'article[data-quest="12"] button.c-claim'],
   }))
   const calls = report.calls.map((c: any) => ({ name: c.name, arguments: c.arguments }))
   assert.deepEqual(calls, [
-    { name: 'feedback', arguments: { retrieval_id: RID, entries: [{ entry_id: 'e-1', verdict: 'used' }] } },
+    { name: 'feedback', arguments: { retrieval_id: RID, verdict:'helpful', card_vote:true } },
     { name: 'get_entry', arguments: { id: 'e-1' } },
     { name: 'claim_quest', arguments: { id: 12 } },
   ])
@@ -172,7 +172,7 @@ test('R67 card buttons call the tools, and degrade cleanly when host tool IPC is
   const noIpcReport = run([
     {
       id: 'recall-noipc', card: 'recall', html: cardHtml('recall'), theme: 'dark', result: FIXTURES.recall, width: 640, noIpc: true,
-      clicks: ['article[data-id="e-1"] button.c-sum', 'article[data-id="e-1"] button.c-used', 'div.c-foot button.cl-btn--primary', 'article[data-id="e-1"] button.c-open'],
+      clicks: ['div.c-foot button.cl-btn--primary', 'article[data-id="e-1"] button.c-open'],
     },
     {
       id: 'quests-noipc', card: 'quests', html: cardHtml('quests'), theme: 'dark', result: FIXTURES.quests, width: 640, noIpc: true,

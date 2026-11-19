@@ -123,15 +123,15 @@ export const launchRpc = defineRpc({
   output:z.object({id:z.string()}),
 });
 
-export const noteSchema = z.object({id:z.string(),title:z.string(),body:z.string().optional()});
+export const noteSchema = z.object({id:z.string(),title:z.string(),body:z.string().optional(),provenance:z.string().nullish(),kind:z.string().nullish()});
 export const activitySchema = z.discriminatedUnion("kind",[
-  z.object({kind:z.literal("recall"),retrieval:z.string(),notes:z.array(noteSchema),rated:z.boolean(),native:z.boolean().optional()}),
+  z.object({kind:z.literal("recall"),retrieval:z.string(),notes:z.array(noteSchema),rated:z.boolean(),native:z.boolean().optional(),query:z.string().optional(),receipt:z.string().optional(),choice:z.enum(["helpful","nothing_useful"]).optional(),pendingSync:z.boolean().optional()}),
   z.object({kind:z.literal("notice"),text:z.string()}),
   z.object({kind:z.literal("saved"),title:z.string()}),
   z.object({kind:z.literal("approval"),run:z.string(),key:z.string(),title:z.string(),question:z.string(),approve:z.boolean(),answer:z.string().optional()}),
 ]);
 export type Activity = z.infer<typeof activitySchema>;
-export const feedbackRpc = defineRpc({name:"clyde.feedback",input:z.object({agent:z.string(),retrieval:z.string(),votes:z.array(z.object({entry_id:z.string(),verdict:z.enum(["used","irrelevant","wrong"])}))}),output:z.object({ok:z.boolean()})});
+export const feedbackRpc = defineRpc({name:"clyde.feedback",input:z.object({agent:z.string(),retrieval:z.string(),verdict:z.enum(["helpful","nothing_useful"]),receipt:z.string().optional()}),output:z.object({ok:z.boolean(),pendingSync:z.boolean()})});
 export const respondRpc = defineRpc({name:"clyde.respond",input:z.object({agent:z.string(),run:z.string(),key:z.string(),text:z.string().trim().min(1)}),output:z.object({ok:z.boolean()})});
 export const boardQuest = z.object({id:z.number(),title:z.string(),brief:z.string(),done_when:z.string(),priority:z.string()});
 export type BoardQuest = z.infer<typeof boardQuest>;
@@ -139,3 +139,5 @@ export const boardRpc = defineRpc({name:"clyde.quests",input:z.object({agent:z.s
 export const spawnQuestRpc = defineRpc({name:"clyde.spawn-quest",input:z.object({agent:z.string(),quest:z.number().int().positive()}),output:z.object({id:z.string()})});
 
 export const recallRpc=defineRpc({name:"clyde.recall",input:z.object({agent:z.string(),query:z.string().trim().min(1).max(500)}),output:z.object({retrieval:z.string(),notes:z.number()})});
+
+export const ratingRpc=defineRpc({name:"clyde.recall-rating",input:z.object({agent:z.string(),retrieval:z.string()}),output:z.object({choice:z.enum(["helpful","nothing_useful"]).optional(),pendingSync:z.boolean()})});

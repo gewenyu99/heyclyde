@@ -1,3 +1,5 @@
+import {scheme} from "./brand";
+import {palette} from "./brand.generated";
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -38,7 +40,7 @@ function AskCard({ theme, ask, open }: { theme: PluginTheme; ask: Ask; open: Ope
   };
   const amber = hue("asking");
   return (
-    <View style={{ borderWidth: 1, borderColor: "#f0d7bd", backgroundColor: "#fffcf8", borderRadius: 10, padding: 16, marginBottom: 10 }}>
+    <View style={{ borderWidth: 1, borderColor: palette[scheme(theme)]["sticky-edge"], backgroundColor: palette[scheme(theme)].sticky, borderRadius: 10, padding: 16, marginBottom: 10 }}>
       <Pressable onPress={() => open(ask.kind, ask.id)} style={{ flexDirection: "row", justifyContent: "space-between", gap: 8 }}>
         <Text style={{ color: theme.colors.foreground, fontWeight: "700", flexShrink: 1 }}>{ask.task}</Text>
         <Text style={{ color: amber.ink, fontSize: 11 }}>waiting {ago(ask.askedAt)}</Text>
@@ -62,7 +64,7 @@ function AskCard({ theme, ask, open }: { theme: PluginTheme; ask: Ask; open: Ope
       ) : null}
       <Eyebrow theme={theme}>Reply</Eyebrow>
       <TextInput value={reply} onChangeText={setReply} placeholder={ask.approve ? "Add a note to the plan…" : "Reply…"} placeholderTextColor={theme.colors.foregroundMuted}
-        style={{ borderWidth: 1, borderColor: "#dadcd5", borderRadius: 6, paddingVertical: 8, paddingHorizontal: 10, marginTop: 4, color: theme.colors.foreground, backgroundColor: "#fff" }} />
+        style={{ borderWidth: 1, borderColor: palette[scheme(theme)].edge, borderRadius: 6, paddingVertical: 8, paddingHorizontal: 10, marginTop: 4, color: theme.colors.foreground, backgroundColor:theme.colors.surface1 }} />
       <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
         {ask.approve ? (
           <Pressable accessibilityRole="button" onPress={() => submit("yes")}
@@ -98,7 +100,7 @@ function Card({ theme, card, open }: { theme: PluginTheme; card: TaskCard; open:
   const featured = card.status === "running";
   return (
     <Pressable accessibilityRole="button" onPress={() => open(card.kind, card.id)}
-      style={{ borderWidth: 1, borderColor: featured ? "#bdd0fa" : theme.colors.border, backgroundColor: theme.colors.surface1, borderRadius: 10, padding: 14, marginBottom: 10 }}>
+      style={{ borderWidth: 1, borderColor: featured ? palette[scheme(theme)]["carbon-copy"] : theme.colors.border, backgroundColor: theme.colors.surface1, borderRadius: 10, padding: 14, marginBottom: 10 }}>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
         <Text numberOfLines={2} style={{ color: theme.colors.foreground, fontWeight: "700", flexShrink: 1 }}>{card.name}</Text>
         <Pill status={card.status} />

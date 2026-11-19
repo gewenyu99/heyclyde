@@ -21,7 +21,7 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/*.test.mjs"
+    "test": "node sync-brand.mjs --check && node --test test/*.test.mjs"
   },
   "devDependencies": {
     "@getpaseo/plugin": "0.16.2",

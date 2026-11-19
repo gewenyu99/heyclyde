@@ -59,3 +59,9 @@ export const feedbackFooter = (rid: string) =>
 /** The last line of a tool reply while recalls in the session still wait for feedback. */
 export const reminderLine = (rids: string[]) =>
   `Reminder: no feedback yet for retrieval ${rids.join(", ")}. Call feedback(retrieval_id, entries=[{entry_id, verdict}]) or nothing_useful=true.`;
+
+/** A receipt only authorizes a card vote on this retrieval. A host can render the card outside the original MCP session. */
+export async function cardVoteReceipt(session: string, retrieval: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(["clyde-card-vote-v1", session, retrieval])));
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2,"0")).join("");
+}

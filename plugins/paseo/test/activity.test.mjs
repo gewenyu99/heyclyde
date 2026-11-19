@@ -17,6 +17,8 @@ test("recall, user feedback and approvals stay in the origin chat; double spawn 
     done_when: "The setup is documented.",
     priority: "normal",
   };
+  const votes = [];
+  let feedbackReply="Logged.";
   const calls = [], runs = new Map(), timeline = [];
   const server = createServer(async (req, res) => {
     let raw = "";
@@ -31,7 +33,8 @@ test("recall, user feedback and approvals stay in the origin chat; double spawn 
         return send({ result: {} });
       }
       calls.push(tool);
-      return send({ result: { content: [{ text: "OK" }], _meta: { "clyde/card": tool==="recall"?{retrieval_id:"task-retrieval",items:[{id:"note",title:"Recall on launch",body:"Visible evidence"}]}:{ quests: [quest] } } } });
+      if(tool==="feedback")votes.push(arg.params.arguments);
+      return send({ result: { content: [{ text:tool==="feedback"?feedbackReply:"OK" }], _meta: { "clyde/card": tool==="recall"?{retrieval_id:"task-retrieval",items:[{id:"note",title:"Recall on launch",body:"Visible evidence"}]}:{ quests: [quest] } } } });
     }
     if (req.method === "GET"){
       if(req.url==="/runs")return send([...runs.values()]);
@@ -94,10 +97,18 @@ test("recall, user feedback and approvals stay in the origin chat; double spawn 
     await invoke("feedback", {
       agent: "owner",
       retrieval: "retrieval-1",
-      votes: [{ entry_id: "note", verdict: "used" }],
+      verdict:"helpful",
     });
+    assert.deepEqual(votes[0],{retrieval_id:"retrieval-1",card_vote:true,verdict:"helpful"});
+    await invoke("feedback",{agent:"owner",retrieval:"retrieval-1",verdict:"nothing_useful"});
+    assert.deepEqual(votes[1],{retrieval_id:"retrieval-1",card_vote:true,verdict:"nothing_useful"});
+    assert.equal(timeline.at(-1).item.data.choice,"nothing_useful");
     assert.equal(timeline.at(-1).item.data.rated, true);
     assert.equal(timeline.at(-1).item.data.notes[0].title,"A decision");
+    feedbackReply="Already logged for retrieval-1.";
+    const pending=await invoke("feedback",{agent:"owner",retrieval:"retrieval-1",verdict:"helpful"});
+    assert.equal(pending.pendingSync,true);
+    assert.deepEqual(await invoke("recall-rating",{agent:"owner",retrieval:"retrieval-1"}),{choice:"helpful",pendingSync:true});
     assert.deepEqual(await invoke("quests", { agent: "owner" }), [quest]);
     const first = await invoke("spawn-quest", { agent: "owner", quest: 123 });
     const replay = await invoke("spawn-quest", { agent: "owner", quest: 123 });

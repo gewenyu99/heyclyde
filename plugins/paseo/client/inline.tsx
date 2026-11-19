@@ -1,16 +1,41 @@
 import type { PluginTimelineItemProps } from "@getpaseo/plugin/client";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRpc } from "@getpaseo/plugin/client";
+import { RecallSheet } from "./recall-sheet";
+import { clydeTheme, Lockup } from "./brand";
 import { useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
-import { type Activity, feedbackRpc, respondRpc } from "../shared/clyde";
+import { type Activity, feedbackRpc, ratingRpc, respondRpc } from "../shared/clyde";
 
 export function InlineActivity({ agentId, item, theme }: PluginTimelineItemProps<Activity>) {
-  const data = item.data, c = theme.colors, feedback = useRpc(feedbackRpc), respond = useRpc(respondRpc);
-  const [open, setOpen] = useState(true),
-    [text, setText] = useState(""),
+  const data = item.data, c = clydeTheme(theme).colors, feedback = useRpc(feedbackRpc), respond = useRpc(respondRpc);
+  const [text, setText] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  const [votes, setVotes] = useState<Record<string, "used" | "irrelevant" | "wrong">>({});
+  const rating = useRpc(ratingRpc), cache = useQueryClient();
+  const rid = data.kind === "recall" ? data.retrieval : "";
+  const key = ["clyde", "rating", agentId, rid];
+  const local = useQuery({
+    queryKey: key,
+    queryFn: () => rating({ agent: agentId, retrieval: rid }),
+    enabled: !!rid,
+    staleTime: 60000,
+    refetchInterval: (q) => q.state.data?.pendingSync ? 60000 : false,
+  });
+  if (data.kind === "recall") {
+    return (
+      <RecallSheet
+        theme={theme}
+        packet={{ ...data, ...(local.data?.choice ? local.data : {}) }}
+        onVote={async (verdict) => {
+          const result = await feedback({ agent: agentId, retrieval: rid, verdict, receipt: data.receipt });
+          cache.setQueryData(key, { choice: verdict, pendingSync: result.pendingSync });
+          return result;
+        }}
+      />
+    );
+  }
+
   async function submit(action: () => Promise<unknown>) {
     if (busy) return;
     setBusy(true);
@@ -54,61 +79,9 @@ export function InlineActivity({ agentId, item, theme }: PluginTimelineItemProps
         ? <Text style={{ color: c.foregroundMuted }}>{data.text}</Text>
         : data.kind === "saved"
         ? <Text style={{ color: c.foregroundMuted }}>Saved to Clyde · {data.title}</Text>
-        : data.kind === "recall"
-        ? (
-          <>
-            <>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setOpen(!open)}
-              >
-                <Text style={{ color: c.foreground, fontWeight: "600" }}>
-                  {data.notes.length} {data.notes.length === 1 ? "memory" : "memories"} recalled {open ? "▴" : "▾"}
-                </Text>
-              </Pressable>
-              {open && (
-                <>
-                  {data.notes.map((note) => (
-                    <View key={note.id} style={{ gap: 5 }}>
-                      <Text style={{ color: c.foreground }}>{note.title}</Text>
-                      {note.body && <Text style={{ color: c.foregroundMuted }}>{note.body}</Text>}
-                      {!data.rated && !data.native && (
-                        <View style={{ flexDirection: "row", gap: 5, flexWrap: "wrap" }}>
-                          {(["used", "irrelevant", "wrong"] as const).map((v, i) =>
-                            button(["Useful", "Irrelevant", "Incorrect"][i], () =>
-                              setVotes({ ...votes, [note.id]: v }), votes[note.id] === v)
-                          )}
-                        </View>
-                      )}
-                    </View>
-                  ))}
-                  {data.native ? <Text style={{color:c.foregroundMuted}}>Feedback uses the original Clyde tool session.</Text> : data.rated
-                    ? <Text style={{ color: c.foregroundMuted }}>Feedback recorded</Text>
-                    : (
-                      <View style={{ flexDirection: "row", gap: 6 }}>
-                        {Object.keys(votes).length === data.notes.length && data.notes.length > 0 &&
-                          button("Save feedback", () =>
-                            void submit(() =>
-                              feedback({
-                                agent: agentId,
-                                retrieval: data.retrieval,
-                                votes: Object.entries(votes).map(([entry_id, verdict]) => ({ entry_id, verdict })),
-                              })
-                            ))}
-                        {button(
-                          "None helped",
-                          () =>
-                            void submit(() => feedback({ agent: agentId, retrieval: data.retrieval, votes: [] })),
-                        )}
-                      </View>
-                    )}
-                </>
-              )}
-            </>
-          </>
-        )
         : (
           <>
+            <Lockup theme={theme} width={64} />
             <Text style={{ color: c.foreground, fontWeight: "700" }}>{data.title}</Text>
             <Text style={{ color: c.foreground }}>{data.question}</Text>
             {data.answer ? <Text style={{ color: c.foregroundMuted }}>Answered · {data.answer}</Text> : (
@@ -130,8 +103,7 @@ export function InlineActivity({ agentId, item, theme }: PluginTimelineItemProps
                   {text.trim().length > 0 &&
                     button(
                       "Send reply",
-                      () =>
-                        void submit(() => respond({ agent: agentId, run: data.run, key: data.key, text })),
+                      () => void submit(() => respond({ agent: agentId, run: data.run, key: data.key, text })),
                     )}
                 </View>
               </>

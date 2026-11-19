@@ -6,6 +6,8 @@ import { Text, View } from "react-native";
 import {nativeRecall} from "./shared/recall";
 import {InlineActivity} from "./client/inline";
 import {activitySchema,recallRpc} from "./shared/clyde";
+import {scheme} from "./client/brand";
+import {artwork} from "./client/brand.generated";
 import {clydeIcon} from "./client/icon";
 import { Sidecar } from "./client/sidecar";
 import { ClydeScreen } from "./client/screen";
@@ -22,14 +24,14 @@ function Badge({ n, tone }: { n: number; tone: { ink: string; soft: string } }) 
 }
 
 /** Clyde in the sidebar: amber counts what needs Wen, blue counts what's running. */
-function ClydeItem({ currentScreen, openScreen }: PluginSidebarItemProps) {
+function ClydeItem({ currentScreen, openScreen,theme }: PluginSidebarItemProps) {
   useLive();
   const read = useRpc(homeRpc);
   const q = useQuery({ queryKey: ["clyde", "home"], queryFn: () => read({}), refetchInterval: 15_000 });
   const home = q.data?.data;
   return (
     <SidebarRow
-      icon={clydeIcon}
+      icon={artwork[scheme(theme)].mark}
       label="Clyde"
       active={currentScreen?.screenId === "clyde"}
       onPress={() => openScreen({ screenId: "clyde" })}
@@ -48,7 +50,7 @@ export default function contribute(client: PluginClientContext) {
     if(item.status!=="completed")return;
     const result=item.detail.type==="unknown"?item.detail.output:item.detail.type==="plain_text"?item.detail.text:undefined;
     const packet=nativeRecall(item.name,result);
-    if(packet)return {items:[{type:"plugin",kind:"clyde-activity",version:1,data:{kind:"recall",retrieval:packet.retrieval_id,notes:packet.items,rated:false,native:true}}]};
+    if(packet)return {items:[{type:"plugin",kind:"clyde-activity",version:1,data:{kind:"recall",retrieval:packet.retrieval_id,notes:packet.items,rated:false,native:true,...(packet.query?{query:packet.query}:{}),...(packet.card_receipt?{receipt:packet.card_receipt}:{})}}]};
   }});
   client.addTimelineRenderer({kind:"clyde-activity",version:1,schema:activitySchema,Component:InlineActivity});
   client.addSlashCommand({name:"clyde-recall",context:"agent",description:"Recall Clyde memory in this chat",argumentHint:"what to recall",onSubmit:async ctx=>{await ctx.rpc(recallRpc,{agent:ctx.agent.id,query:ctx.args.trim()||"Recent decisions for this project"});}});

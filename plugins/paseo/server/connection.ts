@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -37,11 +37,11 @@ export async function agentReply(agent: Identity, tool: string, args: Record<str
       if (!response.ok) throw new Error("Clyde returned HTTP " + response.status);
       const body = await response.json() as {
         error?: { message: string };
-        result?: { _meta?: {"clyde/card"?: unknown}; isError?: boolean; content?: { text?: string }[] };
+        result?: { _meta?: { "clyde/card"?: unknown }; isError?: boolean; content?: { text?: string }[] };
       };
       const text = body.result?.content?.[0]?.text || "";
       if (body.error || body.result?.isError) throw new Error(body.error?.message || text);
-      return { text, card:body.result?._meta?.["clyde/card"], session: response.headers.get("mcp-session-id") };
+      return { text, card: body.result?._meta?.["clyde/card"], session: response.headers.get("mcp-session-id") };
     } finally {
       clearTimeout(timer);
     }
@@ -53,7 +53,7 @@ export async function agentReply(agent: Identity, tool: string, args: Record<str
       (async () => {
         const { session } = await rpc("initialize", {
           protocolVersion: "2025-06-18",
-          capabilities: {extensions:{"io.modelcontextprotocol/ui":{mimeTypes:["text/html;profile=mcp-app"]}}},
+          capabilities: { extensions: { "io.modelcontextprotocol/ui": { mimeTypes: ["text/html;profile=mcp-app"] } } },
           clientInfo: { name, version: "1" },
         });
         if (!session) throw new Error("Clyde did not return a session");
@@ -78,9 +78,33 @@ export async function agentReply(agent: Identity, tool: string, args: Record<str
     );
   }
   const session = await sessions.get(key)!;
-  return rpc("tools/call", { name: tool, arguments: args }, session);
+  const dir = join(process.env.CLYDE_HOME || join(homedir(), ".clyde"), "recall-sessions");
+  const file = join(dir, hash(base, token, name) + ".json");
+  const bindings = (): Record<string, string> => {
+    try {
+      return JSON.parse(readFileSync(file, "utf8"));
+    } catch {
+      return {};
+    }
+  };
+  const origin = tool === "feedback" && typeof args.retrieval_id === "string"
+    ? bindings()[args.retrieval_id]
+    : undefined;
+  const reply = await rpc("tools/call", { name: tool, arguments: args }, origin ?? session);
+  if (tool === "recall" || tool === "recall_more") {
+    const rid = (reply.card as { retrieval_id?: string } | undefined)?.retrieval_id ??
+      /^retrieval ([0-9a-f-]{36})/.exec(reply.text)?.[1];
+    if (rid) {
+      const rows = Object.fromEntries(Object.entries(bindings()).slice(-511));
+      rows[rid] = session;
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
+      writeFileSync(file + ".tmp", JSON.stringify(rows), { mode: 0o600 });
+      renameSync(file + ".tmp", file);
+    }
+  }
+  return reply;
 }
 
-export async function agentCall(agent: Identity,tool:string,args:Record<string,unknown>): Promise<string> {
-  return (await agentReply(agent,tool,args)).text;
+export async function agentCall(agent: Identity, tool: string, args: Record<string, unknown>): Promise<string> {
+  return (await agentReply(agent, tool, args)).text;
 }

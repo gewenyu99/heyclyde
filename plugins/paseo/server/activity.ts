@@ -12,6 +12,7 @@ import {
   boardQuest,
   boardRpc,
   feedbackRpc,
+  ratingRpc,
   type Resident,
   respondRpc,
   spawnQuestRpc,
@@ -48,6 +49,22 @@ const keyFor = (text: string) => createHash("sha256").update(text).digest("hex")
 export function activity(server: PluginServerContext, rowFor: (id: string) => Resident | undefined) {
   const dir = process.env.CLYDE_HOME || join(homedir(), ".clyde");
   const origins = readJson<Record<string, Origin>>("chat-runs.json") ?? {};
+  type Vote = {
+    agent: string;
+    retrieval: string;
+    verdict: "helpful" | "nothing_useful";
+    receipt?: string;
+    pendingSync: boolean;
+    attempted: number;
+  };
+  const voteFile = join(dir, "recall-ratings.json");
+  const votes = readJson<Record<string, Vote>>("recall-ratings.json") ?? {};
+  const sending = new Set<string>();
+  function saveVotes() {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    writeFileSync(voteFile + ".tmp", JSON.stringify(votes), { mode: 0o600 });
+    renameSync(voteFile + ".tmp", voteFile);
+  }
   const delivered = new Map<string, string>();
   const inFlight = new Set<string>();
   let api: PaseoApi | undefined, closed = false, polling = false;
@@ -77,13 +94,12 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
     });
     delivered.set(key, value);
   }
-  async function rated(agent: string, id: string) {
+  async function rated(agent: string, id: string, choice: "helpful" | "nothing_useful", pendingSync: boolean) {
     const previous = delivered.get(agent + "/recall-" + id);
     if (previous) {
       const data = activitySchema.parse(JSON.parse(previous));
-      if (data.kind === "recall") return append(agent, "recall-" + id, { ...data, rated: true });
+      if (data.kind === "recall") return append(agent, "recall-" + id, { ...data, rated: true, choice, pendingSync });
     }
-    await append(agent, "feedback-" + id, { kind: "notice", text: "Memory feedback recorded" });
   }
   async function memory(
     agent: string,
@@ -94,10 +110,6 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
     text = "",
   ) {
     api = paseo;
-    if (tool === "feedback" && typeof args.retrieval_id === "string") {
-      await rated(agent, args.retrieval_id);
-      return;
-    }
     if (tool === "remember") {
       const title = String(args.title || "Project decision");
       await append(agent, "saved-" + keyFor(JSON.stringify([title, args.body])), { kind: "saved", title });
@@ -109,6 +121,8 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
         kind: "recall",
         retrieval: packet.retrieval_id,
         notes: packet.items,
+        query: packet.query ?? String(args.query ?? ""),
+        ...(packet.card_receipt ? { receipt: packet.card_receipt } : {}),
         rated: false,
       });
     }
@@ -120,16 +134,45 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
     await memory(row.id, "recall", reply.card, paseo, args, reply.text);
     return { text: reply.text, ...recallPacket(reply.card, reply.text) };
   }
-  server.handle(feedbackRpc, async ({ agent, retrieval, votes }, { paseo }) => {
-    const row = rowFor(agent);
-    if (!row) throw new Error("Agent unavailable");
-    await agentCall(row, "feedback", {
-      retrieval_id: retrieval,
-      ...(votes.length ? { entries: votes } : { nothing_useful: true }),
-    });
+  async function transmit(key: string, v: Vote) {
+    if (sending.has(key)) return;
+    const row = rowFor(v.agent);
+    if (!row) return;
+    sending.add(key);
+    try {
+      v.attempted = Date.now();
+      saveVotes();
+      const reply = await agentCall(row, "feedback", {
+        retrieval_id: v.retrieval,
+        card_vote: true,
+        verdict: v.verdict,
+        ...(v.receipt ? { card_receipt: v.receipt } : {}),
+      });
+      // An old server may have accepted the agent's per-note feedback before the person clicked.
+      // Its "Already logged" cannot acknowledge this vote.
+      if (/^Logged\.(?:\s|$)/.test(reply) && votes[key] === v) {
+        v.pendingSync = false;
+        saveVotes();
+      }
+    } catch {
+      /* Keep the local vote for a retry with this agent's credentials. */
+    } finally {
+      sending.delete(key);
+    }
+  }
+  server.handle(ratingRpc, async ({ agent, retrieval }) => {
+    const v = votes[keyFor(agent + "/" + retrieval)];
+    return { choice: v?.verdict, pendingSync: v?.pendingSync ?? false };
+  });
+  server.handle(feedbackRpc, async ({ agent, retrieval, verdict, receipt }, { paseo }) => {
+    if (!rowFor(agent)) throw new Error("Agent unavailable");
+    const key = keyFor(agent + "/" + retrieval);
+    const v = votes[key] = { agent, retrieval, verdict, receipt, attempted: 0, pendingSync: true };
+    saveVotes();
+    await transmit(key, v);
     api = paseo;
-    await rated(agent, retrieval);
-    return { ok: true };
+    if (votes[key] === v) await rated(agent, retrieval, verdict, v.pendingSync);
+    return { ok: true, pendingSync: v.pendingSync };
   });
   server.handle(respondRpc, async ({ agent, run, key, text }, { paseo }) => {
     if (origins[run]?.agent !== agent) throw new Error("This question belongs to another chat");
@@ -306,7 +349,13 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
       polling = false;
     }
   }
-  const timer = setInterval(() => void tick(), 4000);
+  const timer = setInterval(() => {
+    void tick();
+    const next = Object.entries(votes).find(([key, v]) =>
+      v.pendingSync && rowFor(v.agent) && !sending.has(key) && Date.now() - v.attempted >= 900000
+    );
+    if (next) void transmit(...next);
+  }, 4000);
   return {
     track,
     recall,

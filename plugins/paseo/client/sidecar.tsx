@@ -8,10 +8,10 @@ import { homeRpc, rosterRpc, taskRpc } from "../shared/clyde";
 import { Composer } from "./composer";
 import { Quests } from "./quests";
 import { TaskScreen } from "./task";
-import { clydeIcon } from "./icon";
+import { Lockup,clydeTheme } from "./brand";
 
 export function Sidecar(props: PluginAgentPanelProps | PluginWorkspacePanelProps) {
-  const { theme, workspaceId } = props, c = theme.colors;
+  const {workspaceId}=props, theme=clydeTheme(props.theme), c=theme.colors;
   const origin = props.context === "agent" ? props.params.agentId : undefined;
   const [chosen, setChosen] = useState(""),
     [tab, setTab] = useState<"Quests" | "New task" | "Runs">("Quests"),
@@ -42,10 +42,7 @@ export function Sidecar(props: PluginAgentPanelProps | PluginWorkspacePanelProps
   };
   return (
     <ScrollView style={{ flex: 1, backgroundColor: c.surface0 }} contentContainerStyle={{ padding: 14, gap: 16 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-        <Icon icon={clydeIcon} size={24} color={c.foreground} />
-        <Text style={{ fontSize: 20, fontWeight: "700", color: c.foreground }}>Clyde</Text>
-      </View>
+      <Lockup theme={theme} width={88}/>
       <View style={{ flexDirection: "row", gap: 4, borderBottomWidth: 1, borderColor: c.border }}>
         {(["Quests", "New task", "Runs"] as const).map((v) => (
           <Pressable

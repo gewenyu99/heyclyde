@@ -320,37 +320,26 @@ function recallCard(d) {
   if (!items.length) {
     dk.appendChild(h("div", { class: "cl-empty" }, h("p", { class: "cl-empty__title", text: "Nothing in Clyde matches that yet." }),
       h("p", { class: "cl-empty__text", text: "Either nobody wrote it down, or it was phrased differently. Ask for more results, or tell your agent to remember it." })));
-    s.appendChild(dk); return s;
   }
-  var count = h("span", { class: "c-note" });
-  var send = h("button", { class: PR.trim(), type: "button", onclick: function () { sendFeedback(false); } }, icon("check"), "Send feedback");
-  var none = h("button", { class: GH.trim(), type: "button", onclick: function () { sendFeedback(true); } }, "None helped");
-  var foot = h("div", { class: "c-foot", hidden: true }, count, none, send), msg = h("p", { class: "c-say", hidden: true });
-  function lockMarks() { var bs = s.querySelectorAll("button.c-used,button.c-wrong"); for (var i = 0; i < bs.length; i++) bs[i].disabled = true; }
-  function refresh() {
-    var n = Object.keys(st.verdicts).length;
-    count.textContent = st.sent ? "Feedback logged." : n ? n + " of " + items.length + " marked. The rest count as not used." : "Mark what you used, then send it once.";
-    send.disabled = st.sent || st.busy || noIpc || !n; none.disabled = st.sent || st.busy || noIpc || n > 0;
-  }
-  function sync() {
-    foot.hidden = !(rows.some(function (r) { return r.isOpen(); }) || Object.keys(st.verdicts).length > 0 || st.sent);
-    if (toggle) toggle.sync(rows.every(function (r) { return r.isOpen(); }) && (!cap || cap.isAll()));
-  }
-  function sendFeedback(nothing) {
+  var msg = h("p", { class: "c-say", hidden: true });
+  var yes = h("button", { class: PR.trim(), type: "button", onclick: function () { rate("helpful"); } }, "That helped");
+  var no = h("button", { class: GH.trim(), type: "button", onclick: function () { rate("nothing_useful"); } }, "That didn’t");
+  var foot = h("div", { class: "c-foot" }, yes, no);
+  function refresh() { yes.disabled = no.disabled = st.busy || st.sent || noIpc; }
+  function sync() { if (toggle) toggle.sync(rows.every(function (r) { return r.isOpen(); }) && (!cap || cap.isAll())); }
+  function rate(verdict) {
+    if (st.busy || st.sent) return;
     st.busy = true; refresh();
-    var args = { retrieval_id: d.retrieval_id };
-    if (nothing) args.nothing_useful = true;
-    else args.entries = Object.keys(st.verdicts).map(function (id) { return { entry_id: id, verdict: st.verdicts[id] }; });
-    callTool("feedback", args).then(function (r) {
-      st.busy = false; var t = textOf(r), ok = /^Logged\./.test(t);
-      st.sent = ok || /^Already logged/.test(t);
-      say(msg, ok ? "Logged. What you used ranks a little higher next time." : t, ok);
-      if (st.sent) lockMarks();
-      refresh(); sync();
-    }, function (e) {
+    var args = { retrieval_id: d.retrieval_id, verdict: verdict, card_vote: true };
+    if (d.card_receipt) args.card_receipt = d.card_receipt;
+    callTool("feedback", args).then(function (reply) {
+      st.busy = false; var result = textOf(reply);
+      st.sent = /^Logged\./.test(result) || /^Already logged/.test(result);
+      say(msg, /^Logged\./.test(result) ? "Feedback recorded." : result, st.sent); refresh();
+    }, function (error) {
       st.busy = false;
-      if (isNoIpc(e)) { noIpc = true; lockMarks(); say(msg, "Feedback can't send from this card right now, so let your agent log it in chat.", "muted"); }
-      else say(msg, e.message, false);
+      if (isNoIpc(error)) { noIpc = true; say(msg, "Feedback can't send from this card right now.", "muted"); }
+      else say(msg, error.message, false);
       refresh();
     });
   }
@@ -359,16 +348,8 @@ function recallCard(d) {
       recall: true, onFlip: sync,
       extra: function (card, fold) {
         var holder = h("div", { class: "c-detail", hidden: true });
-        var used = h("button", { class: SM + "c-used", type: "button", "aria-pressed": "false", onclick: function () { pick("used"); } }, icon("check"), "Used");
-        var wrong = h("button", { class: SM + "c-wrong", type: "button", "aria-pressed": "false", onclick: function () { pick("wrong"); } }, icon("x"), "Wrong");
-        function pick(v) {
-          if (st.sent || noIpc) return;
-          if (st.verdicts[m.id] === v) delete st.verdicts[m.id]; else st.verdicts[m.id] = v;
-          used.setAttribute("aria-pressed", String(st.verdicts[m.id] === "used")); wrong.setAttribute("aria-pressed", String(st.verdicts[m.id] === "wrong"));
-          refresh(); sync();
-        }
         var open = h("button", { class: GH + "c-open", type: "button", "aria-expanded": "false", onclick: function () { openEntry(open, m, holder, card); } }, "Open", icon("open"));
-        return [artChips(m.artifacts, false), h("div", { class: "c-row" }, used, wrong, h("span", { class: "c-sp" }), fold, open), holder];
+        return [artChips(m.artifacts, false), h("div", { class: "c-row" }, h("span", { class: "c-sp" }), fold, open), holder];
       }
     });
     rows.push(item); dk.appendChild(item.el);

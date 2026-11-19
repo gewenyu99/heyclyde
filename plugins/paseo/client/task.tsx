@@ -50,14 +50,14 @@ function Seg({ x, y, w, h, kind }: { x: number; y: number; w: number; h: number;
 const GLYPH: Record<Status, string> = { passed: "✓", done: "✓", failed: "✕", running: "●", "sent-back": "↺", asking: "?", pending: "○", skipped: "–" };
 
 /** The phases a piece goes through, as a segmented bar with the phase names under it. */
-function PhaseBar({ phases }: { phases: Phase[] }) {
+function PhaseBar({ phases,theme }: { phases: Phase[];theme:PluginTheme }) {
   if (phases.length < 2) return null;
   return (
     <View style={{ flexDirection: "row", gap: 4 }}>
       {phases.map((p) => (
         <View key={p.stage} style={{ flex: 1, gap: 3 }}>
-          <View style={{ height: 4, borderRadius: 2, backgroundColor: p.status === "pending" ? "#e2e4df" : hue(p.status).ink }} />
-          <Text numberOfLines={1} style={{ fontSize: 9, color: p.status === "pending" ? "#a3a69f" : hue(p.status).ink, fontWeight: "600" }}>{p.label}</Text>
+          <View style={{ height: 4, borderRadius: 2, backgroundColor: p.status === "pending" ? theme.colors.border : hue(p.status).ink }} />
+          <Text numberOfLines={1} style={{ fontSize: 9, color: p.status === "pending" ? theme.colors.foregroundMuted : hue(p.status).ink, fontWeight: "600" }}>{p.label}</Text>
         </View>
       ))}
     </View>
@@ -79,7 +79,7 @@ function Cell({ theme, p, x, y, selected, onPress }: { theme: PluginTheme; p: Pi
     <Pressable accessibilityRole="button" accessibilityLabel={`${p.id} ${p.title}`} onPress={onPress} style={{
       position: "absolute", left: x, top: y, width: CELL_W, height: CELL_H, padding: 12, borderRadius: 8,
       borderWidth: selected ? 2 : 1, borderColor: selected ? PALETTE.blue.ink : theme.colors.border,
-      backgroundColor: pending ? "#fdfdfc" : theme.colors.surface1, gap: 6,
+      backgroundColor: pending ? theme.colors.surface2 : theme.colors.surface1, gap: 6,
     }}>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, fontWeight: "700", letterSpacing: 0.6 }}>{p.id}</Text>
@@ -87,7 +87,7 @@ function Cell({ theme, p, x, y, selected, onPress }: { theme: PluginTheme; p: Pi
       </View>
       <Text numberOfLines={3} style={{ color: pending ? theme.colors.foregroundMuted : theme.colors.foreground, fontWeight: "600", fontSize: 12, lineHeight: 16 }}>{p.title}</Text>
       <View style={{ flex: 1 }} />
-      <PhaseBar phases={p.phases} />
+      <PhaseBar theme={theme} phases={p.phases} />
       <Text numberOfLines={1} style={{ color: p.sentBack ? PALETTE.amber.ink : theme.colors.foregroundMuted, fontSize: 10 }}>{footer(p)}</Text>
     </Pressable>
   );
@@ -106,7 +106,7 @@ function FlowDiagram({ theme, view, selected, select }: { theme: PluginTheme; vi
     const top = row * (BAND_H + ROW_GAP);
     const done = step.pieces.filter((p) => p.status === "passed").length;
     bands.push(
-      <View key={`band-${row}`} style={{ position: "absolute", left: 0, top, width, height: BAND_H, borderRadius: 8, backgroundColor: theme.colors.surface2, borderWidth: 1, borderColor: "#edf0eb" }} />,
+      <View key={`band-${row}`} style={{ position: "absolute", left: 0, top, width, height: BAND_H, borderRadius: 8, backgroundColor: theme.colors.surface2, borderWidth: 1, borderColor: theme.colors.border }} />,
       <View key={`label-${row}`} style={{ position: "absolute", left: U * 1.5, top: top + BAND_PAD, width: LABEL_W - 2 * U }}>
         <Text style={{ color: theme.colors.foreground, fontSize: 11, fontWeight: "700" }}>{step.name}</Text>
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, marginTop: 4 }}>{done} of {step.pieces.length} done</Text>

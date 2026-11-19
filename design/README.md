@@ -35,7 +35,7 @@ This example assumes the HTML file is at the repository root.
 
 Edit the CSS, inline SVG module, or [preview sources](src/) here, then run `node design/build.mjs`. Open the [component preview](../memory/design/design-system.html), [site prototype](../memory/design/clyde-prototype.html), or [design directions](../memory/design/directions.html) in your browser from a checkout.
 
-The build writes the Worker’s inlined CSS module, the HTML previews under `memory/design/`, and the chat cards’ bundled design module. `node memory/design/build.mjs` runs the same build. The legacy source paths under `memory/design/` resolve to these files in the checkout.
+The build writes the Worker’s inlined CSS module, the HTML previews under `memory/design/`, the chat cards’ bundled design module, and the Paseo client’s native palette and SVG artwork. `node memory/design/build.mjs` runs the same build. The legacy source paths under `memory/design/` resolve to these files in the checkout.
 
 When updating a brand or scene SVG already served by the Worker, sync its matching file in [`memory/proxy/public/_clyde/`](../memory/proxy/public/_clyde/). See the [asset guide](ASSETS.md) for the separately exported store icons and social banner.
 
@@ -44,3 +44,7 @@ Run the design and site checks from the repository root.
 ```sh
 deno test --allow-env --allow-read --node-modules-dir=none harness/test/memory/design_test.ts harness/test/memory/site_test.ts
 ```
+
+### Recall in Paseo
+
+The [desktop light example](examples/paseo-recall-light.png) and [compact dark example](examples/paseo-recall-dark.png) show the shipped component. Notes open together on desk paper under the Clyde lockup. One footer rates the whole retrieval. Keep the note bodies visible after a vote.

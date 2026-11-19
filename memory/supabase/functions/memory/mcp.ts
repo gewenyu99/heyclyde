@@ -206,6 +206,8 @@ export const TOOLS = [
       type: "object", required: ["retrieval_id"],
       properties: {
         retrieval_id: str("From the packet"),
+        card_vote: {type:"boolean",description:"A person rated the whole recall in its card"},
+        card_receipt: str("Receipt from the original recall card when rated in another session"),
         entries: {
           type: "array", description: "A verdict for each result shown",
           items: {

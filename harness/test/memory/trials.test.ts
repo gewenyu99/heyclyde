@@ -713,3 +713,25 @@ test('Quest #11: immediate recall of 2+ title words finds a fresh unembedded pro
   }
   await allocate('hybrid.v3')
 })
+
+test('card feedback rates a whole recall independently of the agent and requires the originating session or its card receipt', {skip:SKIP}, async()=>{
+  const original=await mcp(memory.token,'claude-ai')
+  const result=await original.raw('recall',{query:'tea'})
+  const card=result.result._meta['clyde/card']
+  const id=card.retrieval_id
+  assert.match(card.card_receipt,/^[a-f0-9]{64}$/)
+  const agent=await original.tool('feedback',{retrieval_id:id,nothing_useful:true})
+  assert.match(agent,/^Logged\./)
+  const other=await mcp(memory.token,'paseo-card-test')
+  const vote={retrieval_id:id,card_vote:true,verdict:'helpful'}
+  assert.match(await other.tool('feedback',vote),/^No retrieval/)
+  assert.match(await other.tool('feedback',{...vote,card_receipt:'wrong'}),/^No retrieval/)
+  assert.match(await other.tool('feedback',{...vote,card_receipt:card.card_receipt}),/^Logged\./)
+  assert.match(await original.tool('feedback',vote),/^Logged\./)
+  let rows=fbRows(id)
+  assert.equal(rows.filter(r=>r.source==='agent').length,1)
+  assert.deepEqual(rows.filter(r=>r.source==='card'),[{source:'card',entry_id:null,note:null,verdict:'helpful'}])
+  assert.match(await original.tool('feedback',{...vote,verdict:'nothing_useful'}),/^Logged\./)
+  rows=fbRows(id)
+  assert.deepEqual(rows.filter(r=>r.source==='card'),[{source:'card',entry_id:null,note:null,verdict:'nothing_useful'}])
+})

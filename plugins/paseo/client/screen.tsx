@@ -11,7 +11,7 @@ import { Roster } from "./roster";
 import { HomeView } from "./home";
 import { useLive } from "./nodes";
 import { TaskScreen } from "./task";
-import { clydeIcon } from "./icon";
+import {Lockup,clydeTheme} from "./brand";
 
 function Panel({ theme, children }: { theme: PluginTheme; children: ReactNode }) {
   return (
@@ -31,10 +31,11 @@ function Panel({ theme, children }: { theme: PluginTheme; children: ReactNode })
 }
 
 function Board(
-  { theme, layout, navigation, workspaceId, initialTask = "" }:
+  { theme: hostTheme, layout, navigation, workspaceId, initialTask = "" }:
     & Pick<PluginScreenProps, "theme" | "layout" | "navigation">
     & { workspaceId?: string; initialTask?: string },
 ) {
+  const theme=clydeTheme(hostTheme);
   useLive();
   const readHome = useRpc(homeRpc), readTask = useRpc(taskRpc);
   const [picked, setPicked] = useState(initialTask),
@@ -100,26 +101,7 @@ function Board(
             paddingBottom: 16,
           }}
         >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-            <View
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: 10,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: "#edc77b",
-              }}
-            >
-              <Icon icon={clydeIcon} color="#30291d" size={23} />
-            </View>
-            <Text
-              accessibilityRole="header"
-              style={{ fontWeight: "700", fontSize: 25, letterSpacing: -0.8, color: c.foreground }}
-            >
-              Clyde
-            </Text>
-          </View>
+          <Lockup theme={theme} width={104}/>
           <View
             style={{
               flexDirection: "row",
