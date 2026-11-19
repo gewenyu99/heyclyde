@@ -388,11 +388,11 @@ test('native launcher clears permission progress as soon as Paseo resolves the r
   writeFileSync(join(sdk, 'index.js'), `
     let listener,sent=false,polls=0
     const snapshot={provider:'codex',status:'idle',activeTurn:null,pendingPermissions:[],labels:{'clyde.run':'run-one','clyde.thread':'thread-one'}}
-    const emit=event=>listener?.({agentId:${JSON.stringify(permissionAgent)},event})
+    const entries=[];const emit=event=>{if(event.type==='timeline')entries.push({turnId:event.turnId,item:event.item});listener?.({agentId:${JSON.stringify(permissionAgent)},event})}
     const child={id:${JSON.stringify(permissionAgent)},cwd:${JSON.stringify(base)},current:()=>snapshot,
       refresh:async()=>{if(sent){polls++;snapshot.pendingPermissions=polls===1?[{id:'request-one'}]:[];if(polls===2){snapshot.status='idle';snapshot.activeTurn=null;emit({type:'timeline',turnId:'turn-one',item:{type:'assistant_message',text:'finished'}});emit({type:'turn_completed',turnId:'turn-one'})}}},
       send:async(text,opts)=>{sent=true;snapshot.status='running';snapshot.activeTurn={turnId:'turn-one'};emit({type:'timeline',turnId:'turn-one',item:{type:'user_message',messageId:opts.messageId,text}})},
-      timeline:{subscribe:fn=>{listener=fn;const unsubscribe=()=>{};unsubscribe.ready=Promise.resolve();return unsubscribe},refetch:async()=>({entries:[]})}}
+      timeline:{subscribe:fn=>{listener=fn;const unsubscribe=()=>{};unsubscribe.ready=Promise.resolve();return unsubscribe},refetch:async()=>({entries})}}
     export const createPaseoApi=()=>({agents:{ref:()=>child}})
   `)
   const output = execFileSync(process.execPath, [new URL('../src/paseo-worker.mjs', import.meta.url).pathname, dist], {

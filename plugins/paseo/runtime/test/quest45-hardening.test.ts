@@ -640,7 +640,7 @@ test('Driver.agent validates before caching run.agents and runStage skips asking
     } as unknown as Driver
     await assert.rejects(
       runStage(stageDriver, { name: 'task', prompt: 'x', criteria: ['y'] }),
-      /exceeded the maximum of 2 attempts/,
+      /usage limit.*exceeded the maximum of 2 attempts/,
     )
     assert.equal(stageRec.status, 'failed')
     assert.equal(emitted.includes('run.limit'), false)

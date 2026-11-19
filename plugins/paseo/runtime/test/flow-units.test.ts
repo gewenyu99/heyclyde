@@ -1,3 +1,4 @@
+import { needsGitPermission } from '../src/flow/stage.ts'
 /** clyde-flow's small pieces: gate parsing of every skill, the result and verdict parsers, judge choice, prompts, the diff and checks. */
 import assert from 'node:assert/strict'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -210,4 +211,18 @@ test("a Claude session limit counts as a backend limit, and attempts dying withi
   assert.equal(fastFailures([slow, quick(1), quick(2), quick(3)] as never), 3)
   assert.equal(fastFailures([quick(1), slow] as never), 0)
   assert.equal(fastFailures([quick(1), { ...quick(2), verdict: { verdict: 'fail' } }] as never), 0)
+})
+
+test('native task workers can report through their final message without accessing the daemon socket', () => {
+  const text = workerPrompt({run:{...RUN,paseoParentId:'parent'},spec:{name:'task',prompt:'Create a receipt',criteria:['One file']},attempt:1,root:'/r',bin:'/b'})
+  assert.match(text, /one fenced JSON block/)
+  assert.match(text, /native permission UI/)
+  assert.doesNotMatch(text, /clyde todo|clyde result --status/)
+})
+
+test('a blocked native Git index asks for user action rather than another speculative retry', () => {
+  const message = {status:'blocked' as const, summary:'Could not commit with Git', evidence:[{criterion:'commit',evidence:'index.lock: Operation not permitted'}]}
+  assert.equal(needsGitPermission(message),true)
+  assert.equal(needsGitPermission({...message,status:'done'}),false)
+  assert.equal(needsGitPermission({...message,evidence:[]}),false)
 })

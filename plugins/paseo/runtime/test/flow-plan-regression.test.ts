@@ -174,3 +174,8 @@ test('nonmatching launch errors, delivered work, invalid artifacts and unrelated
     assert.notEqual(f.driver.run.stages[0].attempts[1].threadId, f.source.id)
   }
 })
+
+test('a prose-prefixed acceptance command goes back to the planner before approval', () => {
+  const draft = { intent: 'Create the receipt', slices: [{id:'s1', title:'Create QA-RECEIPT.txt', acceptance:['From the repository root, after this slice is built, run: grep ok QA-RECEIPT.txt']}] }
+  assert.throws(() => extractPlan({text:'```json\n'+JSON.stringify(draft)+'\n```',result:null}), /Slice s1.*executable shell command/)
+})

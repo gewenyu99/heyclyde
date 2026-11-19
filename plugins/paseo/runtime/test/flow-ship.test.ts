@@ -43,6 +43,10 @@ test('clyde flow run ship --auto-approve runs plan, approval, every stage and re
     const byStage = (name: string) => threads(s.home).filter((t) => t.stage === name)
     assert.deepEqual(byStage('plan').map((t) => [t.rung.backend, t.rung.model, t.readOnly ?? false]).sort(), [['claude', 'claude-sonnet-5-5', false], ['pi', 'xai/grok-4.7', true]])
     assert.deepEqual(byStage('code-it-good:s1').map((t) => [t.rung.backend, t.readOnly ?? false]).sort(), [['claude', true], ['pi', false]])
+    for (const name of ['code-it-good:s1', 'code-it-clean:s1', 'review']) {
+      const judge = byStage(name).find(t => t.readOnly)
+      assert.match(judge!.turns[0].prompt, /diff --git a\/greet\.txt b\/greet\.txt/, name)
+    }
     const planJudge = argvLog(s.state).find((c) => c.bin === 'pi' && c.argv.includes('xai/grok-4.7'))?.argv ?? []
     assert.equal(planJudge[planJudge.indexOf('--tools') + 1], 'read,grep,find,ls')
     const worker = threads(s.home).find((t) => t.stage === 'code-it-works:s1' && !t.readOnly) as Thread
@@ -115,6 +119,7 @@ test('an answer that isn\'t approval replans with it as notes, and the new plan 
     const second = await waitStatus(client, id, ['asking'])
     assert.match(second.question ?? '', /Greet and say goodbye\.\n\n- s1: Write greet\.txt .*\n- s2: Write bye\.txt/)
     const planner = threads(s.home).find((t) => t.stage === 'plan-2' && !t.readOnly) as Thread
+    assert.ok(planner.turns[0].prompt.includes(JSON.stringify(first.plan)), 'revision includes the exact draft the user reviewed')
     assert.match(planner.turns[0].prompt, /The user didn't approve the last plan\. Their answer:\n\nAdd a goodbye slice too\.\n\nReplan with it\./)
     await client.answer(id, 'approved')
     await waitFor(() => turnsTaken(s.state) >= 5, 20_000, 'the first code stage to start')

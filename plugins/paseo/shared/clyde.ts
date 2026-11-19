@@ -50,7 +50,7 @@ export type AttemptView = {
 
 export type TaskView = {
   verifiedNotes?:{id:string;title:string;sources:string[]}[];
-  retryable?:boolean; fullAccess?:boolean; askKey?:string; completionCriteria?: string[];
+  retryable?:boolean; fullAccess?:boolean; askKey?:string; commitReview?:boolean; completionCriteria?: string[];
   routing?: string[]; auditedHead?: string; pullRequest?: string;
   kind: "run" | "thread"; id: string; name: string; status: Status; startedAt: string; summary: string;
   question?: string; approve: boolean; branch?: string;

@@ -32,6 +32,19 @@ export function workerPrompt(o: WorkerPromptInput): string {
       `Inspect the relevant source. Return the plan and its evidence directly in one final fenced JSON block. Clyde records this response automatically. No file edits, commits, CLI progress reports, or separate result files are needed.\n\n${spec.resultTemplate}`,
     ].filter(Boolean).join('\n\n')
   }
+  if (run.paseoParentId && !memoryMaintenance(run)) {
+    return [
+      `You're the worker for stage ${spec.name} of clyde run ${run.id}, attempt ${o.attempt}. Work only in the approved worktree ${run.cwd} on branch ${run.branch}.`,
+      spec.prompt.trim(),
+      o.notes && `Feedback from the previous attempt:\n${o.notes}`,
+      `Stage criteria:\n${numbered(spec.criteria)}`,
+      spec.checks?.length && `The runtime will execute these checks:\n${spec.checks.join('\n')}`,
+      spec.name.startsWith('code-it-works:') && 'Record the acceptance check before your first edit and again afterwards. If an earlier attempt already made the change, verify the red result against the pinned starting revision in a separate scratch copy. Preserve the current worktree.',
+      'Paseo records your activity and Clyde collects your final reply. Use that reply for the stage report. You do not need shell access to the companion daemon.',
+      'Commit changes to this local branch only. If Git needs permission, request approval through the native permission UI for the specific Git operation. If you cannot proceed, return status "blocked" and name the operation that needs a decision.',
+      `End with one fenced JSON block in this format. Include concrete evidence for each criterion and the commands and results you observed:\n\n${spec.resultTemplate ?? RESULT_BLOCK}`,
+    ].filter(Boolean).join('\n\n')
+  }
   const scope = `run:${run.id}`
   const parts = [
     `You're the worker for stage ${spec.name} of clyde run ${run.id}, attempt ${o.attempt}.`,
@@ -88,14 +101,15 @@ export function judgePrompt(o: JudgePromptInput): string {
       // A plan is a document. Asking it for diffs, test runs or red and green evidence that only exist once code is built
       // fails every plan forever, so the planner gets sent back without end.
       ? 'This stage produces a plan, not code. Grade the plan in the artifact below against the gate, and be strict about the plan itself: vague slices, missing checks, gaps in the intent, or paths that don\'t exist fail. Don\'t ask for a diff, commits, test runs, or red and green evidence. Those come when each slice is built and judged. Read the repo to confirm the paths and commands the plan names.'
-      : 'Grade the change against the gate, and be adversarial. Default to fail. A criterion passes only when you can point at its evidence in the diff, the check output, the files or memory. A claim with no evidence fails.',
+      : 'Grade the change against the gate and the requested scope. Verify it using the files, diff, and checks. If a later quality or review stage confirms the existing change is complete, it can pass without an additional edit. An inapplicable criterion needs a concrete reason. Be adversarial. Default to fail. A criterion passes only when you can point at its evidence in the diff, the check output, the files or memory. A claim with no evidence fails.',
+    planning(spec) ? `Requested change:\n${spec.prompt}\n\nClyde runs implementation, quality, cleanup, and review as separate gates. Grade the product slices against the requested change. Those built-in gates do not need separate plan slices. Grade each slice title and its acceptance array together. Commands already run at the repository root. Do not require the plan to repeat that location or command in the title.` : `Assigned work:\n${spec.prompt}`,
     `## The gate\n\n${numbered(spec.criteria)}`,
   ]
   const shown = o.diff.length > DIFF_IN_PROMPT ? `${o.diff.slice(0, DIFF_IN_PROMPT)}\n[The diff is cut here at ${DIFF_IN_PROMPT} of ${o.diff.length} characters. Read the files for the rest.]` : o.diff
   parts.push([
     '## The change',
     '',
-    `Your directory is ${run.cwd}, on branch ${run.branch}. The stage started at ${o.base}.`,
+    `Your directory is ${run.cwd}, on branch ${run.branch}. The comparison base is ${o.base}.`,
     '',
     o.commits ? `Commits since then:\n\n${o.commits}` : 'No commits since then.',
     '',
@@ -111,7 +125,7 @@ export function judgePrompt(o: JudgePromptInput): string {
   parts.push([
     '## Your answer',
     '',
-    'Grade every gate item, in order. Give the criterion, pass as true or false, and the evidence you checked. notes says what the next attempt must fix, or what you checked when it all passes. verdict is pass only when every criterion passes.',
+    'Grade every gate item, in order. Give the criterion, pass as true or false, and the evidence you checked. notes says what the next attempt must fix, or what you checked when it all passes. Set the verdict to pass when every criterion passes, or fail for an unmet criterion. If you reconsider a finding, update its pass field and the verdict before answering.',
     '',
     `When you have a structured output tool, answer through it. Otherwise end your last message with one fenced json block:\n\n${VERDICT_BLOCK}`,
   ].join('\n'))
@@ -193,6 +207,7 @@ export function planPrompt(intent: string, notes?: string): string {
     `Plan this change: ${intent.trim()}`,
     "Work it out from the code in your directory. Don't change any files.",
     'Decompose the work until each slice is small enough for a cheap rung, Sonnet 5.5 or GPT-6.1 Sol at medium, to carry out. Put slices in dependency order. Each slice needs its own acceptance check that detects its specific change, fails before that slice lands, and passes after. Run checks from the repo root. Cover every part of the intent, including work in task flows, or name what is left out and why. Say which slice creates each new file or command target.',
+    'The runtime executes every acceptance string verbatim in a shell at the repository root. Put only the command in that string. Put scope and file creation instructions in the slice title.',
     'The plan must be in the plan field of the fenced json block at the end of your last message. The stage instructions below show the exact result shape.',
   ]
   if (notes?.trim()) parts.push(`The user didn't approve the last plan. Their answer:\n\n${notes.trim()}\n\nReplan with it.`)
@@ -205,7 +220,7 @@ export function slicePrompt(run: Run, plan: Plan, slice: Slice, skill: string): 
     `Build slice ${slice.id} of the approved plan: ${slice.title}.`,
     `The plan's intent: ${plan.intent}`,
     slice.acceptance.length ? `The runtime runs this slice's acceptance after you finish:\n\n${slice.acceptance.map((c) => `- \`${c}\``).join('\n')}` : 'This slice has no acceptance commands, so the judge reads the diff alone.',
-    `The plan is in memory scope ${scope}. Read it with clyde plan show --run ${run.id}, or clyde recall "plan" --scope ${scope}.`,
+    run.paseoParentId ? 'The approved scope and checks are included above.' : `The plan is in memory scope ${scope}. Read it with clyde plan show --run ${run.id}, or clyde recall "plan" --scope ${scope}.`,
     `Do only the ${skill} stage. The next stage runs as its own worker once this one passes.`,
   ].join('\n\n')
 }

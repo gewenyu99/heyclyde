@@ -390,6 +390,7 @@ export function task(r: RawRun, threads: RawThread[], agents: Record<string, str
     routing: Object.entries(r.routes ?? {}).map(([stage, s]) => stage + ": " + s.model + " · " + s.reason), auditedHead: r.auditedHead, pullRequest: r.pullRequest,
     askKey:open?.key,retryable:open?.kind==="provider"||open?.kind==="limit",fullAccess:open?.kind==="provider"&&open.question.includes("allow Antigravity full access for this run"),
     verifiedNotes:r.verifiedNotes,completionCriteria:r.input?.criteria?.filter(value=>typeof value==="string" && value.trim()),
+    commitReview: open?.kind === 'provider' && open.question.startsWith('Git needs permission to commit in the task worktree.'),
     savedPlanIntent: r.plan?.intent, runActivity: activity,
     goal: firstSentence(r.plan?.intent ?? r.input?.intent ?? r.input?.prompt, 220), summary: summary(r, all, activity),
     lastActivity: lastActivity(r, threads),

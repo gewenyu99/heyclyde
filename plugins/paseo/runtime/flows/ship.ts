@@ -27,7 +27,15 @@ export function validate(input: unknown): void {
 export function extractPlan(out: WorkerOutput): Plan {
   for (const block of jsonBlocks(out.text)) {
     const plan = parsePlan(block)
-    if (plan) return plan
+    if (!plan) continue
+    for (const slice of plan.slices) {
+      for (const check of slice.acceptance) {
+        if (/^\s*(?:from (?:the )?(?:repository|repo|project) root\b|run (?:this|the following) command\b|`{1,3}[^\n]*`\s*$)/i.test(check)) {
+          throw new Error(`Slice ${slice.id} has instructions or Markdown in its acceptance command. Return only the executable shell command. Received: ${check.slice(0, 180)}`)
+        }
+      }
+    }
+    return plan
   }
   throw new Error('The worker returned no plan. End the last message with a fenced json block holding plan: {intent, slices: [{id, title, acceptance}]}.')
 }
@@ -56,9 +64,13 @@ const MAX_PLAN_ROUNDS = 10
 /** An answer that isn't a bare approval replans with that answer as notes. */
 async function approvedPlan(ctx: FlowCtx, input: ShipInput): Promise<Plan> {
   let notes = input.notes ?? ''
+  let priorDraft: Plan | undefined
   for (let round = 1; round <= MAX_PLAN_ROUNDS; round++) {
+    const prompt = priorDraft
+      ? `Previous draft:\n${JSON.stringify(priorDraft)}\n\n${planPrompt(input.intent, notes)}\nApply the latest user correction wherever it supersedes the draft or original request.`
+      : [planPrompt(input.intent), notes].filter(Boolean).join('\n\n')
     const stage = await ctx.stage({
-      name: round === 1 ? 'plan' : `plan-${round}`, skill: 'plan', role: 'planner', route: 'planner', prompt: round === 1 ? [planPrompt(input.intent), notes].filter(Boolean).join('\n\n') : planPrompt(input.intent, notes),
+      name: round === 1 ? 'plan' : `plan-${round}`, skill: 'plan', role: 'planner', route: 'planner', prompt,
       criteria: PLAN_CRITERIA, extract: extractPlan, resultTemplate: PLAN_RESULT_BLOCK,
     })
     if (!stage.passed) throw new Error('the plan stage was skipped, so there is nothing to build')
@@ -82,6 +94,7 @@ async function approvedPlan(ctx: FlowCtx, input: ShipInput): Promise<Plan> {
     const entry = await ctx.setPlan(plan)
     const answer = await ctx.ask(approvalQuestion(ctx.run, plan, entry) + reviewNotes)
     if (isApproval(answer)) return plan
+    priorDraft = plan
     notes = answer + reviewNotes
   }
   throw new Error(`Planning exceeded the maximum of ${MAX_PLAN_ROUNDS} rounds`)

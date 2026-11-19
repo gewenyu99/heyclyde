@@ -38,6 +38,17 @@ function launcher(scenario='permissions',timeoutMs=80){
     },send:async(text,opts)=>{
       if(opts.messageId!=='thread-one-turn-2'||opts.activeTurnBehavior!==undefined)throw Error('Missing exact stable queued message identity')
       sent=true;line({type:'user_message',messageId:opts.messageId,text})
+      if(scenario==='missing'){
+        emit({type:'timeline',turnId:'exact-turn',item:{type:'assistant_message',text:'trailing fragment'}})
+        rows.push({turnId:'foreign-turn',item:{type:'assistant_message',text:'Wrong result'}})
+        emit({type:'turn_completed',turnId:'exact-turn'})
+      }
+      if(scenario==='split'){
+        rows.push({turnId:'exact-turn',item:{type:'assistant_message',messageId:'reply',text:'A complete response from the saved timeline.'}})
+        for(const text of ['A complete response',' from the saved',' timeline.'])emit({type:'timeline',turnId:'exact-turn',item:{type:'assistant_message',messageId:'reply',text}})
+        rows.push({turnId:'later-turn',item:{type:'assistant_message',messageId:'other',text:'Another message'}})
+        emit({type:'turn_completed',turnId:'exact-turn'})
+      }
       if(scenario==='quick'){line({type:'assistant_message',text:'Quick exact response'});emit({type:'turn_completed',turnId:'exact-turn'})}
     },timeline:{subscribe:fn=>{listener=fn;const unsubscribe=()=>{};unsubscribe.ready=Promise.resolve();return unsubscribe},refetch:async()=>({entries:rows})}}
     export const createPaseoApi=()=>({agents:{ref:id=>id==='parent'?{refresh:async()=>{if(scenario!=='archived-first')throw Error('Archived parent must not be queried on follow-up')},current:()=>({archivedAt:'yesterday'})}:child}})
@@ -114,4 +125,15 @@ test('managed wrapper excludes permission wall time from its outer deadline and 
   assert.equal(result.ok,true)
   assert.equal(thread.workerState.status,'idle')
   assert.equal(thread.workerState.permissionPending,false)
+})
+
+test('handoff uses the committed reply for exactly the requested turn when stream events contain deltas', () => {
+  const {events} = launcher('split')
+  assert.deepEqual(events.at(-1), {ok:true, text:'A complete response from the saved timeline.'})
+})
+
+test('missing stored reply fails explicitly rather than grading a fragment or another turn', () => {
+  const {events} = launcher('missing')
+  assert.equal(events.at(-1).ok, false)
+  assert.match(events.at(-1).error, /no complete response/)
 })

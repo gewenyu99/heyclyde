@@ -29,6 +29,7 @@ export type Attempt = {
 export type StageStatus = 'running' | 'asking' | 'passed' | 'skipped' | 'failed'
 
 export type StageRecord = {
+  baselineChecks?: Check[]
   name: string; skill?: string; role: string; status: StageStatus; base: string; round: number; attempts: Attempt[]
   verdict?: Verdict; summary?: string; artifact?: unknown; entry?: string; startedAt: string; endedAt?: string
 }

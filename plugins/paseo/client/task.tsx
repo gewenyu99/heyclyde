@@ -366,6 +366,9 @@ export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = 
             <Text style={{ color: theme.colors.foreground, fontWeight: "500", fontSize: 14 }}>{view.question}</Text>
             {view.retryable ? (
               <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                {view.commitReview && view.agentId && openAgent && <Pressable accessibilityRole="button" onPress={() => openAgent(view.agentId!)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
+                  <Text style={{ color: theme.colors.accent, fontSize: 13, fontWeight: "600" }}>Review worktree changes in Paseo</Text>
+                </Pressable>}
                 <Pressable
                   accessibilityRole="button"
                   accessibilityState={{ disabled: retrying }}

@@ -157,11 +157,31 @@ try{
     await new Promise(resolve=>setTimeout(resolve,pollMs))
   }
   if(aborted)throw Error('Paseo worker was stopped')
-  if(!lastMessage?.trim()){
-    const page=await child.timeline.refetch({direction:'tail',limit:1,wholeTurns:true})
-    for(const entry of page.entries)observe(entry.item,entry.turnId)
+  // Timeline subscriptions can deliver message deltas. The stored turn contains the complete reply.
+  if (!ownedTurnId || !ownMessage) throw Error('Could not identify the completed Paseo turn for this message.')
+  lastMessage = ''
+  for (let retry = 0; retry < 3 && !lastMessage && !aborted; retry++) {
+    if (retry) await new Promise(resolve => setTimeout(resolve, 200 * retry))
+    let page = await child.timeline.refetch({direction:'tail', limit:32, wholeTurns:true})
+    const seenCursors = new Set()
+    while (!aborted) {
+      const turn = page.entries.filter(entry => entry.turnId === ownedTurnId)
+      if (turn.length) {
+        const user = turn.find(entry => entry.item.type === 'user_message' &&
+          (entry.item.clientMessageId === input.messageId || entry.item.messageId === input.messageId))
+        const reply = turn.findLast(entry => entry.item.type === 'assistant_message' && entry.item.text?.trim())
+        if (user && reply) lastMessage = reply.item.text
+        break
+      }
+      if (!page.hasOlder || !page.startCursor || !page.entries.length || page.staleCursor) break
+      const cursorKey = JSON.stringify(page.startCursor)
+      if (seenCursors.has(cursorKey)) break
+      seenCursors.add(cursorKey)
+      page = await child.timeline.refetch({direction:'before', cursor:page.startCursor, limit:32, wholeTurns:true})
+    }
   }
-  if(!lastMessage?.trim())throw Error('Paseo worker finished without a response for the requested turn')
+  if (aborted) throw Error('Paseo worker was stopped')
+  if (!lastMessage) throw Error('Paseo finished but its saved turn has no complete response for the requested message.')
   console.log(JSON.stringify({ok:true,text:lastMessage}))
 
 }catch(e){console.log(JSON.stringify({ok:false,error:e.message||String(e)}));process.exitCode=1}
