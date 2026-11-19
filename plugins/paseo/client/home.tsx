@@ -1,3 +1,4 @@
+import {RemoveTask} from "./remove-task";
 import {scheme} from "./brand";
 import {palette} from "./brand.generated";
 import type { PluginTheme } from "@getpaseo/plugin";
@@ -26,13 +27,13 @@ function AskCard({ theme, ask, open }: { theme: PluginTheme; ask: Ask; open: Ope
   const [showPlan, setShowPlan] = useState(false);
   const [fullQuestion,setFullQuestion]=useState(false);
   const [state, setState] = useState<{ busy: boolean; note?: string; error?: string }>({ busy: false });
-  const submit = async (text: string) => {
+  const submit = async (text: string, allowAntigravityFullAccess=false) => {
     if (!text.trim() || state.busy) {
       setState({ busy: false, error: "Write a reply first." });
       return;
     }
     setState({ busy: true });
-    const r = await send({ kind: ask.kind, id: ask.id, askKey:ask.askKey, text: text.trim() }).catch((err: Error) => ({ ok: false, error: err.message }));
+    const r = await send({ kind: ask.kind, id: ask.id, askKey:ask.askKey, allowAntigravityFullAccess, text: text.trim() }).catch((err: Error) => ({ ok: false, error: err.message }));
     if (r.ok) {
       setReply("");
       setState({ busy: false, note: "Sent." });
@@ -42,10 +43,11 @@ function AskCard({ theme, ask, open }: { theme: PluginTheme; ask: Ask; open: Ope
   const amber = hue("asking");
   return (
     <View style={{ borderWidth: 1, borderColor: palette[scheme(theme)]["sticky-edge"], backgroundColor: palette[scheme(theme)].sticky, borderRadius: 10, padding: 16, marginBottom: 10 }}>
-      <Pressable onPress={() => open(ask.kind, ask.id)} style={{ flexDirection: "row", justifyContent: "space-between", gap: 8 }}>
+      <View style={{flexDirection:"row",gap:8,alignItems:"center"}}><Pressable onPress={() => open(ask.kind, ask.id)} style={{ flex:1,flexDirection: "row", justifyContent: "space-between", gap: 8 }}>
         <Text style={{ color: theme.colors.foreground, fontWeight: "700", flexShrink: 1 }}>{ask.task}</Text>
         <Text style={{ color: amber.ink, fontSize: 11 }}>waiting {ago(ask.askedAt)}</Text>
       </Pressable>
+      <RemoveTask kind={ask.kind} id={ask.id} active name={ask.task} theme={theme}/></View>
       {ask.blockedStage ? <Text style={{color:theme.colors.foregroundMuted,marginTop:6}}>Blocked stage · {ask.blockedStage}</Text> : null}
       <View style={{ borderLeftWidth: 2, borderLeftColor: amber.ink, paddingLeft: 10, marginVertical: 12 }}>
         <Text numberOfLines={fullQuestion || (ask.question.length<=120 && !ask.question.includes("\n")) ? undefined : 3} style={{ color: theme.colors.foreground, fontWeight: "500" }}>{ask.question}</Text>
@@ -66,6 +68,7 @@ function AskCard({ theme, ask, open }: { theme: PluginTheme; ask: Ask; open: Ope
           ) : null}
         </View>
       ) : null}
+      {ask.retryable ? <Pressable accessibilityRole="button" disabled={state.busy} onPress={()=>void submit("retry",ask.fullAccess)} style={{paddingVertical:8}}><Text style={{color:theme.colors.accent,fontWeight:"700"}}>{ask.fullAccess?"Allow full access for this run and retry":"Retry"}</Text></Pressable> : <>
       <Eyebrow theme={theme}>Reply</Eyebrow>
       <TextInput value={reply} onChangeText={setReply} placeholder={ask.approve ? "Request a change…" : "Reply…"} placeholderTextColor={theme.colors.foregroundMuted}
         style={{ borderWidth: 1, borderColor: palette[scheme(theme)].edge, borderRadius: 6, paddingVertical: 8, paddingHorizontal: 10, marginTop: 4, color: theme.colors.foreground, backgroundColor:theme.colors.surface1 }} />
@@ -81,6 +84,7 @@ function AskCard({ theme, ask, open }: { theme: PluginTheme; ask: Ask; open: Ope
           <Text style={{ color: theme.colors.foreground, fontSize: 11, fontWeight: "700" }}>{state.busy ? "Sending…" : "Send reply"}</Text>
         </Pressable>
       </View>
+      </>}
       {state.note ? <Text style={{ color: hue("passed").ink, fontSize: 11, marginTop: 8 }}>{state.note}</Text> : null}
       {state.error ? <Text style={{ color: hue("failed").ink, fontSize: 11, marginTop: 8 }}>{state.error}</Text> : null}
     </View>
@@ -93,8 +97,8 @@ const quiet = (c: TaskCard) => c.status === "running" && !!c.lastActivity && Dat
 function Card({ theme, card, open }: { theme: PluginTheme; card: TaskCard; open: OpenTask }) {
   const featured = card.status === "running";
   return (
-    <Pressable accessibilityRole="button" onPress={() => open(card.kind, card.id)}
-      style={{ borderWidth: 1, borderColor: featured ? palette[scheme(theme)]["carbon-copy"] : theme.colors.border, backgroundColor: theme.colors.surface1, borderRadius: 10, padding: 14, marginBottom: 10 }}>
+    <View style={{flexDirection:"row",alignItems:"flex-start",gap:4}}><Pressable accessibilityRole="button" onPress={() => open(card.kind, card.id)}
+      style={{ flex:1,borderWidth: 1, borderColor: featured ? palette[scheme(theme)]["carbon-copy"] : theme.colors.border, backgroundColor: theme.colors.surface1, borderRadius: 10, padding: 14, marginBottom: 10 }}>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
         <Text numberOfLines={2} style={{ color: theme.colors.foreground, fontWeight: "700", flexShrink: 1 }}>{card.name}</Text>
         <Pill status={card.status} />
@@ -104,7 +108,7 @@ function Card({ theme, card, open }: { theme: PluginTheme; card: TaskCard; open:
       {quiet(card) ? (
         <Text style={{ color: PALETTE.amber.ink, fontSize: 11, fontWeight: "700", marginTop: 6 }}>No activity recorded for {ago(card.lastActivity)}.</Text>
       ) : null}
-    </Pressable>
+    </Pressable><RemoveTask theme={theme} kind={card.kind} id={card.id} name={card.name} active={card.status==="running"||card.status==="asking"||card.status==="sent-back"}/></View>
   );
 }
 

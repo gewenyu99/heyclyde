@@ -8,6 +8,12 @@ const MAX_SESSIONS = 512;
 const sessions = new Map<string, Promise<string>>();
 
 export async function agentReply(agent: Identity, tool: string, args: Record<string, unknown>) {
+  return scopedReply(agent,tool,args);
+}
+export async function sharedBoardReply(args:Record<string,unknown>) {
+  return scopedReply(null,"list_quests",args);
+}
+async function scopedReply(agent:Identity|null,tool:string,args:Record<string,unknown>){
   const config = process.env.CLYDE_CONFIG_DIR || join(homedir(), ".config/memory");
   const token = readFileSync(join(config, "token"), "utf8").trim();
   const base = readFileSync(join(config, "url"), "utf8").trim().replace(/\/$/, "");
@@ -17,8 +23,8 @@ export async function agentReply(agent: Identity, tool: string, args: Record<str
   }
   const host = readFileSync(join(process.env.PASEO_HOME || join(homedir(), ".paseo"), "server-id"), "utf8").trim();
   const hash = (...parts: string[]) => createHash("sha256").update(JSON.stringify(parts)).digest("hex");
-  const name = "paseo-" + hash(host, agent.id).slice(0, 32);
-  const key = hash(base, token, name, agent.project, agent.role);
+  const name = agent ? "paseo-"+hash(host,agent.id).slice(0,32) : "clyde-paseo-board";
+  const key = hash(base,token,name,agent?.project??"",agent?.role??"");
   async function rpc(method: string, params: object, session?: string) {
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), 10000);
@@ -57,7 +63,7 @@ export async function agentReply(agent: Identity, tool: string, args: Record<str
           clientInfo: { name, version: "1" },
         });
         if (!session) throw new Error("Clyde did not return a session");
-        await rpc("tools/call", {
+        if(agent) await rpc("tools/call", {
           name: "register_agent",
           arguments: {
             name,

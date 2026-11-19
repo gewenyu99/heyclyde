@@ -34,6 +34,7 @@ export function Composer(
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [doneWhen,setDoneWhen]=useState("");
   const [showCriteria,setShowCriteria]=useState(false);
+  const [allowNeon,setAllowNeon]=useState(false);
   const pending = useRef<{ key: string; id: string } | null>(null);
   const locked = useRef(false);
   const selected = projects.data?.find((p) => p.id === project) ?? projects.data?.[0];
@@ -43,20 +44,21 @@ export function Composer(
     setBusy(true);
     setError("");
     const criteria=doneWhen.split("\n").map(line=>line.trim()).filter(Boolean);
-    const key = JSON.stringify([selected.id, text, flow, worker, criteria]);
+    const key = JSON.stringify([selected.id, text, flow, worker, criteria, allowNeon]);
     if (pending.current?.key !== key) pending.current = { key, id: requestId() };
     try {
       const run = await launch({
         project: selected.id,
         prompt: text,
         criteria,
+        allowAntigravityFullAccess: worker==="neon" && allowNeon,
         flow,
         worker,
         agentId,
         requestId: pending.current.id,
       });
       pending.current = null;
-      setText("");
+      setAllowNeon(false);setText("");
       setDoneWhen("");setShowCriteria(false);
       void cache.invalidateQueries({ queryKey: ["clyde", "home"] });
       onStarted(run.id);
@@ -162,6 +164,10 @@ export function Composer(
           </Text>
         </Pressable>
       </View>
+      {worker==="neon" && <Pressable accessibilityRole="checkbox" accessibilityState={{checked:allowNeon}} disabled={busy} onPress={()=>setAllowNeon(!allowNeon)} style={{paddingVertical:7}}>
+        <Text style={{color:c.foreground}}>{allowNeon?"☑":"☐"} Allow full access for this run</Text>
+        <Text style={{color:c.foregroundMuted,fontSize:12}}>Paseo’s Neon worker can use files, shell commands and the network without further permission prompts.</Text>
+      </Pressable>}
       {menu === "project" && (
         <View style={{ gap: 5 }}>
           {projects.data?.map((p) => (
@@ -184,7 +190,7 @@ export function Composer(
         <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
           {workerModels.map((w) =>
             control(workerLabel(w), () => {
-              setWorker(w);
+              setAllowNeon(false);setWorker(w);
               setMenu(null);
             }, worker === w)
           )}

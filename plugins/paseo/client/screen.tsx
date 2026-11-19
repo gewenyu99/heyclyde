@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { homeRpc, taskRpc } from "../shared/clyde";
+import {Quests} from "./quests";
 import { Composer } from "./composer";
 import { Roster } from "./roster";
 import { HomeView } from "./home";
@@ -37,10 +38,11 @@ function Board(
 ) {
   const theme=clydeTheme(hostTheme);
   useLive();
+  const openAgent=navigation ? (agentId:string)=>navigation.openAgent({agentId}):undefined;
   const readHome = useRpc(homeRpc), readTask = useRpc(taskRpc);
   const [picked, setPicked] = useState(initialTask),
     [width, setWidth] = useState(0),
-    [tab, setTab] = useState<"board" | "agents">("board");
+    [tab, setTab] = useState<"board" | "agents" | "quests">("board");
   const c = theme.colors, wide = width >= 760, inset = width >= 650 ? 28 : 14;
   const home = useQuery({
     queryKey: ["clyde", "home", workspaceId ?? "all"],
@@ -56,7 +58,7 @@ function Board(
   });
   const data = home.data?.data;
   const error = home.data?.error || home.error?.message;
-  const nav = (value: "board" | "agents", label: string) => (
+  const nav = (value: "board" | "agents" | "quests", label: string) => (
     <Pressable
       accessibilityRole="tab"
       accessibilityState={{ selected: tab === value }}
@@ -116,7 +118,7 @@ function Board(
             }}
           >
             {nav("board", "Board")}
-            {nav("agents", "Agents")}
+            {nav("quests","Quests")}{nav("agents", "Agents")}
           </View>
         </View>
         {picked && id
@@ -141,10 +143,10 @@ function Board(
                 )}
             </Panel>
           )
-          : tab === "agents"
+          : tab === "quests" ? <Panel theme={theme}><Quests theme={theme} onStarted={run=>setPicked("run:"+run)}/></Panel> : tab === "agents"
           ? (
             <Panel theme={theme}>
-              <Roster theme={theme} workspaceId={workspaceId} />
+              <Roster theme={theme} workspaceId={workspaceId} openAgent={openAgent} />
             </Panel>
           )
           : (
@@ -159,7 +161,7 @@ function Board(
               {wide && (
                 <View style={{ flex: 1, minWidth: 220 }}>
                   <Panel theme={theme}>
-                    <Roster theme={theme} workspaceId={workspaceId} />
+                    <Roster theme={theme} workspaceId={workspaceId} openAgent={openAgent} />
                   </Panel>
                 </View>
               )}

@@ -209,3 +209,9 @@ test('overview check counts use only the most recent attempt per stage',()=>{
   assert.equal(h.doneToday[0].checkSummary,'1/1 stage checks passed');
   assert.equal(h.doneToday[0].current,'Audited ab1234567890');
 });
+
+test('archived tasks disappear from approvals, running, failed and completed lists',()=>{
+  const r=shipRun({archivedAt:at(5),status:'asking',question:'Approve?',asks:[{kind:'approve',askedAt:at(3),question:'Approve?'}]})
+  const h=home([thread({archivedAt:at(4),status:'running'})],[r,{...r,id:'f',status:'failed',endedAt:at(5)},{...r,id:'d',status:'done',endedAt:at(5)}],{},1,NOW)
+  assert.deepEqual([h.needsYou.length,h.tasks.length,h.failedToday.length,h.doneToday.length],[0,0,0,0])
+})

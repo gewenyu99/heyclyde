@@ -16,6 +16,7 @@ export type Turn = {
 export type Thread = {
   id: string; title: string; rung: Rung; cwd: string; worktree?: string; branch?: string; base?: string
   status: ThreadStatus; session?: string; queue: string[]; turns: Turn[]
+  archivedAt?:string; paseoParentId?:string; paseoAgentId?:string
   runId?: string; stage?: string; readOnly?: boolean; createdAt: string; updatedAt: string
   // Only a run's selected representative has mirrorTitle. CLI-created child threads carry their parent.
   mirrorTitle?: string; parentThreadId?: string

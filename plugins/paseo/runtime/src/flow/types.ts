@@ -23,7 +23,7 @@ export type StageResult = { passed: boolean; attempts: number; verdict: Verdict;
 export type Attempt = {
   n: number; round: number; rung: Rung; threadId: string; startedAt: string; endedAt?: string
   ok?: boolean; reason?: string; result?: WorkerResult; checks?: Check[]; judgeId?: string; judgeRung?: Rung; verdict?: Verdict
-  acceptedBlock?: string; limit?: string
+  providerError?:string; acceptedBlock?: string; limit?: string
 }
 
 export type StageStatus = 'running' | 'asking' | 'passed' | 'skipped' | 'failed'
@@ -33,7 +33,7 @@ export type StageRecord = {
   verdict?: Verdict; summary?: string; artifact?: unknown; entry?: string; startedAt: string; endedAt?: string
 }
 
-export type AskKind = 'approve' | 'block' | 'limit' | 'memory'
+export type AskKind = 'provider' | 'approve' | 'block' | 'limit' | 'memory'
 export type AskRecord = {
   key: string; kind: AskKind; question: string; askedAt: string
   answer?: string; via?: string; answeredAt?: string; entry?: string
@@ -44,11 +44,13 @@ export type RunStatus = 'running' | 'asking' | 'done' | 'failed' | 'stopped'
 export type Run = {
   id: string; flow: string; title: string; status: RunStatus; input: unknown
   steering?: string[]
+  verifiedNotes?:{id:string;title:string;sources:string[]}[]
   auditFindings?: {id:string; evidence:string; status:'confirmed'|'dismissed'|'needs a decision'}[]
   pullRequest?: string
   auditedHead?: string; auditBaseHead?: string
   routes?: Partial<Record<Stage, Selection>>
   quotaFailover?: boolean
+  archivedAt?:string; paseoParentId?:string; allowAntigravityFullAccess?:boolean
   parentThreadId?: string
   // cwd is the run's worktree, where every thread and check runs. repo is the checkout it was cut from.
   cwd: string; repo: string; branch: string; base: string

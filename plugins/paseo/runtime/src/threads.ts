@@ -1,7 +1,7 @@
 /** Threads: one in-flight turn each, a queue per thread, a global cap on running turns, and a JSON file per thread. */
-import { createHash, randomBytes } from 'node:crypto'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { delimiter,dirname,join } from 'node:path'
 import { backend as backendByName } from './backends/index.ts'
 import { lastJsonBlock } from './backends/spawn.ts'
 import type { Backend, TurnInput, TurnOutput } from './backends/types.ts'
@@ -12,7 +12,7 @@ import { HttpError } from './http.ts'
 import { workListEntry } from './flow/memory.ts'
 import { parseResult } from './flow/verdict.ts'
 import { runtimeMemory, type Memory } from './memory.ts'
-import { runPaseoTurn } from './paseo-turn.ts'
+import { runManagedWorker,runPaseoTurn } from './paseo-turn.ts'
 import { mirrorName } from './mirror.ts'
 import { editBlock, editsFiles, formatList, Lists, nudgePrompt, open, resultBlock, stopBlock } from './lists.ts'
 import { readJson, readJsonDir, writeJson } from './store.ts'
@@ -20,6 +20,7 @@ import type { Rung, Thread, Turn } from './types.ts'
 import { createWorktree } from './worktree.ts'
 
 export type StartOptions = {
+  paseoParentId?:string
   title: string; prompt: string; cwd: string; rung: Rung; worktree?: boolean; readOnly?: boolean
   runId?: string; stage?: string; schema?: object; systemAppend?: string
   mirrorTitle?: string; parentThreadId?: string
@@ -99,8 +100,9 @@ export class Threads {
     for (const k of ['runId', 'stage', 'readOnly', 'schema', 'systemAppend', 'mirrorTitle', 'parentThreadId'] as const) {
       if (opts[k] !== undefined) (t as any)[k] = opts[k]
     }
+    if(opts.paseoParentId && !opts.readOnly){t.paseoParentId=opts.paseoParentId;t.paseoAgentId=randomUUID()}
     if (opts.worktree) {
-      const wt = createWorktree(opts.cwd, id, t.title, !opts.runId && !opts.stage && !opts.parentThreadId && !opts.readOnly)
+      const wt = createWorktree(opts.cwd, id, t.title, !opts.runId && !opts.stage && !opts.parentThreadId && !opts.readOnly && !opts.paseoParentId)
       Object.assign(t, { cwd: wt.path, worktree: wt.path, branch: wt.branch, base: wt.base })
     }
     this.threads.set(id, t)
@@ -115,11 +117,23 @@ export class Threads {
 
   send(id: string, text: string): Thread {
     const t = this.need(id)
+    if(t.archivedAt)throw new HttpError(409,"Task has been removed")
     t.queue.push(text)
     // A message from outside starts a fresh count of follow-ups.
     t.nudges = 0
     this.save(t)
     this.pump(t)
+    return this.view(t)
+  }
+
+  archive(id:string):Thread {
+    const t=this.need(id)
+    if(!t.archivedAt){
+      if(t.status==='running'||t.status==='queued')this.stop(id)
+      t.archivedAt=now()
+      this.save(t)
+      this.emit('thread.archived',t,'Removed task from the board')
+    }
     return this.view(t)
   }
 
@@ -253,7 +267,7 @@ export class Threads {
     try {
       await this.mirrorImports.get(t.id)
       const agent = mirrorName(t, clydeHome()) ? readJson<Record<string, string>>(join(clydeHome(), 'paseo-threads.json'))?.[t.id] : undefined
-      const run = agent && !t.readOnly ? (input: TurnInput) => runPaseoTurn(agent, input) : (input: TurnInput) => this.backend(t.rung.backend).runTurn(input)
+      const run = t.paseoAgentId ? (input:TurnInput)=>runManagedWorker(t,input) : agent && !t.readOnly ? (input: TurnInput) => runPaseoTurn(agent, input) : (input: TurnInput) => this.backend(t.rung.backend).runTurn(input)
       out = await run({
         rung: t.rung, cwd: t.cwd, session: t.session, prompt: this.withList(t, prompt), readOnly: t.readOnly, systemAppend: t.systemAppend,
         env: this.envFor(t), schema: t.schema, signal,
@@ -403,7 +417,7 @@ export class Threads {
 
   envFor(t: Thread): Record<string, string> {
     return workerEnv({
-      CLYDE_HOME: clydeHome(), CLYDE_BIN: clydeBin(), CLYDE_THREAD_ID: t.id, CLYDE_RUN_ID: t.runId,
+      CLYDE_HOME: clydeHome(), CLYDE_BIN: clydeBin(), PATH: dirname(clydeBin())+delimiter+(process.env.PATH??''), CLYDE_THREAD_ID: t.id, CLYDE_RUN_ID: t.runId,
       CLYDE_MEMORY_SCOPE: t.runId ? `run:${t.runId}` : undefined, CLAUDE_PLUGIN_ROOT: repoRoot(),
       // The daemon may run under the point man. Its mode switches must not turn a worker into a second point man.
       CLYDE_POINT_MAN: undefined, CLYDE_DELIVERY: undefined,

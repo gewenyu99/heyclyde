@@ -12,7 +12,7 @@ import { runtimeMemory, type Memory } from '../memory.ts'
 import { paseo } from '../paseo.ts'
 import { carbonAuditor, preferences, profiles, select, inferRouting, usage, validateRouting, type Routing, type Model, type Stage } from '../routing.ts'
 import { ladder } from '../roles.ts'
-import { readJsonDir, writeJson } from '../store.ts'
+import { readJson,readJsonDir, writeJson } from '../store.ts'
 import type { Rung, Thread } from '../types.ts'
 import { createWorktree } from '../worktree.ts'
 import { gate } from './gate.ts'
@@ -80,7 +80,7 @@ export class Runs {
   }
 
   /** track names a work list, like pointman, that gets an item linked to the run. */
-  async start(flowName: string, input: unknown, cwd?: string, track?: string, parentThreadId?: string, assignment?: string): Promise<Run> {
+  async start(flowName: string, input: unknown, cwd?: string, track?: string, parentThreadId?: string, assignment?: string,paseoParentId?:string): Promise<Run> {
     if (this.closing) throw new HttpError(503, 'the daemon is closing')
     const flow = await loadFlow(flowName)
     try {
@@ -97,7 +97,7 @@ export class Runs {
     if (existing) return this.view(existing)
     let wt
     try {
-      wt = createWorktree(repoDir, id, titleOf(input, flowName), !parentThreadId)
+      wt = createWorktree(repoDir, id, titleOf(input, flowName), !parentThreadId && !paseoParentId)
     } catch (err) {
       throw new HttpError(400, `can't cut a worktree from ${repoDir}: ${firstLine((err as Error).message)}`)
     }
@@ -106,6 +106,7 @@ export class Runs {
       id, flow: flowName, title: titleOf(input, flowName), status: 'running', input, cwd: wt.path, repo: wt.repo, branch: wt.branch,
       base: wt.base, stages: [], answers: [], asks: [], entries: [], plans: [], agents: {}, log: [], firstEvent: 0, createdAt: at, updatedAt: at,
       ...((flowName === 'ship' || flowName === 'task') && ((input as { routing?: Routing }).routing || !existsSync(join(clydeHome(), 'roles.json'))) ? { routes: {} } : {}),
+      ...(paseoParentId ? {paseoParentId} : {}),
       ...(parentThreadId ? { parentThreadId } : {}),
     }
     this.runs.set(id, run)
@@ -121,16 +122,28 @@ export class Runs {
   }
 
   /** Answers the open question. With no driver waiting yet, as just after a restart, the driver finds it when it replays. */
-  answer(id: string, text: string, via = 'user'): Run {
+  answer(id: string, text: string, via = 'user', allowAntigravityFullAccess = false): Run {
     const run = this.need(id)
     const open = [...run.asks].reverse().find((a) => a.answer === undefined)
     if (run.status !== 'asking' || !open) throw new HttpError(409, `run ${id} isn't asking anything`)
+    if(open.kind==='provider' && open.question.includes('allow Antigravity full access for this run') && (allowAntigravityFullAccess || /^allow full access(?: for this run)?$/i.test(text.trim())))run.allowAntigravityFullAccess=true
     Object.assign(open, { answer: text, via, answeredAt: now() })
     run.answers.push(text)
     run.status = 'running'
     delete run.question
     this.save(run)
     this.live.get(id)?.answered?.()
+    return this.view(run)
+  }
+
+  archive(id:string):Run {
+    const run=this.need(id)
+    if(!run.archivedAt){
+      this.stop(id)
+      run.archivedAt=now()
+      this.save(run)
+      this.emit(run,'run.archived','Removed task from the board')
+    }
     return this.view(run)
   }
 
@@ -162,11 +175,30 @@ export class Runs {
         run.status = 'running'
         delete run.question
       }
-      this.log(run, 'Resumed after a daemon restart.')
-      loadFlow(run.flow).then(
-        (flow) => this.drive(run, flow),
-        (err) => this.finish(run, 'failed', `can't load flow ${run.flow}: ${(err as Error).message}`),
-      )
+      // A native worker can survive an abrupt companion exit. Cancel that exact owned turn
+      // before replaying its stage, or a second worker could mutate the same worktree.
+      const reconcile=async()=>{
+        const native=this.ctx.threads.list().filter(t=>t.runId===run.id && t.paseoAgentId && t.turns.at(-1)?.error==='daemon restarted')
+        for(const t of native){
+          const id=t.paseoAgentId!
+          const state=await paseo(['inspect',id],5000)
+          if(state.code!==0){
+            if(/not found|no (such )?agent/i.test(state.stderr+' '+JSON.stringify(state.json)))continue
+            throw Error('Cannot check prior Paseo worker '+id)
+          }
+          if(['running','initializing'].includes(state.json?.Status)||state.json?.PendingPermissions?.length){
+            const stop=await paseo(['stop',id],10000)
+            if(stop.code!==0)throw Error('Cannot stop prior Paseo worker '+id)
+            const checked=await paseo(['inspect',id],5000)
+            if(checked.code!==0||['running','initializing'].includes(checked.json?.Status))throw Error('Prior Paseo worker is still active: '+id)
+          }
+        }
+        this.log(run,'Resumed after a daemon restart.')
+        const flow=await loadFlow(run.flow)
+        if(!this.closing && !TERMINAL.includes(run.status))this.drive(run,flow)
+      }
+      void reconcile().catch(err=>this.finish(run,'failed','Could not safely resume: '+String(err)))
+
     }
   }
 
@@ -290,7 +322,10 @@ export class Runs {
   }
 
   view(run: Run): Run {
-    return structuredClone(run)
+    const copy=structuredClone(run)
+    const notes=readJsonDir<{id:string;title:string;sources:string[]}>(join(clydeHome(),'note-receipts',run.id)).filter(n=>n.id && Array.isArray(n.sources)).map(({id,title,sources})=>({id,title,sources}))
+    if(notes.length)copy.verifiedNotes=notes
+    return copy
   }
 
   emit(run: Run, type: string, summary: string, data?: unknown) {
@@ -379,7 +414,8 @@ export class Driver {
     this.guard()
     const steering = this.run.steering?.join('\n')
     const prompt = steering ? opts.prompt + '\nUser steering for this run:\n' + steering : opts.prompt
-    return this.threads.start({ ...opts, prompt, cwd: this.run.cwd, runId: this.run.id })
+    const origin=this.run.paseoParentId ?? readJson<Record<string,{agent:string}>>(join(clydeHome(),'chat-runs.json'))?.[this.run.id]?.agent
+    return this.threads.start({ ...opts, prompt, paseoParentId:origin, cwd: this.run.cwd, runId: this.run.id })
   }
 
   /** Waits for a thread to go idle. A stop stops the thread too. A shutdown leaves it to the daemon. */

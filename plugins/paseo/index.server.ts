@@ -1,9 +1,9 @@
-import { residents } from "./server/residents";
+import { isProjectChat, residents } from "./server/residents";
 import { execFileSync } from "node:child_process";
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { call, ensureCompanion, follow, readJson } from "./server/daemon";
 import { home, task, threadTask, transcript, type RawRun, type RawThread } from "./server/shape";
-import { projectsRpc, launchRpc, steerRpc, answerRpc, homeRpc, stopRpc, taskRpc, transcriptRpc, waitRpc, type Diff } from "./shared/clyde";
+import { removeRpc, projectsRpc, launchRpc, steerRpc, answerRpc, homeRpc, stopRpc, taskRpc, transcriptRpc, waitRpc, type Diff } from "./shared/clyde";
 
 const agents = () => readJson<Record<string, string>>("paseo-threads.json") ?? {};
 const failed = (err: unknown) => ({ error: (err as Error).message });
@@ -30,12 +30,12 @@ export default function contribute(server: PluginServerContext) {
     const workspace=workspaceId ? (await paseo.workspaces.list()).entries.find(w=>w.id===workspaceId) : undefined;
     return projects.filter(p => (!workspaceId || p.projectId===workspace?.projectId) && p.projectKind !== "non_git").map(p => ({id:p.projectId,name:p.projectDisplayName,path:p.projectRootPath}));
   });
-  server.handle(launchRpc, async ({project,prompt,criteria,flow,worker,requestId,agentId}, {paseo}) => {
+  server.handle(launchRpc, async ({project,prompt,criteria,flow,worker,requestId,agentId,allowAntigravityFullAccess}, {paseo}) => {
     const selected=(await paseo.projects.list()).projects.find(p => p.projectId === project && p.projectKind !== "non_git");
     if (!selected) throw new Error("Select an available Git project in Paseo.");
     const workspaces=(await paseo.workspaces.list()).entries.filter(w=>w.projectId===project);
     const workspaceIds=new Set(workspaces.map(w=>w.id));
-    const agents=(await paseo.agents.list()).entries.map(e=>e.agent).filter(a=>a.workspaceId && workspaceIds.has(a.workspaceId) && !a.archivedAt && !a.background && !a.labels?.["paseo.parent-agent-id"]);
+    const agents=(await paseo.agents.list()).entries.map(e=>e.agent).filter(a=>a.workspaceId && workspaceIds.has(a.workspaceId) && isProjectChat(a));
     if(agentId && !agents.some(a=>a.id===agentId)) throw new Error("Choose a chat in the selected project.");
     const origin=agentId ?? (agents.length===1?agents[0].id:undefined);
     const routing=worker === "auto" ? {} : {overrides:{worker}};
@@ -46,7 +46,7 @@ export default function contribute(server: PluginServerContext) {
     const input=flow==="ship"
       ? {intent:prompt,criteria,notes:[criteria?.length ? "User completion criteria:\n"+criteria.join("\n") : "", notes].filter(Boolean).join("\n\n"),routing}
       : {prompt:prompt+notes,criteria:criteria?.length ? criteria : [prompt],routing};
-    const run=await call<{id:string}>("POST","/runs",{flow,input,cwd:selected.projectRootPath,assignment:requestId});
+    const run=await call<{id:string}>("POST","/runs",{flow,input:{...input,allowAntigravityFullAccess:worker==="neon"&&allowAntigravityFullAccess===true},cwd:selected.projectRootPath,assignment:requestId,paseoParentId:origin});
     if(origin)residentControl.track(run.id,origin,paseo);
     return {id:run.id};
   });
@@ -71,12 +71,13 @@ export default function contribute(server: PluginServerContext) {
     try { return { data: transcript(await call<RawThread>("GET", `/threads/${threadId}`)) }; } catch (err) { return failed(err); }
   });
   server.handle(waitRpc, async ({ after }) => ({ revision: await live.wait(after) }));
-  server.handle(answerRpc, async ({ kind, id, text, askKey }) => {
+  server.handle(answerRpc, async ({ kind, id, text, askKey, allowAntigravityFullAccess }) => {
     try {
-      await call("POST", kind === "run" ? `/runs/${id}/answer` : `/threads/${id}/messages`, { text, via: "paseo", askKey });
+      await call("POST", kind === "run" ? `/runs/${id}/answer` : `/threads/${id}/messages`, { text, via: "paseo", askKey, allowAntigravityFullAccess });
       return { ok: true };
     } catch (err) { return { ok: false, error: (err as Error).message }; }
   });
+  server.handle(removeRpc,async({kind,id})=>{await call("POST","/"+(kind==="run"?"runs":"threads")+"/"+encodeURIComponent(id)+"/archive",{});return {ok:true};});
   server.handle(steerRpc, async ({id,text}) => { await call("POST","/runs/"+encodeURIComponent(id)+"/steer",{text}); return {ok:true}; });
   server.handle(stopRpc, async ({ kind, id }) => {
     try {

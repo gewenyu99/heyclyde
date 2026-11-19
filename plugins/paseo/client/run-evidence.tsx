@@ -6,6 +6,7 @@ import type { TaskView } from "../shared/clyde";
 /** Show the latest attempt for each stage. Historical attempts stay in the flow inspector. */
 export function RunEvidence({ view, theme }: { view: TaskView; theme: PluginTheme }) {
   const [expanded, setExpanded] = useState(false);
+  const [showNotes,setShowNotes]=useState(false);
   const c = theme.colors;
   const checks = Object.entries(view.attempts).flatMap(([stage, attempts]) => {
     const latest = attempts.at(-1);
@@ -25,6 +26,12 @@ export function RunEvidence({ view, theme }: { view: TaskView; theme: PluginThem
         </View>
       )}
       <Text style={{ color: c.foregroundMuted, fontSize: 11, fontWeight: "700" }}>VERIFICATION</Text>
+      {!!view.verifiedNotes?.length && <>
+        <Pressable accessibilityRole="button" accessibilityState={{expanded:showNotes}} onPress={()=>setShowNotes(!showNotes)}>
+          <Text style={{color:c.accent,fontWeight:"600"}}>{view.verifiedNotes.length} verified memory indexes · {new Set(view.verifiedNotes.flatMap(n=>n.sources)).size} source notes {showNotes?"▴":"▾"}</Text>
+        </Pressable>
+        {showNotes && view.verifiedNotes.map(n=><View key={n.id} style={{gap:2}}><Text style={{color:c.foreground}}>{n.title}</Text><Text selectable style={{color:c.foregroundMuted,fontSize:12}}>{n.id}</Text></View>)}
+      </>}
       {!!view.auditedHead && (
         <Text selectable style={{ color: c.foreground, fontSize: 13 }}>
           Audited revision · {view.auditedHead.slice(0, 12)}
@@ -59,7 +66,7 @@ export function RunEvidence({ view, theme }: { view: TaskView; theme: PluginThem
             ))}
           </>
         )
-        : <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>No stage check results recorded.</Text>}
+        : !view.verifiedNotes?.length && <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>No stage check results recorded.</Text>}
     </View>
   );
 }

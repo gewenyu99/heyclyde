@@ -25,6 +25,7 @@ export function git(cwd: string, ...args: string[]): string {
 export function makeRepo(): string {
   const repo = tempDir('repo')
   git(repo, 'init', '-q', '-b', 'main')
+  git(repo,'config','commit.gpgsign','false')
   writeFileSync(join(repo, 'README.md'), '# test repo\n')
   git(repo, 'add', '-A')
   git(repo, 'commit', '-q', '-m', 'init')

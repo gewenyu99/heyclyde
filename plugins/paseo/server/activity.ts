@@ -11,6 +11,7 @@ import {
   type BoardQuest,
   boardQuest,
   boardRpc,
+  sharedBoardRpc,
   feedbackRpc,
   ratingRpc,
   type Resident,
@@ -18,7 +19,7 @@ import {
   spawnQuestRpc,
 } from "../shared/clyde.ts";
 import { recallPacket } from "../shared/recall.ts";
-import { agentCall, agentReply } from "./connection.ts";
+import { agentCall, agentReply,sharedBoardReply } from "./connection.ts";
 import { call, readJson } from "./daemon.ts";
 
 type Origin = {
@@ -38,6 +39,7 @@ type Origin = {
 };
 type Ask = { key: string; kind: string; question: string; answer?: string };
 type Run = {
+  archivedAt?: string;
   id: string;
   title: string;
   status: string;
@@ -45,6 +47,7 @@ type Run = {
   auditedHead?: string;
   stages: { summary?: string }[];
 };
+const priorityRank=(p:string)=>({urgent:0,high:1,normal:2,low:3} as Record<string,number>)[p]??4;
 const keyFor = (text: string) => createHash("sha256").update(text).digest("hex").slice(0, 24);
 export function activity(server: PluginServerContext, rowFor: (id: string) => Resident | undefined) {
   const dir = process.env.CLYDE_HOME || join(homedir(), ".clyde");
@@ -194,7 +197,7 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
         title: run.title,
         question: ask.question,
         approve: ask.kind === "approve" && /^approve\b/i.test(ask.question),
-        ...(ask.answer === undefined ? {} : { answer: ask.answer }),
+        ...(ask.answer!==undefined ? {answer:ask.answer} : run.archivedAt ? {answer:"Task removed"} : {}),
       });
     }
   }
@@ -206,6 +209,27 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
     if (!result.success) throw new Error("Clyde did not return a structured quest board.");
     return result.data.quests;
   }
+  server.handle(sharedBoardRpc,async()=>{
+    const all:BoardQuest[]=[];
+    let after=0;
+    for(;;){
+      let reply;
+      try{reply=await sharedBoardReply({show:"board",after,limit:50});}
+      catch(error){
+        if(after||!/show must be open, mine, done or all/i.test(String(error)))throw error;
+        // An older service still exposes its signed-in MCP board. Never borrow an agent's profile to widen visibility.
+        const {card}=await sharedBoardReply({show:"all",context:"all",limit:50});
+        const rows=z.object({quests:z.array(boardQuest.extend({state:z.string()}))}).parse(card).quests;
+        return {legacy:true,quests:rows.sort((a,b)=>priorityRank(a.priority)-priorityRank(b.priority)||a.id-b.id)};
+      }
+      const page=z.object({quests:z.array(boardQuest),after:z.number().int().nullable()}).parse(JSON.parse(reply.text.split("\n")[0]));
+      all.push(...page.quests);
+      if(page.after===null)break;
+      if(page.after<=after)throw Error("Clyde returned an invalid board cursor");
+      after=page.after;
+    }
+    return {legacy:false,quests:all.sort((a,b)=>priorityRank(a.priority)-priorityRank(b.priority)||a.id-b.id)};
+  });
   server.handle(boardRpc, async ({ agent }, { paseo }) => {
     api = paseo;
     return board(agent);
@@ -230,6 +254,7 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
     return call<Run>("POST", "/runs", {
       flow: "task",
       assignment: run.slice(2),
+      paseoParentId:origin.agent,
       cwd: job.cwd,
       input: {
         title: job.title,

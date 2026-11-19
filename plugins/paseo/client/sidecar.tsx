@@ -85,7 +85,7 @@ export function Sidecar(props: PluginAgentPanelProps | PluginWorkspacePanelProps
               <Text style={{ color: c.accent }}>‹ Runs</Text>
             </Pressable>
             {detail.data?.data
-              ? <TaskScreen theme={theme} view={detail.data.data} back={() => setId("")} />
+              ? <TaskScreen theme={theme} view={detail.data.data} back={() => setId("")} openAgent={props.navigation ? agentId=>props.navigation!.openAgent({agentId}) : undefined} />
               : (
                 <Text style={{ color: c.foregroundMuted }}>
                   {detail.data?.error || detail.error?.message || "Loading run…"}

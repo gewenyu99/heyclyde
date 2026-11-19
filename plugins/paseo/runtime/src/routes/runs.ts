@@ -31,16 +31,17 @@ export function runRoutes(ctx: DaemonCtx): Route[] {
         const b = req.body ?? {}
         const cwd = typeof b.cwd === 'string' && b.cwd ? b.cwd : undefined
         return { body: await runs.start(text(b.flow, 'flow'), b.input ?? {}, cwd, b.track === undefined ? undefined : owner(b.track),
-          typeof b.parentThreadId === 'string' && b.parentThreadId ? b.parentThreadId : undefined, b.assignment) }
+          typeof b.parentThreadId === 'string' && b.parentThreadId ? b.parentThreadId : undefined, b.assignment, typeof b.paseoParentId==='string' ? b.paseoParentId : undefined) }
       },
     },
     { method: 'POST', path: '/runs/:id/steer', handle: req => ({body:runs.steer(req.params.id,text(req.body?.text,'text'))}) },
+    { method:'POST', path:'/runs/:id/archive', handle:req=>({body:runs.archive(req.params.id)}) },
     { method: 'GET', path: '/runs/:id', handle: (req) => ({ body: runs.view(runs.need(req.params.id)) }) },
     {
       method: 'POST', path: '/runs/:id/answer',
       handle: req => {
         if (req.body?.askKey && !runs.need(req.params.id).asks.some(a => a.key === req.body.askKey && a.answer === undefined)) throw new HttpError(409,'This question has already been answered')
-        return {body:runs.answer(req.params.id,text(req.body?.text,'text'),typeof req.body?.via === 'string' ? req.body.via : 'user')}
+        return {body:runs.answer(req.params.id,text(req.body?.text,'text'),typeof req.body?.via === 'string' ? req.body.via : 'user',req.body?.allowAntigravityFullAccess===true)}
       },
     },
     { method: 'POST', path: '/runs/:id/stop', handle: (req) => ({ body: runs.stop(req.params.id) }) },

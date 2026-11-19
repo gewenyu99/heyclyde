@@ -427,6 +427,21 @@ test('Paseo dispatchprioritizes urgent work, fences acknowledgements, and recove
   assert.equal(quest(normal).state,'open');
 });
 
+test('Paseo account board sees other projects and claimed jobs while a scoped worker cannot take them', {skip:SKIP}, async()=>{
+  const poster=await agent('paseo-global-author'), assignee=await agent('paseo-global-writer')
+  await assignee.send('register_agent',{name:'paseo-global-writer',surface:'paseo',description:'Test writer',context:'work',projects:['owner/one'],strict_projects:true})
+  const outside=await post(poster,{project:'owner/two'}),owned=await post(poster,{project:'owner/one'})
+  assert.equal((await assignee.send('claim_quest',{id:owned})).error,false)
+  const display=await open(memory.token,'clyde-paseo-board')
+  const list=await display.send('list_quests',{show:'board',after:outside-1,limit:1})
+  assert.equal(list.error,false,list.text)
+  const first=JSON.parse(list.text.split('\n')[0]);assert.equal(first.quests[0].id,outside);assert.equal(first.after,outside)
+  const second=JSON.parse((await display.send('list_quests',{show:'board',after:first.after})).text.split('\n')[0])
+  assert.ok(second.quests.some((q:any)=>q.id===owned && q.state==='claimed'))
+  assert.ok((await assignee.send('list_quests',{show:'board'})).error)
+  assert.ok((await assignee.send('claim_quest',{id:outside})).error)
+})
+
 // ------------------------------------------------------------------ the tests below empty tables or reset every quest
 
 test('R47 the migration purges junk deliveries and keeps real ones', { skip: SKIP }, async () => {

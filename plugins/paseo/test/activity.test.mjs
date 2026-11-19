@@ -33,6 +33,9 @@ test("recall, user feedback and approvals stay in the origin chat; double spawn 
         return send({ result: {} });
       }
       calls.push(tool);
+      if(tool==="list_quests"&&arg.params.arguments.show==="board"){
+        return send({result:{content:[{text:JSON.stringify({quests:[{...quest,state:"claimed",project:"other/repo",claimed_by:"other"}],after:null})}]}});
+      }
       if(tool==="feedback")votes.push(arg.params.arguments);
       return send({ result: { content: [{ text:tool==="feedback"?feedbackReply:"OK" }], _meta: { "clyde/card": tool==="recall"?{retrieval_id:"task-retrieval",items:[{id:"note",title:"Recall on launch",body:"Visible evidence"}]}:{ quests: [quest] } } } });
     }
@@ -109,6 +112,10 @@ test("recall, user feedback and approvals stay in the origin chat; double spawn 
     const pending=await invoke("feedback",{agent:"owner",retrieval:"retrieval-1",verdict:"helpful"});
     assert.equal(pending.pendingSync,true);
     assert.deepEqual(await invoke("recall-rating",{agent:"owner",retrieval:"retrieval-1"}),{choice:"helpful",pendingSync:true});
+    const shared=await invoke("shared-quests",{});
+    assert.equal(shared.legacy,false);
+    assert.equal(shared.quests[0].state,"claimed");
+    assert.equal(shared.quests[0].project,"other/repo");
     assert.deepEqual(await invoke("quests", { agent: "owner" }), [quest]);
     const first = await invoke("spawn-quest", { agent: "owner", quest: 123 });
     const replay = await invoke("spawn-quest", { agent: "owner", quest: 123 });

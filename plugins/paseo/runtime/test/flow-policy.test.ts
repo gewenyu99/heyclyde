@@ -113,3 +113,15 @@ test('a backend usage limit emits an event and waits on a clear limit ask', asyn
     assert.equal((await waitStatus(client, started.id, ['stopped', 'failed'])).status, 'stopped')
   } finally { await d.close(); await s.memory.close() }
 })
+
+test('a headless permission denial asks once without looking like a provider quota',async()=>{
+  const {s,d,client}=await fixture([{match:'worker for stage task',error:'a tool required the "command" permission that headless mode cannot prompt for, so it was auto-denied'}])
+  try {
+    const run=await client.startRun('task',TASK,s.repo)
+    const held=await waitStatus(client,run.id,['asking'])
+    assert.equal(held.stages[0].attempts.length,1)
+    assert.equal(held.asks.at(-1)?.kind,'provider')
+    assert.match(held.question??'',/permission|denied/i)
+    assert.doesNotMatch(held.question??'',/quota|backend limit|dangerously-skip/i)
+  } finally {await d.close();await s.memory.close()}
+})

@@ -10,6 +10,7 @@ const COMMANDS: Record<string, string> = {
   status: 'Threads and runs, one line each. --all adds the threads of finished runs. --json prints the raw state',
   thread: 'start, send, read, stop or run a background thread',
   flow: 'run, start, answer, stop or list a workflow run',
+  notes: 'Read shared notes or create an additive verified index of existing sources in a Paseo run',
   recall: 'Search memory. Scope defaults to CLYDE_MEMORY_SCOPE',
   remember: 'Write a draft note to memory in the current run',
   plan: "Show or set the run's plan",

@@ -309,7 +309,7 @@ export const TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        show: str("open (default), mine, done or all"), tag: str("One tag"), context: str("work, home, hobby, personal, both or all"),
+        show: str("open (default), mine, done, all or board (signed-in desktop board)"), after:int("Cursor for desktop board pages"), tag: str("One tag"), context: str("work, home, hobby, personal, both or all"),
         project: str("Optional project slug filter"),
         limit: int("1 to 50, default 20"),
       },
@@ -412,7 +412,7 @@ type Profile = {
 };
 type Call = {
   session: string; client: string | null; agent: Profile | null; sessionRepo: string | null;
-  principal: string; args: Record<string, any>; note: string; entitlement?: Verdict;
+  principal: string; physicalDevice:boolean; args: Record<string, any>; note: string; entitlement?: Verdict;
 };
 const s = (v: unknown, fallback = "") => typeof v === "string" ? v : fallback;
 const scopeOf = (c: Pick<Call, "agent" | "sessionRepo" | "principal">): AgentScope =>
@@ -662,7 +662,11 @@ const RUN: Record<string, (c: Call) => Promise<string>> = {
   ack_messages: (c) => service.ackMessages(mailboxes(c), c.args.ids),
   dismiss_messages: (c) => service.dismissMessages(mailboxes(c), c.args.ids),
   post_quest: (c) => quests.postQuest(questor(c), c.args),
-  list_quests: (c) => quests.listQuests(questor(c), c.args),
+  list_quests: (c) => {
+    if(c.args.show !== "board")return quests.listQuests(questor(c),c.args);
+    if(c.client!=="clyde-paseo-board" || c.agent || !c.physicalDevice)throw new Refused("The shared board requires the signed-in desktop device.");
+    return quests.openDeviceBoard(c.args);
+  },
   dispatch_quest: (c) => quests.dispatchQuest(questor(c), c.args),
   claim_quest: (c) => quests.claimQuest(questor(c), c.args),
   update_quest: (c) => quests.updateQuest(questor(c), c.args),
@@ -834,7 +838,7 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
         const args = msg.params?.arguments ?? {};
         const text = await run({
           session: sid, client: known.client, agent: known.agent, sessionRepo: known.sessionRepo,
-          principal, args, note: installNote(who), entitlement: who.entitlement,
+          principal, physicalDevice:who.role==="device" && !!who.device && !who.device.startsWith("oauth:"), args, note: installNote(who), entitlement: who.entitlement,
         });
         // R67: the text is what it always was. A card-rendering client also gets the card's data, in _meta, which the
         // model never reads. A registration's card shows the agent it just became.

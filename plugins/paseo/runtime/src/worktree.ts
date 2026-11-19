@@ -1,8 +1,6 @@
 /**
- * Git worktrees for threads and runs, on branch clyde/<id>, cut from the repo's HEAD. A top-level task, one the point
- * man started for Wen, is a Paseo workspace in the repo's own project, titled with the task's name, so his sidebar
- * groups every task under the repo. Everything else is a plain worktree at <CLYDE_HOME>/worktrees/<id>, which Paseo
- * never sees: a worktree outside Paseo's project gets a project of its own named after its folder.
+ * Cut a task branch from the source checkout's HEAD. Legacy mirrored tasks can request a visible Paseo workspace.
+ * Native workers register their Clyde-owned checkout in their originating Paseo project when the first worker launches.
  */
 import { execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
@@ -20,11 +18,11 @@ export function baseSha(path: string): string {
   return git(path, 'rev-parse', 'HEAD')
 }
 
-export function createWorktree(repoDir: string, id: string, title?: string, topLevel = false): Worktree {
+export function createWorktree(repoDir: string, id: string, title?: string, visibleMirror = false): Worktree {
   const repo = git(repoDir, 'rev-parse', '--show-toplevel')
   const base = baseSha(repo)
   const branch = `clyde/${id}`
-  const ws = topLevel && readState() && process.env.CLYDE_PASEO_MIRROR !== 'off' ? paseoWorkspace(repo, id, branch, base, title || id) : null
+  const ws = visibleMirror && readState() && process.env.CLYDE_PASEO_MIRROR !== 'off' ? paseoWorkspace(repo, id, branch, base, title || id) : null
   if (ws) return { path: ws.cwd, branch, base, repo, workspace: ws.workspaceId }
   const path = join(clydeHome(), 'worktrees', id)
   git(repo, 'worktree', 'add', '-b', branch, path, base)
