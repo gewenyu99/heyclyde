@@ -2,7 +2,7 @@
 
 Open **Clyde** in the sidebar for the board across projects. In a workspace, choose **+ → Clyde**, use the Command Center, or type `/clyde` to open a Clyde tab beside your chat. The compact Explorer panel also offers these controls.
 
-- **Quests** opens your shared board across projects. Active includes open and claimed work. Search by number, title, project or tag. A chat’s confirmed responsibilities and scope determine which quests it can claim. Select a quest to read its brief and completion criteria, then choose **Start task from quest** to claim it and launch a background run.
+- **Quests** opens your shared board across projects. Active includes open and claimed work. Search by number, title, project or tag. Select an open quest to read its brief and completion criteria. Choose **Start with new orchestrator** to create a dedicated chat and start the run in the selected project. You can also choose an eligible existing chat.
 - **New task** starts work in an isolated Git worktree. Choose **Quick task** for a bounded change or **Plan a feature** to review the design first. Leave the worker on **Auto** or select one yourself.
 - **Runs** shows progress, checks, and the audited revision. Open a run to inspect attempts, steer the worker, or stop it. Use the trash icon to remove a task from the board. Removing active work stops it and retains its history and Git worktree.
 

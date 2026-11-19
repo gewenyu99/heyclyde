@@ -600,7 +600,17 @@ export function residents(server: PluginServerContext) {
       if (row.confirmed && (!row.paused || row.offer?.assignment)) void advance(row);
     }
   }, 10000);
-  return {track:chat.track,openForRun:chat.openForRun,isQuestRun:chat.isQuestRun,context:async(id:string,task:string,paseo:PaseoApi)=>handoff(await chatRow(id,paseo),task,paseo,true),close:()=> {
+  return {track:chat.track,openForRun:chat.openForRun,isQuestRun:chat.isQuestRun,
+    questBoard:chat.sharedBoard,startQuest:chat.startQuest,
+    prepareQuestOwner:async(id:string,quest:number,project:string,paseo:PaseoApi)=>{
+      api=paseo;chat.bind(paseo);
+      const row=await chatRow(id,paseo);
+      // Manual quest ownership never enables automatic pickup or grants unrelated responsibilities.
+      Object.assign(row,{project,role:`Quest #${quest} orchestrator`,areas:[],confirmed:false,paused:true,passed:[]});
+      save();
+      return row;
+    },
+    context:async(id:string,task:string,paseo:PaseoApi)=>handoff(await chatRow(id,paseo),task,paseo,true),close:()=> {
     chat.close();
     stopped = true;
     clearInterval(timer);

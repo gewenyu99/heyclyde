@@ -1,11 +1,14 @@
-import { isProjectChat, listAllAgents, residents } from "./server/residents.ts";
+import { isProjectChat, listAllAgents, projectSlug, residents } from "./server/residents.ts";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { realpathSync } from "node:fs";
+import { mkdirSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type { PluginHandlerContext, PluginServerContext } from "@getpaseo/plugin/server";
 import { call, ensureCompanion, follow, readJson } from "./server/daemon.ts";
 import { home, task, threadTask, transcript, type RawRun, type RawThread } from "./server/shape.ts";
 import { supervisorRpc, askSupervisorRpc, type SupervisorState, removeRpc, projectsRpc, launchRpc, openChatRpc, steerRpc, answerRpc, homeRpc, stopRpc, taskRpc, transcriptRpc, waitRpc, type Diff, type ProjectChat, type workerModels } from "./shared/clyde.ts";
+import { newQuestRpc, questProjectMatches } from "./shared/clyde.ts";
 
 type PaseoApi = PluginHandlerContext["paseo"];
 type ProviderId = Parameters<PaseoApi["providers"]["listModels"]>[0];
@@ -81,10 +84,11 @@ async function createProjectChat(
   worker: WorkerModel,
   prompt: string,
   requestId: string,
+  selectedProvider?: string,
 ): Promise<string> {
   const ws = workspaces.find((w) => !w.background && !w.internal && !w.archivingAt && !(w as { archivedAt?: string | null }).archivedAt);
   const chatCwd = ws?.workspaceDirectory || selected.projectRootPath;
-  const provider = await pickProvider(paseo, chatCwd, worker);
+  const provider = selectedProvider ?? await pickProvider(paseo, chatCwd, worker);
   if (!provider) throw new Error(LAUNCH_CHAT_ERROR);
   const firstLine = prompt.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? "";
   const title = (firstLine || selected.projectDisplayName).slice(0, 72);
@@ -167,6 +171,17 @@ export default function contribute(server: PluginServerContext) {
     void ensureCompanion().catch(() => {});
   }
   const residentControl = residents(server);
+  type QuestStart = { quest:number;project:string;workspaceId?:string;agent?:string;id?:string };
+  const questStarts = readJson<Record<string,QuestStart>>("quest-starts.json") ?? {};
+  const startingQuests = new Map<string,Promise<{id:string}>>();
+  const questRequests = new Map<string,{signature:string;promise:Promise<{id:string}>}>();
+  const saveQuestStarts = () => {
+    const dir = process.env.CLYDE_HOME || join(homedir(), ".clyde");
+    mkdirSync(dir,{recursive:true,mode:0o700});
+    const path=join(dir,"quest-starts.json");
+    writeFileSync(path+".tmp",JSON.stringify(questStarts),{mode:0o600});
+    renameSync(path+".tmp",path);
+  };
   server.handle(projectsRpc, async ({workspaceId}, {paseo}) => {
     const [{ projects }, { entries: workspaces }, agents] = await Promise.all([
       paseo.projects.list(),
@@ -196,9 +211,72 @@ export default function contribute(server: PluginServerContext) {
       .map((p) => ({
         id: p.projectId,
         name: p.projectDisplayName,
+        slug: projectSlug(p.projectRootPath),
         path: p.projectRootPath,
+        workspaces: workspaces.filter(w=>w.projectId===p.projectId && (!workspaceId || w.id===workspaceId) && !w.background && !w.internal && !w.archivingAt && !(w as {archivedAt?:string|null}).archivedAt)
+          .map(w=>({id:w.id,name:w.title || w.name || w.id,path:w.workspaceDirectory})),
         chats: (chatsByProject.get(p.projectId) ?? []).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
       }));
+  });
+  server.handle(newQuestRpc, async (input, {paseo}) => {
+    const {quest,project,workspaceId,requestId}=input;
+    const known=questStarts[requestId];
+    if(known && (known.quest!==quest || known.project!==project || known.workspaceId!==workspaceId))throw new Error("This request already belongs to another quest or project.");
+    const signature=JSON.stringify([quest,project,workspaceId]);
+    const activeRequest=questRequests.get(requestId);
+    if(activeRequest){
+      if(activeRequest.signature!==signature)throw new Error("This request already belongs to another quest or project.");
+      return activeRequest.promise;
+    }
+    const key=JSON.stringify([project,quest]);
+    const pending=startingQuests.get(key);
+    if(pending){
+      if(!known)throw new Error("This quest is already starting. Retry shortly.");
+      return pending;
+    }
+    const start=(async()=>{
+      const selected=(await paseo.projects.list()).projects.find(p=>p.projectId===project && p.projectKind!=="non_git");
+      if(!selected)throw new Error("Select an available Git project in Paseo.");
+      const available=(await paseo.workspaces.list()).entries.filter(w=>w.projectId===project && !w.background && !w.internal && !w.archivingAt && !(w as {archivedAt?:string|null}).archivedAt);
+      const workspace=workspaceId ? available.find(w=>w.id===workspaceId) : available.length===1 ? available[0] : undefined;
+      if(workspaceId && !workspace)throw new Error("Choose an available workspace in the selected project.");
+      if(!workspaceId && available.length>1)throw new Error("Choose a workspace for the new quest orchestrator.");
+      if(known?.id)return {id:known.id};
+      let prior:QuestStart|undefined;
+      if(!known)for(const candidate of Object.values(questStarts)){
+        if(candidate.quest!==quest || candidate.project!==project || !candidate.agent)continue;
+        if(candidate.id){
+          const run=await call<{status:string}>("GET","/runs/"+encodeURIComponent(candidate.id)).catch(err=>{if(!String(err).includes("404"))throw err;return null;});
+          if(run && ["done","failed","stopped"].includes(run.status))continue;
+        }
+        prior=candidate;break;
+      }
+      const record=known ?? prior ?? {quest,project,...(workspaceId?{workspaceId}:{})};
+      if(prior && prior.workspaceId!==workspaceId)throw new Error("This quest already has an orchestrator in another workspace.");
+      const slug=projectSlug(selected.projectRootPath),cwd=workspace?.workspaceDirectory || selected.projectRootPath;
+      const item=(await residentControl.questBoard()).quests.find(q=>q.id===quest);
+      if(!item)throw new Error("This quest is no longer available.");
+      if(!questProjectMatches(slug,item.project))throw new Error("This quest belongs to another project.");
+      if(item.assignee && item.assignee!=="any")throw new Error("This quest targets an existing agent; start it with its assigned orchestrator.");
+      if(!record.agent){
+        if(item.state && item.state!=="open")throw new Error("This quest is no longer open.");
+        const provider=await pickProvider(paseo,cwd,"auto");
+        if(!provider)throw new Error(LAUNCH_CHAT_ERROR);
+        questStarts[requestId]=record;saveQuestStarts();
+        record.agent=await createProjectChat(paseo,selected,workspace?[workspace]:[],"auto",`Quest #${quest}: ${item.title}`,"quest-"+requestId,provider);
+        saveQuestStarts();
+      }else if(!known){questStarts[requestId]=record;saveQuestStarts();}
+      await residentControl.prepareQuestOwner(record.agent,quest,slug,paseo);
+      const result=await residentControl.startQuest({agent:record.agent,quest,requestId,item},paseo);
+      record.id=result.id;saveQuestStarts();
+      return result;
+    })();
+    startingQuests.set(key,start);
+    questRequests.set(requestId,{signature,promise:start});
+    try{return await start;}finally{
+      if(startingQuests.get(key)===start)startingQuests.delete(key);
+      if(questRequests.get(requestId)?.promise===start)questRequests.delete(requestId);
+    }
   });
   server.handle(launchRpc, async ({project,workspaceId,prompt,criteria,flow,worker,requestId,agentId,newChat,allowAntigravityFullAccess}, {paseo}) => {
     const selected=(await paseo.projects.list()).projects.find(p => p.projectId === project && p.projectKind !== "non_git");

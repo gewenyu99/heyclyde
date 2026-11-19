@@ -173,7 +173,7 @@ function Board(
             </View>
           )
           : <ScrollView style={{ flex: 1, minHeight: 0 }} contentContainerStyle={{ paddingBottom: 20 }}>
-          {tab === "quests" ? <Panel theme={theme}><Quests theme={theme} onStarted={run=>setPicked("run:"+run)}/></Panel> : tab === "agents"
+          {tab === "quests" ? <Panel theme={theme}><Quests theme={theme} workspaceId={workspaceId} onStarted={run=>setPicked("run:"+run)}/></Panel> : tab === "agents"
           ? (
             <Panel theme={theme}>
               <Roster theme={theme} workspaceId={workspaceId} openAgent={openAgent} />

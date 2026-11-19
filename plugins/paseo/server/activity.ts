@@ -256,7 +256,7 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => (R
     if (!result.success) throw new Error("Clyde did not return a structured quest board.");
     return result.data.quests;
   }
-  server.handle(sharedBoardRpc, async () => {
+  async function sharedBoard() {
     const all: BoardQuest[] = [];
     let after = 0;
     for (;;) {
@@ -285,7 +285,8 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => (R
       legacy: false,
       quests: all.sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority) || a.id - b.id),
     };
-  });
+  }
+  server.handle(sharedBoardRpc, sharedBoard);
   server.handle(boardRpc, async ({ agent }, { paseo }) => {
     api = paseo;
     return board(agent);
@@ -321,9 +322,9 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => (R
       },
     });
   }
-  server.handle(spawnQuestRpc, async ({ agent, quest }, { paseo }) => {
+  async function startQuest({ agent, quest, requestId, item: selectedItem }: {agent:string;quest:number;requestId?:string;item?:BoardQuest}, paseo:PaseoApi) {
     api = paseo;
-    const key = agent + "/" + quest;
+    const key = "quest/" + quest;
     if (inFlight.has(key)) throw new Error("This quest is already starting");
     inFlight.add(key);
     try {
@@ -336,9 +337,16 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => (R
       }
       const owner = rowFor(agent);
       if (!owner) throw new Error("Open the project chat before starting a quest.");
-      const item: BoardQuest | undefined = (await board(agent)).find((q) => q.id === quest);
+      const item: BoardQuest | undefined = selectedItem ?? (await board(agent)).find((q) => q.id === quest);
       if (!item) throw new Error("This quest is no longer open");
-      const run = "r-" + randomUUID(),
+      if(item.id!==quest || (item.state && item.state!=="open"))throw new Error("This quest is no longer open");
+      if(requestId){
+        try {
+          await call("GET","/runs/r-"+requestId);
+          throw new Error("This request already belongs to another task.");
+        }catch(err){if(!String(err).includes("404"))throw err;}
+      }
+      const run = "r-" + (requestId ?? randomUUID()),
         origin: Origin = {
           agent,
           job: { quest, title: item.title, brief: item.brief, criterion: item.done_when, cwd: owner.cwd },
@@ -358,7 +366,8 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => (R
     } finally {
       inFlight.delete(key);
     }
-  });
+  }
+  server.handle(spawnQuestRpc, ({agent,quest},{paseo}) => startQuest({agent,quest},paseo));
   async function tick() {
     if (closed || polling || !Object.keys(origins).length) return;
     polling = true;
@@ -399,7 +408,7 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => (R
             origin.resultNote = entry;
             save();
           }
-          if (!row || !job || job.complete || inFlight.has(origin.agent + "/" + job.quest)) continue;
+          if (!row || !job || job.complete || inFlight.has("quest/" + job.quest)) continue;
           if (!run) {
             if (job.confirmed) {
               await agentCall(row, "update_quest", { id: job.quest, note: "Recovering " + id });
@@ -510,6 +519,8 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => (R
     if (next) void transmit(...next);
   }, 4000);
   return {
+    sharedBoard,
+    startQuest,
     track,
     markAvailable: (agent: string) => { unavailableOrigins.delete(agent); },
     isQuestRun,

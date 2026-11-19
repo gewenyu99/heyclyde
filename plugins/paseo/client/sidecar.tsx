@@ -3,7 +3,7 @@ import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { homeRpc, rosterRpc, taskRpc, type TaskCard } from "../shared/clyde";
+import { homeRpc, taskRpc, type TaskCard } from "../shared/clyde";
 import { Composer } from "./composer";
 import { OpenChatButton } from "./open-chat";
 import { Quests } from "./quests";
@@ -17,17 +17,9 @@ export function Sidecar(props: PluginAgentPanelProps | PluginWorkspacePanelProps
   useLive();
   const origin = props.context === "agent" ? props.params.agentId : undefined;
   const openAgent = props.navigation ? (agentId: string) => props.navigation!.openAgent({ agentId }) : undefined;
-  const [chosen, setChosen] = useState(""),
-    [tab, setTab] = useState<"Quests" | "New task" | "Runs">("Quests"),
+  const [tab, setTab] = useState<"Quests" | "New task" | "Runs">("Quests"),
     [id, setId] = useState("");
-  const roster = useRpc(rosterRpc), home = useRpc(homeRpc), task = useRpc(taskRpc);
-  const rows = useQuery({
-    queryKey: ["clyde", "roster", workspaceId],
-    queryFn: () => roster({ workspaceId }),
-    refetchInterval: 20000,
-  });
-  const agent = origin || rows.data?.find((a) => a.id === chosen)?.id ||
-    (rows.data?.length === 1 ? rows.data[0].id : undefined);
+  const home = useRpc(homeRpc), task = useRpc(taskRpc);
   const runs = useQuery({
     queryKey: ["clyde", "home", workspaceId],
     queryFn: () => home({ workspaceId }),
@@ -86,26 +78,8 @@ export function Sidecar(props: PluginAgentPanelProps | PluginWorkspacePanelProps
           );
         })}
       </View>
-      {tab === "Quests" && !origin && (rows.data?.length ?? 0) > 1 && (
-        <View style={{ gap: 5 }}>
-          <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>Chat for approvals and feedback</Text>
-          {rows.data!.map((a) => (
-            <Pressable
-              key={a.id}
-              accessibilityRole="button"
-              accessibilityState={{ selected: agent === a.id }}
-              onPress={() => setChosen(a.id)}
-              style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}
-            >
-              <Text style={{ color: agent === a.id ? c.accent : c.foreground, fontSize: 13, fontWeight: agent === a.id ? "600" : "400" }}>
-                {agent === a.id ? "✓ " : ""}{a.title}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      )}
       {tab === "Quests"
-        ? <Quests theme={theme} agent={agent} onStarted={started} />
+        ? <Quests theme={theme} workspaceId={workspaceId} agent={origin} onStarted={started} />
         : tab === "New task"
         ? <Composer theme={theme} workspaceId={workspaceId} agentId={origin} onStarted={started} />
         : id

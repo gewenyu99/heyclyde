@@ -146,7 +146,7 @@ export type ProjectChat = z.infer<typeof projectChat>;
 export const projectsRpc = defineRpc({
   name:"clyde.projects",
   input:z.object({workspaceId:z.string().optional()}),
-  output:z.array(z.object({id:z.string(),name:z.string(),path:z.string(),chats:z.array(projectChat)})),
+  output:z.array(z.object({id:z.string(),name:z.string(),slug:z.string(),path:z.string(),chats:z.array(projectChat),workspaces:z.array(z.object({id:z.string(),name:z.string(),path:z.string()}))})),
 });
 export const workerModels = ["auto", "sol", "sonnet", "opus", "astra", "neon"] as const;
 export const launchRpc = defineRpc({
@@ -166,9 +166,20 @@ export type Activity = z.infer<typeof activitySchema>;
 export const feedbackRpc = defineRpc({name:"clyde.feedback",input:z.object({agent:z.string(),retrieval:z.string(),verdict:z.enum(["helpful","nothing_useful"]),receipt:z.string().optional()}),output:z.object({ok:z.boolean(),pendingSync:z.boolean()})});
 export const respondRpc = defineRpc({name:"clyde.respond",input:z.object({agent:z.string(),run:z.string(),key:z.string(),text:z.string().trim().min(1)}),output:z.object({ok:z.boolean()})});
 export const boardQuest = z.object({id:z.number(),title:z.string(),brief:z.string(),done_when:z.string(),priority:z.string(),state:z.string().optional(),claimed_by:z.string().nullish(),project:z.string().nullish(),assignee:z.string().optional(),tags:z.array(z.string()).optional()});
+/** The quest service also accepts historical project names without an owner. */
+export function questProjectMatches(slug: string, project?: string | null): boolean {
+  if (!project) return true;
+  const actual = slug.trim().toLowerCase();
+  const expected = project.trim().toLowerCase();
+  if (actual === expected) return true;
+  if (actual.includes("/") === expected.includes("/")) return false;
+  return actual.split("/").pop() === expected.split("/").pop();
+}
+
 export type BoardQuest = z.infer<typeof boardQuest>;
 export const boardRpc = defineRpc({name:"clyde.quests",input:z.object({agent:z.string()}),output:z.array(boardQuest)});
 export const spawnQuestRpc = defineRpc({name:"clyde.spawn-quest",input:z.object({agent:z.string(),quest:z.number().int().positive()}),output:z.object({id:z.string()})});
+export const newQuestRpc = defineRpc({name:"clyde.new-quest",input:z.object({quest:z.number().int().positive(),project:z.string().min(1),workspaceId:z.string().min(1).optional(),requestId:z.string().uuid()}),output:z.object({id:z.string()})});
 
 export const recallRpc=defineRpc({name:"clyde.recall",input:z.object({agent:z.string(),query:z.string().trim().min(1).max(500)}),output:z.object({retrieval:z.string(),notes:z.number()})});
 
