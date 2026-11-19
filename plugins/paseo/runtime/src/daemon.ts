@@ -26,7 +26,7 @@ export type Daemon = { port: number; token: string; ctx: DaemonCtx; server: http
 
 export async function startDaemon(opts: { port?: number } = {}): Promise<Daemon> {
   const home = clydeHome()
-  mkdirSync(home, { recursive: true })
+  mkdirSync(home, { recursive: true, mode: 0o700 })
   loadMemoryEnv()
   const token = randomBytes(32).toString('hex')
   const events = new EventLog()

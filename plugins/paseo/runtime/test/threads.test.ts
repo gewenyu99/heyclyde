@@ -357,7 +357,8 @@ test('a read-only claude turn uses the judge flags and returns structured output
   assert.deepEqual(done.turns[0].json, verdict)
   const [call] = argvLog(h.state)
   assert.deepEqual(call.argv, ['-p', '--output-format', 'json', '--session-id', done.session, '--model', 'sonnet',
-    '--tools', 'Read,Grep,Glob,Bash', '--permission-mode', 'dontAsk', '--disallowedTools', 'Bash(git diff --output*)', 'Bash(git log --output*)',
+    '--tools', 'Read,Grep,Glob', '--permission-mode', 'dontAsk', '--disallowedTools', 'Bash', 'Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch',
+    '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
     '--json-schema', JSON.stringify(schema), '--settings', JSON.stringify(hookSettings())])
 })
 
@@ -369,7 +370,8 @@ test('a read-only codex turn is ephemeral with an output schema file and never r
   assert.equal(done.session, undefined)
   const [{ argv }] = argvLog(h.state)
   const schemaFile = argv[argv.indexOf('--output-schema') + 1]
-  assert.deepEqual(argv, ['exec', '--json', '--skip-git-repo-check', '-m', 'gpt-6.1-sol', '-c', 'model_reasoning_effort=high', '--ephemeral',
+  assert.deepEqual(argv, ['exec', '--json', '--skip-git-repo-check', '-m', 'gpt-6.1-sol', '-c', 'model_reasoning_effort=high',
+    '--ephemeral', '--ignore-user-config', '-c', 'approval_policy="never"',
     '--output-schema', schemaFile, '-s', 'read-only', '-C', h.repo, '-o', argv[argv.indexOf('-o') + 1], '-'])
   assert.ok(!existsSync(schemaFile), 'the schema file is cleaned up')
 })

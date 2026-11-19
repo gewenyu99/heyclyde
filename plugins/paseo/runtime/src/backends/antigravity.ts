@@ -17,10 +17,18 @@ export const antigravity: Backend = {
       args.push(
         '--disable-slash-commands',
         '--settings',
-        JSON.stringify({ permissions: { deny: ['command(*)', 'write_file(*)', 'mcp(*)', 'execute_url(*)'] } }),
+        JSON.stringify({
+          permissions: {
+            allow: ['read_file(*)', 'glob(*)', 'grep(*)', 'list_dir(*)'],
+            deny: ['command(*)', 'run_command(*)', 'write_file(*)', 'edit_file(*)', 'delete_file(*)', 'mcp(*)', 'execute_url(*)', 'search_web(*)', 'read_url(*)'],
+          },
+        }),
       )
     } else {
       args.push('--mode', 'accept-edits')
+    }
+    if (input.schema) {
+      args.push('--json-schema', JSON.stringify(input.schema))
     }
     let dir: string | undefined
     try {
@@ -46,7 +54,12 @@ export const antigravity: Backend = {
       if (result.code || result.aborted || result.timedOut || result.spawnError) {
         return { ok: false, text: '', error: exitReason('agy', result, timeoutMs) }
       }
-      const answer = JSON.parse(lines.join('\n'))
+      let answer: { status?: string; response?: string; error?: string; usage?: unknown }
+      try {
+        answer = JSON.parse(lines.join('\n'))
+      } catch {
+        return { ok: false, text: '', error: 'Antigravity returned invalid JSON output' }
+      }
       if (answer.status !== 'SUCCESS' || !answer.response?.trim()) {
         return { ok: false, text: '', error: answer.error || result.stderr.trim() || 'Antigravity returned no audit' }
       }

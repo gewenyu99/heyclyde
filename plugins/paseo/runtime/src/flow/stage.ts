@@ -17,6 +17,11 @@ import { failureNotes, parseVerdict, passes, pickJudge, VERDICT_SCHEMA, workerRe
 const LOST = 'Lost when the daemon stopped.'
 export const REPORT_ITEM = 'Report with clyde result'
 
+export function maxStageAttempts(): number {
+  const raw = Number(process.env.CLYDE_MAX_STAGE_ATTEMPTS)
+  return Number.isFinite(raw) && raw >= 1 ? Math.floor(raw) : 12
+}
+
 type Outcome = { ok: true; verdict: Verdict; summary: string; artifact?: unknown; diff: string; checks: Check[] } | { ok: false; notes: string; acceptedBlock?: string; providerError?:string; limit?: string }
 
 export async function runStage(d: Driver, spec: StageSpec): Promise<StageResult> {
@@ -51,6 +56,12 @@ export async function runStage(d: Driver, spec: StageSpec): Promise<StageResult>
         throw d.stopped(`stage ${spec.name} stopped by the user`)
       }
       notes = [notes, `Wen answered the ${kind} ask: ${answer}`].filter(Boolean).join('\n\n')
+    }
+    const maxAttempts = maxStageAttempts()
+    if (rec.attempts.length >= maxAttempts) {
+      Object.assign(rec, { status: 'failed', endedAt: now() })
+      d.save()
+      throw new Error(`Stage ${spec.name} exceeded the maximum of ${maxAttempts} attempts`)
     }
     rec.round += 1
     rec.status = 'running'

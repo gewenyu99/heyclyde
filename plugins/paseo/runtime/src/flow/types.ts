@@ -62,7 +62,7 @@ export type Run = {
 export type AgentResult = { ok: boolean; text: string; json?: unknown }
 
 export type FlowCtx = {
-  run: Run; cwd: string; scope: string
+  run: Run; cwd: string; scope: string; signal?: AbortSignal
   stage(spec: StageSpec): Promise<StageResult>
   agent(opts: { route?: Stage; role: string; prompt: string; readOnly?: boolean; title: string }): Promise<AgentResult>
   check(cmd: string): Promise<{ code: number; output: string }>

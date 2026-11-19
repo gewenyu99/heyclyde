@@ -51,10 +51,12 @@ export async function run(ctx: FlowCtx, input: ShipInput) {
   await ctx.ask(finalQuestion(ctx.run, { commits: Number(count.output.trim()) || 0, review: review.summary, verdict }))
 }
 
+const MAX_PLAN_ROUNDS = 10
+
 /** An answer that isn't a bare approval replans with that answer as notes. */
 async function approvedPlan(ctx: FlowCtx, input: ShipInput): Promise<Plan> {
   let notes = input.notes ?? ''
-  for (let round = 1; ; round++) {
+  for (let round = 1; round <= MAX_PLAN_ROUNDS; round++) {
     const stage = await ctx.stage({
       name: round === 1 ? 'plan' : `plan-${round}`, skill: 'plan', role: 'planner', route: 'planner', prompt: planPrompt(input.intent, notes),
       criteria: PLAN_CRITERIA, extract: extractPlan, resultTemplate: PLAN_RESULT_BLOCK,
@@ -68,7 +70,8 @@ async function approvedPlan(ctx: FlowCtx, input: ShipInput): Promise<Plan> {
       if (!review.ok) throw new Error('Spec review failed: ' + review.text)
       reviewNotes = '\nSpec review: ' + review.text
       const findings = (review.json as {findings?: unknown[]})?.findings
-      if (!Array.isArray(findings) || findings.length) {
+      if (!Array.isArray(findings)) throw new Error('Spec review returned invalid findings')
+      if (findings.length) {
         const revision = await ctx.stage({ name:'plan-revision-' + round, skill:'plan', role:'planner', route:'planner',
           prompt:planPrompt(input.intent, 'Incorporate valid design feedback and retain prior constraints.\n' + JSON.stringify(plan) + reviewNotes),
           criteria:PLAN_CRITERIA,extract:extractPlan,resultTemplate:PLAN_RESULT_BLOCK })
@@ -81,4 +84,5 @@ async function approvedPlan(ctx: FlowCtx, input: ShipInput): Promise<Plan> {
     if (isApproval(answer)) return plan
     notes = answer + reviewNotes
   }
+  throw new Error(`Planning exceeded the maximum of ${MAX_PLAN_ROUNDS} rounds`)
 }

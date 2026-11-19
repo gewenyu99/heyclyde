@@ -49,7 +49,7 @@ export function codexArgs(input: TurnInput, files: Files, session?: string): str
   const settings = ['--json', '--skip-git-repo-check']
   if (input.rung.model) settings.push('-m', input.rung.model)
   if (input.rung.effort) settings.push('-c', `model_reasoning_effort=${input.rung.effort}`)
-  if (input.readOnly) settings.push('--ephemeral')
+  if (input.readOnly) settings.push('--ephemeral', '--ignore-user-config', '-c', 'approval_policy="never"')
   else settings.push(
     '--ignore-user-config',
     '-c', `sandbox_workspace_write.writable_roots=${JSON.stringify([input.env.CLYDE_HOME || clydeHome(), ...gitDirsOutside(input.cwd)])}`,

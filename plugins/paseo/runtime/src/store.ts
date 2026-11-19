@@ -1,13 +1,20 @@
 /** JSON files that survive a crash mid-write: write a temp file, then rename it over the old one. */
 import { randomBytes } from 'node:crypto'
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { closeSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 export function writeJson(path: string, value: unknown, mode = 0o644): void {
-  mkdirSync(dirname(path), { recursive: true })
+  const dirMode = (mode & 0o077) === 0 ? 0o700 : 0o755
+  mkdirSync(dirname(path), { recursive: true, mode: dirMode })
   const tmp = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
   try {
-    writeFileSync(tmp, JSON.stringify(value, null, 2) + '\n', { mode })
+    const content = JSON.stringify(value, null, 2) + '\n'
+    if ((mode & 0o077) === 0) {
+      const fd = openSync(tmp, 'wx', mode)
+      try { writeFileSync(fd, content) } finally { closeSync(fd) }
+    } else {
+      writeFileSync(tmp, content, { mode })
+    }
     renameSync(tmp, path)
   } catch (err) {
     rmSync(tmp, { force: true })

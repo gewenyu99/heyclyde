@@ -39,9 +39,9 @@ export const HOOK_EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'P
 // PreToolUse runs only for the tools that can change files, so reads never wait on a node start.
 const EDIT_MATCHER = 'Edit|MultiEdit|Write|NotebookEdit|Bash'
 
-const JUDGE_TOOLS = 'Read,Grep,Glob,Bash'
-// Never allow Bash rules on a judge: Bash(git diff *) admits --output=<file>. These denials close that hole.
-const JUDGE_DENY = ['Bash(git diff --output*)', 'Bash(git log --output*)']
+const JUDGE_TOOLS = 'Read,Grep,Glob'
+// Read-only judges never run shell or network commands or load user MCP servers.
+const JUDGE_DENY = ['Bash', 'Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch']
 
 function shq(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`
@@ -87,8 +87,7 @@ export function claudeArgs(input: TurnInput, session: string, resume: boolean): 
   if (input.rung.model) args.push('--model', input.rung.model)
   if (input.rung.effort) args.push('--effort', input.rung.effort)
   if (input.readOnly) {
-    args.push('--tools', input.rung.model?.includes('fable') ? 'Read,Grep,Glob' : JUDGE_TOOLS, '--permission-mode', 'dontAsk', '--disallowedTools', ...JUDGE_DENY)
-    if (input.rung.model?.includes('fable')) args.push('--strict-mcp-config','--mcp-config','{"mcpServers":{}}')
+    args.push('--tools', JUDGE_TOOLS, '--permission-mode', 'dontAsk', '--disallowedTools', ...JUDGE_DENY, '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}')
     if (input.schema) args.push('--json-schema', JSON.stringify(input.schema))
   } else {
     args.push('--permission-mode', permissionMode(input))

@@ -9,8 +9,14 @@ import { headSha } from './shell.ts'
 const exec = promisify(execFile)
 export async function publishDraft(ctx: FlowCtx) {
   const run = ctx.run
-  const cmd = async (bin: string, args: string[]) =>
-    (await exec(bin, args, { cwd: run.cwd, timeout: 60000 })).stdout.trim()
+  const checkSignal = () => {
+    if (ctx.signal?.aborted) throw new Error('Publication aborted')
+  }
+  checkSignal()
+  const cmd = async (bin: string, args: string[]) => {
+    checkSignal()
+    return (await exec(bin, args, { cwd: run.cwd, timeout: 60000, ...(ctx.signal ? { signal: ctx.signal } : {}) })).stdout.trim()
+  }
   const head = run.auditedHead
   if (!head || await headSha(run.cwd) !== head || await cmd('git', ['status', '--porcelain'])) {
     throw new Error('A clean, audited revision is required for publication')
@@ -37,6 +43,7 @@ export async function publishDraft(ctx: FlowCtx) {
     )
     const [existing] = await find()
     if (existing && existing.headRefOid !== head) throw new Error('Existing PR has a different head')
+    checkSignal()
     if (existing) await cmd('gh', ['pr', 'edit', existing.url, '--body-file', file])
     else await cmd('gh', ['pr', 'create', '--draft', '--head', run.branch, '--title', run.title, '--body-file', file])
     const [verified] = await find()

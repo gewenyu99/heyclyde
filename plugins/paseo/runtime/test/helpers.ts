@@ -1,6 +1,6 @@
 /** Test setup: a fresh CLYDE_HOME, a temp git repo, a scenario for the fake CLIs, and readers for what the fakes saw. */
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -14,7 +14,7 @@ export type Setup = { home: string; state: string; repo: string; scenario: strin
 export type ArgvLine = { bin: string; argv: string[]; cwd: string; env: Record<string, string | undefined>; envKeys: string[] }
 
 export function tempDir(prefix: string): string {
-  return mkdtempSync(join(tmpdir(), `clyde-test-${prefix}-`))
+  return realpathSync(mkdtempSync(join(tmpdir(), `clyde-test-${prefix}-`)))
 }
 
 export function git(cwd: string, ...args: string[]): string {

@@ -57,6 +57,9 @@ async function cleanHead(ctx: FlowCtx) {
   return headSha(ctx.cwd)
 }
 
+export const MAX_AUDIT_REPAIRS = 3
+const MAX_MANUAL_ESCALATIONS = 2
+
 export async function auditChange(ctx: FlowCtx, checks: string[]) {
   const run = ctx.run
   const initialHead = run.auditBaseHead ??= await cleanHead(ctx)
@@ -68,8 +71,9 @@ export async function auditChange(ctx: FlowCtx, checks: string[]) {
     run.auditFindings = await review(ctx, initialHead, run.base)
     ctx.persist()
   }
-  const issues = run.auditFindings
-  if (issues.length) {
+  let head = await cleanHead(ctx)
+  let issues = head === initialHead ? run.auditFindings : await review(ctx, head, run.base)
+  for (let round = 1; round <= MAX_AUDIT_REPAIRS && issues.length > 0; round++) {
     const pending = issues.filter((i) => i.status === 'needs a decision')
     const instruction = pending.length ? await ctx.ask('Resolve these audit findings: ' + JSON.stringify(pending)) : ''
     if (run.routes?.worker && !run.routes.worker.pinned) {
@@ -79,27 +83,32 @@ export async function auditChange(ctx: FlowCtx, checks: string[]) {
         ctx.persist()
       }
     }
+    const prevHead = head
+    const stageName = round === 1 ? 'audit-repair' : `audit-repair-${round}`
+    const alreadyPassed = run.stages.some((s) => s.name === stageName && s.status === 'passed')
     const repaired = await ctx.stage({
-      name: 'audit-repair',
+      name: stageName,
       role: 'worker',
       route: 'worker',
       prompt: 'Fix these verified findings within the approved scope. Commit the changes.\n' + JSON.stringify(issues) +
-        '\n' + instruction,
+        (instruction ? '\n' + instruction : ''),
       criteria: ['Resolve the verified findings and preserve the approved behavior'],
       checks,
     })
     if (!repaired.passed) throw new Error('Audit repair is incomplete')
+    head = await cleanHead(ctx)
+    if (!alreadyPassed && head === prevHead) throw new Error('Audit repair produced no new revision')
+    issues = await review(ctx, head, run.base)
   }
-  let head = await cleanHead(ctx)
-  if (issues.length && head === initialHead) throw new Error('Audit repair produced no new revision')
-  while (head !== initialHead) {
-    const remaining = await review(ctx, head, initialHead)
-    if (!remaining.length) break
-    await ctx.ask('Remaining findings at ' + head + '. Resolve them before retrying: ' + JSON.stringify(remaining))
+  for (let manual = 1; manual <= MAX_MANUAL_ESCALATIONS && issues.length > 0; manual++) {
+    const answer = await ctx.ask('Remaining findings at ' + head + '. Resolve them before retrying: ' + JSON.stringify(issues))
+    if (/^\s*stop\b/i.test(answer)) throw new Error('Audit stopped by the user at ' + head)
     const revised = await cleanHead(ctx)
     if (revised === head) throw new Error('Remaining findings at ' + head)
     head = revised
+    issues = await review(ctx, head, run.base)
   }
+  if (issues.length) throw new Error('Remaining findings after audit repair limit at ' + head)
   for (const command of checks) {
     const check = await ctx.check(command)
     if (check.code) throw new Error(command + ' failed at ' + head + ': ' + check.output)

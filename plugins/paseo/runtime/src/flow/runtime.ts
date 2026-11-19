@@ -363,7 +363,7 @@ export class Driver {
   flowCtx(): FlowCtx {
     const run = this.run
     return {
-      run, cwd: run.cwd, scope: `run:${run.id}`,
+      run, cwd: run.cwd, scope: `run:${run.id}`, signal: this.signal,
       stage: (spec) => runStage(this, spec),
       agent: (opts) => this.agent(opts),
       check: (cmd) => this.check(cmd),
@@ -450,11 +450,12 @@ export class Driver {
   }
 
   async route(stage: Stage) {
+    const MAX_ROUTE_RETRIES = 5
     const routes = this.run.routes!
     if (!routes[stage]) {
       const input = this.run.input as { routing?: Routing; prompt?: string; intent?: string }
       const policy = {...inferRouting(input.prompt ?? input.intent ?? ''), ...input.routing}
-      for (;;) {
+      for (let attempt = 0; ; attempt++) {
         try {
           const reports = stage === 'worker' && !policy.overrides?.worker && policy.complexity !== 'complex' ? await usage() : []
           const selection = stage === 'audit' && !policy.overrides?.audit
@@ -464,6 +465,7 @@ export class Driver {
           this.save()
           break
         } catch (err) {
+          if (attempt >= MAX_ROUTE_RETRIES) throw err
           const answer = await this.ask('quota:' + this.run.asks.length, 'limit', String(err) + '. Reply to retry, or stop.')
           if (/^stop\b/i.test(answer.trim())) throw this.stopped(String(err))
           if (routes[stage]) break
@@ -473,27 +475,35 @@ export class Driver {
     return profiles[routes[stage]!.model]
   }
 
-  async agent(opts: { route?: Stage; role: string; prompt: string; readOnly?: boolean; title: string }): Promise<AgentResult> {
+  async agent(opts: { route?: Stage; role: string; prompt: string; readOnly?: boolean; title: string }, retries = 0): Promise<AgentResult> {
+    const MAX_AGENT_RETRIES = 4
     const cached = this.run.agents[opts.title]
     if (cached) return cached
     const t = this.startThread({ title: `${this.run.id} ${opts.title}`, prompt: opts.prompt, rung: opts.route && this.run.routes ? await this.route(opts.route) : ladder(opts.role)[0], readOnly: opts.readOnly })
     const turn = (await this.waitThread(t.id)).turns.at(-1)
     const parsed = turn?.json ?? lastJsonBlock(turn?.text ?? '')
-    const invalidAudit = opts.route === 'audit' && !Array.isArray((parsed as {findings?:unknown})?.findings)
+    const needsFindings = opts.route === 'audit' || opts.route === 'specReview' || opts.route === 'verify'
+    const invalidAudit = needsFindings && !Array.isArray((parsed as { findings?: unknown })?.findings)
     if ((!turn?.ok || invalidAudit) && opts.route && this.run.routes) {
-      const why = turn?.error || (invalidAudit ? 'The audit did not return findings' : 'No response')
+      const why = turn?.error || (invalidAudit ? 'The reviewer did not return structured findings' : 'No response')
+      if (retries >= MAX_AGENT_RETRIES) {
+        throw new Error(`${opts.title} exceeded the retry limit (${MAX_AGENT_RETRIES}): ${why}`)
+      }
       const auditor = this.run.routes.audit
       if (opts.route === 'audit' && auditor?.model === 'orchestrator' && !auditor.pinned) {
         this.run.routes.audit = { model:'carbon', pinned:false, reason:'Carbon Orchestrator could not finish this audit; retrying with Carbon High' }
         this.save()
-        return this.agent(opts)
+        return this.agent(opts, retries + 1)
       }
       const answer = await this.ask('retry:' + opts.title + ':' + t.id, 'limit', opts.title + ' could not finish: ' + why + '. Reply to retry or stop.')
       if (/^stop\b/i.test(answer.trim())) throw this.stopped(why)
-      return this.agent(opts)
+      return this.agent(opts, retries + 1)
+    }
+    if (turn?.ok && invalidAudit) {
+      throw new Error(`${opts.title} did not return structured findings`)
     }
     const text = turn?.text ?? ''
-    const out: AgentResult = { ok: turn?.ok === true, text, json: turn?.json ?? lastJsonBlock(text) }
+    const out: AgentResult = { ok: turn?.ok === true, text, json: parsed }
     if (out.ok) {
       this.run.agents[opts.title] = out
       this.save()
