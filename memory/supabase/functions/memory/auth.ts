@@ -2,7 +2,7 @@
 // admin token, the weekly researcher holds the research token, the nightly backup holds the backup token and pg_cron holds the
 // cron secret. Only SHA-256 hashes are
 // stored, so a database read never yields a token.
-import { entitled, geoOf, refusal, type Verdict } from "./billing/entitlement.ts";
+import { blockedOrigin, entitled, type Geo, geoOf, refusal, refusal451, type Verdict } from "./billing/entitlement.ts";
 import { isWebhook } from "./billing/index.ts";
 import { root as sql, secret, setting } from "./db.ts";
 import { sha256 } from "./embed.ts";
@@ -132,13 +132,13 @@ async function touchDevice(hash: string, seen: Seen) {
   }
 }
 
-async function resolve(kind: Kind, token: string, seen: Seen): Promise<Principal | null> {
+async function resolve(kind: Kind, token: string, seen: Seen, req?: Request): Promise<Principal | null> {
   const hash = await sha256(token);
   if (kind === "agent") {
     if (same(hash, await setting("runtime_token_sha256"))) return { role: "runtime" };
     // An OAuth client, like claude.ai, holds a Supabase Auth access token for the owner. No hooks run there.
     if (isJwt(token)) {
-      const claims = await ownerOf(token);
+      const claims = await ownerOf(token, req);
       if (!claims?.client_id) return null;
       const cid = String(claims.client_id);
       const uid = UUID.test(String(claims.sub ?? "")) ? String(claims.sub).toLowerCase() : null;
@@ -173,23 +173,29 @@ async function resolve(kind: Kind, token: string, seen: Seen): Promise<Principal
     return same(hash, await setting("admin_token_sha256")) ? { role: "admin" } : null;
   }
   if (kind === "cron") return same(token, await secret("cron_secret")) ? { role: "cron" } : null;
-  // Only a sign-in of the owner's own mints a device token, never a token an OAuth client was given.
+  // Only a verified sign-in of the owner's own mints a device token or reads /me, never an unconfirmed or OAuth token.
   if (kind === "owner") {
-    const claims = await ownerOf(token);
-    return claims && !claims.client_id ? { role: "owner", ...(claims.sub ? { owner: String(claims.sub) } : {}) } : null;
+    const claims = await ownerOf(token, req);
+    return claims && !claims.client_id && claims._confirmed ? { role: "owner", ...(claims.sub ? { owner: String(claims.sub) } : {}) } : null;
   }
   return null;
 }
 
-/** Records a signed-in user's account, the owner billing keys on. A new account takes one of the free plan's seats while any
- * are left and free is open (R74: memory.claim_free_seat, under a lock on the free plan's row, so no race passes the cap).
- * True when the account holds a free seat. */
-export async function ensureAccount(id: string, email: string, confirmed: boolean): Promise<boolean> {
-  const [row] = await sql`insert into memory.account as a (owner_id, email, email_confirmed, free_slot)
-    values (${id}, ${email.toLowerCase()}, ${confirmed}, false)
-    on conflict (owner_id) do update set email = excluded.email, email_confirmed = excluded.email_confirmed
+/** Records a signed-in user's account, the owner billing keys on. A new confirmed account outside blocked regions takes
+ * one of the free plan's seats while any are left and free is open. True when the account holds a free seat. */
+export async function ensureAccount(id: string, email: string, confirmed: boolean, blocked: Geo = null): Promise<boolean> {
+  const [prev] = await sql`select email_confirmed from memory.account where owner_id = ${id}`;
+  const [row] = await sql`insert into memory.account as a (owner_id, email, email_confirmed, free_slot, country, region)
+    values (${id}, ${email.toLowerCase()}, ${confirmed}, false, ${blocked?.country ?? null}, ${blocked?.region ?? null})
+    on conflict (owner_id) do update set
+      email = excluded.email,
+      email_confirmed = excluded.email_confirmed,
+      country = coalesce(a.country, excluded.country),
+      region = coalesce(a.region, excluded.region)
     returning (xmax = 0) as created, free_slot`;
-  if (!row?.created) return Boolean(row?.free_slot);
+  if (!confirmed || blocked) return false;
+  if (row?.free_slot) return true;
+  if (!row?.created && prev?.email_confirmed) return false;
   const [{ seat }] = await sql`select memory.claim_free_seat(${id}::uuid) as seat`;
   return Boolean(seat);
 }
@@ -232,7 +238,7 @@ export const openSignup = async () => (await setting("open_signup")) === "on";
 /** The token's claims, else null. Supabase Auth checks the token, so a forged, expired or revoked one comes back 401. With
  * sign-in closed, only a confirmed, allowlisted email gets claims. With it open, any user does, and the entitlement check
  * decides what they may do. The user's id and email are kept in memory.account, the owner billing keys on. */
-async function ownerOf(jwt: string) {
+async function ownerOf(jwt: string, req?: Request) {
   const key = await sha256(jwt), hit = owners.get(key);
   if (hit && hit.until > Date.now()) return hit.claims;
   const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/auth/v1/user`, {
@@ -244,8 +250,9 @@ async function ownerOf(jwt: string) {
   const ok = Boolean(user?.email) && (await openSignup() || (confirmed && await allowed(user.email)));
   // Supabase Auth's user ids are uuids. Anything else has no owner, and can't get in with sign-in open.
   const id = UUID.test(String(user?.id ?? "")) ? String(user.id).toLowerCase() : null;
-  const claims: Record<string, unknown> | null = ok && (id || !(await openSignup())) ? { ...claimsOf(jwt), sub: id } : null;
-  if (claims && id) await ensureAccount(id, String(user.email), confirmed);
+  const claims: Record<string, unknown> | null = ok && (id || !(await openSignup())) ? { ...claimsOf(jwt), sub: id, _confirmed: confirmed } : null;
+  const blocked = req ? blockedOrigin(req, await viaProxy(req)) : null;
+  if (claims && id) await ensureAccount(id, String(user.email), confirmed, blocked);
   if (owners.size > 100) owners.clear();
   owners.set(key, { until: Date.now() + 60_000, claims });
   return claims;
@@ -280,7 +287,7 @@ export async function authenticate(req: Request, path: string): Promise<Principa
     // The routes a hook calls: its events and its inbox.
     hook: /^\/(hooks|messages)\//.test(path),
   };
-  const who = token ? await resolve(kind, token, seen) : null;
+  const who = token ? await resolve(kind, token, seen, req) : null;
   if (!who) {
     // A JWT can't be guessed, and an expired one is how an OAuth client learns to refresh, so it costs no miss.
     if (token && !isJwt(token)) await miss(kind, client);
@@ -301,8 +308,9 @@ export async function authenticate(req: Request, path: string): Promise<Principa
     }
     who.entitlement = v;
     who.timing = `entitlement;dur=${v.ms.toFixed(2)};desc="${v.source}"`;
-    if (!v.plan.open) {
-      const refused = await refusal(v, geoOf(req, await viaProxy(req)));
+    const blocked = blockedOrigin(req, await viaProxy(req));
+    if (!v.plan.open || (blocked && !v.allowlisted)) {
+      const refused = blocked ? refusal451() : await refusal(v, geoOf(req, await viaProxy(req)));
       const meAllowed = refused.status !== 451 && (path === "/me" || path.startsWith("/me/")) &&
         ["GET", "HEAD", "DELETE"].includes(req.method);
       if (!meAllowed) {

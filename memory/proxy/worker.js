@@ -26,15 +26,16 @@ const SITE_AUTH_METHODS = {
 const BLOCKED_COUNTRIES = new Set([
   "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE",
   "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE",
-  "IS", "LI", "NO", "GB", "CH",
+  "IS", "LI", "NO", "GB", "CH", "XX", "T1",
 ]);
 function isBlockedRegion(cf) {
   const country = typeof cf?.country === "string" ? cf.country.trim().toUpperCase() : "";
   if (!country) return false;
   if (BLOCKED_COUNTRIES.has(country)) return true;
   const region = typeof cf?.regionCode === "string" ? cf.regionCode.trim().toUpperCase() : "";
-  return country === "CA" && region === "QC";
+  return region === "CA-QC" || (country === "CA" && region === "QC");
 }
+const MAX_OTP_BODY = 4096;
 const ID = /^[A-Za-z0-9_-]{8,100}$/;
 let cachedAnonKey = "";
 
@@ -132,6 +133,23 @@ function html(render, status = 200, headers = {}, turnstile = false) {
 
 async function signIn(req, url, env) {
   const res = await pass(req, url, env, { accept: "application/json" });
+  // Terminate POST /oauth/approve -> /oauth/wait on a same-origin 200 so CSP form-action 'self' never blocks the next cross-origin 302.
+  if (req.method === "POST" && url.pathname === "/oauth/approve" && res.status === 303) {
+    const loc = res.headers.get("location") ?? "";
+    const waitMatch = /^\/oauth\/wait\?authorization_id=([A-Za-z0-9_-]{8,100})$/.exec(loc);
+    if (waitMatch) {
+      const page = html(
+        (n) => statePage({ state: "waiting" }, n, waitMatch[1]).replace(
+          "</body>",
+          `<script nonce="${n}">location.replace(${JSON.stringify(loc)});</script></body>`,
+        ),
+        200,
+        { "cache-control": "no-store", refresh: `0; url=${loc}` },
+      );
+      for (const c of res.headers.getSetCookie?.() ?? []) page.headers.append("set-cookie", c);
+      return page;
+    }
+  }
   if (!(res.headers.get("content-type") ?? "").startsWith("application/json")) return res;
   const raw = await res.text();
   let data;
@@ -166,8 +184,8 @@ export default {
     if (url.hostname === "heyclyde.me" && SITE_AUTH.has(url.pathname)) {
       const allowed = SITE_AUTH_METHODS[url.pathname] ?? ["GET"];
       if (!allowed.includes(req.method)) return new Response("Method not allowed", { status: 405, headers: { allow: allowed.join(", ") } });
-      if ((url.pathname === "/auth/v1/otp" || url.pathname === "/auth/v1/authorize") && isBlockedRegion(req.cf)) {
-        return Response.json({ error: "Clyde isn't available in this region." }, { status: 403, headers: { "cache-control": "no-store" } });
+      if ((url.pathname === "/auth/v1/otp" || url.pathname === "/auth/v1/authorize" || url.pathname === "/auth/v1/token" || url.pathname === "/auth/v1/verify") && isBlockedRegion(req.cf)) {
+        return Response.json({ error: "Clyde isn't available in this region." }, { status: 451, headers: { "cache-control": "no-store" } });
       }
       const headers = new Headers(req.headers);
       headers.delete("host");
@@ -185,19 +203,36 @@ export default {
       }
       const hasBody = !["GET", "HEAD"].includes(req.method);
       let body = hasBody ? req.body : undefined;
-      // Close auth proxy signup bypass: workspace OTP can only sign in existing accounts (never create_user: true).
+      // Close auth proxy signup bypass: rebuild an allowlisted object so duplicate case-variant keys cannot override create_user.
       if (url.pathname === "/auth/v1/otp") {
+        let rawBody;
+        try {
+          rawBody = await req.text();
+        } catch {
+          return Response.json({ error: "Invalid request body." }, { status: 400, headers: { "cache-control": "no-store" } });
+        }
+        if (rawBody.length > MAX_OTP_BODY) {
+          return Response.json({ error: "Request body too large." }, { status: 413, headers: { "cache-control": "no-store" } });
+        }
         let parsed;
         try {
-          parsed = await req.json();
+          parsed = JSON.parse(rawBody);
         } catch {
           return Response.json({ error: "Invalid JSON body." }, { status: 400, headers: { "cache-control": "no-store" } });
         }
         if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
           return Response.json({ error: "Body must be a JSON object." }, { status: 400, headers: { "cache-control": "no-store" } });
         }
-        parsed.create_user = false;
-        body = JSON.stringify(parsed);
+        const email = typeof parsed.email === "string" ? parsed.email.trim() : "";
+        if (!email) {
+          return Response.json({ error: "Email is required." }, { status: 400, headers: { "cache-control": "no-store" } });
+        }
+        const redirectTo = typeof parsed.email_redirect_to === "string" ? parsed.email_redirect_to.trim() : "";
+        body = JSON.stringify({
+          email,
+          ...(redirectTo ? { email_redirect_to: redirectTo } : {}),
+          create_user: false,
+        });
         headers.set("content-type", "application/json");
         headers.delete("content-length");
       }
@@ -223,6 +258,9 @@ export default {
     // R76 (#81): sign-in email links live on Clyde's host; forward GET /auth/v1/verify to Supabase Auth unchanged.
     if (url.pathname === "/auth/v1/verify") {
       if (req.method !== "GET") return new Response("Method not allowed", { status: 405, headers: { allow: "GET" } });
+      if (isBlockedRegion(req.cf)) {
+        return Response.json({ error: "Clyde isn't available in this region." }, { status: 451, headers: { "cache-control": "no-store" } });
+      }
       const headers = new Headers(req.headers);
       headers.delete("host");
       headers.delete("x-memory-proxy");

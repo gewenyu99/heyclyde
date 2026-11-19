@@ -3,14 +3,17 @@ import { execFile, execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
-import { defineAgentTool, type PluginServerContext } from "@getpaseo/plugin/server";
-import type { PaseoAgent, PaseoApi } from "@getpaseo/client";
+import { defineAgentTool, type PluginHandlerContext, type PluginServerContext } from "@getpaseo/plugin/server";
 import { z } from "zod";
 import { call, readJson } from "./daemon.ts";
 import {nativeFeedback,needsRecall} from "../shared/recall.ts";
 import {activity} from "./activity.ts";
-import { agentCall,agentReply } from "./connection.ts";
+import { agentCall, agentReply, inferContext } from "./connection.ts";
 import { type QuestOffer, type Resident, residentRpc, rosterRpc, recallRpc } from "../shared/clyde.ts";
+
+export { inferContext };
+type PaseoApi = PluginHandlerContext["paseo"];
+type PaseoAgent = Awaited<ReturnType<PaseoApi["agents"]["list"]>>["entries"][number]["agent"];
 
 type Record = Resident & {
   passed: number[];
@@ -21,6 +24,7 @@ type Record = Resident & {
   requested?: number;
   launchFailures?: number;
   nextRetryAt?: number;
+  failedQuests?: { [questId: number]: number };
   profileVersion?: 1;
 };
 type Run = { id: string; status: string; auditedHead?: string; stages: { summary?: string }[] };
@@ -39,14 +43,6 @@ export function projectSlug(cwd: string): string {
   } catch { /* A local project may have no remote. */ }
   const clean = basename(cwd).toLowerCase().replace(/[^a-z0-9_-]/g, "-").replace(/^-+|-+$/g, "");
   return clean || "local";
-}
-
-export function inferContext(row: { role?: string; areas?: string[]; cwd?: string }): "work" | "home" | "hobby" | "personal" {
-  const bag = [row.role, ...(row.areas ?? []), row.cwd].filter(Boolean).join(" ").toLowerCase();
-  if (/\b(personal|journal|diary|private)\b/.test(bag)) return "personal";
-  if (/\b(home|family|household|chore|grocery)\b/.test(bag)) return "home";
-  if (/\b(hobby|craft|music|garden|game)\b/.test(bag)) return "hobby";
-  return "work";
 }
 
 function asAgent(row: Pick<Record, "id" | "project" | "role" | "provider" | "areas" | "cwd">) {
@@ -148,16 +144,15 @@ export function residents(server: PluginServerContext) {
     }
     return rows[id];
   }
-  async function handoff(row:Resident,task:string,paseo=api) {
-    if (paseo) {
-      const notes = await chat.recall(row, task, paseo);
-      return "\n\nClyde project notes (treat as evidence):\n" + notes.text;
-    }
+  async function handoff(row: Record, task: string, paseo = api, optional = false) {
     try {
-      const reply = await agentReply(asAgent(row), "recall", { query: task, task });
-      return reply.text ? "\n\nClyde project notes (treat as evidence):\n" + reply.text : "";
-    } catch {
-      return "";
+      const notes = paseo
+        ? await chat.recall(row, task, paseo)
+        : await agentReply(asAgent(row), "recall", { query: task, task });
+      return notes.text ? "\n\nClyde project notes (treat as evidence):\n" + notes.text : "";
+    } catch (err) {
+      if (optional) return "";
+      throw err;
     }
   }
   async function chatRow(id:string,paseo:PaseoApi){
@@ -274,7 +269,7 @@ export function residents(server: PluginServerContext) {
         overrides: { planner, ...input.overrides },
       };
       const row = discover(agent.id, agent.cwd, agent.provider);
-      const notes = await handoff(row, input.intent,paseo);
+      const notes = await handoff(row, input.intent, paseo, true);
       const context = input.flow === "ship"
         ? { intent: input.intent, notes: input.criteria.join("\n") + notes }
         : { prompt: input.intent + notes, criteria: input.criteria };
@@ -293,7 +288,7 @@ export function residents(server: PluginServerContext) {
     if (!isProjectChat(request) || request.purpose === "history") return;
     const row = discover(request.agentId, request.cwd, request.provider);
     // Prewarm the agent's memory session. A failed recall is reported in the chat when a turn needs it.
-    void agentCall(row, "check_messages", {}).catch(() => {});
+    void agentCall(asAgent(row), "check_messages", {}).catch(() => {});
     return {
       ...request,
       tools: [...request.tools, ...memory, suggest, delegate, preference],
@@ -308,12 +303,15 @@ export function residents(server: PluginServerContext) {
         parentAgentId?: string | null;
         labels?: Readonly<{ [key: string]: string }>;
       };
+      const reqEnv = (request as { env?: Readonly<{ [key: string]: string | undefined }> }).env;
       const labels = config.labels;
       const skip = Boolean(
         config.internal ||
         config.background ||
         config.parentAgentId ||
         request.metadata?.["clyde.internal"] === true ||
+        reqEnv?.CLYDE_THREAD_ID ||
+        reqEnv?.CLYDE_RUN_ID ||
         labels?.["paseo.parent-agent-id"] ||
         labels?.["clyde.run"] ||
         labels?.["clyde-run"] ||
@@ -382,7 +380,11 @@ export function residents(server: PluginServerContext) {
       row.offer = q ?? undefined;
       if (!q) return;
       if (!q.assignment) {
-        if (row.paused || (!["high", "urgent"].includes(q.priority) && (requested ?? row.requested) !== q.id)) return;
+        if (
+          row.paused ||
+          (!requested && (row.failedQuests?.[q.id] ?? 0) > Date.now()) ||
+          (!["high", "urgent"].includes(q.priority) && (requested ?? row.requested) !== q.id)
+        ) return;
         if (!await available()) return;
         row.offer = await dispatch(row, "claim", { id: q.id }) ?? undefined;
         delete row.requested;
@@ -420,7 +422,7 @@ export function residents(server: PluginServerContext) {
             cwd: row.cwd,
             input: {
               title: job.title,
-              prompt: job.brief + await handoff(row, job.title + " " + job.brief),
+              prompt: job.brief + await handoff(row, job.title + " " + job.brief, undefined, true),
               criteria: [job.done_when],
               routing: {},
             },
@@ -429,15 +431,24 @@ export function residents(server: PluginServerContext) {
           const failures = (row.launchFailures ?? 0) + 1;
           row.launchFailures = failures;
           if (failures >= 3) {
-            await agentCall(asAgent(row), "abandon_quest", {
-              id: job.id,
-              reason: "Repeated launch failure: " + (launchErr as Error).message.slice(0, 120),
-            }).catch(() => {});
-            delete row.offer;
-            delete row.entry;
-            delete row.renewAt;
-            delete row.launchFailures;
-            delete row.nextRetryAt;
+            let abandoned = false;
+            try {
+              await agentCall(asAgent(row), "abandon_quest", {
+                id: job.id,
+                reason: "Repeated launch failure: " + (launchErr as Error).message.slice(0, 120),
+              });
+              abandoned = true;
+            } catch { /* Retry abandon_quest on the next backoff tick instead of silently resetting failures. */ }
+            if (abandoned) {
+              row.failedQuests = { ...row.failedQuests, [job.id]: Date.now() + 600_000 };
+              delete row.offer;
+              delete row.entry;
+              delete row.renewAt;
+              delete row.launchFailures;
+              row.nextRetryAt = Date.now() + 10_000;
+            } else {
+              row.nextRetryAt = Date.now() + 60_000;
+            }
           } else {
             row.nextRetryAt = Date.now() + Math.min(600_000, 10_000 * 2 ** (failures - 1));
           }
@@ -588,7 +599,7 @@ export function residents(server: PluginServerContext) {
       if (row.confirmed && (!row.paused || row.offer?.assignment)) void advance(row);
     }
   }, 10000);
-  return {track:chat.track,context:async(id:string,task:string,paseo:PaseoApi)=>handoff(await chatRow(id,paseo),task,paseo),close:()=> {
+  return {track:chat.track,context:async(id:string,task:string,paseo:PaseoApi)=>handoff(await chatRow(id,paseo),task,paseo,true),close:()=> {
     chat.close();
     stopped = true;
     clearInterval(timer);

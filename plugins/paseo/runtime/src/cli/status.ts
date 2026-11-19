@@ -20,7 +20,10 @@ export function runLine(r: any): string {
   return `run     ${String(r.id).padEnd(10)}  ${String(r.status).padEnd(7)}  ${String(r.flow).padEnd(34)}  ${stage}${ask}`
 }
 
-/** A run's own threads matter only while the run is live. After that the run line speaks for them. */
+function spoolLine(spool: { depth: number; oldestAgeMs: number; deadLetterDepth: number }): string {
+  const base = `memory spool  ${spool.depth} pending, oldest ${Math.round(spool.oldestAgeMs / 1000)}s`
+  return spool.deadLetterDepth ? `${base}, ${spool.deadLetterDepth} dead-letter` : base
+}
 export function visible(threads: Thread[], runs: any[]): Thread[] {
   const live = new Set(runs.filter((r) => r.status === 'running' || r.status === 'asking').map((r) => r.id))
   return threads.filter((t) => !t.runId || live.has(t.runId))
@@ -30,8 +33,7 @@ export async function main(argv: string[]): Promise<number> {
   const { values } = parseArgs({ args: argv, options: { json: { type: 'boolean' }, all: { type: 'boolean' } } })
   const info = readDaemonInfo()
   if (!(await healthy(info)) || !info) {
-    const memorySpool = spoolStatus()
-    console.log(`memory spool  ${memorySpool.depth} pending, oldest ${Math.round(memorySpool.oldestAgeMs / 1000)}s`)
+    console.log(spoolLine(spoolStatus()))
     console.error('clyde daemon is not running. Start it with clyde daemon.')
     return 1
   }
@@ -47,7 +49,7 @@ export async function main(argv: string[]): Promise<number> {
   if (!threads.length && !runs.length) console.log('No threads or runs.')
   for (const t of shown) console.log(threadLine(t))
   for (const r of runs) console.log(runLine(r))
-  console.log(`memory spool  ${memorySpool.depth} pending, oldest ${Math.round(memorySpool.oldestAgeMs / 1000)}s`)
+  console.log(spoolLine(memorySpool))
   const hidden = threads.length - shown.length
   if (hidden) console.log(`${hidden} thread${hidden === 1 ? '' : 's'} of finished runs hidden. clyde status --all lists them.`)
   return 0

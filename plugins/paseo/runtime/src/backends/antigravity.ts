@@ -12,24 +12,6 @@ export const antigravity: Backend = {
   async runTurn(input) {
     let prompt = [input.systemAppend, input.prompt].filter(Boolean).join('\n\n')
     const args = ['--model', input.rung.model ?? 'gemini-4-carbon-high', '--sandbox', '--output-format', 'json']
-    if (input.readOnly) {
-      // Plan mode invokes an interactive slash workflow. Audits need only file reads and the supplied diff.
-      args.push(
-        '--disable-slash-commands',
-        '--settings',
-        JSON.stringify({
-          permissions: {
-            allow: ['read_file(*)', 'glob(*)', 'grep(*)', 'list_dir(*)'],
-            deny: ['command(*)', 'run_command(*)', 'write_file(*)', 'edit_file(*)', 'delete_file(*)', 'mcp(*)', 'execute_url(*)', 'search_web(*)', 'read_url(*)'],
-          },
-        }),
-      )
-    } else {
-      args.push('--mode', 'accept-edits')
-    }
-    if (input.schema) {
-      args.push('--json-schema', JSON.stringify(input.schema))
-    }
     let dir: string | undefined
     try {
       if (Buffer.byteLength(prompt) > 48 * 1024) {
@@ -38,6 +20,24 @@ export const antigravity: Backend = {
         await writeFile(file, prompt, { mode: 0o600 })
         args.push('--add-dir', dir)
         prompt = 'Read the audit brief in ' + file + ' and return the requested findings.'
+      }
+      if (input.readOnly) {
+        // Plan mode invokes an interactive slash workflow. Audits need only file reads and the supplied diff.
+        args.push(
+          '--disable-slash-commands',
+          '--settings',
+          JSON.stringify({
+            permissions: {
+              allow: [input.cwd, ...(dir ? [dir] : [])].map((p) => `read_file(${p})`),
+              deny: ['command(*)', 'write_file(*)', 'read_url(*)', 'mcp(*)', 'execute_url(*)', 'download_url(*)', 'unsandboxed(*)'],
+            },
+          }),
+        )
+      } else {
+        args.push('--mode', 'accept-edits')
+      }
+      if (input.schema) {
+        args.push('--json-schema', JSON.stringify(input.schema))
       }
       args.push('--print', prompt)
       const lines: string[] = []
@@ -54,16 +54,21 @@ export const antigravity: Backend = {
       if (result.code || result.aborted || result.timedOut || result.spawnError) {
         return { ok: false, text: '', error: exitReason('agy', result, timeoutMs) }
       }
-      let answer: { status?: string; response?: string; error?: string; usage?: unknown }
+      let answer: { status?: string; response?: string; structured_output?: unknown; error?: string; usage?: unknown }
       try {
         answer = JSON.parse(lines.join('\n'))
       } catch {
         return { ok: false, text: '', error: 'Antigravity returned invalid JSON output' }
       }
-      if (answer.status !== 'SUCCESS' || !answer.response?.trim()) {
+      const text = answer.response?.trim()
+        ? answer.response
+        : answer.structured_output != null
+          ? JSON.stringify(answer.structured_output)
+          : ''
+      if (answer.status !== 'SUCCESS' || (!text && answer.structured_output == null)) {
         return { ok: false, text: '', error: answer.error || result.stderr.trim() || 'Antigravity returned no audit' }
       }
-      return { ok: true, text: answer.response, json: lastJsonBlock(answer.response), usage: answer.usage }
+      return { ok: true, text, json: answer.structured_output ?? lastJsonBlock(text), usage: answer.usage }
     } finally {
       if (dir) await rm(dir, { recursive: true, force: true })
     }

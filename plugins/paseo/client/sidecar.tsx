@@ -9,7 +9,7 @@ import { Quests } from "./quests";
 import { TaskScreen } from "./task";
 import { Lockup, clydeTheme } from "./brand";
 import { Pill, useLive } from "./nodes";
-import { formatRpcError, MIN_HIT_HEIGHT } from "./palette";
+import { formatRpcError, MIN_HIT_HEIGHT, STATUS_LABEL } from "./palette";
 
 export function Sidecar(props: PluginAgentPanelProps | PluginWorkspacePanelProps) {
   const { workspaceId } = props, theme = clydeTheme(props.theme), c = theme.colors;
@@ -44,7 +44,7 @@ export function Sidecar(props: PluginAgentPanelProps | PluginWorkspacePanelProps
   };
   const homeData = runs.data?.data;
   const needsSet = new Set(homeData?.needsYou.filter((a) => a.kind === "run").map((a) => a.id) ?? []);
-  const needsCount = homeData?.needsYou.length ?? 0;
+  const needsCount = needsSet.size;
   const orderedRuns: TaskCard[] = homeData
     ? (() => {
         const allRuns = homeData.tasks.concat(homeData.failedToday ?? [], homeData.doneToday ?? []).filter((t) => t.kind === "run");
@@ -58,7 +58,7 @@ export function Sidecar(props: PluginAgentPanelProps | PluginWorkspacePanelProps
   return (
     <ScrollView style={{ flex: 1, backgroundColor: c.surface0 }} contentContainerStyle={{ padding: 14, gap: 16 }}>
       <Lockup theme={theme} width={88} />
-      <View style={{ flexDirection: "row", gap: 4, borderBottomWidth: 1, borderColor: c.border }}>
+      <View accessibilityRole="tablist" style={{ flexDirection: "row", gap: 4, borderBottomWidth: 1, borderColor: c.border }}>
         {(["Quests", "New task", "Runs"] as const).map((v) => {
           const label = v === "Runs" && needsCount > 0 ? `Runs (${needsCount})` : v;
           return (
@@ -84,7 +84,7 @@ export function Sidecar(props: PluginAgentPanelProps | PluginWorkspacePanelProps
           );
         })}
       </View>
-      {!origin && (rows.data?.length ?? 0) > 1 && (
+      {tab === "Quests" && !origin && (rows.data?.length ?? 0) > 1 && (
         <View style={{ gap: 5 }}>
           <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>Chat for approvals and feedback</Text>
           {rows.data!.map((a) => (
@@ -105,7 +105,7 @@ export function Sidecar(props: PluginAgentPanelProps | PluginWorkspacePanelProps
       {tab === "Quests"
         ? <Quests theme={theme} agent={agent} onStarted={started} />
         : tab === "New task"
-        ? <Composer theme={theme} workspaceId={workspaceId} agentId={agent} onStarted={started} />
+        ? <Composer theme={theme} workspaceId={workspaceId} agentId={origin} onStarted={started} />
         : id
         ? (
           <View style={{ gap: 12 }}>
@@ -134,7 +134,7 @@ export function Sidecar(props: PluginAgentPanelProps | PluginWorkspacePanelProps
               <Pressable
                 key={t.id}
                 accessibilityRole="button"
-                accessibilityLabel={`${t.name}, ${t.status}`}
+                accessibilityLabel={`${t.name}, ${STATUS_LABEL[t.status]}`}
                 onPress={() => setId(t.id)}
                 style={{
                   minHeight: MIN_HIT_HEIGHT,

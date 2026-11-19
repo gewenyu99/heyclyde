@@ -85,7 +85,7 @@ export const paddle: Provider = {
   parse: (raw) => parse(raw),
   async cancel(subscriptionId) {
     const r = await api("POST", `/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`, { effective_from: "immediately" });
-    if (!r.ok && r.body?.error?.code !== "subscription_locked_canceled") throw new ProviderError(`Paddle refused to cancel ${subscriptionId} (${r.status})`);
+    if (!r.ok && r.status !== 404 && r.body?.error?.code !== "subscription_locked_canceled") throw new ProviderError(`Paddle refused to cancel ${subscriptionId} (${r.status})`);
   },
   async refundable(subscriptionId) {
     const r = await api("GET", `/transactions?subscription_id=${encodeURIComponent(subscriptionId)}&status=completed`);

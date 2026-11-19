@@ -88,7 +88,7 @@ test('R48: memory_tenant sees only its owner', { skip: SKIP }, () => {
   const forged = asTenant(A, `insert into memory.entry (id, title, owner_id) values ('forged', 'Forged', '${B}')`)
   assert.equal((forged as { code: string }).code, '42501', JSON.stringify(forged))
 
-  // Quest #41: memory_tenant cannot execute privileged SECURITY DEFINER functions.
+  // Quest #41 & #54: memory_tenant cannot execute privileged SECURITY DEFINER functions or escalate account privileges.
   for (const call of [
     `select memory.reseed_reviewer()`,
     `select memory.sync_comp(array['evil@example.com'])`,
@@ -96,10 +96,14 @@ test('R48: memory_tenant sees only its owner', { skip: SKIP }, () => {
     `select memory.cost_reading()`,
     `select memory.sample_usage()`,
     `select memory.purge_events(interval '1 day')`,
+    `update memory.account set email = 'gewenyu99@gmail.com', email_confirmed = true where owner_id = '${A}'::uuid`,
+    `update memory.account set free_slot = true where owner_id = '${A}'::uuid`,
   ]) {
     const denied = asTenant(A, call) as { code?: string }
     assert.equal(denied.code, '42501', `${call} must be denied to memory_tenant: ${JSON.stringify(denied)}`)
   }
+  const appUpdate = asTenant(A, `update memory.account set oauth_apps = coalesce(oauth_apps, '{}'::jsonb) where owner_id = '${A}'::uuid`)
+  assert.ok(Array.isArray(appUpdate), `memory_tenant may update oauth_apps: ${JSON.stringify(appUpdate)}`)
 })
 
 // ----------------------------------------------------------------------------------------------------- R49

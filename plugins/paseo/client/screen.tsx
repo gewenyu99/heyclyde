@@ -111,6 +111,7 @@ function Board(
         >
           <Lockup theme={theme} width={104}/>
           <View
+            accessibilityRole="tablist"
             style={{
               flexDirection: "row",
               borderWidth: 1,

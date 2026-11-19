@@ -8,7 +8,7 @@ import { useState } from "react";
 import { Linking, Pressable, Text, TextInput, View } from "react-native";
 import { answerRpc, type Ask, type Home, type TaskCard } from "../shared/clyde";
 import { ago, Eyebrow, hue, Pill } from "./nodes";
-import { formatRpcError, MIN_HIT_HEIGHT, safeHttpsUrl, tones } from "./palette";
+import { formatRpcError, MIN_HIT_HEIGHT, safeHttpsUrl, STATUS_LABEL, tones } from "./palette";
 
 type OpenTask = (kind: TaskCard["kind"], id: string) => void;
 
@@ -108,6 +108,7 @@ function AskCard({ theme, ask, open }: { theme: PluginTheme; ask: Ask; open: Ope
             accessibilityLabel={ask.approve ? "Request a change" : "Reply to question"}
             value={reply}
             onChangeText={setReply}
+            onSubmitEditing={() => { if (!replyDisabled) void submit(reply); }}
             placeholder={ask.approve ? "Request a change…" : "Reply…"}
             placeholderTextColor={paper["ink-3"]}
             style={{ borderWidth: 1, borderColor: paper.edge, borderRadius: 6, paddingVertical: 8, paddingHorizontal: 10, marginTop: 4, minHeight: MIN_HIT_HEIGHT, fontSize: 14, color: theme.colors.foreground, backgroundColor: theme.colors.surface1 }}
@@ -122,7 +123,7 @@ function AskCard({ theme, ask, open }: { theme: PluginTheme; ask: Ask; open: Ope
                 style={{
                   backgroundColor: approveDisabled ? theme.colors.surface2 : theme.colors.accent,
                   borderWidth: approveDisabled ? 1 : 0,
-                  borderColor: theme.colors.border,
+                  borderColor: paper.edge,
                   borderRadius: 6,
                   minHeight: MIN_HIT_HEIGHT,
                   justifyContent: "center",
@@ -139,7 +140,8 @@ function AskCard({ theme, ask, open }: { theme: PluginTheme; ask: Ask; open: Ope
               onPress={() => submit(reply)}
               style={{
                 borderWidth: 1,
-                borderColor: theme.colors.border,
+                borderColor: paper.edge,
+                backgroundColor: theme.colors.surface1,
                 borderRadius: 6,
                 minHeight: MIN_HIT_HEIGHT,
                 justifyContent: "center",
@@ -179,7 +181,7 @@ function Card({ theme, card, open }: { theme: PluginTheme; card: TaskCard; open:
       >
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`${card.name}, ${card.status}`}
+          accessibilityLabel={`${card.name}, ${STATUS_LABEL[card.status]}`}
           onPress={() => open(card.kind, card.id)}
           style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}
         >

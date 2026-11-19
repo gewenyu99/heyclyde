@@ -421,6 +421,14 @@ test('Quest #37: no authorization is approved without an explicit Allow click na
   assert.equal(pwWaited.status, 302)
   assert.match(String(pwWaited.headers.location), /^https:\/\/antigravity\.google\/oauth-callback\?code=/)
 
+  // 4b. Password sign-in from a blocked region returns 451 before creating a password attempt or session.
+  const blockedPw = await request('POST', `${memory.url}/oauth/consent?authorization_id=${pwAuth}`, {
+    headers: { ...proxied('DE'), accept: 'application/json', 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ email: pwEmail, password: pw }).toString(),
+    timeoutMs: 30_000,
+  })
+  assert.equal(blockedPw.status, 451, blockedPw.text)
+
   // 5. Provider sign-in (direct=1): Google/GitHub callback shows confirm_allow first; explicit Deny returns access_denied.
   const sibling = await startSibling(memory, { MEMORY_OAUTH_PROVIDERS: 'google' })
   try {

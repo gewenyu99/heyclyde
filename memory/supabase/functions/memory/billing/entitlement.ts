@@ -68,7 +68,10 @@ export async function entitled(owner: string): Promise<Verdict> {
       exists (select 1 from information_schema.columns where table_schema = 'memory' and table_name = 'usage' and column_name = 'cost_micro_usd') as metered
     from who left join memory.plan p
       on p.id = coalesce(who.allow_plan, case when who.paid then who.paid_plan end, case when who.free_slot then 'free' end)`;
-  const plan = row?.plan
+  const blockedAccount = row?.state === "blocked" || isBlocked(row?.country, row?.region);
+  const plan = blockedAccount && !row?.allow_plan
+    ? CLOSED
+    : row?.plan
     ? { ...row.plan, quests: row.plan.quests !== false, price_micro_usd_month: Number(row.plan.price_micro_usd_month), blob_bytes_total: num(row.plan.blob_bytes_total),
       openai_tokens_month: num(row.plan.openai_tokens_month), overage_ceiling_micro_usd_month: num(row.plan.overage_ceiling_micro_usd_month),
       free_per_paid_n: num(row.plan.free_per_paid_n), free_per_paid_m: num(row.plan.free_per_paid_m),
@@ -78,7 +81,7 @@ export async function entitled(owner: string): Promise<Verdict> {
     owner, plan, allowlisted: Boolean(row?.allow_plan), state: row?.state ?? null,
     spendLimitCents: row?.state === "paid" || row?.state === "past_due" ? num(row?.spend_limit_cents) : null,
     metered: Boolean(row?.metered),
-    blockedAccount: row?.state === "blocked" || isBlocked(row?.country, row?.region),
+    blockedAccount,
   };
   if (cache.size > 10_000) cache.clear();
   cache.set(owner, { at: Date.now(), v });
@@ -97,6 +100,12 @@ export function geoOf(req: Request, proxied: boolean): Geo {
 
 /** Whether a proxied request comes from a blocked place. Unknown (XX) and Tor (T1) count as blocked. */
 export const geoBlocked = (geo: Geo) => Boolean(geo && isBlocked(geo.country, geo.region, true));
+
+/** The proxied geo headers when they resolve to a restricted region, else null. */
+export function blockedOrigin(req: Request, proxied: boolean): Geo {
+  const geo = geoOf(req, proxied);
+  return geoBlocked(geo) ? geo : null;
+}
 
 export const refusal451 = () => Response.json({ error: `Clyde: ${REFUSAL}` }, { status: 451 });
 

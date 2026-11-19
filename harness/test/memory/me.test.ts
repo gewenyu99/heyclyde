@@ -15,6 +15,7 @@ let memory: RealMemory
 
 before(async () => {
   if (SKIP) return
+  exec(`delete from vault.secrets where name in ('polar_api_token', 'paddle_api_key', 'polar_webhook_secret', 'paddle_webhook_secret');`)
   memory = await startRealMemory({}, { storage: true })
   exec(`update memory.allocation set param_set = 'hybrid.v1' where param_set <> 'index.v1'`)
 })
@@ -597,8 +598,13 @@ test('delete account', { skip: SKIP }, async () => {
   assert.equal(sql(`select count(*)::int as n from storage.objects where bucket_id = 'memory-blobs' and name like '${delId}/%'`)[0].n, 2)
 
   const auditsBefore = sql(`select count(*)::int as n from memory.admin_audit where action = 'account_delete' and before is null and after is null`)[0].n
-  exec(`insert into memory.billing_action (provider, action, target) values ('polar', 'cancel', 'sub-delacc');
-    insert into memory.signup_attempt (client, email) values ('127.0.0.1', '${email}');`)
+  const delWait = `delwait-${nonce()}`
+  exec(`insert into memory.billing_action (provider, action, target) values
+      ('polar', 'cancel', 'sub-delacc'),
+      ('polar', 'usage', '${delId}:2026-11-01:requests:2026-11-01T00');
+    insert into memory.signup_attempt (client, email) values ('127.0.0.1', '${email}');
+    insert into memory.oauth_consent (authorization_id, code_verifier, pending_jwt, pending_user, decision_token, direct)
+      values ('${delWait}', '', 'tok-del', '${JSON.stringify({ id: delId, email })}', 'dt.cb', true);`)
 
   const delRes = await request('DELETE', `${memory.url}/me`, {
     headers: bearer(jwt({ sub: delId, email, jti: randomUUID() })),
@@ -610,8 +616,10 @@ test('delete account', { skip: SKIP }, async () => {
     const n = sql(`select count(*)::int as n from memory.${table} where owner_id = '${delId}'`)[0].n
     assert.equal(n, 0, `${table} still has ${n} rows for ${delId}`)
   }
-  assert.equal(sql(`select count(*)::int as n from memory.billing_action where target = 'sub-delacc'`)[0].n, 0)
+  assert.equal(sql(`select count(*)::int as n from memory.billing_action where target = 'sub-delacc' or target like '${delId}:%'`)[0].n, 0)
   assert.equal(sql(`select count(*)::int as n from memory.signup_attempt where lower(email) = lower('${email}')`)[0].n, 0)
+  assert.ok(sql(`select count(*)::int as n from memory.signup_attempt where client = '127.0.0.1' and email like 'deleted:%'`)[0].n >= 1)
+  assert.equal(sql(`select count(*)::int as n from memory.oauth_consent where authorization_id = '${delWait}'`)[0].n, 0)
   assert.equal(sql(`select count(*)::int as n from storage.objects where bucket_id = 'memory-blobs' and name like '${delId}/%'`)[0].n, 0)
   const remainingObjects = [...(memory.storage?.objects.keys() ?? [])].filter((k) => k.startsWith(`${delId}/`) || k.startsWith(`incoming/${delId}/`))
   assert.equal(remainingObjects.length, 0, JSON.stringify(remainingObjects))

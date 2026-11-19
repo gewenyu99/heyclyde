@@ -116,7 +116,9 @@ export async function startFakeAuth(extra?: (req: http.IncomingMessage, res: htt
       const oauth = /^\/auth\/v1\/oauth\/authorizations\/([^/]+)(\/consent)?$/.exec(path)
       if (oauth) {
         const found = authorizations[decodeURIComponent(oauth[1])]
-        if (!claimsOf(req.headers.authorization ?? '')?.email) return reply(401, { msg: 'invalid JWT' })
+        const claims = claimsOf(req.headers.authorization ?? '')
+        if (!claims?.email) return reply(401, { msg: 'invalid JWT' })
+        if (claims.sub && deletedUsers.has(String(claims.sub).toLowerCase())) return reply(401, { msg: 'user deleted' })
         if (!found) return reply(404, { msg: 'authorization not found' })
         if (req.method === 'GET' && !oauth[2]) return reply(200, { authorization_id: oauth[1], ...found })
         if (req.method === 'POST' && oauth[2]) {

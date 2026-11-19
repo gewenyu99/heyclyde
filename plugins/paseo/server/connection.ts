@@ -3,7 +3,23 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 
-export type Identity = { id: string; project: string; role: string; provider: string; context?: string };
+export type Identity = {
+  id: string;
+  project: string;
+  role: string;
+  provider: string;
+  context?: string;
+  areas?: string[];
+  cwd?: string;
+};
+
+export function inferContext(row: { role?: string; areas?: string[]; cwd?: string }): "work" | "home" | "hobby" | "personal" {
+  const bag = [row.role, ...(row.areas ?? []), row.cwd].filter(Boolean).join(" ").toLowerCase();
+  if (/\b(personal|journal|diary|private)\b/.test(bag)) return "personal";
+  if (/\b(home|family|household|chore|grocery)\b/.test(bag)) return "home";
+  if (/\b(hobby|craft|music|garden|game)\b/.test(bag)) return "hobby";
+  return "work";
+}
 const MAX_SESSIONS = 512;
 const sessions = new Map<string, Promise<string>>();
 
@@ -50,7 +66,7 @@ async function scopedReply(agent:Identity|null,tool:string,args:Record<string,un
   const host = readServerId();
   const hash = (...parts: string[]) => createHash("sha256").update(JSON.stringify(parts)).digest("hex");
   const name = agent ? "paseo-"+hash(host,agent.id).slice(0,32) : "clyde-paseo-board";
-  const realm = agent?.context ?? "work";
+  const realm = agent ? (agent.context ?? inferContext(agent)) : "work";
   const key = hash(base, token, name, agent?.project ?? "", agent?.role ?? "", agent?.provider ?? "", realm);
   async function rpc(method: string, params: object, session?: string) {
     const abort = new AbortController();

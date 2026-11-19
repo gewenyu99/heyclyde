@@ -17,7 +17,7 @@ import {
   deliver, newPaddleSecret, newPolarSecret, paddleRefund, paddleSubscription, polarRefund, polarSubscription, putSecret, setSetting,
   sha, signPaddle, signPolar, startFakeProviders, type Sub, tableCounts,
 } from './billing.ts'
-import { SKIP, sql, startRealMemory, startSibling, type RealMemory } from './server.ts'
+import { exec, SKIP, sql, startRealMemory, startSibling, type RealMemory } from './server.ts'
 
 const TTL = 1500
 const PROXY = `proxy-${nonce()}`
@@ -50,6 +50,9 @@ before(async () => {
 after(async () => {
   await memory?.close()
   await providers?.close()
+  if (!SKIP) {
+    exec(`delete from vault.secrets where name in ('polar_api_token', 'paddle_api_key', 'polar_webhook_secret', 'paddle_webhook_secret');`)
+  }
 })
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -704,7 +707,33 @@ test('checkout: the 402 link sends a known owner to the provider, and refuses a 
   assert.deepEqual(made.body.products, ['prod_test'])
   assert.equal(made.body.external_customer_id, u.id)
   assert.equal((await request('GET', local, { headers: proxied('FR') })).status, 451)
+  assert.equal((await request('GET', `${local}&plan=free`)).status, 503)
   assert.equal((await request('GET', `${memory.url}/billing/checkout?owner=${randomUUID()}`)).status, 404)
+
+  // Quest #54: paid checkout rejects duplicate subscriptions and DELETE /me cancels active subscriptions first.
+  const sub = await pay(u, { country: 'US' })
+  assert.equal((await request('GET', local)).status, 409)
+  exec(`delete from auth.users where id = '${u.id}'; insert into auth.users (id, email) values ('${u.id}', '${u.email}');`)
+  const del = await request('DELETE', `${memory.url}/me`, { headers: bearer(u.plain), timeoutMs: 30_000 })
+  assert.equal(del.status, 200, del.text)
+  assert.equal(providers.calls.filter((c) => c.method === 'DELETE' && c.path === `/v1/subscriptions/${sub}` && c.status === 200).length, 1)
+
+  // Quest #54: with free seats open, unconfirmed emails and restricted regions never receive free seats.
+  sql(`update memory.plan set seats = 1000 where id = 'free'`)
+  try {
+    const unc = user(`unc-open-${nonce()}@example.com`, { unconfirmed: true })
+    await signIn(unc)
+    assert.equal((await recall(unc.oauth)).status, 402)
+    assert.equal((await request('POST', `${memory.url}/devices/claim`, { headers: bearer(unc.plain), body: { name: 'unc-box' } })).status, 401)
+    assert.equal(sql(`select free_slot from memory.account where owner_id = '${unc.id}'`)[0]?.free_slot, false)
+
+    const eu = user(`eu-open-${nonce()}@example.com`)
+    const euCall = await tool(eu.oauth, 'recall', { query: 'oolong' }, memory.url, proxied('FR'))
+    assert.equal(euCall.status, 451, euCall.text)
+    assert.equal(sql(`select free_slot, country from memory.account where owner_id = '${eu.id}'`)[0]?.free_slot, false)
+  } finally {
+    sql(`update memory.plan set seats = 0 where id = 'free'`)
+  }
 })
 
 test('admin: plans and entitlements are readable, and a plan is changed by data', { skip: SKIP }, async () => {

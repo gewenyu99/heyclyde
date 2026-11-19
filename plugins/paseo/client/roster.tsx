@@ -4,7 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { type Resident, residentRpc, rosterRpc } from "../shared/clyde";
-import { formatRpcError, MIN_HIT_HEIGHT } from "./palette";
+import { palette } from "./brand.generated";
+import { formatRpcError, MIN_HIT_HEIGHT, scheme } from "./palette";
 
 type RowProps = {
   agent: Resident;
@@ -62,7 +63,7 @@ function Row({ agent, theme, refresh, openAgent }: RowProps) {
   const status = agent.status && agent.status.charAt(0).toUpperCase() + agent.status.slice(1);
   const metadata = [project, agent.model?.split("/").at(-1), status].filter(Boolean).join(" · ");
   const actions = { flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 16 } as const;
-  const field = { color: colors.foreground, backgroundColor: colors.surface1, borderWidth: 1, borderColor: colors.border, borderRadius: 4, padding: 10, minHeight: MIN_HIT_HEIGHT, fontSize: 14 };
+  const field = { color: colors.foreground, backgroundColor: colors.surface1, borderWidth: 1, borderColor: palette[scheme(theme)].edge, borderRadius: 4, padding: 10, minHeight: MIN_HIT_HEIGHT, fontSize: 14 };
   return (
     <View style={{ borderTopColor: colors.border, borderTopWidth: 1, paddingVertical: 10, gap: 4 }}>
       <Text style={{ color: colors.foreground, fontWeight: "600" }}>{agent.title}</Text>
@@ -70,9 +71,9 @@ function Row({ agent, theme, refresh, openAgent }: RowProps) {
       {editing ? (
         <View style={{ gap: 6 }}>
           <TextInput accessibilityLabel="Role" placeholder="Role (optional)" placeholderTextColor={colors.foregroundMuted}
-            value={role} maxLength={160} onChangeText={setRole} style={field} />
+            value={role} maxLength={160} onChangeText={setRole} onSubmitEditing={() => { if (tags.length > 0 && !busy) void action("confirm"); }} style={field} />
           <TextInput accessibilityLabel="Responsibility tags" placeholder="Tags, separated by commas" placeholderTextColor={colors.foregroundMuted}
-            value={areas} onChangeText={setAreas} style={field} />
+            value={areas} onChangeText={setAreas} onSubmitEditing={() => { if (tags.length > 0 && !busy) void action("confirm"); }} style={field} />
           <View style={actions}>
             {button("Confirm responsibilities", () => void action("confirm"), tags.length === 0)}
             {button("Cancel", () => setEditing(false))}

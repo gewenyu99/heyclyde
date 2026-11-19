@@ -9,7 +9,7 @@ import { claudeArgs } from '../src/backends/claude.ts'
 import { codexArgs } from '../src/backends/codex.ts'
 import { auditChange, MAX_AUDIT_REPAIRS } from '../src/flow/audit.ts'
 import { publishDraft } from '../src/flow/publish.ts'
-import type { Driver } from '../src/flow/runtime.ts'
+import { Driver, Stopped } from '../src/flow/runtime.ts'
 import { maxStageAttempts, runStage } from '../src/flow/stage.ts'
 import type { FlowCtx, Run } from '../src/flow/types.ts'
 import { flushPending } from '../src/memory-flush.ts'
@@ -239,13 +239,14 @@ test('auditChange runs bounded multi-round repairs reviewing full run.base..head
     assert.equal(run.auditedHead, git('rev-parse', 'HEAD'))
     assert.ok(auditedRanges.every((r) => r.includes('against ' + base)), 'every audit pass compares against run.base')
 
-    // Now test MAX_AUDIT_REPAIRS cap escalation + stop handling.
+    // Now test MAX_AUDIT_REPAIRS cap escalation + Stopped + 'block' ask + audit-escalation-1 stage.
     writeFileSync(join(repo, 'app.txt'), 'forever-buggy\n')
     git('add', 'app.txt')
     git('commit', '-q', '-m', 'reopen')
-    const cappedRun = { ...run, stages: [], auditFindings: undefined, auditBaseHead: undefined, auditedHead: undefined } as Run
+    const cappedRun = { ...run, stages: [], auditFindings: undefined, auditBaseHead: undefined, auditRepairHeads: undefined, auditedHead: undefined } as Run
     const capStages: string[] = []
     let capAsk = ''
+    let capKind = ''
     await assert.rejects(
       auditChange({
         ...ctx,
@@ -262,12 +263,62 @@ test('auditChange runs bounded multi-round repairs reviewing full run.base..head
           if (opts.route === 'audit') return { ok: true, text: '{}', json: { findings: [{ id: 'f1', evidence: 'still broken' }] } }
           return { ok: true, text: '{}', json: { findings: [{ id: 'f1', status: 'confirmed', evidence: 'confirmed' }] } }
         },
-        async ask(q) { capAsk = q; return 'stop' },
+        async ask(q, kind) { capAsk = q; capKind = kind ?? 'approve'; return 'stop' },
       }, []),
-      /Audit stopped by the user/,
+      (err: unknown) => err instanceof Stopped && /Audit stopped by the user/.test(err.message),
     )
     assert.equal(capStages.length, MAX_AUDIT_REPAIRS)
+    assert.equal(capKind, 'block')
     assert.match(capAsk, /Remaining findings at [0-9a-f]+\. Resolve them before retrying:/)
+
+    // Escalation guidance (not 'stop' and no manual commit) launches audit-escalation-1 worker stage.
+    const escRun = { ...run, stages: [], auditFindings: undefined, auditBaseHead: undefined, auditRepairHeads: undefined, auditedHead: undefined } as Run
+    const escStages: string[] = []
+    await auditChange({
+      ...ctx,
+      run: escRun,
+      async stage(spec) {
+        escStages.push(spec.name)
+        const fixed = spec.name === 'audit-escalation-1'
+        writeFileSync(join(repo, 'app.txt'), fixed ? 'escalated-clean\n' : `esc-${escStages.length}\n`)
+        git('add', 'app.txt')
+        git('commit', '-q', '-m', spec.name)
+        escRun.stages.push({ name: spec.name, role: 'worker', status: 'passed', base, round: escStages.length, attempts: [], startedAt: '' })
+        return { passed: true, attempts: 1, verdict: { verdict: 'pass', criteria: [], notes: 'ok' }, summary: 'done' }
+      },
+      async agent(opts) {
+        const content = execFileSync('git', ['-C', repo, 'show', 'HEAD:app.txt'], { encoding: 'utf8' })
+        if (opts.route === 'audit') {
+          if (content.includes('escalated-clean')) return { ok: true, text: '{}', json: { findings: [] } }
+          return { ok: true, text: '{}', json: { findings: [{ id: 'f1', evidence: 'needs escalation fix' }] } }
+        }
+        return { ok: true, text: '{}', json: { findings: [{ id: 'f1', status: 'confirmed', evidence: 'confirmed' }] } }
+      },
+      async ask() { return 'Fix f1 using explicit branch guard' },
+    }, [])
+    assert.equal(escStages.at(-1), 'audit-escalation-1')
+    assert.equal(escRun.auditedHead, git('rev-parse', 'HEAD'))
+    assert.equal(escRun.auditRepairHeads?.length, MAX_AUDIT_REPAIRS + 1)
+
+    // Replay uses auditRepairHeads deterministically even when worktree HEAD is already at the final commit.
+    let reReviewedHeads = 0
+    await auditChange({
+      ...ctx,
+      run: { ...escRun, stages: escRun.stages.map((s) => ({ ...s })), agents: { ...escRun.agents } },
+      async stage(spec) {
+        return { passed: true, attempts: 1, verdict: { verdict: 'pass', criteria: [], notes: 'ok' }, summary: 'replayed' }
+      },
+      async agent(opts) {
+        reReviewedHeads++
+        if (opts.route === 'audit') {
+          if (opts.title.endsWith(escRun.auditedHead!)) return { ok: true, text: '{}', json: { findings: [] } }
+          return { ok: true, text: '{}', json: { findings: [{ id: 'f1', evidence: 'stale' }] } }
+        }
+        return { ok: true, text: '{}', json: { findings: [{ id: 'f1', status: 'confirmed', evidence: 'confirmed' }] } }
+      },
+      async ask() { return 'Fix f1 using explicit branch guard' },
+    }, [])
+    assert.ok(reReviewedHeads > 0)
   } finally {
     rmSync(repo, { recursive: true, force: true })
   }
@@ -353,10 +404,34 @@ test('antigravity, claude, and codex read-only modes enforce closed tool sets an
     assert.ok(argv.includes('--disable-slash-commands'))
     assert.ok(argv.includes('--json-schema'))
     const settings = JSON.parse(argv[argv.indexOf('--settings') + 1])
-    assert.deepEqual(settings.permissions.allow, ['read_file(*)', 'glob(*)', 'grep(*)', 'list_dir(*)'])
-    for (const d of ['command(*)', 'run_command(*)', 'write_file(*)', 'edit_file(*)', 'mcp(*)', 'execute_url(*)']) {
+    assert.deepEqual(settings.permissions.allow, [`read_file(${dir})`])
+    for (const d of ['command(*)', 'write_file(*)', 'read_url(*)', 'mcp(*)', 'execute_url(*)', 'download_url(*)', 'unsandboxed(*)']) {
       assert.ok(settings.permissions.deny.includes(d), `missing deny rule ${d}`)
     }
+
+    // Prompts >48KB write brief to temp dir BEFORE building --settings and read structured_output even if response is empty.
+    const bigResPayload = { findings: [{ id: 's1', evidence: 'structured output ok' }] }
+    writeFileSync(
+      bin,
+      `#!/usr/bin/env node\nconst fs = require('node:fs');\nfs.writeFileSync(${JSON.stringify(argvFile)}, JSON.stringify(process.argv.slice(2)));\nconsole.log(JSON.stringify({ status: 'SUCCESS', response: '', structured_output: ${JSON.stringify(bigResPayload)} }));\n`,
+      { mode: 0o755 },
+    )
+    const bigRes = await antigravity.runTurn({
+      rung: { backend: 'antigravity', model: 'gemini-4-carbon-high' },
+      cwd: dir,
+      env: process.env,
+      prompt: 'audit '.repeat(10_000),
+      readOnly: true,
+      schema: { type: 'object', properties: { findings: { type: 'array' } } },
+      signal: new AbortController().signal,
+    })
+    assert.equal(bigRes.ok, true)
+    assert.deepEqual(bigRes.json, bigResPayload)
+    const bigArgv = JSON.parse(execFileSync('cat', [argvFile], { encoding: 'utf8' })) as string[]
+    const addDir = bigArgv[bigArgv.indexOf('--add-dir') + 1]
+    const bigSettings = JSON.parse(bigArgv[bigArgv.indexOf('--settings') + 1])
+    assert.deepEqual(bigSettings.permissions.allow, [`read_file(${dir})`, `read_file(${addDir})`])
+    assert.equal(bigSettings.permissions.allow.length, 2)
   } finally {
     if (prevBin === undefined) delete process.env.CLYDE_AGY_BIN
     else process.env.CLYDE_AGY_BIN = prevBin
@@ -426,4 +501,151 @@ test('specReview fails closed when reviewer returns malformed non-JSON findings'
     log: () => {},
   }
   await assert.rejects(runShip(fakeCtx, { intent: 'ship something' }), /Spec review returned invalid findings/)
+})
+
+test('spool handles parentless CLYDE_HOME, legacy root migration, MAC runtime verification, and transient 4xx retention', async () => {
+  await withTempHome(async (home) => {
+    // 1. Parentless CLYDE_HOME succeeds on enqueue.
+    const nestedDir = join(home, 'uncreated', 'parent', 'memory-spool')
+    const basePayload = {
+      id: 'run-parentless',
+      pattern: 'projects',
+      title: 'Parentless',
+      body: 'works without mkdir pre-created',
+      authority: 'observed',
+      scope: 'run:parentless',
+      evidence_kind: 'summary',
+      evidence: 'ok',
+      source: { kind: 'run', title: 'p' },
+    }
+    const created = enqueue(basePayload, 'runtime', nestedDir)
+    assert.equal(created.id, 'run-parentless')
+    assert.ok(existsSync(join(nestedDir, 'runtime', 'run-parentless.json')))
+
+    // 2. Legacy root memory-spool/*.json migrates safely on pending(dir).
+    const migDir = join(home, 'mig-spool')
+    enqueue(basePayload, 'runtime', migDir) // create migDir safely
+    rmSync(join(migDir, 'runtime', 'run-parentless.json'))
+    writeFileSync(join(migDir, 'legacy-rt.json'), JSON.stringify({ id: 'legacy-rt', payload: { ...basePayload, id: 'legacy-rt' }, createdAt: 1 }), { mode: 0o600 })
+    const loaded = pending(migDir)
+    assert.equal(loaded.map((r) => r.id).includes('legacy-rt'), true)
+    assert.equal(existsSync(join(migDir, 'legacy-rt.json')), false)
+    assert.equal(existsSync(join(migDir, 'runtime', 'legacy-rt.json')), true)
+
+    // 3. HMAC-protected runtime spool rejects unsigned or forged files while flushing valid signed rows.
+    const macDir = join(home, 'mac-spool')
+    const prevTok = process.env.MEMORY_RUNTIME_TOKEN
+    process.env.MEMORY_RUNTIME_TOKEN = 'hmac-rt-secret'
+    try {
+      const valid = enqueue({ ...basePayload, id: 'run-signed' }, 'runtime', macDir)
+      assert.ok(valid.mac && /^[0-9a-f]{64}$/.test(valid.mac))
+      writeFileSync(join(macDir, 'runtime', 'forged-unsigned.json'), JSON.stringify({ id: 'forged-unsigned', payload: { ...basePayload, id: 'forged-unsigned' }, role: 'runtime', createdAt: 2 }), { mode: 0o600 })
+      const sentIds: string[] = []
+      const sentCount = await flushPending({
+        url: 'http://memory.invalid',
+        runtimeToken: 'hmac-rt-secret',
+        dir: macDir,
+        send: async (_m, _u, opts) => {
+          sentIds.push(opts.body.id)
+          return { status: 200, text: JSON.stringify({ id: opts.body.id }), headers: {} }
+        },
+      })
+      assert.equal(sentCount, 1)
+      assert.deepEqual(sentIds, ['run-signed'])
+      assert.equal(deadLetters(macDir).length, 1)
+      assert.equal(deadLetters(macDir)[0].id, 'forged-unsigned')
+      assert.match(deadLetters(macDir)[0].reason, /MAC/)
+    } finally {
+      if (prevTok === undefined) delete process.env.MEMORY_RUNTIME_TOKEN
+      else process.env.MEMORY_RUNTIME_TOKEN = prevTok
+    }
+
+    // 4. 403, 451, 404, and screening 400 stay pending without quarantining.
+    for (const resp of [
+      { status: 403, text: 'forbidden', headers: {} },
+      { status: 451, text: 'blocked region', headers: {} },
+      { status: 404, text: 'not found', headers: {} },
+      { status: 400, text: 'try again later while quota refreshes', headers: {} },
+    ]) {
+      const d = join(home, `ret-${resp.status}`)
+      enqueue({ ...basePayload, id: `row-${resp.status}` }, 'runtime', d)
+      const count = await flushPending({
+        url: 'http://memory.invalid',
+        runtimeToken: 'rt',
+        dir: d,
+        send: async () => resp,
+      })
+      assert.equal(count, 0)
+      assert.equal(deadLetters(d).length, 0, `HTTP ${resp.status} must not quarantine`)
+      assert.equal(pending(d).length, 1, `HTTP ${resp.status} must keep entry pending`)
+    }
+  })
+})
+
+test('Driver.agent validates before caching run.agents and runStage skips asking when final attempt fails', async () => {
+  // 1. Driver.agent validate rejects malformed JSON from run.agents and triggers retry.
+  let turnSeq = 0
+  const retryPrompts: string[] = []
+  const runObj = {
+    id: 'r-agent-val',
+    routes: { audit: { model: 'sonnet', reason: 'test', pinned: true } },
+    agents: {} as Record<string, unknown>,
+    asks: [],
+  } as unknown as Run
+  const fakeDriver = Object.assign(Object.create(Driver.prototype), {
+    run: runObj,
+    save() {},
+    stopped(w: string) { return new Stopped(w) },
+    async route() { return { backend: 'claude', model: 'sonnet' } },
+    startThread() { return { id: `th-${++turnSeq}` } },
+    async waitThread() {
+      if (turnSeq === 1) return { id: 'th-1', turns: [{ ok: true, text: '{}', json: { findings: [{ id: '' }] } }] }
+      return { id: 'th-2', turns: [{ ok: true, text: '{}', json: { findings: [] } }] }
+    },
+    async ask(_k: string, _kind: string, q: string) { retryPrompts.push(q); return 'retry' },
+  })
+  const agentRes = await Driver.prototype.agent.call(fakeDriver, {
+    role: 'reviewer',
+    route: 'audit',
+    readOnly: true,
+    title: 'Audit head1',
+    validate: (parsed: unknown) => {
+      const rows = (parsed as { findings?: { id?: string }[] })?.findings
+      return Array.isArray(rows) && rows.every((r) => typeof r.id === 'string' && r.id.length > 0)
+    },
+  })
+  assert.equal(retryPrompts.length, 1)
+  assert.deepEqual(agentRes.json, { findings: [] })
+  assert.deepEqual(runObj.agents['Audit head1']?.json, { findings: [] })
+
+  // 2. Final attempt hit limit does not set rec.status='asking' or emit 'run.limit'.
+  const prevMax = process.env.CLYDE_MAX_STAGE_ATTEMPTS
+  process.env.CLYDE_MAX_STAGE_ATTEMPTS = '2'
+  try {
+    const emitted: string[] = []
+    const stageRec = { name: 'task', role: 'worker', status: 'running', base: 'abc', round: 1, attempts: [{ n: 1 }], startedAt: '' }
+    const stageDriver = {
+      run: {
+        id: 'r-final-cap',
+        flow: 'task',
+        title: 'cap',
+        cwd: '/tmp',
+        stages: [stageRec],
+      },
+      race: <T>(p: Promise<T>) => p,
+      emit(event: string) { emitted.push(event) },
+      save() {},
+      startThread() { return { id: 'th-cap' } },
+      async waitThread() { return { id: 'th-cap', status: 'error', turns: [{ ok: false, error: 'You hit your usage limit' }] } },
+    } as unknown as Driver
+    await assert.rejects(
+      runStage(stageDriver, { name: 'task', prompt: 'x', criteria: ['y'] }),
+      /exceeded the maximum of 2 attempts/,
+    )
+    assert.equal(stageRec.status, 'failed')
+    assert.equal(emitted.includes('run.limit'), false)
+  } finally {
+    if (prevMax === undefined) delete process.env.CLYDE_MAX_STAGE_ATTEMPTS
+    else process.env.CLYDE_MAX_STAGE_ATTEMPTS = prevMax
+  }
 })

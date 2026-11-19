@@ -59,6 +59,10 @@ jobs:
           for rel in paseo-plugin.json index.client.tsx index.server.ts runtime/bin/clyde.ts runtime/package.json; do
             test -f "$unpack/package/$rel"
           done
+          if grep -rn "@getpaseo/client" "$unpack/package/index.server.ts" "$unpack/package/index.client.tsx" "$unpack/package/server" "$unpack/package/client" "$unpack/package/shared"; then
+            echo "Found forbidden @getpaseo/client import in unpacked plugin" >&2
+            exit 1
+          fi
           node "$unpack/package/runtime/bin/clyde.ts" help >/dev/null
           rm -rf "$pkg_dir"
 

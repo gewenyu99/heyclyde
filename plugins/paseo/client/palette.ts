@@ -28,11 +28,16 @@ export const STATUS_LABEL: Record<Status, string> = {
 export function scheme(theme?: ThemeLike): Scheme {
   if (theme?.mode === "dark") return "dark";
   if (theme?.mode === "light") return "light";
-  const color = theme?.colors?.surface0;
+  const color = theme?.colors?.surface0?.trim();
   if (!color) return "light";
-  const hex = /^#([a-f\d]{6})$/i.exec(color);
-  const rgb = hex
-    ? [0, 2, 4].map((i) => parseInt(hex[1].slice(i, i + 2), 16))
+  const hsl = /^hsla?\(\s*[\d.]+\s*[,\s]\s*[\d.]+%?\s*[,\s]\s*([\d.]+)%/i.exec(color);
+  if (hsl) return Number(hsl[1]) < 50 ? "dark" : "light";
+  const hex3 = /^#([a-f\d]{3})$/i.exec(color);
+  const hex6or8 = /^#([a-f\d]{6})(?:[a-f\d]{2})?$/i.exec(color);
+  const rgb = hex3
+    ? [0, 1, 2].map((i) => parseInt(hex3[1][i] + hex3[1][i], 16))
+    : hex6or8
+    ? [0, 2, 4].map((i) => parseInt(hex6or8[1].slice(i, i + 2), 16))
     : (color.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
   return rgb.length === 3 && rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722 < 128 ? "dark" : "light";
 }

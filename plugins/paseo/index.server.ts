@@ -1,10 +1,12 @@
 import { isProjectChat, listAllAgents, residents } from "./server/residents.ts";
 import { execFileSync } from "node:child_process";
-import type { PluginServerContext } from "@getpaseo/plugin/server";
+import type { PluginHandlerContext, PluginServerContext } from "@getpaseo/plugin/server";
 import { call, ensureCompanion, follow, readJson } from "./server/daemon.ts";
 import { home, task, threadTask, transcript, type RawRun, type RawThread } from "./server/shape.ts";
 import { removeRpc, projectsRpc, launchRpc, steerRpc, answerRpc, homeRpc, stopRpc, taskRpc, transcriptRpc, waitRpc, type Diff, type ProjectChat, type workerModels } from "./shared/clyde.ts";
-import type { PaseoApi } from "@getpaseo/client";
+
+type PaseoApi = PluginHandlerContext["paseo"];
+type ProviderId = Parameters<PaseoApi["providers"]["listModels"]>[0];
 
 const agents = () => readJson<Record<string, string>>("paseo-threads.json") ?? {};
 const failed = (err: unknown) => ({ error: (err as Error).message });
@@ -24,22 +26,49 @@ const PROVIDER_PREF: Record<WorkerModel, string[]> = {
 
 const LAUNCH_CHAT_ERROR = "Could not open a project chat automatically. Open a chat in this project and try again.";
 
+function pickSelectableModel(models?: { id: string; isDefault?: boolean; isSelectable?: boolean }[]): string | undefined {
+  const selectable = (models ?? []).filter((m) => m.isSelectable !== false);
+  return (selectable.find((m) => m.isDefault) ?? selectable[0])?.id;
+}
+
 /** Resolve an available provider/model string from Paseo for auto-opening a project chat. */
 async function pickProvider(paseo: PaseoApi, cwd: string, worker: WorkerModel): Promise<string | undefined> {
   const pref = PROVIDER_PREF[worker] ?? PROVIDER_PREF.auto;
-  const snap = await paseo.providers?.snapshot?.({ cwd }).catch(() => null);
-  const ready = (snap?.entries ?? []).filter((e) => e.enabled !== false && e.status === "ready");
-  if (ready.length > 0) {
-    const chosen = pref.map((p) => ready.find((e) => e.provider === p)).find(Boolean) ?? ready[0];
-    const selectable = (chosen.models ?? []).filter((m) => m.isSelectable !== false);
-    const model = selectable.find((m) => m.isDefault) ?? selectable[0];
-    return model ? `${chosen.provider}/${model.id}` : chosen.provider;
+  let snap = await paseo.providers?.snapshot?.({ cwd }).catch(() => null);
+  let entries = snap?.entries ?? [];
+  let ready = entries.filter((e) => e.enabled !== false && e.status === "ready");
+  if (ready.length === 0 && entries.some((e) => e.enabled !== false && e.status === "loading") && paseo.providers?.waitForReady) {
+    snap = await paseo.providers.waitForReady({ cwd, timeoutMs: 10_000 }).catch(() => snap);
+    entries = snap?.entries ?? entries;
+    ready = entries.filter((e) => e.enabled !== false && e.status === "ready");
+  }
+  const sortByPref = <T extends { provider: string }>(items: T[]) =>
+    [...items].sort((a, b) => {
+      const ia = pref.indexOf(a.provider);
+      const ib = pref.indexOf(b.provider);
+      return (ia === -1 ? pref.length : ia) - (ib === -1 ? pref.length : ib);
+    });
+  for (const chosen of sortByPref(ready)) {
+    let modelId = pickSelectableModel(chosen.models);
+    if (!modelId && paseo.providers?.listModels) {
+      const listed = await paseo.providers.listModels(chosen.provider as ProviderId, { cwd }).catch(() => null);
+      modelId = pickSelectableModel(listed?.models);
+    }
+    if (modelId) return `${chosen.provider}/${modelId}`;
+    if (chosen.models === undefined && !paseo.providers?.listModels) return chosen.provider;
   }
   const avail = await paseo.providers?.listAvailable?.().catch(() => null);
   const readyNames = (avail?.providers ?? []).filter((p) => p.available);
-  if (readyNames.length === 0) return undefined;
-  const chosen = pref.map((p) => readyNames.find((e) => e.provider === p)).find(Boolean) ?? readyNames[0];
-  return chosen.provider;
+  for (const chosen of sortByPref(readyNames)) {
+    if (paseo.providers?.listModels) {
+      const listed = await paseo.providers.listModels(chosen.provider as ProviderId, { cwd }).catch(() => null);
+      const modelId = pickSelectableModel(listed?.models);
+      if (modelId) return `${chosen.provider}/${modelId}`;
+    } else {
+      return chosen.provider;
+    }
+  }
+  return undefined;
 }
 
 /** Open a chat in the selected project when launchRpc starts without an existing chat. */
@@ -51,16 +80,17 @@ async function createProjectChat(
   prompt: string,
   requestId: string,
 ): Promise<string> {
-  const provider = await pickProvider(paseo, selected.projectRootPath, worker);
+  const ws = workspaces.find((w) => !w.background && !w.internal && !w.archivingAt && !(w as { archivedAt?: string | null }).archivedAt);
+  const chatCwd = ws?.workspaceDirectory || selected.projectRootPath;
+  const provider = await pickProvider(paseo, chatCwd, worker);
   if (!provider) throw new Error(LAUNCH_CHAT_ERROR);
   const firstLine = prompt.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? "";
   const title = (firstLine || selected.projectDisplayName).slice(0, 72);
   const idempotencyKey = "clyde-launch-" + requestId;
-  const ws = workspaces.find((w) => !w.background && !w.internal && !w.archivingAt && !(w as { archivedAt?: string | null }).archivedAt);
   try {
     const handle = ws && paseo.workspaces?.ref
       ? await paseo.workspaces.ref(ws.id).agents.create({ idempotencyKey, title, config: { provider } })
-      : await paseo.agents?.create?.({ cwd: selected.projectRootPath, idempotencyKey, title, config: { provider } });
+      : await paseo.agents?.create?.({ cwd: chatCwd, idempotencyKey, title, config: { provider } });
     if (!handle?.id) throw new Error(LAUNCH_CHAT_ERROR);
     return handle.id;
   } catch (err) {
@@ -119,10 +149,13 @@ export default function contribute(server: PluginServerContext) {
         chats: (chatsByProject.get(p.projectId) ?? []).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
       }));
   });
-  server.handle(launchRpc, async ({project,prompt,criteria,flow,worker,requestId,agentId,newChat,allowAntigravityFullAccess}, {paseo}) => {
+  server.handle(launchRpc, async ({project,workspaceId,prompt,criteria,flow,worker,requestId,agentId,newChat,allowAntigravityFullAccess}, {paseo}) => {
     const selected=(await paseo.projects.list()).projects.find(p => p.projectId === project && p.projectKind !== "non_git");
     if (!selected) throw new Error("Select an available Git project in Paseo.");
-    const workspaces=(await paseo.workspaces.list()).entries.filter(w=>w.projectId===project);
+    const allWorkspaces=(await paseo.workspaces.list()).entries.filter(w=>w.projectId===project);
+    const activeWorkspace = workspaceId ? allWorkspaces.find((w) => w.id === workspaceId) : undefined;
+    if (workspaceId && !activeWorkspace) throw new Error("Workspace belongs to another project.");
+    const workspaces = activeWorkspace ? [activeWorkspace] : allWorkspaces;
     const workspaceIds=new Set(workspaces.map(w=>w.id));
     const agents=(await listAllAgents(paseo))
       .filter(a=>a.workspaceId && workspaceIds.has(a.workspaceId) && isProjectChat(a))
@@ -133,14 +166,15 @@ export default function contribute(server: PluginServerContext) {
       : !newChat && agents.length >= 1
       ? agents[0].id
       : await createProjectChat(paseo, selected, workspaces, worker, prompt, requestId);
+    const launchCwd = activeWorkspace?.workspaceDirectory || selected.projectRootPath;
     const routing=worker === "auto" ? {} : {overrides:{worker}};
     const existing=await call<{id:string,repo:string}>("GET","/runs/"+encodeURIComponent("r-"+requestId)).catch(e=>{if(!String(e).includes("404"))throw e;return null;});
-    if(existing){if(existing.repo!==selected.projectRootPath)throw new Error("Task belongs to another project.");residentControl.track(existing.id,origin,paseo);return {id:existing.id};}
+    if(existing){const allowed=[selected.projectRootPath,activeWorkspace?.workspaceDirectory].filter(Boolean);if(!allowed.includes(existing.repo))throw new Error("Task belongs to another project.");residentControl.track(existing.id,origin,paseo);return {id:existing.id};}
     const notes=await residentControl.context(origin,prompt,paseo);
     const input=flow==="ship"
       ? {intent:prompt,criteria,notes:[criteria?.length ? "User completion criteria:\n"+criteria.join("\n") : "", notes].filter(Boolean).join("\n\n"),routing}
       : {prompt:prompt+notes,criteria:criteria?.length ? criteria : [prompt],routing};
-    const run=await call<{id:string}>("POST","/runs",{flow,input:{...input,allowAntigravityFullAccess:worker==="neon"&&allowAntigravityFullAccess===true},cwd:selected.projectRootPath,assignment:requestId,paseoParentId:origin});
+    const run=await call<{id:string}>("POST","/runs",{flow,input:{...input,allowAntigravityFullAccess:worker==="neon"&&allowAntigravityFullAccess===true},cwd:launchCwd,assignment:requestId,paseoParentId:origin});
     if(origin)residentControl.track(run.id,origin,paseo);
     return {id:run.id};
   });

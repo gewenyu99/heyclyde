@@ -5,6 +5,11 @@ import { root, secret, sql, wen } from "../db.ts";
 import { sha256 } from "../embed.ts";
 import { forgetGraph } from "../search.ts";
 import { forget } from "./entitlement.ts";
+import { paddle } from "./paddle.ts";
+import { polar } from "./polar.ts";
+import type { Provider } from "./provider.ts";
+
+const PROVIDERS: Record<string, Provider> = { polar, paddle };
 
 const RESEND_URL = () => (Deno.env.get("RESEND_API_URL") || "https://api.resend.com").replace(/\/+$/, "");
 const AUTH_BASE = () => `${(Deno.env.get("SUPABASE_URL") || "").replace(/\/+$/, "")}/auth/v1`;
@@ -70,6 +75,17 @@ export async function deleteOwnerAccount(owner: string, actor = "owner"): Promis
     throw new OwnerProtectedError("The primary system owner account cannot be deleted.");
   }
 
+  // End an active subscription at the merchant before wiping local account and entitlement rows.
+  const [liveEnt] = await root`select provider, subscription_id, state, cancel_at_period_end
+    from memory.entitlement where owner_id = ${owner}::uuid`;
+  const liveSub = typeof liveEnt?.subscription_id === "string" ? liveEnt.subscription_id.trim() : "";
+  if (liveSub && (liveEnt.state === "paid" || liveEnt.state === "past_due") && !liveEnt.cancel_at_period_end) {
+    const p = PROVIDERS[String(liveEnt.provider ?? "")];
+    if (p && await p.configured()) {
+      await p.cancel(liveSub);
+    }
+  }
+
   await removeOwnerBlobs(owner);
   const hashPrefix = (await sha256(owner)).slice(0, 12);
 
@@ -82,10 +98,14 @@ export async function deleteOwnerAccount(owner: string, actor = "owner"): Promis
       await tx`delete from ${tx("memory." + table)} where owner_id = ${owner}::uuid`;
     }
     await tx`delete from memory.billing_event where owner_id = ${owner}::uuid`;
-    await tx`delete from memory.billing_action where target = ${owner} or (${subId}::text is not null and target = ${subId})`;
+    await tx`delete from memory.billing_action where target = ${owner} or target like ${owner + ":%"} or (${subId}::text is not null and target = ${subId})`;
     if (email) {
-      await tx`delete from memory.signup_attempt where lower(email) = ${email}`;
+      // Scrub PII while keeping hourly IP rate-limit rows intact until their 24h TTL expires.
+      await tx`update memory.signup_attempt set email = ${"deleted:" + hashPrefix} where lower(email) = ${email}`;
     }
+    await tx`delete from memory.oauth_consent
+      where lower(pending_user->>'id') = lower(${owner})
+         or (${email}::text is not null and lower(pending_user->>'email') = ${email})`;
     if (systemOwner) {
       await tx`insert into memory.admin_audit (owner_id, action, target, before, after, actor)
         values (${systemOwner}::uuid, 'account_delete', ${"account:" + hashPrefix}, null, null, ${actor})`;

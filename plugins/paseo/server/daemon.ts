@@ -28,8 +28,10 @@ export function readJson<T>(name: string): T | null {
 }
 
 export function resolveCompanionBin(): string | null {
-  const bundled = join(dirname(fileURLToPath(import.meta.url)), "..", "runtime", "bin", "clyde.ts");
-  if (existsSync(bundled)) return bundled;
+  if (typeof import.meta?.url === "string" && import.meta.url.startsWith("file:")) {
+    const bundled = join(dirname(fileURLToPath(import.meta.url)), "..", "runtime", "bin", "clyde.ts");
+    if (existsSync(bundled)) return bundled;
+  }
   try {
     const path = join(process.env.PASEO_HOME || join(homedir(), ".paseo"), "config.json");
     const source = JSON.parse(readFileSync(path, "utf8")).plugins?.clyde;

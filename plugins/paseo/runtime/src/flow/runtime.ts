@@ -367,7 +367,7 @@ export class Driver {
       stage: (spec) => runStage(this, spec),
       agent: (opts) => this.agent(opts),
       check: (cmd) => this.check(cmd),
-      ask: (question) => this.ask(`ask:${++this.asked}`, 'approve', question),
+      ask: (question, kind = 'approve') => this.ask(`ask:${++this.asked}`, kind, question),
       remember: (fields) => this.remember(entry(run, fields as Record<string, unknown>)),
       setPlan: (plan) => this.setPlan(plan),
       gate: (skill, section) => gate(skill, section),
@@ -496,17 +496,20 @@ export class Driver {
     return chosen.resolvedModel ? { ...base, model: chosen.resolvedModel } : base
   }
 
-  async agent(opts: { route?: Stage; role: string; prompt: string; readOnly?: boolean; title: string }, retries = 0): Promise<AgentResult> {
+  async agent(opts: { route?: Stage; role: string; prompt: string; readOnly?: boolean; title: string; schema?: object; validate?: (parsed: unknown, res: AgentResult) => boolean }, retries = 0): Promise<AgentResult> {
     const MAX_AGENT_RETRIES = 4
     const cached = this.run.agents[opts.title]
-    if (cached) return cached
-    const t = this.startThread({ title: `${this.run.id} ${opts.title}`, prompt: opts.prompt, rung: opts.route && this.run.routes ? await this.route(opts.route) : ladder(opts.role)[0], readOnly: opts.readOnly })
+    if (cached && cached.ok && (!opts.validate || opts.validate(cached.json, cached))) return cached
+    const t = this.startThread({ title: `${this.run.id} ${opts.title}`, prompt: opts.prompt, rung: opts.route && this.run.routes ? await this.route(opts.route) : ladder(opts.role)[0], readOnly: opts.readOnly, schema: opts.schema })
     const turn = (await this.waitThread(t.id)).turns.at(-1)
     const parsed = turn?.json ?? lastJsonBlock(turn?.text ?? '')
+    const out: AgentResult = { ok: turn?.ok === true, text: turn?.text ?? '', json: parsed }
     const needsFindings = opts.route === 'audit' || opts.route === 'specReview' || opts.route === 'verify'
-    const invalidAudit = needsFindings && !Array.isArray((parsed as { findings?: unknown })?.findings)
+    const validShape = !needsFindings || Array.isArray((parsed as { findings?: unknown })?.findings)
+    const validCustom = !opts.validate || opts.validate(parsed, out)
+    const invalidAudit = !validShape || !validCustom
     if ((!turn?.ok || invalidAudit) && opts.route && this.run.routes) {
-      const why = turn?.error || (invalidAudit ? 'The reviewer did not return structured findings' : 'No response')
+      const why = turn?.error || (!validShape ? 'The reviewer did not return structured findings' : invalidAudit ? 'The reviewer did not return valid structured output' : 'No response')
       if (retries >= MAX_AGENT_RETRIES) {
         throw new Error(`${opts.title} exceeded the retry limit (${MAX_AGENT_RETRIES}): ${why}`)
       }
@@ -525,10 +528,8 @@ export class Driver {
       return this.agent(opts, retries + 1)
     }
     if (turn?.ok && invalidAudit) {
-      throw new Error(`${opts.title} did not return structured findings`)
+      throw new Error(validShape ? `${opts.title} did not return valid structured output` : `${opts.title} did not return structured findings`)
     }
-    const text = turn?.text ?? ''
-    const out: AgentResult = { ok: turn?.ok === true, text, json: parsed }
     if (out.ok) {
       this.run.agents[opts.title] = out
       this.save()

@@ -1,11 +1,12 @@
 /** Drain durable entries in dependency order; isolate role failures and quarantine permanent rejections. */
-import { delivered, pending, quarantine, validateAgentPayload, type Pending } from './memory-spool.ts'
+import { delivered, pending, quarantine, validateAgentPayload, verifyRuntimeEntry, type Pending } from './memory-spool.ts'
 import { request } from './request.ts'
 
 export type FlushConfig = { url?: string; runtimeToken?: string; agentToken?: string; timeoutMs?: number; dir?: string; send?: typeof request }
 
-const PERMANENT = new Set([400, 403, 404, 413, 415, 422])
-const ROLE_BLOCKED = new Set([401, 402])
+const PERMANENT = new Set([400, 413, 415, 422])
+const ROLE_BLOCKED = new Set([401, 402, 403, 451])
+const TRANSIENT_400 = /try again later|temporarily unavailable|won't take new notes this month/i
 
 export async function flushPending(config: FlushConfig): Promise<number> {
   if (!config.url) return 0
@@ -34,6 +35,10 @@ export async function flushPending(config: FlushConfig): Promise<number> {
       blockedIds.add(row.id)
       continue
     }
+    if (row.role === 'runtime' && !verifyRuntimeEntry(row, token, config.dir)) {
+      quarantine(row, 'Invalid or missing runtime spool MAC', config.dir)
+      continue
+    }
     let res
     try {
       res = await (config.send ?? request)('POST', `${config.url.replace(/\/+$/, '')}/entries`, {
@@ -50,6 +55,11 @@ export async function flushPending(config: FlushConfig): Promise<number> {
       } catch { /* fall through to transient stop */ }
       blockedIds.add(row.id)
       break
+    }
+    if (res.status === 400 && TRANSIENT_400.test(String(res.text ?? ''))) {
+      blockedRoles.add(row.role)
+      blockedIds.add(row.id)
+      continue
     }
     if (PERMANENT.has(res.status)) {
       quarantine(row, `HTTP ${res.status}: ${String(res.text ?? '').slice(0, 300)}`, config.dir)
@@ -78,6 +88,8 @@ export function startMemoryFlush(config: () => FlushConfig): () => void {
       const before = pending().length
       const count = await flushPending(config())
       delay = before && count === 0 ? Math.min(delay * 2, 30_000) : 100
+    } catch {
+      delay = Math.min(delay * 2, 30_000)
     } finally {
       active = false
       if (!closed) timer = setTimeout(tick, delay)

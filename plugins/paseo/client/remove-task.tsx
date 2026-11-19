@@ -43,6 +43,7 @@ export function RemoveTask(
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Cancel task removal"
+              accessibilityState={{ disabled: busy }}
               disabled={busy}
               onPress={() => setArmed(false)}
               style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingHorizontal: 8 }}

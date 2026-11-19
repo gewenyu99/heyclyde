@@ -36,11 +36,17 @@ function contrastRatio(fg, bg) {
   return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
 }
 
-test("scheme resolves light and dark themes from PluginTheme surface0 and rgb colors", () => {
+test("scheme resolves light and dark themes from PluginTheme surface0, hex variants, rgb, and hsl colors", () => {
   assert.equal(scheme({ colors: { surface0: "#f4f4f1" } }), "light");
+  assert.equal(scheme({ colors: { surface0: "#fff" } }), "light");
+  assert.equal(scheme({ colors: { surface0: "#f4f4f1ff" } }), "light");
   assert.equal(scheme({ colors: { surface0: "rgb(244, 244, 241)" } }), "light");
+  assert.equal(scheme({ colors: { surface0: "hsla(120, 10%, 92%, 0.9)" } }), "light");
   assert.equal(scheme({ colors: { surface0: "#121311" } }), "dark");
+  assert.equal(scheme({ colors: { surface0: "#111" } }), "dark");
+  assert.equal(scheme({ colors: { surface0: "#121311cc" } }), "dark");
   assert.equal(scheme({ colors: { surface0: "rgb(18, 19, 17)" } }), "dark");
+  assert.equal(scheme({ colors: { surface0: "hsl(120, 10%, 15%)" } }), "dark");
   assert.equal(scheme({ mode: "dark" }), "dark");
   assert.equal(scheme({ mode: "light" }), "light");
 });
@@ -161,6 +167,48 @@ test("client TSX components obey typography floor, accessible controls, chat pic
 
   const runEvidence = fs.readFileSync(path.join(clientDir, "run-evidence.tsx"), "utf8");
   const home = fs.readFileSync(path.join(clientDir, "home.tsx"), "utf8");
+  const inline = fs.readFileSync(path.join(clientDir, "inline.tsx"), "utf8");
+  const quests = fs.readFileSync(path.join(clientDir, "quests.tsx"), "utf8");
+  const screen = fs.readFileSync(path.join(clientDir, "screen.tsx"), "utf8");
+  const roster = fs.readFileSync(path.join(clientDir, "roster.tsx"), "utf8");
+  const brand = fs.readFileSync(path.join(clientDir, "brand.tsx"), "utf8");
+  const recallSheet = fs.readFileSync(path.join(clientDir, "recall-sheet.tsx"), "utf8");
+  const removeTask = fs.readFileSync(path.join(clientDir, "remove-task.tsx"), "utf8");
+
   assert.match(runEvidence, /pullRequest/);
   assert.match(home, /pullRequest/);
+
+  // Quest #46 client contrast, ARIA, keyboard, and chat-picker invariants.
+  assert.match(brand, /export \{ scheme \}/);
+  assert.equal(/export function scheme/.test(brand), false, "brand.tsx must re-export scheme from palette");
+  assert.equal(/opacity:\s*a\.interrupted/.test(task), false, "AttemptRow must not use dimmed opacity on interrupted rows");
+  assert.match(task, /a\.interrupted \? theme\.colors\.foregroundMuted : theme\.colors\.foreground/);
+  assert.match(inline, /cache\.setQueryData\(key,\s*\(prev/);
+  assert.match(inline, /\.\.\.prev,\s*choice:\s*verdict,\s*pendingSync:\s*result\.pendingSync/);
+  assert.match(inline, /text\.trim\(\)\.length > 0/);
+  assert.match(inline, /setText\(""\)/);
+  assert.match(inline, /onSubmitEditing/);
+  assert.match(home, /onSubmitEditing/);
+  assert.match(task, /onSubmitEditing/);
+  assert.match(roster, /onSubmitEditing/);
+  assert.match(home, /backgroundColor:\s*theme\.colors\.surface1/);
+  assert.match(screen, /accessibilityRole="tablist"/);
+  assert.match(sidecar, /accessibilityRole="tablist"/);
+  assert.match(quests, /accessibilityRole="tablist"/);
+  assert.match(task, /STATUS_LABEL\[p\.status\]/);
+  assert.match(home, /STATUS_LABEL\[card\.status\]/);
+  assert.match(sidecar, /STATUS_LABEL\[t\.status\]/);
+  assert.match(sidecar, /const needsCount = needsSet\.size/);
+  assert.match(sidecar, /tab === "Quests" && !origin/);
+  assert.match(sidecar, /<Composer[^>]*agentId=\{origin\}/);
+  assert.match(composer, /workspaceId/);
+  assert.match(composer, /invalidateQueries\(\{\s*queryKey:\s*\["clyde"\]\s*\}\)/);
+  assert.match(composer, /checked:\s*allowNeon,\s*disabled:\s*busy/);
+  assert.match(quests, /Boolean\(chosen\)/);
+  assert.match(quests, /Checking chat…/);
+  assert.match(quests, /borderColor:\s*paper\.edge/);
+  assert.match(recallSheet, /expanded:\s*true/);
+  assert.match(recallSheet, /Close details for /);
+  assert.match(recallSheet, /expanded:\s*showDetail,\s*disabled:\s*busy/);
+  assert.match(removeTask, /accessibilityState=\{\{\s*disabled:\s*busy\s*\}\}/);
 });

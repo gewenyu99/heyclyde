@@ -3,13 +3,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRpc } from "@getpaseo/plugin/client";
 import { RecallSheet } from "./recall-sheet";
 import { clydeTheme, Lockup } from "./brand";
-import { formatRpcError, MIN_HIT_HEIGHT, MIN_LOCKUP_WIDTH } from "./palette";
+import { palette } from "./brand.generated";
+import { formatRpcError, MIN_HIT_HEIGHT, MIN_LOCKUP_WIDTH, scheme } from "./palette";
 import { useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { type Activity, feedbackRpc, ratingRpc, readNoteRpc, respondRpc } from "../shared/clyde";
 
 export function InlineActivity({ agentId, item, theme }: PluginTimelineItemProps<Activity>) {
-  const data = item.data, c = clydeTheme(theme).colors, feedback = useRpc(feedbackRpc), respond = useRpc(respondRpc);
+  const data = item.data, c = clydeTheme(theme).colors, edge = palette[scheme(theme)].edge, feedback = useRpc(feedbackRpc), respond = useRpc(respondRpc);
   const [text, setText] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -35,7 +36,7 @@ export function InlineActivity({ agentId, item, theme }: PluginTimelineItemProps
         packet={{ ...data, ...(local.data?.choice ? local.data : {}), used: data.used ?? local.data?.used }}
         onVote={canVote ? async (verdict) => {
           const result = await feedback({ agent: agentId, retrieval: rid, verdict, receipt: data.receipt });
-          cache.setQueryData(key, { choice: verdict, pendingSync: result.pendingSync });
+          cache.setQueryData(key, (prev: typeof local.data) => ({ ...prev, choice: verdict, pendingSync: result.pendingSync }));
           return result;
         } : undefined}
       />
@@ -54,25 +55,28 @@ export function InlineActivity({ agentId, item, theme }: PluginTimelineItemProps
       setBusy(false);
     }
   }
-  const button = (label: string, onPress: () => void, active = false) => (
-    <Pressable
-      key={label}
-      accessibilityRole="button"
-      accessibilityState={{ disabled: busy }}
-      disabled={busy}
-      onPress={onPress}
-      style={{
-        minHeight: MIN_HIT_HEIGHT,
-        justifyContent: "center",
-        paddingHorizontal: 12,
-        borderWidth: 1,
-        borderColor: active ? c.accent : c.border,
-        borderRadius: 6,
-      }}
-    >
-      <Text style={{ color: active ? c.accent : c.foreground, fontSize: 12, fontWeight: "600" }}>{label}</Text>
-    </Pressable>
-  );
+  const button = (label: string, onPress: () => void, active = false, extraDisabled = false) => {
+    const isDisabled = busy || extraDisabled;
+    return (
+      <Pressable
+        key={label}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: isDisabled }}
+        disabled={isDisabled}
+        onPress={onPress}
+        style={{
+          minHeight: MIN_HIT_HEIGHT,
+          justifyContent: "center",
+          paddingHorizontal: 12,
+          borderWidth: 1,
+          borderColor: active && !isDisabled ? c.accent : edge,
+          borderRadius: 6,
+        }}
+      >
+        <Text style={{ color: isDisabled ? c.foregroundMuted : active ? c.accent : c.foreground, fontSize: 12, fontWeight: "600" }}>{label}</Text>
+      </Pressable>
+    );
+  };
   return (
     <View
       style={{
@@ -100,7 +104,15 @@ export function InlineActivity({ agentId, item, theme }: PluginTimelineItemProps
                   placeholderTextColor={c.foregroundMuted}
                   value={text}
                   onChangeText={setText}
-                  style={{ padding: 10, minHeight: MIN_HIT_HEIGHT, borderWidth: 1, borderColor: c.border, borderRadius: 6, color: c.foreground, backgroundColor: c.surface1, fontSize: 14 }}
+                  onSubmitEditing={() => {
+                    if (text.trim().length > 0) {
+                      void submit(async () => {
+                        await respond({ agent: agentId, run: data.run, key: data.key, text });
+                        setText("");
+                      });
+                    }
+                  }}
+                  style={{ padding: 10, minHeight: MIN_HIT_HEIGHT, borderWidth: 1, borderColor: edge, borderRadius: 6, color: c.foreground, backgroundColor: c.surface1, fontSize: 14 }}
                 />
                 <View style={{ flexDirection: "row", gap: 6 }}>
                   {data.approve && button(
@@ -108,11 +120,16 @@ export function InlineActivity({ agentId, item, theme }: PluginTimelineItemProps
                     () =>
                       void submit(() => respond({ agent: agentId, run: data.run, key: data.key, text: "approved" })),
                     true,
+                    text.trim().length > 0,
                   )}
                   {text.trim().length > 0 &&
                     button(
                       "Send reply",
-                      () => void submit(() => respond({ agent: agentId, run: data.run, key: data.key, text })),
+                      () =>
+                        void submit(async () => {
+                          await respond({ agent: agentId, run: data.run, key: data.key, text });
+                          setText("");
+                        }),
                     )}
                 </View>
               </>

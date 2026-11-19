@@ -219,6 +219,7 @@ function MemoryNote(
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={"Compact " + n.title}
+                accessibilityState={{ expanded: true }}
                 onPress={toggle}
                 hitSlop={8}
                 style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}
@@ -228,7 +229,8 @@ function MemoryNote(
               {onOpen && (
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={"Open " + n.title}
+                  accessibilityLabel={(showDetail ? "Close details for " : "Open ") + n.title}
+                  accessibilityState={{ expanded: showDetail, disabled: busy }}
                   disabled={busy}
                   onPress={() => void inspect()}
                   hitSlop={8}

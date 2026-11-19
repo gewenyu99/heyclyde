@@ -223,7 +223,9 @@ export async function checks(): Promise<Check[]> {
     extension(), d.check, kbChecks(d.client),
   ])
   const spool = spoolStatus()
-  return [...groups.flat(), { name: 'memory spool', status: spool.depth ? 'warn' : 'ok', detail: `${spool.depth} pending, oldest ${Math.round(spool.oldestAgeMs / 1000)}s` }]
+  const detail = `${spool.depth} pending, oldest ${Math.round(spool.oldestAgeMs / 1000)}s` +
+    (spool.deadLetterDepth ? `, ${spool.deadLetterDepth} dead-letter` : '')
+  return [...groups.flat(), { name: 'memory spool', status: spool.depth || spool.deadLetterDepth ? 'warn' : 'ok', detail }]
 }
 
 export function checkLine(c: Check): string {

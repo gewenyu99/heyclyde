@@ -444,10 +444,19 @@ Deno.test('Quest #41: auth proxy forces create_user=false on /auth/v1/otp, enfor
   const otp = await worker.fetch(new Request('https://heyclyde.me/auth/v1/otp', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email: 'new@example.com', create_user: true }),
+    body: JSON.stringify({ email: 'new@example.com', create_user: true, CREATE_USER: true, extra: 1 }),
   }), { ...ENV, SUPABASE_ANON_KEY: 'anon-test' })
   assert.equal(otp.status, 200)
-  assert.equal(JSON.parse(lastBody).create_user, false, 'create_user is forced false')
+  assert.deepEqual(JSON.parse(lastBody), { email: 'new@example.com', create_user: false }, 'allowlisted body drops case-variant bypass keys')
+
+  sent = []
+  const tooBig = await worker.fetch(new Request('https://heyclyde.me/auth/v1/otp', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: 'a@example.com', pad: 'x'.repeat(5000) }),
+  }), { ...ENV, SUPABASE_ANON_KEY: 'anon-test' })
+  assert.equal(tooBig.status, 413)
+  assert.equal(sent.length, 0)
 
   sent = []
   const badJson = await worker.fetch(new Request('https://heyclyde.me/auth/v1/otp', {
@@ -461,7 +470,7 @@ Deno.test('Quest #41: auth proxy forces create_user=false on /auth/v1/otp, enfor
   const wrongMethod = await worker.fetch(new Request('https://heyclyde.me/auth/v1/otp', { method: 'GET' }), ENV)
   assert.equal(wrongMethod.status, 405)
 
-  for (const cf of [{ country: 'FR' }, { country: 'GB' }, { country: 'CA', regionCode: 'QC' }]) {
+  for (const cf of [{ country: 'FR' }, { country: 'GB' }, { country: 'T1' }, { country: 'XX' }, { country: 'CA', regionCode: 'QC' }, { country: 'US', regionCode: 'CA-QC' }]) {
     sent = []
     const req = new Request('https://heyclyde.me/auth/v1/otp', {
       method: 'POST',
@@ -470,8 +479,17 @@ Deno.test('Quest #41: auth proxy forces create_user=false on /auth/v1/otp, enfor
     })
     Object.defineProperty(req, 'cf', { value: cf })
     const blocked = await worker.fetch(req, { ...ENV, SUPABASE_ANON_KEY: 'anon-test' })
-    assert.equal(blocked.status, 403, JSON.stringify(cf))
+    assert.equal(blocked.status, 451, JSON.stringify(cf))
     assert.equal(sent.length, 0, JSON.stringify(cf))
+  }
+
+  for (const [target, method] of [['https://heyclyde.me/auth/v1/token?grant_type=pkce', 'POST'], ['https://heyclyde.me/auth/v1/verify', 'GET'], ['https://memory.heyclyde.me/auth/v1/verify', 'GET']] as const) {
+    sent = []
+    const req = new Request(target, { method })
+    Object.defineProperty(req, 'cf', { value: { country: 'FR' } })
+    const blocked = await worker.fetch(req, { ...ENV, SUPABASE_ANON_KEY: 'anon-test' })
+    assert.equal(blocked.status, 451, target)
+    assert.equal(sent.length, 0, target)
   }
 })
 
@@ -505,9 +523,11 @@ Deno.test('Quest #37: confirm_allow, POST /oauth/approve, and denied state rende
     headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: '__Host-clyde_allow=abc12345.bindtok' },
     body: 'decision=allow&decision_token=formtok-123',
   })
-  assert.equal(post.status, 303)
-  assert.equal(post.headers.get('location'), '/oauth/wait?authorization_id=abc12345')
+  assert.equal(post.status, 200)
+  assert.equal(post.headers.get('refresh'), '0; url=/oauth/wait?authorization_id=abc12345')
   assert.equal(post.headers.get('set-cookie'), clearAllow)
+  const postHtml = await post.text()
+  assert.ok(postHtml.includes('location.replace("/oauth/wait?authorization_id=abc12345")'), postHtml)
   assert.equal(sent[0].headers.get('cookie'), '__Host-clyde_allow=abc12345.bindtok')
   assert.equal(sent[0].headers.get('accept'), 'application/json')
 

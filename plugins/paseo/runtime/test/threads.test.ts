@@ -155,7 +155,7 @@ for (const name of ['pi', 'claude', 'codex'] as BackendName[]) {
       const tid = done.session as string
       const out = (argv: string[]) => argv[argv.indexOf('-o') + 1]
       assert.match(out(first), new RegExp(`^${join(h.home, 'tmp')}/codex-[0-9a-f]+\\.last\\.txt$`))
-      const permissions = ['--ignore-user-config', '-c', `sandbox_workspace_write.writable_roots=${JSON.stringify([h.home])}`,
+      const permissions = ['--ignore-user-config', '-c', `sandbox_workspace_write.writable_roots=${JSON.stringify(['tmp', 'memory-spool/agent', 'note-receipts', 'note-probes', 'recall-sessions'].map((rel) => join(h.home, rel)))}`,
         '-c', 'sandbox_workspace_write.network_access=true', '-c', 'features.network_proxy.enabled=true',
         '-c', 'features.network_proxy.domains={"127.0.0.1"="allow"}', '-c', 'approval_policy="never"']
       assert.deepEqual(first, ['exec', '--json', '--skip-git-repo-check', '-m', 'gpt-6.1-sol', '-c', 'model_reasoning_effort=medium',

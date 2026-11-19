@@ -132,7 +132,7 @@ export const projectsRpc = defineRpc({
 });
 export const workerModels = ["auto", "sol", "sonnet", "opus", "astra", "neon"] as const;
 export const launchRpc = defineRpc({
-  name:"clyde.launch", input:z.object({project:z.string().min(1),prompt:z.string().trim().min(1).max(12000),criteria:z.array(z.string().trim().min(1).max(4000)).max(64).optional(),
+  name:"clyde.launch", input:z.object({project:z.string().min(1),workspaceId:z.string().optional(),prompt:z.string().trim().min(1).max(12000),criteria:z.array(z.string().trim().min(1).max(4000)).max(64).optional(),
     allowAntigravityFullAccess:z.boolean().optional(),flow:z.enum(["task","ship"]),worker:z.enum(workerModels),requestId:z.string().uuid(),agentId:z.string().optional(),newChat:z.boolean().optional()}),
   output:z.object({id:z.string()}),
 });

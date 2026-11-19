@@ -4,7 +4,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { launchRpc, projectsRpc, workerModels } from "../shared/clyde";
-import { formatRpcError, MIN_HIT_HEIGHT } from "./palette";
+import { palette } from "./brand.generated";
+import { formatRpcError, MIN_HIT_HEIGHT, scheme } from "./palette";
 
 type Worker = typeof workerModels[number];
 const workerLabel = (worker: Worker) => worker[0].toUpperCase() + worker.slice(1);
@@ -23,7 +24,7 @@ export function Composer(
     onStarted: (id: string) => void;
   },
 ) {
-  const c = theme.colors, read = useRpc(projectsRpc), launch = useRpc(launchRpc), cache = useQueryClient();
+  const c = theme.colors, edge = palette[scheme(theme)].edge, read = useRpc(projectsRpc), launch = useRpc(launchRpc), cache = useQueryClient();
   const projects = useQuery({
     queryKey: ["clyde", "projects", workspaceId ?? "all"],
     queryFn: () => read({ workspaceId }),
@@ -50,11 +51,12 @@ export function Composer(
     setBusy(true);
     setError("");
     const criteria = doneWhen.split("\n").map((line) => line.trim()).filter(Boolean);
-    const key = JSON.stringify([selected.id, effectiveAgentId || "__new__", text, flow, worker, criteria, allowNeon]);
+    const key = JSON.stringify([selected.id, workspaceId ?? "", effectiveAgentId || "__new__", text, flow, worker, criteria, allowNeon]);
     if (pending.current?.key !== key) pending.current = { key, id: requestId() };
     try {
       const run = await launch({
         project: selected.id,
+        ...(workspaceId ? { workspaceId } : {}),
         prompt: text,
         criteria,
         allowAntigravityFullAccess: worker === "neon" && allowNeon,
@@ -69,7 +71,7 @@ export function Composer(
       setText("");
       setDoneWhen("");
       setShowCriteria(false);
-      void cache.invalidateQueries({ queryKey: ["clyde", "home"] });
+      void cache.invalidateQueries({ queryKey: ["clyde"] });
       onStarted(run.id);
     } catch (e) {
       setError(formatRpcError(e));
@@ -90,7 +92,7 @@ export function Composer(
         justifyContent: "center",
         paddingHorizontal: 12,
         backgroundColor: active ? c.foreground : c.surface2,
-        borderColor: active ? c.foreground : c.border,
+        borderColor: active ? c.foreground : edge,
         borderWidth: 1,
         borderRadius: 7,
       }}
@@ -136,7 +138,7 @@ export function Composer(
           lineHeight: 23,
           color: c.foreground,
           backgroundColor: c.surface0,
-          borderColor: c.border,
+          borderColor: edge,
           borderWidth: 1,
           borderRadius: 9,
         }}
@@ -145,7 +147,7 @@ export function Composer(
         <Text style={{color:c.foreground,fontWeight:"600",fontSize:13}}>Done when</Text>
         <TextInput accessibilityLabel="Completion criteria" multiline editable={!busy} maxLength={4000}
           value={doneWhen} onChangeText={setDoneWhen} placeholder="One observable outcome per line" placeholderTextColor={c.foregroundMuted}
-          style={{padding:10,minHeight:58,fontSize:14,color:c.foreground,backgroundColor:c.surface0,borderColor:c.border,borderWidth:1,borderRadius:6}}/>
+          style={{padding:10,minHeight:58,fontSize:14,color:c.foreground,backgroundColor:c.surface0,borderColor:edge,borderWidth:1,borderRadius:6}}/>
       </View> : <Pressable accessibilityRole="button" onPress={()=>setShowCriteria(true)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
         <Text style={{color:c.accent,fontSize:13,fontWeight:"600"}}>+ Add completion criteria</Text>
       </Pressable>}
@@ -177,7 +179,7 @@ export function Composer(
             borderRadius: 7,
             backgroundColor: inactive ? c.surface2 : c.accent,
             borderWidth: inactive ? 1 : 0,
-            borderColor: c.border,
+            borderColor: edge,
           }}
         >
           <Text style={{ color: inactive ? c.foregroundMuted : c.accentForeground, fontWeight: "700", fontSize: 13 }}>
@@ -190,7 +192,7 @@ export function Composer(
           Plans with Opus or Astra, builds with {workerLabel(worker)}, and audits with Carbon.
         </Text>
       )}
-      {worker==="neon" && <Pressable accessibilityRole="checkbox" accessibilityState={{checked:allowNeon}} disabled={busy} onPress={()=>setAllowNeon(!allowNeon)} style={{minHeight:MIN_HIT_HEIGHT,justifyContent:"center"}}>
+      {worker==="neon" && <Pressable accessibilityRole="checkbox" accessibilityState={{checked:allowNeon,disabled:busy}} disabled={busy} onPress={()=>setAllowNeon(!allowNeon)} style={{minHeight:MIN_HIT_HEIGHT,justifyContent:"center"}}>
         <Text style={{color:c.foreground,fontSize:13}}>{allowNeon?"☑":"☐"} Allow full access for this run</Text>
         <Text style={{color:c.foregroundMuted,fontSize:12}}>Paseo’s Neon worker can use files, shell commands and the network without further permission prompts.</Text>
       </Pressable>}

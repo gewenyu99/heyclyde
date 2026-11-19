@@ -10,6 +10,7 @@ import { runLapseCleanup } from "./lapse.ts";
 import { paddle } from "./paddle.ts";
 import { polar } from "./polar.ts";
 import type { Provider } from "./provider.ts";
+import { isBlocked } from "./regions.ts";
 import { receive } from "./webhooks.ts";
 
 export const PROVIDERS: Record<string, Provider> = { polar, paddle };
@@ -32,11 +33,18 @@ const text = (body: string, status: number) => new Response(`Clyde: ${body}\n`, 
 async function checkout(req: Request, url: URL, proxied: boolean) {
   if (geoBlocked(geoOf(req, proxied))) return refusal451();
   const owner = (url.searchParams.get("owner") ?? "").toLowerCase();
-  const [account] = /^[0-9a-f-]{36}$/.test(owner) ? await sql`select email from memory.account where owner_id = ${owner}` : [];
+  const [account] = /^[0-9a-f-]{36}$/.test(owner)
+    ? await sql`select a.email, a.country, a.region, e.state, e.cancel_at_period_end, e.current_period_end
+        from memory.account a left join memory.entitlement e on e.owner_id = a.owner_id where a.owner_id = ${owner}`
+    : [];
   if (!account) return text("that checkout link doesn't name an account. Sign in from your app and use the link it gives.", 404);
+  if (account.state === "blocked" || isBlocked(account.country, account.region)) return refusal451();
+  if (account.state === "paid" && (!account.cancel_at_period_end || !account.current_period_end || new Date(account.current_period_end).getTime() > Date.now())) {
+    return text("this account already has an active subscription.", 409);
+  }
   const p = await active();
   const planId = url.searchParams.get("plan") || await setting("checkout_plan") || "clyde";
-  const [plan] = await sql`select product_ids ->> ${p.name} as product from memory.plan where id = ${planId} and price_micro_usd_month > 0`;
+  const [plan] = await sql`select product_ids ->> ${p.name} as product from memory.plan where id = ${planId} and price_micro_usd_month > 0 and listed`;
   if (!plan?.product || !(await p.configured())) return text("checkout isn't open yet.", 503);
   const target = await p.checkout(owner, plan.product, account.email, `${DOMAIN}/billing/thanks`);
   return new Response(null, { status: 302, headers: { location: target, "cache-control": "no-store" } });

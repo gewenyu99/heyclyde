@@ -47,7 +47,7 @@ export type Run = {
   verifiedNotes?:{id:string;title:string;sources:string[]}[]
   auditFindings?: {id:string; evidence:string; status:'confirmed'|'dismissed'|'needs a decision'}[]
   pullRequest?: string
-  auditedHead?: string; auditBaseHead?: string
+  auditedHead?: string; auditBaseHead?: string; auditRepairHeads?: string[]
   routes?: Partial<Record<Stage, Selection>>
   quotaFailover?: boolean
   archivedAt?:string; paseoParentId?:string; allowAntigravityFullAccess?:boolean
@@ -64,9 +64,9 @@ export type AgentResult = { ok: boolean; text: string; json?: unknown }
 export type FlowCtx = {
   run: Run; cwd: string; scope: string; signal?: AbortSignal
   stage(spec: StageSpec): Promise<StageResult>
-  agent(opts: { route?: Stage; role: string; prompt: string; readOnly?: boolean; title: string }): Promise<AgentResult>
+  agent(opts: { route?: Stage; role: string; prompt: string; readOnly?: boolean; title: string; schema?: object; validate?: (parsed: unknown, res: AgentResult) => boolean }): Promise<AgentResult>
   check(cmd: string): Promise<{ code: number; output: string }>
-  ask(question: string): Promise<string>
+  ask(question: string, kind?: AskKind): Promise<string>
   remember(entry: object): Promise<string>
   setPlan(plan: unknown): Promise<string>
   gate(skill: string, section?: string): string[]

@@ -1,10 +1,11 @@
 /** Durable pending memory entries shared by the daemon and worker processes. */
-import { createHash, randomBytes } from 'node:crypto'
-import { chmodSync, closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import { chmodSync, closeSync, constants, existsSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { clydeHome } from './config.ts'
 
-export type Pending = { id: string; payload: Record<string, any>; role: 'agent' | 'runtime'; createdAt: number }
+export type Pending = { id: string; payload: Record<string, any>; role: 'agent' | 'runtime'; createdAt: number; mac?: string }
+const localRuntimeDigests = new Map<string, string>()
 export type DeadLetter = Pending & { failedAt: number; reason: string }
 export type SpoolStatus = { depth: number; oldestAgeMs: number; deadLetterDepth: number }
 
@@ -34,6 +35,22 @@ function ownsUid(uid: number): boolean {
   return typeof process.getuid === 'function' ? uid === process.getuid() : true
 }
 
+export function runtimeMac(id: string, payload: Record<string, any>, secret: string): string {
+  return createHmac('sha256', secret).update(`${id}:${canonical(payload)}`).digest('hex')
+}
+
+export function verifyRuntimeMac(row: Pending, secret: string): boolean {
+  if (!secret || typeof row.mac !== 'string' || !/^[0-9a-f]{64}$/i.test(row.mac)) return false
+  const expected = Buffer.from(runtimeMac(row.id, row.payload, secret), 'hex')
+  const actual = Buffer.from(row.mac, 'hex')
+  return expected.length === actual.length && timingSafeEqual(expected, actual)
+}
+
+export function verifyRuntimeEntry(row: Pending, secret: string, dir = spoolDir()): boolean {
+  if (row.mac !== undefined) return verifyRuntimeMac(row, secret)
+  return localRuntimeDigests.get(`${resolve(dir)}:${row.id}`) === hash(canonical(row.payload))
+}
+
 function isSafeDir(dir: string): boolean {
   try {
     const st = lstatSync(dir)
@@ -43,16 +60,39 @@ function isSafeDir(dir: string): boolean {
   }
 }
 
-function isSafeFile(path: string): boolean {
+function readSafeFile(path: string): string | null {
+  let fd: number | undefined
   try {
-    const st = lstatSync(path)
-    return st.isFile() && !st.isSymbolicLink() && ownsUid(st.uid) && (st.mode & 0o077) === 0
+    fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
+    const st = fstatSync(fd)
+    if (!st.isFile() || !ownsUid(st.uid) || (st.mode & 0o077) !== 0) return null
+    return readFileSync(fd, 'utf8')
   } catch {
-    return false
+    return null
+  } finally {
+    if (fd !== undefined) try { closeSync(fd) } catch { /* ignore */ }
+  }
+}
+
+function readExistingSafe(path: string): { exists: boolean; raw: string | null } {
+  let fd: number | undefined
+  try {
+    fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
+    const st = fstatSync(fd)
+    if (!st.isFile() || !ownsUid(st.uid) || (st.mode & 0o077) !== 0) return { exists: true, raw: null }
+    return { exists: true, raw: readFileSync(fd, 'utf8') }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { exists: false, raw: null }
+    return { exists: true, raw: null }
+  } finally {
+    if (fd !== undefined) try { closeSync(fd) } catch { /* ignore */ }
   }
 }
 
 function ensureSecureDir(target: string, stopAt?: string): void {
+  if (stopAt && !existsSync(dirname(stopAt))) {
+    mkdirSync(dirname(stopAt), { recursive: true, mode: 0o700 })
+  }
   const chain: string[] = []
   let cur = target
   while (!existsSync(cur)) {
@@ -66,7 +106,15 @@ function ensureSecureDir(target: string, stopAt?: string): void {
   }
   for (let i = chain.length - 1; i >= 0; i--) {
     const d = chain[i]
-    mkdirSync(d, { mode: 0o700 })
+    try {
+      mkdirSync(d, { mode: 0o700 })
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+    }
+    const st = lstatSync(d)
+    if (!st.isDirectory() || st.isSymbolicLink() || !ownsUid(st.uid)) {
+      throw new Error(`Unsafe memory spool directory permissions or symlink at ${d}`)
+    }
     chmodSync(d, 0o700)
   }
   if (!isSafeDir(target)) {
@@ -92,8 +140,44 @@ export function validateAgentPayload(payload: Record<string, any>): void {
   if (payload.source) throw new Error('memory refused the entry (400): An agent cannot name a source')
 }
 
+function migrateRootEntries(dir: string): void {
+  let rootNames: string[]
+  try { rootNames = readdirSync(dir).filter((name) => name.endsWith('.json')) } catch { return }
+  const runtimeSecret = process.env.MEMORY_RUNTIME_TOKEN
+  for (const name of rootNames) {
+    const file = join(dir, name)
+    const raw = readSafeFile(file)
+    if (raw === null) continue
+    try {
+      const parsed = JSON.parse(raw) as Pending
+      if (!parsed || typeof parsed.id !== 'string' || !parsed.payload || typeof parsed.payload !== 'object') continue
+      if (name !== `${encodeURIComponent(parsed.id)}.json`) continue
+      const targetRole: Pending['role'] = parsed.role === 'agent' ? 'agent' : 'runtime'
+      if (targetRole === 'agent') validateAgentPayload(parsed.payload)
+      const sub = roleDir(dir, targetRole)
+      ensureSecureDir(sub, dir)
+      const dest = pathFor(sub, parsed.id)
+      if (!existsSync(dest)) {
+        const migrated: Pending = {
+          ...parsed,
+          role: targetRole,
+          ...(targetRole === 'runtime' && runtimeSecret && !parsed.mac ? { mac: runtimeMac(parsed.id, parsed.payload, runtimeSecret) } : {}),
+        }
+        atomicWritePrivate(dest, migrated)
+      }
+      if (targetRole === 'runtime') {
+        localRuntimeDigests.set(`${resolve(dir)}:${parsed.id}`, hash(canonical(parsed.payload)))
+      }
+      rmSync(file, { force: true })
+    } catch {
+      // Leave malformed or unmigratable root files untouched.
+    }
+  }
+}
+
 export function pending(dir = spoolDir()): Pending[] {
   if (existsSync(dir) && !isSafeDir(dir)) return []
+  if (existsSync(dir)) migrateRootEntries(dir)
   const rows: Pending[] = []
   for (const dirRole of ROLES) {
     const sub = roleDir(dir, dirRole)
@@ -102,9 +186,10 @@ export function pending(dir = spoolDir()): Pending[] {
     try { names = readdirSync(sub).filter((name) => name.endsWith('.json')) } catch { continue }
     for (const name of names) {
       const file = join(sub, name)
-      if (!isSafeFile(file)) continue
+      const raw = readSafeFile(file)
+      if (raw === null) continue
       try {
-        const parsed = JSON.parse(readFileSync(file, 'utf8')) as Pending
+        const parsed = JSON.parse(raw) as Pending
         if (!parsed || typeof parsed.id !== 'string' || !parsed.payload || typeof parsed.payload !== 'object') continue
         if (name !== `${encodeURIComponent(parsed.id)}.json`) continue
         rows.push({ ...parsed, role: dirRole })
@@ -128,9 +213,10 @@ export function deadLetters(dir = spoolDir()): DeadLetter[] {
   const rows: DeadLetter[] = []
   for (const name of names) {
     const file = join(sub, name)
-    if (!isSafeFile(file)) continue
+    const raw = readSafeFile(file)
+    if (raw === null) continue
     try {
-      const parsed = JSON.parse(readFileSync(file, 'utf8')) as DeadLetter
+      const parsed = JSON.parse(raw) as DeadLetter
       if (parsed && typeof parsed.id === 'string') rows.push(parsed)
     } catch { /* ignore corrupt */ }
   }
@@ -149,14 +235,18 @@ export function enqueue(payload: Record<string, any>, role: Pending['role'], dir
   const sub = roleDir(dir, role)
   ensureSecureDir(sub, dir)
   const path = pathFor(sub, id)
-  if (existsSync(path)) {
-    if (!isSafeFile(path)) throw new Error(`Unsafe spool entry at ${path}`)
-    const old = JSON.parse(readFileSync(path, 'utf8')) as Pending
+  const existing = readExistingSafe(path)
+  if (existing.exists) {
+    if (existing.raw === null) throw new Error(`Unsafe spool entry at ${path}`)
+    const old = JSON.parse(existing.raw) as Pending
     if (canonical(old.payload) !== canonical(snapshot)) throw new Error(`memory entry ${id} has a different pending payload`)
+    if (role === 'runtime') localRuntimeDigests.set(`${resolve(dir)}:${id}`, hash(canonical(snapshot)))
     return { ...old, role }
   }
-  const row: Pending = { id, payload: snapshot, role, createdAt: Date.now() }
+  const secret = role === 'runtime' ? process.env.MEMORY_RUNTIME_TOKEN : undefined
+  const row: Pending = { id, payload: snapshot, role, createdAt: Date.now(), ...(secret ? { mac: runtimeMac(id, snapshot, secret) } : {}) }
   atomicWritePrivate(path, row)
+  if (role === 'runtime') localRuntimeDigests.set(`${resolve(dir)}:${id}`, hash(canonical(snapshot)))
   return row
 }
 
@@ -169,7 +259,10 @@ export function quarantine(row: Pending, reason: string, dir = spoolDir()): Dead
   return dead
 }
 
-export function delivered(row: Pending, dir = spoolDir()): void { rmSync(pathFor(roleDir(dir, row.role), row.id), { force: true }) }
+export function delivered(row: Pending, dir = spoolDir()): void {
+  rmSync(pathFor(roleDir(dir, row.role), row.id), { force: true })
+  if (row.role === 'runtime') localRuntimeDigests.delete(`${resolve(dir)}:${row.id}`)
+}
 export function blobRefs(payload: Record<string, any>): { name: string; sha256: string }[] {
   return (payload.blobs ?? []).map((blob: any) => ({ name: blob.name, sha256: hash(blob.text === undefined ? Buffer.from(blob.base64, 'base64') : blob.text) }))
 }

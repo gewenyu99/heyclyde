@@ -82,9 +82,9 @@ export function Quests(
         placeholderTextColor={c.foregroundMuted}
         value={search}
         onChangeText={setSearch}
-        style={{ color: c.foreground, backgroundColor: c.surface1, borderWidth: 1, borderColor: c.border, borderRadius: 6, padding: 10, minHeight: MIN_HIT_HEIGHT, fontSize: 14 }}
+        style={{ color: c.foreground, backgroundColor: c.surface1, borderWidth: 1, borderColor: paper.edge, borderRadius: 6, padding: 10, minHeight: MIN_HIT_HEIGHT, fontSize: 14 }}
       />
-      <View style={{ flexDirection: "row", gap: 12 }}>
+      <View accessibilityRole="tablist" style={{ flexDirection: "row", gap: 12 }}>
         {["Active", "Finished"].map((label, i) => (
           <Pressable
             accessibilityRole="tab"
@@ -154,7 +154,7 @@ export function Quests(
                   <Text style={{ color: paper["ink-2"], fontSize: 13, lineHeight: 20 }}>{q.brief}</Text>
                 </View>
                 <Text style={{ color: paper["ink-2"], fontSize: 13 }}>Done when {q.done_when}</Text>
-                {(!activeAgent || !eligible.has(q.id)) && (!q.state || q.state === "open") && (
+                {(!activeAgent || Boolean(chosen) || !eligible.has(q.id)) && (!q.state || q.state === "open") && (
                   <View style={{ gap: 4 }}>
                     <Text style={{ color: paper["ink-2"], fontSize: 12, fontWeight: "600" }}>Run in chat</Text>
                     {chats.data?.map((chat) => (
@@ -192,6 +192,8 @@ export function Quests(
                       ? "Withdrawn"
                       : !agent
                       ? "Choose a chat to start"
+                      : matches.isPending
+                      ? "Checking chat…"
                       : !eligible.has(q.id)
                       ? "Requires a matching agent"
                       : busy

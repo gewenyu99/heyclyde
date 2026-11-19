@@ -21,6 +21,14 @@ export function codexBin(): string {
   return APP_BINS.find((b) => existsSync(b)) ?? 'codex'
 }
 
+function ensureWritableRoots(home: string): string[] {
+  return ['tmp', 'memory-spool/agent', 'note-receipts', 'note-probes', 'recall-sessions'].map((rel) => {
+    const dir = join(home, rel)
+    try { mkdirSync(dir, { recursive: true, mode: 0o700 }) } catch { /* Best effort; codex reports unreadable paths. */ }
+    return dir
+  })
+}
+
 function tempFiles(schema?: object): Files {
   const dir = join(clydeHome(), 'tmp')
   mkdirSync(dir, { recursive: true })
@@ -52,7 +60,10 @@ export function codexArgs(input: TurnInput, files: Files, session?: string): str
   if (input.readOnly) settings.push('--ephemeral', '--ignore-user-config', '-c', 'approval_policy="never"')
   else settings.push(
     '--ignore-user-config',
-    '-c', `sandbox_workspace_write.writable_roots=${JSON.stringify([input.env.CLYDE_HOME || clydeHome(), ...gitDirsOutside(input.cwd)])}`,
+    '-c', `sandbox_workspace_write.writable_roots=${JSON.stringify([
+      ...ensureWritableRoots(input.env.CLYDE_HOME || clydeHome()),
+      ...gitDirsOutside(input.cwd),
+    ])}`,
     '-c', 'sandbox_workspace_write.network_access=true',
     '-c', 'features.network_proxy.enabled=true',
     '-c', 'features.network_proxy.domains={"127.0.0.1"="allow"}',

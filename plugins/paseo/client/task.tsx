@@ -6,8 +6,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactElement } from "react";
 import { Pressable, TextInput, ScrollView, Text, View } from "react-native";
 import { answerRpc,steerRpc, stopRpc, transcriptRpc, type AttemptView, type Phase, type Piece, type Status, type TaskView } from "../shared/clyde";
+import { palette } from "./brand.generated";
 import { ago, count, duration, edgePalette, Eyebrow, formatRpcError, hue, Ladder, MIN_HIT_HEIGHT, Pill, STATUS_LABEL, tones } from "./nodes";
 import { groupAttempts, parseInline, parseTranscriptBlocks, type TranscriptBlock } from "./transcript-format";
+import { scheme } from "./palette";
 
 // Everything on the 8px grid: a gutter for the row label, fixed piece cells, fixed gaps, one band per row.
 const U = 8;
@@ -76,7 +78,7 @@ function Cell({ theme, p, x, y, selected, onPress }: { theme: PluginTheme; p: Pi
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${p.id} ${p.title}`}
+      accessibilityLabel={`${p.id} ${p.title}, ${STATUS_LABEL[p.status]}`}
       accessibilityState={{ selected }}
       onPress={onPress}
       style={{
@@ -174,14 +176,14 @@ function AttemptRow({ theme, a, compact = false }: { theme: PluginTheme; a: Atte
   const toneHue = hue(tone, theme);
   const showDetails = open || !compact;
   return (
-    <View style={{ borderLeftWidth: 2, borderLeftColor: toneHue.ink, paddingLeft: 10, paddingVertical: 4, marginTop: 4, opacity: a.interrupted ? 0.55 : 1 }}>
+    <View style={{ borderLeftWidth: 2, borderLeftColor: toneHue.ink, paddingLeft: 10, paddingVertical: 4, marginTop: 4 }}>
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
         onPress={() => setOpen(!open)}
         style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8, minHeight: MIN_HIT_HEIGHT }}
       >
-        <Text style={{ color: theme.colors.foreground, fontSize: 12, flexShrink: 1 }}>
+        <Text style={{ color: a.interrupted ? theme.colors.foregroundMuted : theme.colors.foreground, fontSize: 12, flexShrink: 1 }}>
           <Text style={{ fontWeight: "700" }}>#{a.n}</Text>  {a.rung ?? ""}  ·  {duration(a.startedAt, a.endedAt)}
         </Text>
         <Text style={{ color: toneHue.ink, fontSize: 12, fontWeight: "700" }}>{a.outcome}</Text>
@@ -228,7 +230,7 @@ function PhaseAttempts({ theme, tries }: { theme: PluginTheme; tries: AttemptVie
               borderRadius: 6,
               backgroundColor: theme.colors.surface2,
               borderWidth: 1,
-              borderColor: theme.colors.border,
+              borderColor: palette[scheme(theme)].edge,
             }}
           >
             <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "600" }}>
@@ -437,7 +439,7 @@ function Transcript({ theme, threadId, tries = [] }: { theme: PluginTheme; threa
                   paddingHorizontal: 10,
                   borderRadius: 6,
                   borderWidth: 1,
-                  borderColor: selected ? theme.colors.accent : theme.colors.border,
+                  borderColor: selected ? theme.colors.accent : palette[scheme(theme)].edge,
                   backgroundColor: selected ? theme.colors.surface1 : "transparent",
                 }}
               >
@@ -500,11 +502,12 @@ function Steering({id,theme}:{id:string;theme:PluginTheme}) {
       accessibilityLabel="Steer this run"
       placeholder="Steer this run"
       placeholderTextColor={theme.colors.foregroundMuted}
+      onSubmitEditing={() => { if (note.trim() && !busy) void submit(); }}
       style={{
         color:theme.colors.foreground,
         backgroundColor:theme.colors.surface1,
         borderWidth:1,
-        borderColor:theme.colors.border,
+        borderColor:palette[scheme(theme)].edge,
         borderRadius:6,
         paddingHorizontal:10,
         paddingVertical:8,
@@ -549,7 +552,7 @@ function StopButton({ theme, view }: { theme: PluginTheme; view: TaskView }) {
   return (
     <View style={{ alignItems: "flex-end" }}>
       <Pressable accessibilityRole="button" onPress={press} style={{
-        borderWidth: 1, borderColor: armed ? t.red.ink : theme.colors.border, backgroundColor: armed ? t.red.soft : "transparent",
+        borderWidth: 1, borderColor: armed ? t.red.ink : palette[scheme(theme)].edge, backgroundColor: armed ? t.red.soft : "transparent",
         borderRadius: 6, minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingHorizontal: 12,
       }}>
         <Text style={{ color: armed ? t.red.ink : theme.colors.foregroundMuted, fontSize: 12, fontWeight: armed ? "700" : "400" }}>{armed ? "Press again to stop" : "Stop"}</Text>
@@ -563,6 +566,7 @@ export function TaskScreen({ theme, view, back, openAgent }: { theme: PluginThem
   const answer=useRpc(answerRpc), cache=useQueryClient();
   const [reply,setReply]=useState(""),[retryError,setRetryError]=useState(""),[retrying,setRetrying]=useState(false);
   const t = tones(theme);
+  const edge = palette[scheme(theme)].edge;
   async function sendAnswer(text: string, allowFullAccess?: boolean){
     setRetrying(true);
     try{const r=await answer({kind:view.kind,id:view.id,text,askKey:view.askKey,...(allowFullAccess?{allowAntigravityFullAccess:true}:{})});if(!r.ok)throw Error(r.error);setReply("");setRetryError("");await cache.invalidateQueries({queryKey:["clyde"]});}
@@ -586,7 +590,7 @@ export function TaskScreen({ theme, view, back, openAgent }: { theme: PluginThem
         <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
           <RemoveTask theme={theme} kind={view.kind} id={view.id} name={view.name} active={["running","asking","sent-back"].includes(view.status)} onRemoved={back}/>
           {view.status === "running" || view.status === "asking" ? <StopButton theme={theme} view={view} /> : null}
-          <Pressable accessibilityRole="button" onPress={back} style={{ borderWidth: 1, borderColor: theme.colors.border, borderRadius: 6, minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingHorizontal: 12 }}>
+          <Pressable accessibilityRole="button" onPress={back} style={{ borderWidth: 1, borderColor: edge, borderRadius: 6, minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingHorizontal: 12 }}>
             <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "600" }}>Home</Text>
           </Pressable>
         </View>
@@ -625,11 +629,12 @@ export function TaskScreen({ theme, view, back, openAgent }: { theme: PluginThem
                   placeholderTextColor={theme.colors.foregroundMuted}
                   value={reply}
                   onChangeText={setReply}
+                  onSubmitEditing={() => { if (reply.trim() && !retrying) void sendAnswer(reply.trim()); }}
                   style={{
                     color: theme.colors.foreground,
                     backgroundColor: theme.colors.surface1,
                     borderWidth: 1,
-                    borderColor: theme.colors.border,
+                    borderColor: edge,
                     borderRadius: 6,
                     paddingHorizontal: 10,
                     paddingVertical: 8,
@@ -649,7 +654,7 @@ export function TaskScreen({ theme, view, back, openAgent }: { theme: PluginThem
                         style={{
                           backgroundColor: approveDisabled ? theme.colors.surface2 : theme.colors.accent,
                           borderWidth: approveDisabled ? 1 : 0,
-                          borderColor: theme.colors.border,
+                          borderColor: edge,
                           borderRadius: 6,
                           paddingHorizontal: 14,
                           minHeight: MIN_HIT_HEIGHT,
@@ -672,7 +677,7 @@ export function TaskScreen({ theme, view, back, openAgent }: { theme: PluginThem
                         style={{
                           backgroundColor: primary && !replyDisabled ? theme.colors.accent : theme.colors.surface2,
                           borderWidth: primary && !replyDisabled ? 0 : 1,
-                          borderColor: theme.colors.border,
+                          borderColor: edge,
                           borderRadius: 6,
                           paddingHorizontal: 14,
                           minHeight: MIN_HIT_HEIGHT,

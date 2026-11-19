@@ -41,6 +41,12 @@ export async function runStage(d: Driver, spec: StageSpec): Promise<StageResult>
   const workers = routed ? [] : ladder(rec.role)
   let notes = rec.attempts.at(-1)?.ok === false ? notesOf(rec.attempts.at(-1)!) : ''
   for (;;) {
+    const maxAttempts = maxStageAttempts()
+    if (rec.attempts.length >= maxAttempts) {
+      Object.assign(rec, { status: 'failed', endedAt: now() })
+      d.save()
+      throw new Error(`Stage ${spec.name} exceeded the maximum of ${maxAttempts} attempts`)
+    }
     const pending = rec.status === 'asking' ? rec.attempts.at(-1) : undefined
     if (pending?.acceptedBlock || pending?.limit || pending?.providerError) {
       const kind = pending.acceptedBlock ? 'block' : pending.providerError ? 'provider' : 'limit'
@@ -60,12 +66,6 @@ export async function runStage(d: Driver, spec: StageSpec): Promise<StageResult>
         d.save()
       }
       notes = [notes, `Wen answered the ${kind} ask: ${answer}`].filter(Boolean).join('\n\n')
-    }
-    const maxAttempts = maxStageAttempts()
-    if (rec.attempts.length >= maxAttempts) {
-      Object.assign(rec, { status: 'failed', endedAt: now() })
-      d.save()
-      throw new Error(`Stage ${spec.name} exceeded the maximum of ${maxAttempts} attempts`)
     }
     rec.round += 1
     rec.status = 'running'
@@ -89,15 +89,17 @@ export async function runStage(d: Driver, spec: StageSpec): Promise<StageResult>
       continue
     }
     if (out.acceptedBlock || out.limit || out.providerError) {
-      const last = rec.attempts.at(-1)!
-      if(out.providerError)last.providerError=out.providerError
-      if (out.acceptedBlock) last.acceptedBlock = out.acceptedBlock
-      if (out.limit) {
-        last.limit = out.limit
-        d.emit('run.limit', `Run ${run.id} stage ${spec.name} hit a backend limit: ${firstLine(out.limit)}`, { stage: spec.name, attempt: last.n, error: out.limit })
+      if (rec.attempts.length < maxAttempts) {
+        const last = rec.attempts.at(-1)!
+        if(out.providerError)last.providerError=out.providerError
+        if (out.acceptedBlock) last.acceptedBlock = out.acceptedBlock
+        if (out.limit) {
+          last.limit = out.limit
+          d.emit('run.limit', `Run ${run.id} stage ${spec.name} hit a backend limit: ${firstLine(out.limit)}`, { stage: spec.name, attempt: last.n, error: out.limit })
+        }
+        rec.status = 'asking'
+        d.save()
       }
-      rec.status = 'asking'
-      d.save()
     }
   }
 }

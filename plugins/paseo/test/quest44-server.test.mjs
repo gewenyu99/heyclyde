@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import contribute from "../index.server.ts";
 import { activity } from "../server/activity.ts";
 import { agentCall } from "../server/connection.ts";
@@ -122,7 +123,7 @@ test("residents skip rules on background/child agents, filter turn.after by turn
   });
   t.after(() => plugin.close());
 
-  // 1. agent.create.before skips rules on background / child / labeled helpers.
+  // 1. agent.create.before skips rules on background / child / labeled / companion-env helpers.
   for (const cfg of [
     { internal: true, systemPrompt: "sys" },
     { background: true, systemPrompt: "sys" },
@@ -131,6 +132,11 @@ test("residents skip rules on background/child agents, filter turn.after by turn
   ]) {
     const out = await hooks.get("agent.create.before")({ request: { config: cfg, metadata: {} } });
     assert.equal(out.config.systemPrompt, "sys", `must not inject rules into ${JSON.stringify(cfg)}`);
+    assert.equal(out.metadata["clyde.internal"], true);
+  }
+  for (const env of [{ CLYDE_THREAD_ID: "th-1" }, { CLYDE_RUN_ID: "run-1" }]) {
+    const out = await hooks.get("agent.create.before")({ request: { config: { systemPrompt: "sys" }, env, metadata: {} } });
+    assert.equal(out.config.systemPrompt, "sys", `must not inject rules into ${JSON.stringify(env)}`);
     assert.equal(out.metadata["clyde.internal"], true);
   }
   const mainOut = await hooks.get("agent.create.before")({ request: { config: { systemPrompt: "sys" }, metadata: {} } });
@@ -174,8 +180,8 @@ test("residents skip rules on background/child agents, filter turn.after by turn
             append: async (x) => timelineAppends.push(x),
             refetch: async () => ({
               entries: [
-                { turnId: "t-old", item: { type: "tool_call", status: "completed", name: "mcp__clyde__feedback", detail: { args: { retrieval_id: "r-old", entries: [{ entry_id: "e1", verdict: "used" }] } } } },
-                { turnId: "t-cur", item: { type: "tool_call", status: "completed", name: "mcp__clyde__feedback", detail: { type: "mcp", toolName: "feedback", input: { retrieval_id: "r-cur", entries: [{ entry_id: "e2", verdict: "used" }] } } } },
+                { turnId: "t-old", item: { type: "tool_call", status: "completed", name: "mcp__clyde__feedback", detail: { type: "unknown", input: { retrieval_id: "r-old", entries: [{ entry_id: "e1", verdict: "used" }] }, output: "Logged." } } },
+                { turnId: "t-cur", item: { type: "tool_call", status: "completed", name: "mcp__clyde__feedback", detail: { type: "unknown", input: { retrieval_id: "r-cur", entries: [{ entry_id: "e2", verdict: "used" }] }, output: "Logged." } } },
               ],
             }),
           },
@@ -184,9 +190,14 @@ test("residents skip rules on background/child agents, filter turn.after by turn
     },
   });
   assert.equal(timelineAppends.some((x) => x.id === "recall-r-old"), false);
+  const recallUsed = JSON.parse(readFileSync(join(dir, "recall-used.json"), "utf8"));
+  const usedValues = Object.values(recallUsed).flat();
+  assert.ok(usedValues.includes("e2"), "turn t-cur note usage recorded in recall-used.json");
+  assert.ok(!usedValues.includes("e1"), "earlier turn t-old usage must not be recorded");
 
-  // 3. Repeated launch failures back off and abandon quest at 3 tries without wedging offer or pausing permanently.
+  // 3. Repeated launch failures back off, abandon quest at 3 tries, and honor failedQuests high-priority cooldown.
   const abandoned = [];
+  const claimed = [];
   let peeks = 0;
   writeFileSync(join(dir, "residents.json"), JSON.stringify({
     res1: {
@@ -225,10 +236,16 @@ test("residents skip rules on background/child agents, filter turn.after by turn
     }
     const tool = body.params?.name;
     if (tool === "dispatch_quest") {
-      peeks++;
-      return res.end(JSON.stringify({
-        result: { content: [{ text: JSON.stringify(body.params.arguments.action === "peek" && abandoned.length === 0 ? { id: 99, title: "Fail", brief: "b", done_when: "d", priority: "high", assignment: "assign-99", run: "r-assign-99" } : null) }] },
-      }));
+      const action = body.params.arguments.action;
+      if (action === "peek") {
+        peeks++;
+        const offer = abandoned.length === 0
+          ? { id: 99, title: "Fail", brief: "b", done_when: "d", priority: "high", assignment: "assign-99", run: "r-assign-99" }
+          : { id: 99, title: "Fail", brief: "b", done_when: "d", priority: "high", assignment: null, run: null };
+        return res.end(JSON.stringify({ result: { content: [{ text: JSON.stringify(offer) }] } }));
+      }
+      if (action === "claim") claimed.push(body.params.arguments);
+      return res.end(JSON.stringify({ result: { content: [{ text: "null" }] } }));
     }
     if (tool === "abandon_quest") abandoned.push(body.params.arguments);
     res.end(JSON.stringify({ result: { content: [{ text: "ok" }] } }));
@@ -251,7 +268,7 @@ test("residents skip rules on background/child agents, filter turn.after by turn
   t.mock.timers.enable({ apis: ["Date"] });
   try {
     await rpc2.get("clyde.resident")({ id: "res1", action: "resume" }, { paseo: mockPaseo });
-    const after1 = JSON.parse(await import("node:fs").then((fs) => fs.readFileSync(join(dir, "residents.json"), "utf8")));
+    const after1 = JSON.parse(readFileSync(join(dir, "residents.json"), "utf8"));
     assert.equal(after1.res1.launchFailures, 1);
     const peeksBeforeHold = peeks;
     await rpc2.get("clyde.resident")({ id: "res1", action: "resume" }, { paseo: mockPaseo });
@@ -259,20 +276,32 @@ test("residents skip rules on background/child agents, filter turn.after by turn
 
     t.mock.timers.tick(10_000);
     await rpc2.get("clyde.resident")({ id: "res1", action: "resume" }, { paseo: mockPaseo });
-    const after2 = JSON.parse(await import("node:fs").then((fs) => fs.readFileSync(join(dir, "residents.json"), "utf8")));
+    const after2 = JSON.parse(readFileSync(join(dir, "residents.json"), "utf8"));
     assert.equal(after2.res1.launchFailures, 2);
 
     t.mock.timers.tick(20_000);
     await rpc2.get("clyde.resident")({ id: "res1", action: "resume" }, { paseo: mockPaseo });
+
+    const saved = JSON.parse(readFileSync(join(dir, "residents.json"), "utf8"));
+    assert.equal(saved.res1.offer, undefined, "failed offer cleared after abandon");
+    assert.equal(saved.res1.paused, false, "transient launch errors do not permanently pause resident");
+    assert.ok(saved.res1.failedQuests["99"] > Date.now(), "failedQuests cooldown set for abandoned quest");
+
+    t.mock.timers.tick(11_000);
+    await rpc2.get("clyde.resident")({ id: "res1", action: "resume" }, { paseo: mockPaseo });
+    assert.equal(claimed.length, 0, "failedQuests blocks reclaiming high-priority quest during cooldown");
   } finally {
     t.mock.timers.reset();
   }
   assert.equal(abandoned.length, 1);
   assert.match(abandoned[0].reason, /Repeated launch failure/);
-  const saved = JSON.parse(await import("node:fs").then((fs) => fs.readFileSync(join(dir, "residents.json"), "utf8")));
-  assert.equal(saved.res1.offer, undefined, "failed offer cleared after abandon");
-  assert.equal(saved.res1.paused, false, "transient launch errors do not permanently pause resident");
   assert.ok(peeks >= 3);
+
+  // Optional handoff returns empty string when recall fails for background context lookups.
+  const brokenUrl = `http://127.0.0.1:${badDaemon.address().port}`;
+  writeFileSync(join(dir, "url"), brokenUrl);
+  const optNotes = await plugin2.context("res1", "check optional handoff", mockPaseo);
+  assert.equal(optNotes, "");
 });
 
 test("activity skips duplicate remember on resident-managed runs and passes project_slug on manual quests", async (t) => {
@@ -576,4 +605,197 @@ test("launchRpc picks the newest chat by default, honors explicit agentId, and a
   assert.equal(createdAgents[1].cwd, dir);
   assert.equal(createdAgents[1].config.provider, "claude/claude-sonnet-4-5");
   assert.equal(posted.at(-1).paseoParentId, "direct-created-2");
+});
+
+test("plugin sources contain zero @getpaseo/client imports and CJS resolveCompanionBin falls back to PASEO_HOME/config.json", async (t) => {
+  const dir = makeEnv(t);
+  const pluginRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const walk = (target) => {
+    const out = [];
+    for (const entry of readdirSync(target)) {
+      const full = join(target, entry);
+      if (statSync(full).isDirectory()) out.push(...walk(full));
+      else if (/\.(?:ts|tsx|js|mjs|cjs)$/.test(entry)) out.push(full);
+    }
+    return out;
+  };
+  const checkedFiles = [
+    join(pluginRoot, "index.server.ts"),
+    join(pluginRoot, "index.client.tsx"),
+    ...walk(join(pluginRoot, "server")),
+    ...walk(join(pluginRoot, "client")),
+    ...walk(join(pluginRoot, "shared")),
+  ];
+  for (const file of checkedFiles) {
+    assert.equal(readFileSync(file, "utf8").includes("@getpaseo/client"), false, `unexpected @getpaseo/client in ${file}`);
+  }
+
+  // Simulate CJS bundle where import.meta.url is undefined and verify PASEO_HOME/config.json directory fallback.
+  const cjsCopy = join(dir, "daemon-cjs.ts");
+  const daemonSrc = readFileSync(join(pluginRoot, "server", "daemon.ts"), "utf8").replace("import.meta?.url", "undefined");
+  writeFileSync(cjsCopy, daemonSrc);
+  writeFileSync(join(dir, "config.json"), JSON.stringify({ plugins: { clyde: { source: "directory", path: pluginRoot } } }));
+  const { resolveCompanionBin: resolveCjs } = await import(`${cjsCopy}?t=${Date.now()}`);
+  assert.equal(resolveCjs(), join(pluginRoot, "runtime", "bin", "clyde.ts"));
+});
+
+test("connection infers personal context when caller omits explicit context", async (t) => {
+  const dir = makeEnv(t);
+  const registerCalls = [];
+  const server = createServer(async (req, res) => {
+    let raw = "";
+    for await (const chunk of req) raw += chunk;
+    const body = raw ? JSON.parse(raw) : {};
+    res.setHeader("content-type", "application/json");
+    if (body.method === "initialize") {
+      res.setHeader("mcp-session-id", "sess-personal");
+      return res.end(JSON.stringify({ result: {} }));
+    }
+    if (body.params?.name === "register_agent") registerCalls.push(body.params.arguments);
+    res.end(JSON.stringify({ result: { content: [{ text: "ok" }] } }));
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  t.after(() => new Promise((r) => server.close(r)));
+  writeFileSync(join(dir, "url"), `http://127.0.0.1:${server.address().port}`);
+  writeFileSync(join(dir, "token"), "tok-personal");
+
+  await agentCall({ id: "agent-personal", project: "notes", role: "Personal journal", cwd: dir, provider: "claude" }, "check_messages", {});
+  assert.equal(registerCalls.length, 1);
+  assert.equal(registerCalls[0].context, "personal");
+});
+
+test("launchRpc waits for loading providers, uses listModels fallback, requires selectable models, and scopes workspaceId", async (t) => {
+  const dir = makeEnv(t);
+  const worktreeDir = join(dir, "wt-2");
+  mkdirSync(worktreeDir, { recursive: true });
+  const posted = [];
+  const created = [];
+  const server = createServer(async (req, res) => {
+    let raw = "";
+    for await (const chunk of req) raw += chunk;
+    const body = raw ? JSON.parse(raw) : {};
+    res.setHeader("content-type", "application/json");
+    if (req.url === "/runs" && req.method === "POST") {
+      posted.push(body);
+      return res.end(JSON.stringify({ id: "run-" + body.assignment, repo: body.cwd }));
+    }
+    if (req.url?.startsWith("/runs/") && req.method === "GET") {
+      res.statusCode = 404;
+      return res.end("{}");
+    }
+    if (req.url === "/mcp") {
+      if (body.method === "initialize") { res.setHeader("mcp-session-id", "s-pick"); return res.end("{}"); }
+      return res.end(JSON.stringify({ result: { content: [{ text: "retrieval ret-p" }], _meta: { "clyde/card": { retrieval_id: "ret-p", items: [] } } } }));
+    }
+    res.end("{}");
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  t.after(() => new Promise((r) => server.close(r)));
+  const port = server.address().port;
+  writeFileSync(join(dir, "daemon.json"), JSON.stringify({ port, token: "d" }));
+  writeFileSync(join(dir, "url"), `http://127.0.0.1:${port}`);
+  writeFileSync(join(dir, "token"), "tok");
+
+  const rpc = new Map();
+  const teardown = contribute({ handle: (c, fn) => rpc.set(c.name, fn), addHook: () => {} });
+  t.after(() => teardown());
+  const launch = rpc.get("clyde.launch");
+
+  let waited = 0;
+  const listedCalls = [];
+  const agentsById = new Map([
+    ["chat-ws1-only", { id: "chat-ws1-only", title: "WS1", provider: "claude", workspaceId: "ws-1", cwd: dir, updatedAt: "2026-11-18T05:00:00Z", labels: {}, metadata: {} }],
+  ]);
+  const paseo = {
+    projects: { list: async () => ({ projects: [{ projectId: "p1", projectDisplayName: "HeyClyde", projectRootPath: dir, projectKind: "git" }] }) },
+    workspaces: {
+      list: async () => ({
+        entries: [
+          { id: "ws-1", projectId: "p1", workspaceDirectory: dir },
+          { id: "ws-2", projectId: "p1", workspaceDirectory: worktreeDir },
+        ],
+      }),
+      ref: (wsId) => ({
+        agents: {
+          create: async (opts) => {
+            const id = "chat-ws-" + (created.length + 1);
+            created.push({ wsId, ...opts });
+            agentsById.set(id, { id, title: opts.title, provider: "claude", workspaceId: wsId, cwd: worktreeDir, labels: {}, metadata: {} });
+            return { id };
+          },
+        },
+      }),
+    },
+    providers: {
+      snapshot: async () => ({
+        entries: [{ provider: "claude", status: "loading", enabled: true }],
+      }),
+      waitForReady: async ({ cwd }) => {
+        waited++;
+        return {
+          entries: [{ provider: "claude", status: "ready", enabled: true, models: [{ id: "deprecated", isSelectable: false }], cwd }],
+        };
+      },
+      listModels: async (provider, opts) => {
+        listedCalls.push({ provider, cwd: opts?.cwd });
+        return { models: [{ id: "hidden-m", isSelectable: false }, { id: "claude-opus-4", isSelectable: true }] };
+      },
+    },
+    agents: {
+      list: async () => ({
+        entries: [...agentsById.values()].map((agent) => ({ agent })),
+        pageInfo: { hasMore: false },
+      }),
+      ref: (id) => ({ refresh: async () => ({ agent: agentsById.get(id) ?? null }), current: () => agentsById.get(id) ?? null, timeline: { append: async () => {} } }),
+    },
+  };
+
+  await launch({
+    project: "p1",
+    workspaceId: "ws-2",
+    prompt: "Check scoped workspace",
+    flow: "task",
+    worker: "auto",
+    requestId: "66666666-6666-4666-8666-666666666666",
+  }, { paseo });
+
+  assert.equal(waited, 1, "waits via waitForReady when provider status is loading");
+  assert.deepEqual(listedCalls, [{ provider: "claude", cwd: worktreeDir }]);
+  assert.equal(created.length, 1);
+  assert.equal(created[0].wsId, "ws-2");
+  assert.equal(created[0].config.provider, "claude/claude-opus-4");
+  assert.equal(posted.at(-1).cwd, worktreeDir);
+
+  await assert.rejects(
+    launch({
+      project: "p1",
+      workspaceId: "ws-other",
+      prompt: "Wrong ws",
+      flow: "task",
+      worker: "auto",
+      requestId: "77777777-7777-4777-8777-777777777777",
+    }, { paseo }),
+    /Workspace belongs to another project/,
+  );
+
+  // When providers have no selectable models anywhere, launch refuses cleanly instead of passing a bare provider string.
+  const noSelectablePaseo = {
+    ...paseo,
+    providers: {
+      snapshot: async () => ({ entries: [{ provider: "claude", status: "ready", enabled: true, models: [{ id: "off", isSelectable: false }] }] }),
+      listModels: async () => ({ models: [{ id: "off", isSelectable: false }] }),
+    },
+  };
+  await assert.rejects(
+    launch({
+      project: "p1",
+      workspaceId: "ws-2",
+      newChat: true,
+      prompt: "No selectable model",
+      flow: "task",
+      worker: "auto",
+      requestId: "88888888-8888-4888-8888-888888888888",
+    }, { paseo: noSelectablePaseo }),
+    /Could not open a project chat automatically/,
+  );
 });

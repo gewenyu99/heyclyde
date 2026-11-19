@@ -108,8 +108,8 @@ export const polar: Provider = {
   parse,
   async cancel(subscriptionId) {
     const r = await api("DELETE", `/v1/subscriptions/${encodeURIComponent(subscriptionId)}`);
-    // 403 AlreadyCanceledSubscription: it's over already, which is what was asked.
-    if (!r.ok && !(r.status === 403 && /cancel/i.test(JSON.stringify(r.body)))) {
+    // 404 ResourceNotFound or 403 AlreadyCanceledSubscription: it's gone or already over.
+    if (!r.ok && r.status !== 404 && !(r.status === 403 && /cancel/i.test(JSON.stringify(r.body)))) {
       throw new ProviderError(`Polar refused to revoke ${subscriptionId} (${r.status})`);
     }
   },

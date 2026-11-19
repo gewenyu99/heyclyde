@@ -597,6 +597,7 @@ async function freeTierFull(user: { id?: string; email?: string } | undefined) {
  * store reviewers' review@heyclyde.me. Counted with the sign-up attempts, so the hourly caps hold guessing down. Works with
  * sign-up closed, since the account is on the allowlist. */
 async function passwordSignIn(p: Page, req: Request, id: string, form: Form) {
+  if (geoBlocked(geoOf(req, await viaProxy(req)))) return page(p, "blocked", REFUSAL, 451);
   const email = form.email.trim().toLowerCase();
   if (!EMAIL.test(email) || form.password.length > 200) return page(p, "error", "that isn't an email and password.", 400);
   const client = await clientKey(req);
