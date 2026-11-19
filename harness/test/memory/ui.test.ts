@@ -205,3 +205,11 @@ test('R67 cards follow the host theme and fit chat width', { skip: NO_CHROME }, 
   }
   assert.equal(checked, 56)
 })
+
+test('an empty recall offers no feedback action', {skip:NO_CHROME},()=>{
+  const empty=structuredClone(FIXTURES.recall)
+  empty._meta['clyde/card'].items=[]
+  const report=run([{id:'empty',card:'recall',html:cardHtml('recall'),theme:'dark',result:empty,width:375}])
+  assert.match(report.frames.empty.text,/Nothing in Clyde matches/)
+  assert.ok(!report.frames.empty.buttons.some(label=>/That helped|That didn/.test(label)))
+})

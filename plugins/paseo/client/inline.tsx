@@ -5,28 +5,32 @@ import { RecallSheet } from "./recall-sheet";
 import { clydeTheme, Lockup } from "./brand";
 import { useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
-import { type Activity, feedbackRpc, ratingRpc, respondRpc } from "../shared/clyde";
+import { type Activity, feedbackRpc, ratingRpc, readNoteRpc, respondRpc } from "../shared/clyde";
 
 export function InlineActivity({ agentId, item, theme }: PluginTimelineItemProps<Activity>) {
   const data = item.data, c = clydeTheme(theme).colors, feedback = useRpc(feedbackRpc), respond = useRpc(respondRpc);
   const [text, setText] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const readNote = useRpc(readNoteRpc);
   const rating = useRpc(ratingRpc), cache = useQueryClient();
   const rid = data.kind === "recall" ? data.retrieval : "";
   const key = ["clyde", "rating", agentId, rid];
   const local = useQuery({
     queryKey: key,
     queryFn: () => rating({ agent: agentId, retrieval: rid }),
-    enabled: !!rid,
+    enabled: data.kind === "recall" && data.notes.length > 0,
     staleTime: 60000,
-    refetchInterval: (q) => q.state.data?.pendingSync ? 60000 : false,
+    refetchInterval: (q) =>
+      q.state.data?.pendingSync ? 60000 : data.kind === "recall" && data.native && !q.state.data?.used ? 15000 : false,
   });
+  if (data.kind === "recall" && !data.notes.length && !data.requested) return null;
   if (data.kind === "recall") {
     return (
       <RecallSheet
+        onOpen={(id) => readNote({ agent: agentId, id }).then((r) => r.text)}
         theme={theme}
-        packet={{ ...data, ...(local.data?.choice ? local.data : {}) }}
+        packet={{ ...data, ...(local.data?.choice ? local.data : {}), used: data.used ?? local.data?.used }}
         onVote={async (verdict) => {
           const result = await feedback({ agent: agentId, retrieval: rid, verdict, receipt: data.receipt });
           cache.setQueryData(key, { choice: verdict, pendingSync: result.pendingSync });

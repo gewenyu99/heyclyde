@@ -13,6 +13,8 @@ button,input,textarea{font:inherit;color:inherit}
 .c-toggle{height:24px;padding:0 8px;font-size:12px;gap:4px}
 .c-toggle[aria-expanded=true] .c-i,.c-fold .c-i{transform:rotate(180deg)}
 .c-desk{display:grid;gap:6px;padding:8px var(--cl-space-3);background:var(--cl-paper-0)}
+.c-recall-scroll{max-height:420px;overflow-y:auto;overscroll-behavior-y:contain;scrollbar-gutter:stable}
+@media (max-width:460px){.c-recall-scroll{max-height:340px}}
 .c-desk>.cl-card:not(.cl-memory){padding:0}
 .cl-memory.is-compact{padding:8px 12px;gap:0}
 .cl-memory.is-compact:hover,.cl-quest.is-compact:hover{border-color:var(--cl-rule-strong)}

@@ -127,9 +127,9 @@ export const launchRpc = defineRpc({
   output:z.object({id:z.string()}),
 });
 
-export const noteSchema = z.object({id:z.string(),title:z.string(),body:z.string().optional(),provenance:z.string().nullish(),kind:z.string().nullish()});
+import { noteSchema,badgeSchema } from "./recall.ts";
 export const activitySchema = z.discriminatedUnion("kind",[
-  z.object({kind:z.literal("recall"),retrieval:z.string(),notes:z.array(noteSchema),rated:z.boolean(),native:z.boolean().optional(),query:z.string().optional(),receipt:z.string().optional(),choice:z.enum(["helpful","nothing_useful"]).optional(),pendingSync:z.boolean().optional()}),
+  z.object({kind:z.literal("recall"),retrieval:z.string(),badge:badgeSchema.nullish(),page:z.string().optional(),degraded:z.string().nullish(),requested:z.boolean().optional(),used:z.array(z.string()).optional(),notes:z.array(noteSchema),rated:z.boolean(),native:z.boolean().optional(),query:z.string().optional(),receipt:z.string().optional(),choice:z.enum(["helpful","nothing_useful"]).optional(),pendingSync:z.boolean().optional()}),
   z.object({kind:z.literal("notice"),text:z.string()}),
   z.object({kind:z.literal("saved"),title:z.string()}),
   z.object({kind:z.literal("approval"),run:z.string(),key:z.string(),title:z.string(),question:z.string(),approve:z.boolean(),answer:z.string().optional()}),
@@ -144,8 +144,10 @@ export const spawnQuestRpc = defineRpc({name:"clyde.spawn-quest",input:z.object(
 
 export const recallRpc=defineRpc({name:"clyde.recall",input:z.object({agent:z.string(),query:z.string().trim().min(1).max(500)}),output:z.object({retrieval:z.string(),notes:z.number()})});
 
-export const ratingRpc=defineRpc({name:"clyde.recall-rating",input:z.object({agent:z.string(),retrieval:z.string()}),output:z.object({choice:z.enum(["helpful","nothing_useful"]).optional(),pendingSync:z.boolean()})});
+export const ratingRpc=defineRpc({name:"clyde.recall-rating",input:z.object({agent:z.string(),retrieval:z.string()}),output:z.object({used:z.array(z.string()).optional(),choice:z.enum(["helpful","nothing_useful"]).optional(),pendingSync:z.boolean()})});
 
 export const removeRpc=defineRpc({name:"clyde.remove",input:z.object({kind:z.enum(["run","thread"]),id:z.string().min(1)}),output:z.object({ok:z.boolean()})});
 
 export const sharedBoardRpc=defineRpc({name:"clyde.shared-quests",input:z.object({}),output:z.object({quests:z.array(boardQuest),legacy:z.boolean()})});
+
+export const readNoteRpc=defineRpc({name:"clyde.read-note",input:z.object({agent:z.string(),id:z.string().min(1)}),output:z.object({text:z.string()})});

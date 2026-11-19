@@ -7,7 +7,7 @@ import { defineAgentTool, type PluginServerContext } from "@getpaseo/plugin/serv
 import type { PaseoAgent, PaseoApi } from "@getpaseo/client";
 import { z } from "zod";
 import { call, readJson } from "./daemon.ts";
-import {needsRecall} from "../shared/recall.ts";
+import {nativeFeedback,needsRecall} from "../shared/recall.ts";
 import {activity} from "./activity.ts";
 import { agentCall,agentReply } from "./connection.ts";
 import { type QuestOffer, type Resident, residentRpc, rosterRpc, recallRpc } from "../shared/clyde.ts";
@@ -135,7 +135,7 @@ export function residents(server: PluginServerContext) {
   }
   server.handle(recallRpc,async({agent,query},{paseo})=>{
     api=paseo;
-    const result=await chat.recall(await chatRow(agent,paseo),query,paseo);
+    const result=await chat.recall(await chatRow(agent,paseo),query,paseo,true);
     return {retrieval:result.retrieval_id,notes:result.items.length};
   });
   const memory = [
@@ -412,6 +412,15 @@ export function residents(server: PluginServerContext) {
     api = paseo; chat.bind(paseo);
     const row = rows[agent.id];
     if (!row || !isProjectChat(agent)) return;
+    // Native MCP sessions can report usage outside of the plugin tool bridge.
+    try{
+      const page=await paseo.agents.ref(agent.id).timeline.refetch({direction:"tail",limit:1,wholeTurns:true});
+      for(const {item} of page.entries){
+        if(item.type!=="tool_call"||item.status!=="completed")continue;
+        const feedback=nativeFeedback(item.name,item.detail);
+        if(feedback)await chat.noteUsage(agent.id,feedback.args,feedback.text,paseo);
+      }
+    }catch{/* The native session may already have closed. */}
     if (/^[a-zA-Z0-9_-]+$/.test(agent.id)) {
       const config = process.env.CLYDE_CONFIG_DIR || join(homedir(), ".config/memory");
       try {

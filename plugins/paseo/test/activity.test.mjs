@@ -97,6 +97,8 @@ test("recall, user feedback and approvals stay in the origin chat; double spawn 
     );
     assert.equal(timeline[0].id, "owner");
     assert.equal(timeline[0].item.data.notes[0].title, "A decision");
+    await act.memory("owner","feedback",null,api,{retrieval_id:"retrieval-1",entries:[{entry_id:"note",verdict:"used"}]},"Logged.");
+    assert.deepEqual(timeline.at(-1).item.data.used,["note"]);
     await invoke("feedback", {
       agent: "owner",
       retrieval: "retrieval-1",
@@ -111,7 +113,7 @@ test("recall, user feedback and approvals stay in the origin chat; double spawn 
     feedbackReply="Already logged for retrieval-1.";
     const pending=await invoke("feedback",{agent:"owner",retrieval:"retrieval-1",verdict:"helpful"});
     assert.equal(pending.pendingSync,true);
-    assert.deepEqual(await invoke("recall-rating",{agent:"owner",retrieval:"retrieval-1"}),{choice:"helpful",pendingSync:true});
+    assert.deepEqual(await invoke("recall-rating",{agent:"owner",retrieval:"retrieval-1"}),{choice:"helpful",pendingSync:true,used:["note"]});
     const shared=await invoke("shared-quests",{});
     assert.equal(shared.legacy,false);
     assert.equal(shared.quests[0].state,"claimed");

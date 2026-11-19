@@ -50,7 +50,8 @@ export default function contribute(client: PluginClientContext) {
     if(item.status!=="completed")return;
     const result=item.detail.type==="unknown"?item.detail.output:item.detail.type==="plain_text"?item.detail.text:undefined;
     const packet=nativeRecall(item.name,result);
-    if(packet)return {items:[{type:"plugin",kind:"clyde-activity",version:1,data:{kind:"recall",retrieval:packet.retrieval_id,notes:packet.items,rated:false,native:true,...(packet.query?{query:packet.query}:{}),...(packet.card_receipt?{receipt:packet.card_receipt}:{})}}]};
+    if(packet && !packet.items.length)return {items:[]};
+    if(packet)return {items:[{type:"plugin",kind:"clyde-activity",version:1,data:{kind:"recall",retrieval:packet.retrieval_id,notes:packet.items,rated:false,native:true,...(packet.badge?{badge:packet.badge}:{}),...(packet.page?{page:packet.page}:{}),...(packet.degraded?{degraded:packet.degraded}:{}),...(packet.query?{query:packet.query}:{}),...(packet.card_receipt?{receipt:packet.card_receipt}:{})}}]};
   }});
   client.addTimelineRenderer({kind:"clyde-activity",version:1,schema:activitySchema,Component:InlineActivity});
   client.addSlashCommand({name:"clyde-recall",context:"agent",description:"Recall Clyde memory in this chat",argumentHint:"what to recall",onSubmit:async ctx=>{await ctx.rpc(recallRpc,{agent:ctx.agent.id,query:ctx.args.trim()||"Recent decisions for this project"});}});

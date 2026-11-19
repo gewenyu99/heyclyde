@@ -6,7 +6,7 @@ Type `/clyde` in a Paseo project chat to open Clyde beside it. The right panel h
 - **New task** starts work in an isolated Git worktree. Choose **Quick task** for a bounded change or **Plan a feature** to review the design first. Leave the worker on **Auto** or select one yourself.
 - **Runs** shows progress, checks, and the audited revision. Open a run to inspect attempts, steer the worker, or stop it. Use the trash icon to remove a task from the board. Removing active work stops it and retains its history and Git worktree.
 
-Clyde shows recalled notes and saved decisions inline in the originating chat. Recalled notes open together. Choose **That helped** or **That didn’t** once for the whole recall. When a run needs a decision, approve the plan or send a reply on its chat card.
+Clyde shows recalled notes and saved decisions inline in the originating chat. Recalled notes open in a scrollable list. Notes marked used by the agent appear first with a [USED] stamp. Automatic recalls with no matches stay silent. Choose **That helped** or **That didn’t** once for the whole recall. When a run needs a decision, approve the plan or send a reply on its chat card.
 
 The sidebar **Clyde → Quests** opens the same shared board without selecting a chat. Writable workers launched from a chat run as Paseo children, with their isolated work directory checked before delivery. Antigravity uses its provider-specific full-access mode only when inherited from the same provider or authorized for the run. In **Agents**, review the suggested role and responsibility tags before enabling automatic pickup. Urgent and high priority quests start on eligible idle agents. Normal and low priority work produces an offer.
 
