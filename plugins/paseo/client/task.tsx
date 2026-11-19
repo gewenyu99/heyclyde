@@ -1,9 +1,11 @@
+import {RemoveTask} from "./remove-task";
+import { RunEvidence } from "./run-evidence";
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactElement } from "react";
 import { Pressable, TextInput, ScrollView, Text, View } from "react-native";
-import { steerRpc, stopRpc, transcriptRpc, type AttemptView, type Phase, type Piece, type Status, type TaskView } from "../shared/clyde";
+import { answerRpc,steerRpc, stopRpc, transcriptRpc, type AttemptView, type Phase, type Piece, type Status, type TaskView } from "../shared/clyde";
 import { ago, count, duration, Eyebrow, hue, Ladder, PALETTE, Pill, STATUS_LABEL } from "./nodes";
 
 // Everything on the 8px grid: a gutter for the row label, fixed piece cells, fixed gaps, one band per row.
@@ -243,7 +245,7 @@ function Transcript({ theme, threadId }: { theme: PluginTheme; threadId: string 
       <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10 }}>{t.threadId} · {t.rung}</Text>
       {t.turns.map((turn) => (
         <View key={turn.n}>
-          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, fontWeight: "700" }}>TURN {turn.n} · {ago(turn.at)} ago</Text>
+          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, fontWeight: "700" }}>TURN {turn.n} · {timeAgo(turn.at)}</Text>
           <Text style={{ fontFamily: "Menlo", fontSize: 10, color: theme.colors.foreground, marginTop: 4 }}>{turn.text || "(no text yet)"}</Text>
         </View>
       ))}
@@ -251,9 +253,11 @@ function Transcript({ theme, threadId }: { theme: PluginTheme; threadId: string 
   );
 }
 
+function timeAgo(iso:string){const age=ago(iso);return age==="just now"?age:age+" ago";}
+
 function Meta({ theme, view }: { theme: PluginTheme; view: TaskView }) {
   const quiet = view.status === "running" && view.lastActivity && Date.now() - Date.parse(view.lastActivity) > QUIET_MS;
-  const bits = [`Started ${ago(view.startedAt)} ago`, `${view.passed} of ${view.total} pieces passed`];
+  const bits = [`Started ${timeAgo(view.startedAt)}`, `${view.passed} of ${view.total} pieces passed`];
   if (view.diff) bits.push(`${view.diff.commits} commit${view.diff.commits === 1 ? "" : "s"} · ${view.diff.files} files +${view.diff.insertions} −${view.diff.deletions}`);
   if (view.background) bits.push(`${view.background} agent${view.background === 1 ? "" : "s"} working`);
   return (
@@ -261,7 +265,7 @@ function Meta({ theme, view }: { theme: PluginTheme; view: TaskView }) {
       <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>{bits.join("  ·  ")}</Text>
       {view.lastActivity ? (
         <Text style={{ color: quiet ? PALETTE.amber.ink : theme.colors.foregroundMuted, fontSize: 11, fontWeight: quiet ? "700" : "400" }}>
-          {quiet ? `Quiet for ${ago(view.lastActivity)}. It may be stuck.` : `Last activity ${ago(view.lastActivity)} ago`}{view.branch ? `  ·  ${view.branch}` : ""}
+          {quiet ? `Quiet for ${ago(view.lastActivity)}. It may be stuck.` : `Last activity ${timeAgo(view.lastActivity)}`}{view.branch ? `  ·  ${view.branch}` : ""}
         </Text>
       ) : null}
     </View>
@@ -316,8 +320,16 @@ function StopButton({ theme, view }: { theme: PluginTheme; view: TaskView }) {
 }
 
 export function TaskScreen({ theme, view, back, openAgent }: { theme: PluginTheme; view: TaskView; back: () => void; openAgent?: (id: string) => void }) {
+  const answer=useRpc(answerRpc), cache=useQueryClient();
+  const [retryError,setRetryError]=useState(""),[retrying,setRetrying]=useState(false);
+  async function retry(){
+    setRetrying(true);
+    try{const r=await answer({kind:view.kind,id:view.id,text:"retry",askKey:view.askKey,allowAntigravityFullAccess:view.fullAccess});if(!r.ok)throw Error(r.error);setRetryError("");await cache.invalidateQueries({queryKey:["clyde"]});}
+    catch(e){setRetryError(String(e));}finally{setRetrying(false);}
+  }
   const [picked, setPicked] = useState<string | undefined>();
   const [details, setDetails] = useState(false);
+  const [showRouting,setShowRouting]=useState(false);
   const all = view.steps.flatMap((s) => s.pieces);
   const piece = all.find((p) => p.id === (picked ?? view.selected)) ?? all[0];
   const tries = piece ? piece.phases.flatMap((ph) => view.attempts[ph.stage] ?? []) : [];
@@ -331,6 +343,7 @@ export function TaskScreen({ theme, view, back, openAgent }: { theme: PluginThem
           <Meta theme={theme} view={view} />
         </View>
         <View style={{ flexDirection: "row", gap: 8 }}>
+          <RemoveTask theme={theme} kind={view.kind} id={view.id} name={view.name} active={["running","asking","sent-back"].includes(view.status)} onRemoved={back}/>
           {view.status === "running" || view.status === "asking" ? <StopButton theme={theme} view={view} /> : null}
           <Pressable onPress={back} style={{ borderWidth: 1, borderColor: theme.colors.border, borderRadius: 6, paddingVertical: 7, paddingHorizontal: 10 }}>
             <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>Home</Text>
@@ -339,27 +352,29 @@ export function TaskScreen({ theme, view, back, openAgent }: { theme: PluginThem
       </View>
 
       <View style={{ borderBottomWidth: 1, borderBottomColor: theme.colors.border, paddingVertical: 20 }}>
-        <Ladder theme={theme} level="L0" label="What and where" />
+
         {view.goal ? <Text style={{ color: theme.colors.foreground, marginTop: 10, lineHeight: 20, fontWeight: "500" }}>{view.goal}</Text> : null}
         <Text style={{ color: theme.colors.foregroundMuted, marginTop: 6, lineHeight: 20 }}>{view.summary}</Text>
         {view.kind === "run" && view.status === "running" && <Steering id={view.id} theme={theme}/>}
-        {view.routing?.map(line => <Text key={line} style={{color: theme.colors.foregroundMuted}}>{line}</Text>)}
-        {view.auditedHead ? <Text style={{color: theme.colors.foreground}}>Audited {view.auditedHead.slice(0,12)}</Text> : null}
+        <RunEvidence view={view} theme={theme}/>
+        {!!view.routing?.length && <Pressable accessibilityRole="button" accessibilityState={{expanded:showRouting}} onPress={()=>setShowRouting(!showRouting)} style={{marginTop:12}}>
+          <Text style={{color:theme.colors.accent,fontSize:12}}>Why these agents? {showRouting?"▴":"▾"}</Text>
+        </Pressable>}
+        {showRouting && view.routing?.map(line => <Text key={line} style={{color:theme.colors.foregroundMuted}}>{line}</Text>)}
         {view.question ? (
           <View style={{ borderLeftWidth: 2, borderLeftColor: PALETTE.amber.ink, paddingLeft: 10, marginTop: 12 }}>
             <Text style={{ color: theme.colors.foreground, fontWeight: "500" }}>{view.question}</Text>
-            <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, marginTop: 4 }}>Answer it from Home.</Text>
+            {view.retryable ? <Pressable accessibilityRole="button" disabled={retrying} onPress={()=>void retry()}><Text style={{color:theme.colors.accent,fontWeight:"700",marginTop:6}}>{view.fullAccess?"Allow full access for this run and retry":"Retry"}</Text></Pressable> :
+             <Pressable accessibilityRole="button" onPress={back}><Text style={{color:theme.colors.accent}}>Open decision on board</Text></Pressable>}
+            {!!retryError&&<Text style={{color:theme.colors.statusDanger}}>{retryError}</Text>}
           </View>
         ) : null}
       </View>
 
       <View style={{ paddingVertical: 20 }}>
-        <Ladder theme={theme} level="L1" label="The plan" />
+        <Text style={{color:theme.colors.foreground,fontSize:17,fontWeight:"700"}}>Plan</Text>
         <Text style={{ color: theme.colors.foreground, fontSize: 16, fontWeight: "700", marginTop: 10 }}>
           {count(view.total, "piece", true)} in {count(view.steps.length, "row")}
-        </Text>
-        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, marginTop: 4, marginBottom: 12 }}>
-          Each piece is one thing the plan does. The bar inside shows its phases. Read left to right, then follow the line down.
         </Text>
         <FlowDiagram theme={theme} view={view} selected={piece?.id} select={setPicked} />
         <Legend theme={theme} />

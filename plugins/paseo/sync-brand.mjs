@@ -9,6 +9,7 @@ const roles = [
   "paper-1",
   "paper-2",
   "ink",
+  "pen-blue","pen-red","pen-green","pen-violet","pen-amber","pen-teal","pen-graphite",
   "ink-2",
   "ink-3",
   "carbon",

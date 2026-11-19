@@ -227,6 +227,20 @@ function questLine(q: Row) {
   return `${head}. Done when: ${clip(oneLine(q.done_when), 160)}${tags}`;
 }
 
+/** The account owner's Paseo board. The paid device endpoint is tenant-scoped by the caller.
+ * Project, assignee, harness and responsibility matching still apply when an agent claims work. */
+export async function openDeviceBoard(args:Record<string,unknown>){
+  const after=Number(args.after??0);
+  if(!Number.isSafeInteger(after)||after<0)throw new Refused("Invalid quest board cursor.");
+  const limit=Number(args.limit??50);
+  if(!Number.isInteger(limit)||limit<1||limit>50)throw new Refused("Board page size must be 1 to 50.");
+  await reopenExpired();
+  const rows=await sql`select id,title,brief,done_when,priority,state,claimed_by,project,assignee,tags from memory.quest
+    where owner_id=memory.owner_default() and id>${after} order by id limit ${limit+1}`;
+  const quests=rows.slice(0,limit).map(q=>({...q,id:Number(q.id)}));
+  return JSON.stringify({quests,after:rows.length>limit?quests.at(-1)!.id:null});
+}
+
 /** list_quests */
 export async function listQuests(who: Who, args: Record<string, unknown>) {
   const show = s(args.show).trim().toLowerCase() || "open";

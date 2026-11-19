@@ -157,8 +157,11 @@ type DeliverCommand = { cmd: string; args: string[]; env: NodeJS.ProcessEnv }
  * Otherwise the script runs under the Paseo app's own runtime, the way the paseo wrapper script runs its CLI, because it
  * imports the CLI's client from inside app.asar. Null when this install has neither.
  */
-function deliverCommand(id: string): DeliverCommand | null {
-  if (process.env.CLYDE_PASEO_DELIVER) return { cmd: process.env.CLYDE_PASEO_DELIVER, args: [id], env: process.env }
+function deliverCommand(id:string):DeliverCommand|null {
+  return helperCommand(DELIVER_SCRIPT,[id],process.env.CLYDE_PASEO_DELIVER)
+}
+export function helperCommand(script:string, argv:string[], override?:string):DeliverCommand|null {
+  if (override) return {cmd:override,args:argv,env:process.env}
   const bin = paseoBin()
   if (!bin.startsWith('/')) return null
   const resources = dirname(dirname(realpathSync(bin)))
@@ -168,7 +171,7 @@ function deliverCommand(id: string): DeliverCommand | null {
   const cli = join(resources, 'app.asar', 'node_modules', '@getpaseo', 'cli', 'dist')
   return {
     cmd: runtime,
-    args: ['--disable-warning=DEP0040', runner, 'node-script', DELIVER_SCRIPT, cli, id],
+    args: ['--disable-warning=DEP0040', runner, 'node-script', script, cli, ...argv],
     env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', PASEO_NODE_ENV: 'production' },
   }
 }

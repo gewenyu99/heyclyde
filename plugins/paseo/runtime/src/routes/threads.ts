@@ -65,6 +65,7 @@ export function threadRoutes(ctx: DaemonCtx): Route[] {
   return [
     { method: 'GET', path: '/threads', handle: () => ({ body: t.list().map(summary) }) },
     { method: 'POST', path: '/threads', handle: (req) => start(ctx, req) },
+    { method:'POST', path:'/threads/:id/archive', handle:req=>({body:t.archive(req.params.id)}) },
     { method: 'GET', path: '/threads/:id', handle: (req) => ({ body: detail(t.view(t.need(req.params.id))) }) },
     { method: 'POST', path: '/threads/:id/messages', handle: (req) => ({ body: detail(t.send(req.params.id, text(req.body?.text, 'text'))) }) },
     { method: 'POST', path: '/threads/:id/stop', handle: (req) => ({ body: detail(t.stop(req.params.id)) }) },

@@ -13,12 +13,14 @@ import {
   boardRpc,
   feedbackRpc,
   ratingRpc,
+  readNoteRpc,
   type Resident,
   respondRpc,
+  sharedBoardRpc,
   spawnQuestRpc,
 } from "../shared/clyde.ts";
-import { recallPacket } from "../shared/recall.ts";
-import { agentCall, agentReply } from "./connection.ts";
+import { recallPacket, usedNotes } from "../shared/recall.ts";
+import { agentCall, agentReply, sharedBoardReply } from "./connection.ts";
 import { call, readJson } from "./daemon.ts";
 
 type Origin = {
@@ -38,6 +40,7 @@ type Origin = {
 };
 type Ask = { key: string; kind: string; question: string; answer?: string };
 type Run = {
+  archivedAt?: string;
   id: string;
   title: string;
   status: string;
@@ -45,6 +48,7 @@ type Run = {
   auditedHead?: string;
   stages: { summary?: string }[];
 };
+const priorityRank = (p: string) => ({ urgent: 0, high: 1, normal: 2, low: 3 } as Record<string, number>)[p] ?? 4;
 const keyFor = (text: string) => createHash("sha256").update(text).digest("hex").slice(0, 24);
 export function activity(server: PluginServerContext, rowFor: (id: string) => Resident | undefined) {
   const dir = process.env.CLYDE_HOME || join(homedir(), ".clyde");
@@ -64,6 +68,25 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     writeFileSync(voteFile + ".tmp", JSON.stringify(votes), { mode: 0o600 });
     renameSync(voteFile + ".tmp", voteFile);
+  }
+  const usageFile = join(dir, "recall-used.json");
+  const usage = readJson<Record<string, string[]>>("recall-used.json") ?? {};
+  async function noteUsage(agent: string, args: Record<string, unknown>, reply: string, paseo: PaseoApi) {
+    const rid = args.retrieval_id;
+    const used = usedNotes(args, reply);
+    if (typeof rid !== "string" || !used) return;
+    const key = keyFor(agent + "/" + rid);
+    if (JSON.stringify(usage[key]) === JSON.stringify(used)) return;
+    usage[key] = used;
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    writeFileSync(usageFile + ".tmp", JSON.stringify(usage), { mode: 0o600 });
+    renameSync(usageFile + ".tmp", usageFile);
+    api = paseo;
+    const value = delivered.get(agent + "/recall-" + rid);
+    if (value) {
+      const previous = activitySchema.parse(JSON.parse(value));
+      if (previous.kind === "recall") await append(agent, "recall-" + rid, { ...previous, used });
+    }
   }
   const delivered = new Map<string, string>();
   const inFlight = new Set<string>();
@@ -108,8 +131,10 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
     paseo: PaseoApi,
     args: Record<string, unknown>,
     text = "",
+    requested = false,
   ) {
     api = paseo;
+    if (tool === "feedback") return noteUsage(agent, args, text, paseo);
     if (tool === "remember") {
       const title = String(args.title || "Project decision");
       await append(agent, "saved-" + keyFor(JSON.stringify([title, args.body])), { kind: "saved", title });
@@ -117,21 +142,29 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
     }
     if (tool === "recall" || tool === "recall_more") {
       const packet = recallPacket(card, text);
+      if (!packet.items.length && !requested) return;
       await append(agent, "recall-" + packet.retrieval_id, {
         kind: "recall",
         retrieval: packet.retrieval_id,
+        ...(usage[keyFor(agent + "/" + packet.retrieval_id)]
+          ? { used: usage[keyFor(agent + "/" + packet.retrieval_id)] }
+          : {}),
         notes: packet.items,
+        requested,
+        badge: packet.badge ?? null,
+        ...(packet.page ? { page: packet.page } : {}),
+        ...(packet.degraded ? { degraded: packet.degraded } : {}),
         query: packet.query ?? String(args.query ?? ""),
         ...(packet.card_receipt ? { receipt: packet.card_receipt } : {}),
         rated: false,
       });
     }
   }
-  async function recall(row: Resident, task: string, paseo: PaseoApi) {
+  async function recall(row: Resident, task: string, paseo: PaseoApi, requested = false) {
     // The bound agent already has strict project permissions. An explicit project filter also hides general preferences.
     const args = { query: task.slice(0, 300), task: task.slice(0, 500) };
     const reply = await agentReply(row, "recall", args);
-    await memory(row.id, "recall", reply.card, paseo, args, reply.text);
+    await memory(row.id, "recall", reply.card, paseo, args, reply.text, requested);
     return { text: reply.text, ...recallPacket(reply.card, reply.text) };
   }
   async function transmit(key: string, v: Vote) {
@@ -160,9 +193,18 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
       sending.delete(key);
     }
   }
+  server.handle(readNoteRpc, async ({ agent, id }) => {
+    const row = rowFor(agent);
+    if (!row) throw Error("Open the originating chat to read this note.");
+    return { text: await agentCall(row, "get_entry", { id }) };
+  });
   server.handle(ratingRpc, async ({ agent, retrieval }) => {
     const v = votes[keyFor(agent + "/" + retrieval)];
-    return { choice: v?.verdict, pendingSync: v?.pendingSync ?? false };
+    return {
+      choice: v?.verdict,
+      pendingSync: v?.pendingSync ?? false,
+      ...(usage[keyFor(agent + "/" + retrieval)] ? { used: usage[keyFor(agent + "/" + retrieval)] } : {}),
+    };
   });
   server.handle(feedbackRpc, async ({ agent, retrieval, verdict, receipt }, { paseo }) => {
     if (!rowFor(agent)) throw new Error("Agent unavailable");
@@ -194,7 +236,7 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
         title: run.title,
         question: ask.question,
         approve: ask.kind === "approve" && /^approve\b/i.test(ask.question),
-        ...(ask.answer === undefined ? {} : { answer: ask.answer }),
+        ...(ask.answer !== undefined ? { answer: ask.answer } : run.archivedAt ? { answer: "Task removed" } : {}),
       });
     }
   }
@@ -206,6 +248,36 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
     if (!result.success) throw new Error("Clyde did not return a structured quest board.");
     return result.data.quests;
   }
+  server.handle(sharedBoardRpc, async () => {
+    const all: BoardQuest[] = [];
+    let after = 0;
+    for (;;) {
+      let reply;
+      try {
+        reply = await sharedBoardReply({ show: "board", after, limit: 50 });
+      } catch (error) {
+        if (after || !/show must be open, mine, done or all/i.test(String(error))) throw error;
+        // An older service still exposes its signed-in MCP board. Never borrow an agent's profile to widen visibility.
+        const { card } = await sharedBoardReply({ show: "all", context: "all", limit: 50 });
+        const rows = z.object({ quests: z.array(boardQuest.extend({ state: z.string() })) }).parse(card).quests;
+        return {
+          legacy: true,
+          quests: rows.sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority) || a.id - b.id),
+        };
+      }
+      const page = z.object({ quests: z.array(boardQuest), after: z.number().int().nullable() }).parse(
+        JSON.parse(reply.text.split("\n")[0]),
+      );
+      all.push(...page.quests);
+      if (page.after === null) break;
+      if (page.after <= after) throw Error("Clyde returned an invalid board cursor");
+      after = page.after;
+    }
+    return {
+      legacy: false,
+      quests: all.sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority) || a.id - b.id),
+    };
+  });
   server.handle(boardRpc, async ({ agent }, { paseo }) => {
     api = paseo;
     return board(agent);
@@ -230,6 +302,7 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
     return call<Run>("POST", "/runs", {
       flow: "task",
       assignment: run.slice(2),
+      paseoParentId: origin.agent,
       cwd: job.cwd,
       input: {
         title: job.title,
@@ -358,6 +431,7 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => Re
   }, 4000);
   return {
     track,
+    noteUsage,
     recall,
     notice: (agent: string, id: string, text: string) => append(agent, id, { kind: "notice", text }),
     memory,

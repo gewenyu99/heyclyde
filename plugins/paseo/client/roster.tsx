@@ -5,21 +5,30 @@ import { useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { type Resident, residentRpc, rosterRpc } from "../shared/clyde";
 
-function Row({ agent, theme, refresh }: { agent: Resident; theme: PluginTheme; refresh: () => void }) {
+type RowProps = {
+  agent: Resident;
+  theme: PluginTheme;
+  refresh: () => void;
+  openAgent?: (id: string) => void;
+};
+
+function Row({ agent, theme, refresh, openAgent }: RowProps) {
   const change = useRpc(residentRpc);
-  const [role, setRole] = useState(agent.role);
-  const [areas, setAreas] = useState(agent.areas.join(", "));
+  const [role, setRole] = useState("");
+  const [areas, setAreas] = useState("");
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const colors = theme.colors;
+  const configured = agent.confirmed || agent.areas.length > 0;
+  const tags = areas.split(",").map(tag => tag.trim()).filter(Boolean);
   async function action(op: "confirm" | "pause" | "resume" | "start" | "pass") {
     setBusy(true);
     try {
       await change({
         id: agent.id,
         action: op,
-        role,
-        areas: areas.split(",").map((a) => a.trim()).filter(Boolean),
+        ...(op === "confirm" ? { role: role.trim() || undefined, areas: tags } : {}),
         questId: agent.offer?.id,
       });
       setError("");
@@ -31,81 +40,90 @@ function Row({ agent, theme, refresh }: { agent: Resident; theme: PluginTheme; r
       setBusy(false);
     }
   }
-  const button = (label: string, click: () => void) => (
-    <Pressable accessibilityRole="button" disabled={busy} onPress={click}>
-      <Text style={{ color: theme.colors.accent, paddingVertical: 5 }}>{label}</Text>
+  function edit() {
+    setRole(configured ? agent.role : "");
+    setAreas(agent.areas.join(", "));
+    setError("");
+    setEditing(true);
+  }
+  const button = (label: string, click: () => void, disabled = false) => (
+    <Pressable accessibilityRole="button" disabled={busy || disabled} onPress={click}>
+      <Text style={{ color: disabled ? colors.foregroundMuted : colors.accent, paddingVertical: 6 }}>{label}</Text>
     </Pressable>
   );
+  const project = agent.project.split("/").at(-1);
+  const status = agent.status && agent.status.charAt(0).toUpperCase() + agent.status.slice(1);
+  const metadata = [project, agent.model?.split("/").at(-1), status].filter(Boolean).join(" · ");
+  const actions = { flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 16 } as const;
+  const field = { color: colors.foreground, borderWidth: 1, borderColor: colors.border, borderRadius: 4, padding: 8 };
   return (
-    <View style={{ borderTopColor: theme.colors.border, borderTopWidth: 1, paddingVertical: 8, gap: 4 }}>
-      <Text style={{ color: theme.colors.foreground, fontWeight: "600" }}>{agent.title}</Text>
-      <Text style={{ color: theme.colors.foregroundMuted }}>
-        {agent.project} · {agent.provider} · {agent.memory} memory
-      </Text>
-      {editing
-        ? (
-          <>
-            <TextInput
-              accessibilityLabel="Role"
-              value={role}
-              onChangeText={setRole}
-              style={{ color: theme.colors.foreground }}
-            />
-            <TextInput
-              accessibilityLabel="Responsibility tags"
-              value={areas}
-              onChangeText={setAreas}
-              style={{ color: theme.colors.foreground }}
-            />
-            {button("Confirm responsibilities", () => void action("confirm"))}
-          </>
-        )
-        : (
-          <>
-            <Text style={{ color: theme.colors.foreground }}>{agent.role} · {agent.areas.join(", ")}</Text>
-            {button(
-              agent.confirmed ? "Edit responsibilities" : "Review suggested responsibilities",
-              () => {
-                setRole(agent.role);
-                setAreas(agent.areas.join(", "));
-                setError("");
-                setEditing(true);
-              },
-            )}
-            {agent.confirmed &&
-              button(
-                agent.paused ? "Resume pickup" : "Pause pickup",
-                () => void action(agent.paused ? "resume" : "pause"),
-              )}
-          </>
-        )}
+    <View style={{ borderTopColor: colors.border, borderTopWidth: 1, paddingVertical: 10, gap: 4 }}>
+      <Text style={{ color: colors.foreground, fontWeight: "600" }}>{agent.title}</Text>
+      <Text style={{ color: colors.foregroundMuted }}>{metadata}</Text>
+      {editing ? (
+        <View style={{ gap: 6 }}>
+          <TextInput accessibilityLabel="Role" placeholder="Role (optional)" placeholderTextColor={colors.foregroundMuted}
+            value={role} maxLength={160} onChangeText={setRole} style={field} />
+          <TextInput accessibilityLabel="Responsibility tags" placeholder="Tags, separated by commas" placeholderTextColor={colors.foregroundMuted}
+            value={areas} onChangeText={setAreas} style={field} />
+          <View style={actions}>
+            {button("Confirm responsibilities", () => void action("confirm"), tags.length === 0)}
+            {button("Cancel", () => setEditing(false))}
+          </View>
+        </View>
+      ) : (
+        <>
+          {configured && (
+            <Text style={{ color: colors.foreground }}>
+              {[agent.role, agent.areas.join(", ")].filter(Boolean).join(" · ")}
+            </Text>
+          )}
+          <View style={actions}>
+            {openAgent && button("Open chat", () => openAgent(agent.id))}
+            {button(agent.confirmed ? "Edit responsibilities" : configured ? "Review suggestion" : "Set responsibilities", edit)}
+            {agent.confirmed && button(agent.paused ? "Resume pickup" : "Pause pickup",
+              () => void action(agent.paused ? "resume" : "pause"))}
+          </View>
+        </>
+      )}
       {agent.offer && (
-        <Text style={{ color: theme.colors.foreground }}>
+        <Text style={{ color: colors.foreground }}>
           #{agent.offer.id} {agent.offer.title} · {agent.offer.priority}
           {agent.offer.run ? " · " + agent.offer.run : ""}
         </Text>
       )}
       {agent.offer && !agent.offer.assignment && (
-        <View style={{ flexDirection: "row", gap: 16 }}>
+        <View style={actions}>
           {button("Start", () => void action("start"))}
           {button("Pass", () => void action("pass"))}
         </View>
       )}
-      {error && <Text style={{ color: theme.colors.statusDanger }}>{error}</Text>}
+      {error && <Text style={{ color: colors.statusDanger }}>{error}</Text>}
       {!editing && agent.pickupError && (
-        <Text style={{ color: theme.colors.statusDanger }}>Quest pickup unavailable. {agent.pickupError}</Text>
+        <Text style={{ color: colors.statusDanger }}>Quest pickup unavailable. {agent.pickupError}</Text>
       )}
     </View>
   );
 }
-export function Roster({theme,workspaceId}:{theme:PluginTheme;workspaceId?:string}) {
-  const read=useRpc(rosterRpc);
-  const query=useQuery({queryKey:["clyde","roster",workspaceId??"all"],queryFn:()=>read({workspaceId}),refetchInterval:10000});
-  return <View style={{gap:10}}>
-    <Text accessibilityRole="header" style={{color:theme.colors.foreground,fontWeight:"700",fontSize:18}}>Agents</Text>
-    {query.isPending && <Text style={{color:theme.colors.foregroundMuted}}>Loading agents…</Text>}
-    {query.error && <Text style={{color:theme.colors.statusDanger}}>{String(query.error)}</Text>}
-    {query.data?.length===0 && <Text style={{color:theme.colors.foregroundMuted}}>Open a project chat to register an agent.</Text>}
-    {query.data?.map(agent=><Row key={agent.id} agent={agent} theme={theme} refresh={()=>void query.refetch()}/>)}
-  </View>;
+
+export function Roster({ theme, workspaceId, openAgent }: {
+  theme: PluginTheme; workspaceId?: string; openAgent?: (id: string) => void;
+}) {
+  const read = useRpc(rosterRpc);
+  const query = useQuery({
+    queryKey: ["clyde", "roster", workspaceId ?? "all"],
+    queryFn: () => read({ workspaceId }),
+    refetchInterval: 10000,
+  });
+  return (
+    <View style={{ gap: 10 }}>
+      <Text accessibilityRole="header" style={{ color: theme.colors.foreground, fontWeight: "700", fontSize: 18 }}>Agents</Text>
+      {query.isPending && <Text style={{ color: theme.colors.foregroundMuted }}>Loading agents…</Text>}
+      {query.error && <Text style={{ color: theme.colors.statusDanger }}>{String(query.error)}</Text>}
+      {query.data?.length === 0 && <Text style={{ color: theme.colors.foregroundMuted }}>Open a project chat to add an agent.</Text>}
+      {query.data?.map(agent => (
+        <Row key={agent.id} agent={agent} theme={theme} openAgent={openAgent} refresh={() => void query.refetch()} />
+      ))}
+    </View>
+  );
 }

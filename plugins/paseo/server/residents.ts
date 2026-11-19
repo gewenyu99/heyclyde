@@ -7,7 +7,7 @@ import { defineAgentTool, type PluginServerContext } from "@getpaseo/plugin/serv
 import type { PaseoAgent, PaseoApi } from "@getpaseo/client";
 import { z } from "zod";
 import { call, readJson } from "./daemon.ts";
-import {needsRecall} from "../shared/recall.ts";
+import {nativeFeedback,needsRecall} from "../shared/recall.ts";
 import {activity} from "./activity.ts";
 import { agentCall,agentReply } from "./connection.ts";
 import { type QuestOffer, type Resident, residentRpc, rosterRpc, recallRpc } from "../shared/clyde.ts";
@@ -19,6 +19,7 @@ type Record = Resident & {
   archived?: boolean;
   turnStart?: number;
   requested?: number;
+  profileVersion?: 1;
 };
 type Run = { id: string; status: string; auditedHead?: string; stages: { summary?: string }[] };
 const rules =
@@ -36,6 +37,36 @@ function project(cwd: string) {
   return basename(cwd).toLowerCase().replace(/[^a-z0-9_-]/g, "-");
 }
 
+type ChatInfo = {
+  cwd: string;
+  title: string | null;
+  archivedAt?: string | null;
+  internal?: boolean;
+  background?: boolean;
+  parentAgentId?: string | null;
+  metadata?: Readonly<{ [key: string]: unknown }>;
+  labels?: Readonly<{ [key: string]: string }>;
+};
+
+export function isProjectChat(agent: ChatInfo) {
+  const labels = agent.labels;
+  return !!agent.cwd && !agent.archivedAt && !agent.internal && !agent.background && !agent.parentAgentId &&
+    !labels?.["paseo.parent-agent-id"] && !labels?.["clyde.run"] && !labels?.["clyde.thread"] &&
+    !labels?.["clyde-run"] && !labels?.["clyde-thread"] && agent.metadata?.["clyde.internal"] !== true &&
+    // Lifecycle hooks omit the internal flag on Paseo's temporary branch helper.
+    !(agent.internal === undefined && agent.title === "Branch name generator");
+}
+
+function isResidentChat(agent: ChatInfo) {
+  return isProjectChat(agent) && agent.labels?.clyde !== "point-man";
+}
+
+function residentTitle(provider: string) {
+  return provider.charAt(0).toUpperCase() + provider.slice(1) + " chat";
+}
+
+const defaultRole = "Project chat";
+
 export function residents(server: PluginServerContext) {
   const dir = process.env.CLYDE_HOME || join(homedir(), ".clyde");
   const rows = readJson<{ [id: string]: Record }>("residents.json") ?? {};
@@ -46,25 +77,46 @@ export function residents(server: PluginServerContext) {
     writeFileSync(file + ".tmp", JSON.stringify(rows), { mode: 0o600 });
     renameSync(file + ".tmp", file);
   };
+  let migrated = false;
+  for (const row of Object.values(rows)) {
+    if (row.profileVersion === 1) continue;
+    // Older versions copied the opening prompt into the role and its first eight words into areas.
+    const generated = row.title.toLowerCase().match(/[a-z][a-z0-9_-]{2,}/g)?.slice(0, 8) ?? [];
+    if (!row.confirmed && row.role === row.title && generated.length === row.areas.length &&
+      generated.every((tag, i) => tag === row.areas[i])) {
+      row.role = defaultRole;
+      row.areas = [];
+    }
+    row.title = residentTitle(row.provider);
+    row.profileVersion = 1;
+    migrated = true;
+  }
+  if (migrated) save();
+
   let api: PaseoApi | undefined;
   let stopped = false;
   const processing = new Set<string>();
-  function discover(id: string, title: string | null, cwd: string, provider: string) {
+  function discover(id: string, cwd: string, provider: string) {
     if (!rows[id]) {
-      const name = title || basename(cwd);
       rows[id] = {
         id,
-        title: name,
+        title: residentTitle(provider),
+        profileVersion: 1,
         cwd,
         provider,
         project: project(cwd),
-        role: name,
-        areas: name.toLowerCase().match(/[a-z][a-z0-9_-]{2,}/g)?.slice(0, 8) ?? [],
+        role: defaultRole,
+        areas: [],
         confirmed: false,
         paused: true,
         passed: [],
         memory: "Best effort",
       };
+      save();
+    } else if (rows[id].provider !== provider || rows[id].cwd !== cwd) {
+      const row = rows[id];
+      if (row.cwd !== cwd) row.project = project(cwd);
+      Object.assign(row, { cwd, provider, title: residentTitle(provider) });
       save();
     }
     return rows[id];
@@ -78,12 +130,12 @@ export function residents(server: PluginServerContext) {
     const handle=paseo.agents.ref(id);
     await handle.refresh();
     const a=handle.current();
-    if(!a || !a.cwd || a.archivedAt || a.background || a.labels?.["paseo.parent-agent-id"])throw new Error("Select an available project chat");
-    return discover(a.id,a.title,a.cwd,a.provider);
+    if(!a || !isProjectChat(a))throw new Error("Select an available project chat");
+    return discover(a.id,a.cwd,a.provider);
   }
   server.handle(recallRpc,async({agent,query},{paseo})=>{
     api=paseo;
-    const result=await chat.recall(await chatRow(agent,paseo),query,paseo);
+    const result=await chat.recall(await chatRow(agent,paseo),query,paseo,true);
     return {retrieval:result.retrieval_id,notes:result.items.length};
   });
   const memory = [
@@ -114,7 +166,7 @@ export function residents(server: PluginServerContext) {
       } as { [name: string]: string })[operation],
       input: z.record(z.string(), z.unknown()),
       async execute(args, { agent,paseo }) {
-        const row = discover(agent.id, agent.title, agent.cwd, agent.provider);
+        const row = discover(agent.id, agent.cwd, agent.provider);
         const {text,card}=await agentReply(row,operation,args);
         await chat.memory(row.id,operation,card,paseo,args,text);
         if (operation === "post_quest") { for (const candidate of Object.values(rows)) void advance(candidate); }
@@ -130,7 +182,7 @@ export function residents(server: PluginServerContext) {
       areas: z.array(z.string().trim().min(1).max(40)).min(1).max(32),
     }),
     async execute(input, { agent }) {
-      const row = discover(agent.id, agent.title, agent.cwd, agent.provider);
+      const row = discover(agent.id, agent.cwd, agent.provider);
       if (!row.confirmed) {
         row.role = input.role;
         row.areas = input.areas;
@@ -187,13 +239,14 @@ export function residents(server: PluginServerContext) {
         reason: input.reason,
         overrides: { planner, ...input.overrides },
       };
-      const row = discover(agent.id, agent.title, agent.cwd, agent.provider);
+      const row = discover(agent.id, agent.cwd, agent.provider);
       const notes = await handoff(row, input.intent,paseo);
       const context = input.flow === "ship"
         ? { intent: input.intent, notes: input.criteria.join("\n") + notes }
         : { prompt: input.intent + notes, criteria: input.criteria };
       const run = await call<Run>("POST", "/runs", {
         flow: input.flow,
+        paseoParentId:agent.id,
         cwd: agent.cwd,
         input: { ...context, routing, draftPR: input.draftPR },
       });
@@ -203,8 +256,8 @@ export function residents(server: PluginServerContext) {
   });
   server.addHook("agent.open.before", async ({ request }, context) => {
     api = context.paseo;
-    if (request.background || request.labels["paseo.parent-agent-id"] || request.purpose === "history") return;
-    const row = discover(request.agentId, request.title, request.cwd, request.provider);
+    if (!isProjectChat(request) || request.purpose === "history") return;
+    const row = discover(request.agentId, request.cwd, request.provider);
     // Prewarm the agent's memory session. A failed recall is reported in the chat when a turn needs it.
     void agentCall(row, "check_messages", {}).catch(() => {});
     return {
@@ -215,10 +268,13 @@ export function residents(server: PluginServerContext) {
   });
   server.addHook(
     "agent.create.before",
-    async ({ request }) => ({
-      ...request,
-      config: { ...request.config, systemPrompt: [request.config.systemPrompt, rules].filter(Boolean).join("\n") },
-    }),
+    async ({ request }) => {
+      if (request.config.internal) return { ...request, metadata: { ...request.metadata, "clyde.internal": true } };
+      return {
+        ...request,
+        config: { ...request.config, systemPrompt: [request.config.systemPrompt, rules].filter(Boolean).join("\n") },
+      };
+    },
   );
   server.addHook("agent.archive.after", async ({ agent }) => {
     if (rows[agent.id]) {
@@ -228,9 +284,8 @@ export function residents(server: PluginServerContext) {
     }
   });
   const idle = (agent?: PaseoAgent | null) =>
-    !!agent && agent.status === "idle" && !agent.archivedAt && !agent.labels?.["paseo.parent-agent-id"] &&
-    !agent.internal && !agent.providerUnavailable && !agent.backgroundWork?.count && !agent.background &&
-    !agent.activeTurn && !agent.pendingPermissions?.length && agent.labels?.["clyde"] !== "point-man";
+    !!agent && isResidentChat(agent) && agent.status === "idle" && !agent.providerUnavailable &&
+    !agent.backgroundWork?.count && !agent.activeTurn && !agent.pendingPermissions?.length;
 
   async function dispatch(row: Record, action: string, extras: object = {}) {
     const raw = await agentCall(row, "dispatch_quest", { action, areas: row.areas, passed: row.passed, ...extras });
@@ -248,6 +303,10 @@ export function residents(server: PluginServerContext) {
           await handle.refresh();
           return idle(handle.current());
         }
+        // inspect omits the internal and background flags. Default discovery excludes both.
+        const list = await promisify(execFile)("paseo", ["ls", "--global", "--json"], { timeout: 5000 });
+        const visible = JSON.parse(list.stdout) as { id: string; status: string }[];
+        if (!visible.some(agent => agent.id === row.id && agent.status === "idle")) return false;
         const { stdout } = await promisify(execFile)("paseo", ["inspect", row.id, "--json"], { timeout: 5000 });
         const state = JSON.parse(stdout);
         return state.Status === "idle" && !state.ParentAgentId && !state.Archived &&
@@ -293,6 +352,7 @@ export function residents(server: PluginServerContext) {
         run = await call("POST", "/runs", {
           flow: "task",
           assignment: job.assignment,
+          paseoParentId:row.id,
           cwd: row.cwd,
           input: {
             title: job.title,
@@ -336,8 +396,8 @@ export function residents(server: PluginServerContext) {
   const lastMessage=new Map<string,number>();
   server.addHook("agent.turn.before",async({agent},{paseo})=>{
     api=paseo;chat.bind(paseo);
-    if(agent.parentAgentId || agent.background || !agent.cwd)return;
-    const row=discover(agent.id,agent.title,agent.cwd,agent.provider);
+    if(!isProjectChat(agent))return;
+    const row=discover(agent.id,agent.cwd,agent.provider);
     row.turnStart=Date.now();row.memory="Best effort";
     try{
       const page=await paseo.agents.ref(agent.id).timeline.refetch({direction:"tail",limit:32,wholeTurns:true});
@@ -351,7 +411,16 @@ export function residents(server: PluginServerContext) {
   server.addHook("agent.turn.after", async ({ agent }, { paseo }) => {
     api = paseo; chat.bind(paseo);
     const row = rows[agent.id];
-    if (!row) return;
+    if (!row || !isProjectChat(agent)) return;
+    // Native MCP sessions can report usage outside of the plugin tool bridge.
+    try{
+      const page=await paseo.agents.ref(agent.id).timeline.refetch({direction:"tail",limit:1,wholeTurns:true});
+      for(const {item} of page.entries){
+        if(item.type!=="tool_call"||item.status!=="completed")continue;
+        const feedback=nativeFeedback(item.name,item.detail);
+        if(feedback)await chat.noteUsage(agent.id,feedback.args,feedback.text,paseo);
+      }
+    }catch{/* The native session may already have closed. */}
     if (/^[a-zA-Z0-9_-]+$/.test(agent.id)) {
       const config = process.env.CLYDE_CONFIG_DIR || join(homedir(), ".config/memory");
       try {
@@ -371,14 +440,36 @@ export function residents(server: PluginServerContext) {
   });
   server.handle(rosterRpc, async ({workspaceId}, { paseo }) => {
     api = paseo; chat.bind(paseo);
-    const page = await paseo.agents.list();
-    for (const { agent } of page.entries) {
-      if (!agent.archivedAt && !agent.labels?.["paseo.parent-agent-id"] && !agent.background && agent.cwd) {
-        discover(agent.id, agent.title ?? null, agent.cwd, agent.provider);
+    const roster = new Map<string, Resident>();
+    let cursor: string | undefined;
+    do {
+      const page = await paseo.agents.list({ page: { cursor, limit: 100 } });
+      for (const { agent } of page.entries) {
+        if (!isResidentChat(agent) || (workspaceId && agent.workspaceId !== workspaceId)) continue;
+        const row = discover(agent.id, agent.cwd, agent.provider);
+        // A live, unarchived snapshot is authoritative after a chat is restored.
+        if (row.archived) {
+          delete row.archived;
+          save();
+        }
+        const status = agent.pendingPermissions?.length ? "Waiting for approval"
+          : agent.providerUnavailable ? "Provider unavailable" : agent.status;
+        roster.set(agent.id, { ...row, model: agent.model ?? undefined, status });
       }
+      cursor = page.pageInfo?.hasMore ? page.pageInfo.nextCursor ?? undefined : undefined;
+    } while (cursor);
+    const names = new Map<string, Resident[]>();
+    for (const resident of roster.values()) {
+      const key = JSON.stringify([resident.project, resident.title]);
+      const group = names.get(key) ?? [];
+      group.push(resident);
+      names.set(key, group);
     }
-    const ids=new Set(page.entries.filter(({agent})=>agent.workspaceId===workspaceId).map(({agent})=>agent.id));
-    return Object.values(rows).filter((r) => !r.archived && (!workspaceId || ids.has(r.id)));
+    for (const group of names.values()) {
+      if (group.length < 2) continue;
+      for (const row of group) row.title += " · " + row.id.slice(0, 8);
+    }
+    return [...roster.values()];
   });
   server.handle(residentRpc, async (input, { paseo }) => {
     api = paseo; chat.bind(paseo);

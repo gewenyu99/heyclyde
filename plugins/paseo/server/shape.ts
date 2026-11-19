@@ -6,8 +6,9 @@
 import type { Ask, AttemptView, Criterion, Home, Phase, Piece, Status, Step, TaskCard, TaskView, Transcript } from "../shared/clyde";
 
 export type RawRung = { backend: string; model?: string; effort?: string };
-export type RawTurn = { n: number; prompt: string; startedAt: string; endedAt?: string; ok?: boolean; text?: string };
+export type RawTurn = { n: number; prompt: string; startedAt: string; endedAt?: string; ok?: boolean; text?: string; error?:string };
 export type RawThread = {
+  archivedAt?:string; paseoAgentId?:string;
   cwd?:string;
   id: string; title: string; status: string; rung: RawRung; runId?: string; stage?: string; readOnly?: boolean;
   parentThreadId?: string; progress?: string; createdAt: string; updatedAt: string; turns: RawTurn[];
@@ -23,13 +24,14 @@ export type RawStage = {
   name: string; status: string; attempts: RawAttempt[]; summary?: string; startedAt: string; endedAt?: string;
   skill?: string; role?: string; entry?: string;
 };
-export type RawAsk = { kind: string; question: string; askedAt: string; answer?: string };
+export type RawAsk = { key?:string; kind: string; question: string; askedAt: string; answer?: string };
 export type RawSlice = { id: string; title?: string; acceptance?: string[] };
 export type RawRun = {
+  archivedAt?:string; verifiedNotes?:{id:string;title:string;sources:string[]}[];
   repo?:string;
   routes?: Record<string, {model: string; reason: string}>; auditedHead?: string;
-  id: string; flow: string; title: string; status: string; input?: { intent?: string; prompt?: string; title?: string };
-  parentThreadId?: string; branch?: string; base?: string; cwd?: string; stages: RawStage[]; question?: string; asks?: RawAsk[];
+  id: string; flow: string; title: string; status: string; input?: { intent?: string; prompt?: string; title?: string; criteria?: string[] };
+  error?: string; parentThreadId?: string; branch?: string; base?: string; cwd?: string; stages: RawStage[]; question?: string; asks?: RawAsk[];
   plan?: { intent?: string; slices?: RawSlice[] }; createdAt: string; updatedAt: string; endedAt?: string;
 };
 
@@ -60,7 +62,7 @@ function sameDay(iso: string | undefined, now: Date): boolean {
 }
 
 const interrupted = (a: RawAttempt) => a.ok === false && INTERRUPTED.test(a.reason ?? "");
-const failed = (a: RawAttempt) => !interrupted(a) && (a.ok === false || a.verdict?.verdict === "fail");
+const failed = (a:RawAttempt)=>!interrupted(a) && (a.verdict?.verdict==="fail" || !!a.checks?.some(c=>c.code!==0));
 
 function stageStatus(s: RawStage): Status {
   if (s.status === "passed") return "passed";
@@ -176,17 +178,24 @@ function livePhase(p: Piece): string {
   return ph && p.phases.length > 1 ? ` · ${ph.label}` : "";
 }
 
+function latestChecks(r:RawRun) {
+  return r.stages.flatMap(stage => stage.attempts.at(-1)?.checks ?? []);
+}
+
 function runCard(r: RawRun, agents: Record<string, string>, threads: RawThread[]): TaskCard {
   const all = steps(r, threads).flatMap((s) => s.pieces);
   const pips = all.map((p) => p.status);
   const live = all.find(isLive);
   const rep = r.stages[0]?.attempts[0]?.threadId;
+  const checks = latestChecks(r);
+  const failedStage = r.stages.findLast(stage=>stage.status==="failed");
   return {
-    kind: "run", id: r.id, name: r.title, why: firstSentence(r.input?.intent ?? r.input?.prompt), status: runStatus(r),
+    checkSummary:checks.length ? `${checks.filter(c=>c.code===0).length}/${checks.length} stage checks passed` : undefined,
+    kind: "run", id: r.id, name: r.title, why: firstSentence(r.input?.intent ?? r.input?.prompt), status: r.status==="running" && live?.status==="sent-back" ? "sent-back" : runStatus(r),
     pips, ...counts(pips),
-    current: live ? `${live.id === "PLAN" || live.id === "TASK" ? "" : `${live.id} `}${live.title}${livePhase(live)}${live.progress ? ` — ${live.progress}` : ""}`
-      : r.status === "done" ? "All pieces passed" : "Waiting to start",
-    rung: live?.rung, startedAt: r.createdAt, endedAt: r.endedAt, lastActivity: lastActivity(r, threads), agentId: rep ? agents[rep] : undefined,
+    current: r.status==="failed" ? firstSentence(r.error ?? failedStage?.attempts.at(-1)?.reason ?? "Run failed",180) : live ? `${live.id === "PLAN" || live.id === "TASK" ? "" : `${live.id} `}${live.title}${livePhase(live)}${live.progress ? ` — ${live.progress}` : ""}`
+      : r.status === "done" ? (r.auditedHead ? "Audited "+r.auditedHead.slice(0,12) : "Finished") : "Waiting to start",
+    rung: live?.rung, startedAt: r.createdAt, endedAt: r.endedAt, lastActivity: lastActivity(r, threads), agentId: threads.findLast(t=>t.runId===r.id&&t.paseoAgentId)?.paseoAgentId ?? (rep ? agents[rep] : undefined),
   };
 }
 
@@ -202,14 +211,14 @@ function threadCard(t: RawThread, agents: Record<string, string>): TaskCard {
   const last = t.turns[t.turns.length - 1];
   return {
     kind: "thread", id: t.id, name: t.title, why: firstSentence(t.turns[0]?.prompt), status, pips, ...counts(pips),
-    current: t.progress && t.progress !== "SessionEnd" ? t.progress : status === "running" ? "Working" : "Turn finished",
-    rung: rung(t.rung), startedAt: t.createdAt, endedAt: status === "done" ? last?.endedAt : undefined, lastActivity: t.updatedAt, agentId: agents[t.id],
+    current: status==="failed" ? firstSentence(last?.error ?? "Thread failed",180) : t.progress && t.progress !== "SessionEnd" ? t.progress : status === "running" ? "Working" : "Turn finished",
+    rung: rung(t.rung), startedAt: t.createdAt, endedAt: status === "done" || status === "failed" ? last?.endedAt : undefined, lastActivity: t.updatedAt, agentId: agents[t.id],
   };
 }
 
 /** A standalone thread is the point man's when no run, stage, parent or read-only flag marks it as background. */
 function standalone(t: RawThread): boolean {
-  return !t.runId && !t.stage && !t.readOnly && !t.parentThreadId && !TEST_TITLE.test(t.title);
+  return !t.archivedAt && !t.runId && !t.stage && !t.readOnly && !t.parentThreadId && !TEST_TITLE.test(t.title);
 }
 
 /** A standalone thread that ended its last turn with a question is waiting on Wen. */
@@ -223,15 +232,18 @@ function threadAsk(t: RawThread, now: Date): Ask | null {
 }
 
 export function home(threads: RawThread[], runs: RawRun[], agents: Record<string, string>, revision: number, now = new Date()): Home {
-  const top = runs.filter((r) => !r.parentThreadId && !TEST_TITLE.test(r.title));
+  const top = runs.filter((r) => !r.archivedAt && !r.parentThreadId && !TEST_TITLE.test(r.title));
   const needsYou: Ask[] = [];
   for (const r of top) {
     if (r.status !== "asking") continue;
     const open = [...(r.asks ?? [])].reverse().find((a) => a.answer === undefined);
+    const question = r.question ?? open?.question ?? "";
+    const approve = open?.kind==="approve" && /^approve\b[^?\n]*\bplan\b/i.test(question);
     needsYou.push({
+      retryable:open?.kind==="provider"||open?.kind==="limit",fullAccess:open?.kind==="provider"&&question.includes("allow Antigravity full access for this run"),askKey:open?.key,blockedStage:r.stages.findLast(s=>s.status==="asking")?.name,
       kind: "run", id: r.id, task: r.title, why: firstSentence(r.input?.intent ?? r.input?.prompt),
-      question: r.question ?? open?.question ?? "", askedAt: open?.askedAt ?? r.updatedAt, approve: open?.kind === "approve",
-      plan: open?.kind === "approve" ? r.plan?.slices?.map((s, i) => `S${i + 1} · ${s.title ?? s.id}`) : undefined,
+      question, askedAt: open?.askedAt ?? r.updatedAt, approve,
+      plan: approve ? r.plan?.slices?.map((s, i) => `S${i + 1} · ${s.title ?? s.id}`) : undefined,
     });
   }
   const solo = threads.filter(standalone);
@@ -239,17 +251,18 @@ export function home(threads: RawThread[], runs: RawRun[], agents: Record<string
     const ask = threadAsk(t, now);
     if (ask) needsYou.push(ask);
   }
-  const live = (c: TaskCard) => c.status === "running" || c.status === "asking";
+  const live = (c: TaskCard) => c.status === "running" || c.status === "sent-back" || c.status === "asking";
   const cards = [
-    ...top.filter((r) => r.status === "running" || r.status === "asking" || (r.status === "done" && sameDay(r.endedAt, now))).map((r) => runCard(r, agents, threads)),
-    ...solo.filter((t) => t.status === "running" || t.status === "queued" || (t.status === "idle" && sameDay(t.turns[t.turns.length - 1]?.endedAt, now))).map((t) => threadCard(t, agents)),
+    ...top.filter((r) => r.status === "running" || r.status === "asking" || (["done","failed"].includes(r.status) && sameDay(r.endedAt, now))).map((r) => runCard(r, agents, threads)),
+    ...solo.filter((t) => t.status === "running" || t.status === "queued" || (["idle","failed"].includes(t.status) && sameDay(t.turns[t.turns.length - 1]?.endedAt, now))).map((t) => threadCard(t, agents)),
   ];
   const background = threads.filter((t) => !standalone(t) && !TEST_TITLE.test(t.title) && (t.status === "running" || t.status === "queued")).length;
   return {
     needsYou: needsYou.sort((a, b) => a.askedAt.localeCompare(b.askedAt)),
     tasks: cards.filter(live).sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
-    doneToday: cards.filter((c) => !live(c)).sort((a, b) => (b.endedAt ?? "").localeCompare(a.endedAt ?? "")),
-    background, running: cards.filter((c) => c.status === "running").length, revision,
+    failedToday: cards.filter(c=>c.status==="failed").sort((a,b)=>(b.endedAt??"").localeCompare(a.endedAt??"")),
+    doneToday: cards.filter(c => c.status==="done" && !needsYou.some(a=>a.kind===c.kind && a.id===c.id)).sort((a, b) => (b.endedAt ?? "").localeCompare(a.endedAt ?? "")),
+    background, running: cards.filter((c) => c.status === "running" || c.status==="sent-back").length, revision,
   };
 }
 
@@ -272,7 +285,10 @@ function attemptView(a: RawAttempt): AttemptView {
 
 function summary(r: RawRun, all: Piece[], live?: Piece): string {
   const passed = all.filter((p) => p.status === "passed").length;
-  const where = r.status === "done" ? `All ${all.length} pieces passed.` : `${passed} of ${all.length} pieces have passed.`;
+  if (r.status === "failed") return r.error || "The run failed.";
+  if (r.status === "stopped") return "The run was stopped.";
+  const where = all.length ? `${passed} of ${all.length} pieces have passed.` : "";
+  if (r.status === "done") return where || "Run finished.";
   const now = r.status === "asking" ? "It is waiting on you."
     : !live ? ""
     : live.status === "asking" ? `${live.title} is waiting on you.`
@@ -293,13 +309,15 @@ export function task(r: RawRun, threads: RawThread[], agents: Record<string, str
   return {
     kind: "run", id: r.id, name: r.title, status: runStatus(r), startedAt: r.createdAt,
     routing: Object.entries(r.routes ?? {}).map(([stage, s]) => stage + ": " + s.model + " · " + s.reason), auditedHead: r.auditedHead,
+    askKey:open?.key,retryable:open?.kind==="provider"||open?.kind==="limit",fullAccess:open?.kind==="provider"&&open.question.includes("allow Antigravity full access for this run"),
+    verifiedNotes:r.verifiedNotes,completionCriteria:r.input?.criteria?.filter(value=>typeof value==="string" && value.trim()),
     goal: firstSentence(r.plan?.intent ?? r.input?.intent ?? r.input?.prompt, 220), summary: summary(r, all, live),
     lastActivity: lastActivity(r, threads),
     question: r.status === "asking" ? r.question ?? open?.question : undefined, approve: open?.kind === "approve", branch: r.branch,
     steps: s, attempts, selected: (live ?? all.filter((p) => p.status !== "pending").slice(-1)[0] ?? all[0])?.id,
     passed: all.filter((p) => p.status === "passed").length, total: all.length,
     background: threads.filter((t) => ids.has(t.id) && (t.status === "running" || t.status === "queued")).length,
-    agentId: rep ? agents[rep] : undefined,
+    agentId: threads.findLast(t=>t.runId===r.id&&t.paseoAgentId)?.paseoAgentId ?? (rep ? agents[rep] : undefined),
   };
 }
 

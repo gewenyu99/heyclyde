@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { homeRpc, taskRpc } from "../shared/clyde";
+import {Quests} from "./quests";
 import { Composer } from "./composer";
 import { Roster } from "./roster";
 import { HomeView } from "./home";
@@ -37,10 +38,11 @@ function Board(
 ) {
   const theme=clydeTheme(hostTheme);
   useLive();
+  const openAgent=navigation ? (agentId:string)=>navigation.openAgent({agentId}):undefined;
   const readHome = useRpc(homeRpc), readTask = useRpc(taskRpc);
   const [picked, setPicked] = useState(initialTask),
     [width, setWidth] = useState(0),
-    [tab, setTab] = useState<"board" | "agents">("board");
+    [tab, setTab] = useState<"board" | "agents" | "quests">("board");
   const c = theme.colors, wide = width >= 760, inset = width >= 650 ? 28 : 14;
   const home = useQuery({
     queryKey: ["clyde", "home", workspaceId ?? "all"],
@@ -56,7 +58,7 @@ function Board(
   });
   const data = home.data?.data;
   const error = home.data?.error || home.error?.message;
-  const nav = (value: "board" | "agents", label: string) => (
+  const nav = (value: "board" | "agents" | "quests", label: string) => (
     <Pressable
       accessibilityRole="tab"
       accessibilityState={{ selected: tab === value }}
@@ -82,6 +84,9 @@ function Board(
       </Text>
     </Pressable>
   );
+  const queue = <Panel theme={theme}>{data ? <HomeView theme={theme} home={data} open={(k,i)=>setPicked(k+":"+i)}/> :
+    <Text style={{color:error?c.statusDanger:c.foregroundMuted}}>{error||"Loading tasks…"}</Text>}</Panel>;
+  const workToReview = !!(data?.needsYou.length || data?.failedToday?.length || data?.doneToday.length || data?.running);
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: c.surface0 }}
@@ -113,7 +118,7 @@ function Board(
             }}
           >
             {nav("board", "Board")}
-            {nav("agents", "Agents")}
+            {nav("quests","Quests")}{nav("agents", "Agents")}
           </View>
         </View>
         {picked && id
@@ -138,32 +143,25 @@ function Board(
                 )}
             </Panel>
           )
-          : tab === "agents"
+          : tab === "quests" ? <Panel theme={theme}><Quests theme={theme} onStarted={run=>setPicked("run:"+run)}/></Panel> : tab === "agents"
           ? (
             <Panel theme={theme}>
-              <Roster theme={theme} workspaceId={workspaceId} />
+              <Roster theme={theme} workspaceId={workspaceId} openAgent={openAgent} />
             </Panel>
           )
           : (
             <View style={{ flexDirection: wide ? "row" : "column", alignItems: "stretch", gap: 16 }}>
               <View style={{ flex: wide ? 2 : undefined, minWidth: 0, gap: 14 }}>
+                {workToReview && queue}
                 <Panel theme={theme}>
                   <Composer theme={theme} workspaceId={workspaceId} onStarted={(run) => setPicked("run:" + run)} />
                 </Panel>
-                <Panel theme={theme}>
-                  {data
-                    ? <HomeView theme={theme} home={data} open={(k, i) => setPicked(k + ":" + i)} />
-                    : (
-                      <Text style={{ color: error ? c.statusDanger : c.foregroundMuted }}>
-                        {error || "Loading tasks…"}
-                      </Text>
-                    )}
-                </Panel>
+                {!workToReview && queue}
               </View>
               {wide && (
                 <View style={{ flex: 1, minWidth: 220 }}>
                   <Panel theme={theme}>
-                    <Roster theme={theme} workspaceId={workspaceId} />
+                    <Roster theme={theme} workspaceId={workspaceId} openAgent={openAgent} />
                   </Panel>
                 </View>
               )}

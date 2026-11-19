@@ -187,3 +187,31 @@ test('answers post to the run answer route with the reply text', async () => {
     delete process.env.CLYDE_HOME
   }
 })
+
+test('catch-up counts only completed work and carries the exact pending decision key',()=>{
+  const paused=shipRun({id:'r-q',status:'asking',asks:[{key:'plan-2',kind:'approve',question:'Which format should the export use?',askedAt:at(12)}]});
+  const waiting=thread({id:'t-q',title:'Export',turns:[{n:1,prompt:'Prepare export',startedAt:at(8),endedAt:at(6),ok:true,text:'Which format?'}]});
+  const broken=shipRun({id:'r-f',status:'failed',endedAt:at(6),error:'Build command exited 1'});
+  const h=home([waiting],[paused,broken],{},1,NOW);
+  assert.equal(h.doneToday.length,0);
+  assert.equal(h.needsYou.length,2);
+  assert.equal(h.needsYou.find(a=>a.id==='r-q')?.askKey,'plan-2');
+  assert.equal(h.needsYou.find(a=>a.id==='r-q')?.approve,false);
+  assert.deepEqual(h.failedToday.map(c=>[c.id,c.current]),[['r-f','Build command exited 1']]);
+});
+
+test('overview check counts use only the most recent attempt per stage',()=>{
+  const r=shipRun({status:'done',endedAt:at(2),auditedHead:'ab1234567890fff',
+    stages:[{name:'task',status:'passed',startedAt:at(8),attempts:[
+      attempt(1,'t1',{checks:[{cmd:'npm test',code:1,output:'old failure'}]}),
+      attempt(2,'t2',{checks:[{cmd:'npm test',code:0,output:'passed'}]})]}]});
+  const h=home([], [r],{},1,NOW);
+  assert.equal(h.doneToday[0].checkSummary,'1/1 stage checks passed');
+  assert.equal(h.doneToday[0].current,'Audited ab1234567890');
+});
+
+test('archived tasks disappear from approvals, running, failed and completed lists',()=>{
+  const r=shipRun({archivedAt:at(5),status:'asking',question:'Approve?',asks:[{kind:'approve',askedAt:at(3),question:'Approve?'}]})
+  const h=home([thread({archivedAt:at(4),status:'running'})],[r,{...r,id:'f',status:'failed',endedAt:at(5)},{...r,id:'d',status:'done',endedAt:at(5)}],{},1,NOW)
+  assert.deepEqual([h.needsYou.length,h.tasks.length,h.failedToday.length,h.doneToday.length],[0,0,0,0])
+})

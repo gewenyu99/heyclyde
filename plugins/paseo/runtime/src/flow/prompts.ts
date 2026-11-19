@@ -14,6 +14,12 @@ const VERDICT_BLOCK = '```json\n{"verdict": "fail", "criteria": [{"criterion": "
 
 export type WorkerPromptInput = { run: Run; spec: StageSpec; attempt: number; notes?: string; skillFile?: string; root: string; bin: string }
 
+export function memoryMaintenance(run:Run):boolean {
+  const input=(run.input??{}) as {prompt?:string;intent?:string}
+  const request=(input.prompt??input.intent??'').split('Clyde project notes')[0].slice(0,2000)
+  return /\b(?:groom|consolidat\w*|organize|clean(?: up)?)\b.{0,70}\bmemor(?:y|ies)\b|\bmemor(?:y|ies)\b.{0,70}\b(?:housekeeping|house cleaning|cleanup|grooming)\b/is.test(request)
+}
+
 export function workerPrompt(o: WorkerPromptInput): string {
   const { run, spec } = o
   const scope = `run:${run.id}`
@@ -21,6 +27,10 @@ export function workerPrompt(o: WorkerPromptInput): string {
     `You're the worker for stage ${spec.name} of clyde run ${run.id}, attempt ${o.attempt}.`,
     "The user approved this run's plan. Don't stop to ask questions. Do the work, then report. When you can't finish, report blocked and say why.",
   ]
+  if(memoryMaintenance(run))parts.push(
+    "This is shared-memory maintenance. Leave all repository files, git history, original notes and artifacts intact. The deliverable lives in Clyde.",
+    "Use the executable at "+o.bin+" (or clyde on PATH). For the actual shared notes, use clyde notes recall QUERY, clyde notes more RETRIEVAL_ID, and clyde notes get ID. Read relevant originals and their evidence. Rate recall batches with clyde notes feedback RETRIEVAL_ID JSON. Join genuinely adjacent notes with clyde notes index --title TITLE --body BODY --source ID --source ID. Include useful search terms and source-grounded details. This writes an additional linked note, preserves the originals and verifies links by reading it back. Run-scoped clyde remember writes are only work logs. Report verified index IDs, source IDs and any missed queries addressed. If no safe changes are justified say exactly why."
+  )
   if (o.skillFile) {
     parts.push(`## The skill\n\nRead ${o.skillFile} first and follow it. CLAUDE_PLUGIN_ROOT is ${o.root}, so $LV and \${CLAUDE_PLUGIN_ROOT} in the skill mean that path. Where the skill says to keep a state file or to ask the user, use memory and clyde result as below.`)
   }
@@ -33,7 +43,7 @@ export function workerPrompt(o: WorkerPromptInput): string {
   parts.push([
     '## How to work',
     '',
-    `- **Work here.** Your directory is ${run.cwd}, on branch ${run.branch}. Commit locally on the current branch. Never push, and never switch branches.`,
+    memoryMaintenance(run) ? 'Work on the bound Clyde memory through clyde notes. No repository edits or commits are needed.' : `- **Work here.** Your directory is ${run.cwd}, on branch ${run.branch}. Commit locally on the current branch. Never push, and never switch branches.`,
     `- **Read the handoff.** Earlier stages left notes in memory scope ${scope}. Start with clyde recall "${spec.name}" --scope ${scope}.`,
     `- **Record as you go.** Write rulings and your gate evidence with clyde remember --pattern observations --title T --body B. Add --blob-file F for long evidence. They land as drafts in ${scope}.`,
     `- **Work from your list.** clyde keeps your work list and puts it at the top of every turn. It starts with one item per gate criterion. Add your own steps with clyde todo add "<step>". Before you change a file, start an item with clyde todo start N --how "<how>". Finish it with clyde todo done N --evidence "<command and result, path:line, or sha>", or clyde todo block N --why "<why>".`,

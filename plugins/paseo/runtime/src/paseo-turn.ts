@@ -1,3 +1,11 @@
+import {dirname} from 'node:path'
+import {fileURLToPath} from 'node:url'
+import {exitReason,runProcess} from './backends/spawn.ts'
+import {readJson} from './store.ts'
+import {clydeHome} from './config.ts'
+import {memoryMaintenance} from './flow/prompts.ts'
+import type {Run} from './flow/types.ts'
+import type {Thread} from './types.ts'
 /** Mirrored sessions have one writer: Paseo. Clyde still owns the queue and work list. */
 import { closeSync, openSync, readSync, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -5,7 +13,7 @@ import { join } from 'node:path'
 import { turnTimeoutMs } from './config.ts'
 import { lastJsonBlock } from './backends/spawn.ts'
 import type { TurnInput, TurnOutput } from './backends/types.ts'
-import { paseo, type Ran } from './paseo.ts'
+import { helperCommand, paseo, type Ran } from './paseo.ts'
 
 function sessionFile(input: TurnInput): string | undefined {
   if (input.rung.backend !== 'codex' || !input.session) return
@@ -109,4 +117,32 @@ export async function runPaseoTurn(id: string, input: TurnInput): Promise<TurnOu
     await stop
   }
   return out
+}
+
+export async function runManagedWorker(t:Thread,input:TurnInput):Promise<TurnOutput>{
+  const command=helperCommand(join(dirname(fileURLToPath(import.meta.url)),'paseo-worker.mjs'),[],process.env.CLYDE_PASEO_WORKER_BIN)
+  if(!command)return {ok:false,text:'',error:'Clyde could not locate the installed Paseo worker launcher.'}
+  const env:Record<string,string>={}
+  for(const k of ['CLYDE_HOME','CLYDE_BIN','CLYDE_THREAD_ID','CLYDE_RUN_ID','CLYDE_MEMORY_SCOPE','PATH']){
+    if(input.env[k])env[k]=input.env[k]!
+  }
+  let answer:TurnOutput|undefined
+  const n=t.turns.length
+  const timeoutMs=turnTimeoutMs()
+  const run=t.runId && readJson<Run>(join(clydeHome(),'runs',t.runId+'.json'))
+  const launch={memoryTask:!!run&&memoryMaintenance(run),id:t.paseoAgentId,parent:t.paseoParentId,first:n===1,messageId:t.id+'-turn-'+n,cwd:t.cwd,
+    thread:t.id,run:t.runId,taskTitle:run ? run.title : t.title,
+    title:run && t.title.startsWith(run.id+' ') ? run.title+' · '+t.title.slice(run.id.length+1) : t.title,backend:t.rung.backend,model:t.rung.model,thinking:t.rung.effort,
+    allowFullAccess:!!run && (run.allowAntigravityFullAccess===true || (run.input as {allowAntigravityFullAccess?:boolean})?.allowAntigravityFullAccess===true),
+    env,system:input.systemAppend,prompt:input.prompt,timeoutMs}
+  const result=await runProcess({bin:command.cmd,args:command.args,env:command.env as Record<string,string>,cwd:t.cwd,
+    stdin:JSON.stringify(launch),timeoutMs:timeoutMs+10000,signal:input.signal,onLine:line=>{
+      let msg
+      try{msg=JSON.parse(line)}catch{return}
+      if(msg.progress)input.onProgress?.(msg.progress)
+      if(msg.started)input.onProgress?.('Working in Paseo · '+msg.started)
+      if(typeof msg.ok==='boolean')answer={ok:msg.ok,text:msg.text??'',error:msg.error,json:lastJsonBlock(msg.text??'')}
+    }}).done
+  if(result.aborted||result.timedOut||!answer)return {ok:false,text:'',error:exitReason('Paseo worker',result,timeoutMs)}
+  return answer
 }

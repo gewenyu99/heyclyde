@@ -35,7 +35,7 @@ function mapPath(home: string): string {
 
 /** The run's first task worker or ship planner is its sole sidebar entry. Old runs have no mirrorTitle marker. */
 export function mirrorName(t: Thread, home: string): string | null {
-  if (t.readOnly || t.parentThreadId) return null
+  if (t.paseoParentId || t.readOnly || t.parentThreadId) return null
   if (!t.runId) return t.stage ? null : t.title
   const run = readJson<Run>(join(home, 'runs', `${t.runId}.json`))
   if (!run || run.parentThreadId) return null

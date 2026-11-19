@@ -217,3 +217,11 @@ test('Quest #47: MCP cards wire vote state, live status regions, form labels, an
   assert.ok(questsHtml.includes('for: evId') && questsHtml.includes('for: enId'), 'quest completion form associates labels with inputs')
   assert.ok(questsHtml.includes('(open ? fold : sum).focus()'), 'expand/collapse preserves keyboard focus')
 })
+
+test('an empty recall offers no feedback action', { skip: NO_CHROME }, () => {
+  const empty = structuredClone(FIXTURES.recall)
+  empty._meta['clyde/card'].items = []
+  const report = run([{ id: 'empty', card: 'recall', html: cardHtml('recall'), theme: 'dark', result: empty, width: 375 }])
+  assert.match(report.frames.empty.text, /Nothing in Clyde matches/)
+  assert.ok(!report.frames.empty.buttons.some(label => /That helped|That didn/.test(label)))
+})

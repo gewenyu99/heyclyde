@@ -1,12 +1,14 @@
 /** One stage: worker rungs, checks, an independent judge, and persistent retries with the last failure as notes. */
+import {join} from 'node:path'
+import {readJsonDir} from '../store.ts'
 import { lastJsonBlock } from '../backends/spawn.ts'
-import { repoRoot, clydeBin } from '../config.ts'
+import { clydeHome,repoRoot, clydeBin } from '../config.ts'
 import { ladder } from '../roles.ts'
 import { rungLabel } from '../threads.ts'
 import type { Rung } from '../types.ts'
 import { skillPath } from './gate.ts'
 import { verdictEntry } from './memory.ts'
-import { blockQuestion, firstLine, judgePrompt, limitQuestion, workerPrompt } from './prompts.ts'
+import { memoryMaintenance,blockQuestion, firstLine, judgePrompt, limitQuestion, workerPrompt } from './prompts.ts'
 import type { Driver } from './runtime.ts'
 import { commitsSince, diffSince, headSha } from './shell.ts'
 import type { Attempt, Check, StageRecord, StageResult, StageSpec, Verdict } from './types.ts'
@@ -15,7 +17,7 @@ import { failureNotes, parseVerdict, passes, pickJudge, VERDICT_SCHEMA, workerRe
 const LOST = 'Lost when the daemon stopped.'
 export const REPORT_ITEM = 'Report with clyde result'
 
-type Outcome = { ok: true; verdict: Verdict; summary: string; artifact?: unknown; diff: string; checks: Check[] } | { ok: false; notes: string; acceptedBlock?: string; limit?: string }
+type Outcome = { ok: true; verdict: Verdict; summary: string; artifact?: unknown; diff: string; checks: Check[] } | { ok: false; notes: string; acceptedBlock?: string; providerError?:string; limit?: string }
 
 export async function runStage(d: Driver, spec: StageSpec): Promise<StageResult> {
   validate(spec)
@@ -35,11 +37,11 @@ export async function runStage(d: Driver, spec: StageSpec): Promise<StageResult>
   let notes = rec.attempts.at(-1)?.ok === false ? notesOf(rec.attempts.at(-1)!) : ''
   for (;;) {
     const pending = rec.status === 'asking' ? rec.attempts.at(-1) : undefined
-    if (pending?.acceptedBlock || pending?.limit) {
-      const kind = pending.acceptedBlock ? 'block' : 'limit'
+    if (pending?.acceptedBlock || pending?.limit || pending?.providerError) {
+      const kind = pending.acceptedBlock ? 'block' : pending.providerError ? 'provider' : 'limit'
       const question = pending.acceptedBlock
         ? blockQuestion(run, spec.name, pending.acceptedBlock)
-        : limitQuestion(run, spec.name, pending.limit!)
+        : pending.providerError ? pending.providerError : limitQuestion(run, spec.name, pending.limit!)
       const answer = await d.ask(`${spec.name}:${kind}:${pending.n}`, kind, question)
       rec.status = 'running'
       d.save()
@@ -60,8 +62,8 @@ export async function runStage(d: Driver, spec: StageSpec): Promise<StageResult>
     // Attempts that die within seconds aren't the worker trying and failing. Something underneath is broken, and with no
     // attempt cap the loop would spin thousands of times a minute, as it did on a Claude session limit.
     const spun = fastFailures(rec.attempts)
-    if (!out.limit && !out.acceptedBlock && spun >= FAST_FAILS) {
-      out.limit = `${spun} attempts in a row failed within ${FAST_MS / 1000} seconds: ${rec.attempts.at(-1)?.reason ?? 'no reason given'}`
+    if (!out.limit && !out.providerError && !out.acceptedBlock && spun >= FAST_FAILS) {
+      out.providerError = `The worker failed to start ${spun} times. ${rec.attempts.at(-1)?.reason ?? ""} Fix the launch problem, then retry.`
     }
     if (out.limit && !run.quotaFailover && routed === 'worker' && run.routes?.worker && !run.routes.worker.pinned &&
         ['sol', 'sonnet'].includes(run.routes.worker.model) && rec.attempts.at(-1)?.reason?.startsWith('The worker failed:')) {
@@ -71,8 +73,9 @@ export async function runStage(d: Driver, spec: StageSpec): Promise<StageResult>
       d.save()
       continue
     }
-    if (out.acceptedBlock || out.limit) {
+    if (out.acceptedBlock || out.limit || out.providerError) {
       const last = rec.attempts.at(-1)!
+      if(out.providerError)last.providerError=out.providerError
       if (out.acceptedBlock) last.acceptedBlock = out.acceptedBlock
       if (out.limit) {
         last.limit = out.limit
@@ -103,6 +106,7 @@ async function attempt(d: Driver, spec: StageSpec, rec: StageRecord, rung: Rung,
   const turn = done.turns.at(-1)
   if (!turn?.ok) {
     const error = turn?.error ?? done.status
+    if (permissionFailure(error)) return {...fail(d,a,'The worker failed: '+error),providerError:permissionFailure(error)}
     return backendLimit(error) ? { ...fail(d, a, `The worker failed: ${error}.`), limit: error } : fail(d, a, `The worker failed: ${error}.`)
   }
   const text = turn.text ?? ''
@@ -162,7 +166,12 @@ async function judge(d: Driver, spec: StageSpec, rec: StageRecord, a: Attempt, o
   const pick = pickJudge(judges, a.rung)
   if (!pick.differs) d.log(`No judge rung is from another family than ${rungLabel(a.rung)}, so ${rungLabel(pick.rung)} judges stage ${spec.name}.`)
   const order = [pick.rung, ...judges.filter((j) => j !== pick.rung)]
-  const prompt = judgePrompt({ run: d.run, spec, base: rec.base, commits: o.commits, diff: o.diff, checks: o.checks, artifact: o.artifact })
+  let prompt = judgePrompt({ run: d.run, spec, base: rec.base, commits: o.commits, diff: o.diff, checks: o.checks, artifact: o.artifact })
+  if(memoryMaintenance(d.run)){
+    const receipts=readJsonDir<{id:string;title:string;sources:string[]}>(join(clydeHome(),'note-receipts',d.run.id))
+    prompt+='\nThis is a shared-memory task. Grade the note changes, not repository diffs. The host read these new notes back from Clyde and verified their links to the original, unmodified notes: '+JSON.stringify(receipts)+
+      '\nWorker report (check claims against those receipts): '+JSON.stringify(a.result)
+  }
   const errors: string[] = []
   for (const rung of order) {
     const t = d.startThread({ title: `${d.run.id} ${spec.name} #${a.n} judge`, prompt, rung, stage: spec.name, readOnly: true, schema: VERDICT_SCHEMA })
@@ -222,6 +231,12 @@ export function fastFailures(attempts: Attempt[]): number {
     n++
   }
   return n
+}
+
+export function permissionFailure(error:string):string|undefined {
+  if (/^Permission required:/i.test(error))return error
+  if (/permission.*cannot prompt|headless.*cannot prompt|tool required the .*permission|soft-denying tool/i.test(error))
+    return 'The provider denied a tool required by this worker. Retry with the permitted Paseo launch mode or choose another worker.'
 }
 
 export function backendLimit(error: string): boolean {

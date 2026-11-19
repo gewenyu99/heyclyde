@@ -48,4 +48,4 @@ deno test --allow-env --allow-read --node-modules-dir=none harness/test/memory/d
 
 ### Recall in Paseo
 
-The [desktop light example](examples/paseo-recall-light.png) and [compact dark example](examples/paseo-recall-dark.png) show the shipped component. Notes open together on desk paper under the Clyde lockup. One footer rates the whole retrieval. Keep the note bodies visible after a vote.
+The [desktop light example](examples/paseo-recall-light.png) and [compact dark example](examples/paseo-recall-dark.png) show the shipped component. The shared recall renderer defines the header, note metadata, confidence meter, evidence and provenance. Notes open in a scrollable list between the header and footer. Put notes with a confirmed per-entry used verdict first and stamp them [USED]. A whole-recall vote leaves those stamps alone. Automatic misses stay silent; an explicit empty recall has no voting controls.

@@ -318,10 +318,12 @@ function recallCard(d) {
     sync(); resized();
   }) : null;
   var s = sheet((d.page === "more" ? "more for " : "recall · ") + "“" + (d.query || "") + "”" + (items.length ? " · " + items.length : ""), d.badge, toggle), dk = desk();
+  dk.classList.add("c-recall-scroll");
   if (d.degraded) dk.appendChild(h("p", { class: "c-text" }, h("span", { class: "cl-chip cl-chip--warn", text: "degraded" }), " ", d.degraded));
   if (!items.length) {
     dk.appendChild(h("div", { class: "cl-empty" }, h("p", { class: "cl-empty__title", text: "Nothing in Clyde matches that yet." }),
       h("p", { class: "cl-empty__text", text: "Either nobody wrote it down, or it was phrased differently. Ask for more results, or tell your agent to remember it." })));
+    s.appendChild(dk); return s;
   }
   var msg = h("p", { class: "c-say", role: "status", "aria-live": "polite", hidden: true });
   var yes = h("button", { class: PR + "c-used", type: "button", "aria-pressed": "false", onclick: function () { rate("helpful"); } }, "That helped");
