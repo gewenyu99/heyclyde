@@ -30,7 +30,7 @@ export default function contribute(server: PluginServerContext) {
     const workspace=workspaceId ? (await paseo.workspaces.list()).entries.find(w=>w.id===workspaceId) : undefined;
     return projects.filter(p => (!workspaceId || p.projectId===workspace?.projectId) && p.projectKind !== "non_git").map(p => ({id:p.projectId,name:p.projectDisplayName,path:p.projectRootPath}));
   });
-  server.handle(launchRpc, async ({project,prompt,flow,worker,requestId,agentId}, {paseo}) => {
+  server.handle(launchRpc, async ({project,prompt,criteria,flow,worker,requestId,agentId}, {paseo}) => {
     const selected=(await paseo.projects.list()).projects.find(p => p.projectId === project && p.projectKind !== "non_git");
     if (!selected) throw new Error("Select an available Git project in Paseo.");
     const workspaces=(await paseo.workspaces.list()).entries.filter(w=>w.projectId===project);
@@ -43,7 +43,9 @@ export default function contribute(server: PluginServerContext) {
     const existing=await call<{id:string,repo:string}>("GET","/runs/r-"+requestId).catch(e=>{if(!String(e).includes("404"))throw e;return null;});
     if(existing){if(existing.repo!==selected.projectRootPath)throw new Error("Task belongs to another project.");residentControl.track(existing.id,origin,paseo);return {id:existing.id};}
     const notes=await residentControl.context(origin,prompt,paseo);
-    const input=flow==="ship"?{intent:prompt,notes,routing}:{prompt:prompt+notes,criteria:[prompt],routing};
+    const input=flow==="ship"
+      ? {intent:prompt,criteria,notes:[criteria?.length ? "User completion criteria:\n"+criteria.join("\n") : "", notes].filter(Boolean).join("\n\n"),routing}
+      : {prompt:prompt+notes,criteria:criteria?.length ? criteria : [prompt],routing};
     const run=await call<{id:string}>("POST","/runs",{flow,input,cwd:selected.projectRootPath,assignment:requestId});
     if(origin)residentControl.track(run.id,origin,paseo);
     return {id:run.id};
@@ -69,9 +71,9 @@ export default function contribute(server: PluginServerContext) {
     try { return { data: transcript(await call<RawThread>("GET", `/threads/${threadId}`)) }; } catch (err) { return failed(err); }
   });
   server.handle(waitRpc, async ({ after }) => ({ revision: await live.wait(after) }));
-  server.handle(answerRpc, async ({ kind, id, text }) => {
+  server.handle(answerRpc, async ({ kind, id, text, askKey }) => {
     try {
-      await call("POST", kind === "run" ? `/runs/${id}/answer` : `/threads/${id}/messages`, { text, via: "paseo" });
+      await call("POST", kind === "run" ? `/runs/${id}/answer` : `/threads/${id}/messages`, { text, via: "paseo", askKey });
       return { ok: true };
     } catch (err) { return { ok: false, error: (err as Error).message }; }
   });

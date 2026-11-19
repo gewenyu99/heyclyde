@@ -1,3 +1,4 @@
+import { RunEvidence } from "./run-evidence";
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -318,6 +319,7 @@ function StopButton({ theme, view }: { theme: PluginTheme; view: TaskView }) {
 export function TaskScreen({ theme, view, back, openAgent }: { theme: PluginTheme; view: TaskView; back: () => void; openAgent?: (id: string) => void }) {
   const [picked, setPicked] = useState<string | undefined>();
   const [details, setDetails] = useState(false);
+  const [showRouting,setShowRouting]=useState(false);
   const all = view.steps.flatMap((s) => s.pieces);
   const piece = all.find((p) => p.id === (picked ?? view.selected)) ?? all[0];
   const tries = piece ? piece.phases.flatMap((ph) => view.attempts[ph.stage] ?? []) : [];
@@ -339,12 +341,15 @@ export function TaskScreen({ theme, view, back, openAgent }: { theme: PluginThem
       </View>
 
       <View style={{ borderBottomWidth: 1, borderBottomColor: theme.colors.border, paddingVertical: 20 }}>
-        <Ladder theme={theme} level="L0" label="What and where" />
+
         {view.goal ? <Text style={{ color: theme.colors.foreground, marginTop: 10, lineHeight: 20, fontWeight: "500" }}>{view.goal}</Text> : null}
         <Text style={{ color: theme.colors.foregroundMuted, marginTop: 6, lineHeight: 20 }}>{view.summary}</Text>
         {view.kind === "run" && view.status === "running" && <Steering id={view.id} theme={theme}/>}
-        {view.routing?.map(line => <Text key={line} style={{color: theme.colors.foregroundMuted}}>{line}</Text>)}
-        {view.auditedHead ? <Text style={{color: theme.colors.foreground}}>Audited {view.auditedHead.slice(0,12)}</Text> : null}
+        <RunEvidence view={view} theme={theme}/>
+        {!!view.routing?.length && <Pressable accessibilityRole="button" accessibilityState={{expanded:showRouting}} onPress={()=>setShowRouting(!showRouting)} style={{marginTop:12}}>
+          <Text style={{color:theme.colors.accent,fontSize:12}}>Why these agents? {showRouting?"▴":"▾"}</Text>
+        </Pressable>}
+        {showRouting && view.routing?.map(line => <Text key={line} style={{color:theme.colors.foregroundMuted}}>{line}</Text>)}
         {view.question ? (
           <View style={{ borderLeftWidth: 2, borderLeftColor: PALETTE.amber.ink, paddingLeft: 10, marginTop: 12 }}>
             <Text style={{ color: theme.colors.foreground, fontWeight: "500" }}>{view.question}</Text>
@@ -354,12 +359,9 @@ export function TaskScreen({ theme, view, back, openAgent }: { theme: PluginThem
       </View>
 
       <View style={{ paddingVertical: 20 }}>
-        <Ladder theme={theme} level="L1" label="The plan" />
+        <Text style={{color:theme.colors.foreground,fontSize:17,fontWeight:"700"}}>Plan</Text>
         <Text style={{ color: theme.colors.foreground, fontSize: 16, fontWeight: "700", marginTop: 10 }}>
           {count(view.total, "piece", true)} in {count(view.steps.length, "row")}
-        </Text>
-        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, marginTop: 4, marginBottom: 12 }}>
-          Each piece is one thing the plan does. The bar inside shows its phases. Read left to right, then follow the line down.
         </Text>
         <FlowDiagram theme={theme} view={view} selected={piece?.id} select={setPicked} />
         <Legend theme={theme} />

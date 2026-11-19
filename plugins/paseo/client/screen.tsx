@@ -82,6 +82,9 @@ function Board(
       </Text>
     </Pressable>
   );
+  const queue = <Panel theme={theme}>{data ? <HomeView theme={theme} home={data} open={(k,i)=>setPicked(k+":"+i)}/> :
+    <Text style={{color:error?c.statusDanger:c.foregroundMuted}}>{error||"Loading tasks…"}</Text>}</Panel>;
+  const workToReview = !!(data?.needsYou.length || data?.failedToday?.length || data?.doneToday.length || data?.running);
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: c.surface0 }}
@@ -147,18 +150,11 @@ function Board(
           : (
             <View style={{ flexDirection: wide ? "row" : "column", alignItems: "stretch", gap: 16 }}>
               <View style={{ flex: wide ? 2 : undefined, minWidth: 0, gap: 14 }}>
+                {workToReview && queue}
                 <Panel theme={theme}>
                   <Composer theme={theme} workspaceId={workspaceId} onStarted={(run) => setPicked("run:" + run)} />
                 </Panel>
-                <Panel theme={theme}>
-                  {data
-                    ? <HomeView theme={theme} home={data} open={(k, i) => setPicked(k + ":" + i)} />
-                    : (
-                      <Text style={{ color: error ? c.statusDanger : c.foregroundMuted }}>
-                        {error || "Loading tasks…"}
-                      </Text>
-                    )}
-                </Panel>
+                {!workToReview && queue}
               </View>
               {wide && (
                 <View style={{ flex: 1, minWidth: 220 }}>
