@@ -104,7 +104,8 @@ async function createProjectChat(
     return handle.id;
   } catch (err) {
     if (err instanceof Error && err.message === LAUNCH_CHAT_ERROR) throw err;
-    throw new Error(LAUNCH_CHAT_ERROR);
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`Could not open a project chat automatically in ${selected.projectDisplayName}: ${detail}`);
   }
 }
 
