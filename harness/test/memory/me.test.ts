@@ -463,6 +463,80 @@ test('export is complete and private', { skip: SKIP }, async () => {
   }
 })
 
+test('Quest #42: /me enforces quest plan limits, syncs live agent scopes, and paginates entries', { skip: SKIP }, async () => {
+  // Free plan cannot post quests via /me/quests.
+  const freeId = randomUUID()
+  const freeEmail = `free-q42-${nonce()}@example.com`
+  exec(`insert into memory.allowed_email (email, plan) values ('${freeEmail}', 'free') on conflict (email) do nothing;
+    insert into memory.account (owner_id, email) values ('${freeId}', '${freeEmail}') on conflict do nothing;
+    insert into memory.entitlement (owner_id, provider, plan, state, event_at) values ('${freeId}', 'comp', 'free', 'comp', now())
+      on conflict (owner_id) do update set provider = 'comp', plan = 'free', state = 'comp', event_at = now();`)
+  const freeJwt = jwt({ sub: freeId, email: freeEmail, jti: randomUUID() })
+  const freeQuest = await request('POST', `${memory.url}/me/quests`, {
+    headers: bearer(freeJwt),
+    body: { title: 'Free quest attempt', brief: 'Should be refused.', done_when: 'Never.' },
+    timeoutMs: 30_000,
+  })
+  assert.equal(freeQuest.status, 402, freeQuest.text)
+
+  // Live agent scope edit propagates immediately to open MCP sessions in memory.mcp_client.
+  const paidId = randomUUID()
+  const paidEmail = `paid-q42-${nonce()}@example.com`
+  exec(`insert into memory.allowed_email (email, plan) values ('${paidEmail}', 'owner') on conflict (email) do nothing;
+    insert into memory.account (owner_id, email) values ('${paidId}', '${paidEmail}') on conflict do nothing;
+    insert into memory.entitlement (owner_id, provider, plan, state, event_at) values ('${paidId}', 'owner', 'owner', 'paid', now())
+      on conflict (owner_id) do update set provider = 'owner', plan = 'owner', state = 'paid', event_at = now();`)
+  const paidJwt = jwt({ sub: paidId, email: paidEmail, jti: randomUUID() })
+  const oauth = jwt({ sub: paidId, email: paidEmail, client_id: 'q42-client', jti: randomUUID() })
+  const init = await request('POST', `${memory.url}/mcp`, {
+    headers: bearer(oauth),
+    body: { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', clientInfo: { name: 'claude-code' } } },
+    timeoutMs: 30_000,
+  })
+  const sid = String(init.headers['mcp-session-id'])
+  const agentName = `q42-agent-${nonce()}`
+  const reg = await request('POST', `${memory.url}/mcp`, {
+    headers: { ...bearer(oauth), 'mcp-session-id': sid },
+    body: {
+      jsonrpc: '2.0', id: 2, method: 'tools/call',
+      params: { name: 'register_agent', arguments: { name: agentName, context: 'both', surface: 'claude-code', description: 'Live scope test.', projects: ['alpha', 'beta'] } },
+    },
+    timeoutMs: 30_000,
+  })
+  assert.equal(reg.status, 200, reg.text)
+  const patch = await request('PATCH', `${memory.url}/me/agents/${encodeURIComponent(agentName)}`, {
+    headers: bearer(paidJwt),
+    body: { context: 'work', repos: ['alpha'], strict_projects: true },
+    timeoutMs: 30_000,
+  })
+  assert.equal(patch.status, 200, patch.text)
+  const [clientRow] = sql(`select session_context, session_projects, session_strict_projects from memory.mcp_client where owner_id = '${paidId}' and session_id = '${sid}'`)
+  assert.equal(clientRow.session_context, 'work')
+  assert.deepEqual(clientRow.session_projects, ['alpha'])
+  assert.equal(clientRow.session_strict_projects, true)
+
+  // Pagination on GET /me/entries returns accurate total, limit, offset, and has_more.
+  exec(`begin; select set_config('memory.owner', '${paidId}', true);
+    insert into memory.entry (id, pattern, title, body, evidence, kind, context) values
+      ('q42-e1', 'observations', 'Page 1', 'b1', 'e1', 'observation', 'work'),
+      ('q42-e2', 'observations', 'Page 2', 'b2', 'e2', 'observation', 'work'),
+      ('q42-e3', 'observations', 'Page 3', 'b3', 'e3', 'observation', 'work');
+    commit;`)
+  const page1 = await request('GET', `${memory.url}/me/entries?limit=2&offset=0`, { headers: bearer(paidJwt), timeoutMs: 30_000 })
+  assert.equal(page1.status, 200, page1.text)
+  const p1 = JSON.parse(page1.text)
+  assert.equal(p1.total, 3)
+  assert.equal(p1.limit, 2)
+  assert.equal(p1.offset, 0)
+  assert.equal(p1.has_more, true)
+  assert.equal(p1.entries.length, 2)
+  const page2 = await request('GET', `${memory.url}/me/entries?limit=2&offset=2`, { headers: bearer(paidJwt), timeoutMs: 30_000 })
+  const p2 = JSON.parse(page2.text)
+  assert.equal(p2.total, 3)
+  assert.equal(p2.has_more, false)
+  assert.equal(p2.entries.length, 1)
+})
+
 test('delete account', { skip: SKIP }, async () => {
   const delId = randomUUID()
   const email = 'seed-delacc@example.com'

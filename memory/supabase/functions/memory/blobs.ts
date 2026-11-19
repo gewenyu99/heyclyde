@@ -186,12 +186,15 @@ export async function inspectUpload(sha: string, declared: { size: number; media
   }
   if (!r.ok) throw new Error(`Storage couldn't read the upload for ${sha} (${r.status}).`);
   let hash: string, text: string | null = null;
-  if (texty) {
+  if (texty || found <= SCAN_MAX) {
     const bytes = new Uint8Array(await r.arrayBuffer());
     hash = await sha256(bytes);
-    if (hash === sha) text = utf8(bytes);
+    if (hash === sha) {
+      const decoded = utf8(bytes);
+      if (decoded !== null && (texty || !decoded.includes("\0"))) text = decoded;
+    }
   } else {
-    // Streamed through node:crypto, so a 500 MB file is never held whole.
+    // Streamed through node:crypto, so a 500 MB binary file is never held whole.
     const h = createHash("sha256");
     for await (const chunk of r.body as unknown as AsyncIterable<Uint8Array>) h.update(chunk);
     hash = h.digest("hex");
@@ -217,7 +220,8 @@ export async function claim(sha: string) {
  * many. */
 export async function sweepIncoming(prefix = "incoming"): Promise<number> {
   let deleted = 0;
-  for (let offset = 0;; offset += 100) {
+  let offset = 0;
+  for (let page = 0; page < 10_000; page++) {
     const r = await call(`/object/list/${BUCKET}`, {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ prefix, limit: 100, offset }),
@@ -229,14 +233,21 @@ export async function sweepIncoming(prefix = "incoming"): Promise<number> {
       for (const f of items.filter((o) => o.name && !o.id && !SHA_RE.test(o.name))) deleted += await sweepIncoming(`incoming/${f.name}`);
     }
     const old = items.filter((o) => o.name && Date.now() - Date.parse(o.created_at) > UPLOAD_TTL_SECONDS * 1000).map((o) => `${prefix}/${o.name}`);
+    let removedHere = 0;
     if (old.length) {
-      await call(`/object/${BUCKET}`, {
+      const del = await call(`/object/${BUCKET}`, {
         method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ prefixes: old }),
       });
-      deleted += old.length;
+      await del.body?.cancel().catch(() => {});
+      if (del.ok) {
+        removedHere = old.length;
+        deleted += removedHere;
+      }
     }
     if (items.length < 100) return deleted;
+    offset += Math.max(1, items.length - removedHere);
   }
+  return deleted;
 }
 
 /** The cap on every blob together. A setting that isn't a whole number of 0 or more is the default. Read fresh, since the
@@ -256,7 +267,8 @@ export async function quota(db: Sql = sql) {
 async function deleteStoragePrefix(prefix: string): Promise<number> {
   if (!storageOn() || !prefix) return 0;
   let removed = 0;
-  for (;;) {
+  const attempted = new Set<string>();
+  for (let page = 0; page < 10_000; page++) {
     const r = await call(`/object/list/${BUCKET}`, {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ prefix, limit: 100, offset: 0 }),
@@ -274,7 +286,11 @@ async function deleteStoragePrefix(prefix: string): Promise<number> {
       if (o.id === null && o.created_at === null) {
         removed += await deleteStoragePrefix(`${prefix}/${name}`);
       } else {
-        files.push(`${prefix}/${name}`);
+        const key = `${prefix}/${name}`;
+        if (!attempted.has(key)) {
+          attempted.add(key);
+          files.push(key);
+        }
       }
     }
     if (!files.length) return removed;
@@ -282,9 +298,11 @@ async function deleteStoragePrefix(prefix: string): Promise<number> {
       method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ prefixes: files }),
     });
     await del.body?.cancel().catch(() => {});
+    if (!del.ok) return removed;
     removed += files.length;
     if (items.length < 100) return removed;
   }
+  return removed;
 }
 
 /** Delete every Storage object held under this non-Wen owner's prefix (`<owner>/` and `incoming/<owner>/`). */

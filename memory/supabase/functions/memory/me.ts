@@ -7,8 +7,8 @@ import { OverBudget } from "./budget.ts";
 import { chargeFor, includedCostMicroUsd, METERED_KINDS, PLANNED, SUPABASE_PRO } from "./billing/cost.ts";
 import { forget, type Plan } from "./billing/entitlement.ts";
 import { deleteOwnerAccount, OwnerProtectedError } from "./billing/lapse.ts";
-import { EXPORT_BLOB_MAX, get as getBlob, storageOn } from "./blobs.ts";
-import { root as rootSql, sql } from "./db.ts";
+import { EXPORT_BLOB_MAX, EXPORT_STORED_TOTAL, get as getBlob, storageOn } from "./blobs.ts";
+import { asTenant, root as rootSql, sql } from "./db.ts";
 import { screen } from "./judge.ts";
 import {
   AGENT_CONTEXTS,
@@ -186,6 +186,12 @@ export async function handle(req: Request, path: string, owner: string): Promise
       ? clauses.slice(1).reduce((acc, c) => sql`${acc} and ${c}`, sql`where ${clauses[0]}`)
       : sql``;
 
+    const rawLimit = Number(url.searchParams.get("limit"));
+    const limit = Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 1000) : 1000;
+    const rawOffset = Number(url.searchParams.get("offset"));
+    const offset = Number.isInteger(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+
+    const [{ total }] = await sql`select count(*)::int as total from memory.entry e ${whereSql}`;
     const rows = await sql`select e.id, e.title, e.body, e.pattern, e.kind, e.project, e.project_slug,
         e.category, e.context, e.transferability, e.sensitivity, e.authority, e.confidence, e.created_at, e.valid_from,
         (select l.src from memory.link l where l.owner_id = e.owner_id and l.dst = e.id and l.type = 'supersedes'
@@ -193,8 +199,9 @@ export async function handle(req: Request, path: string, owner: string): Promise
       from memory.entry e
       ${whereSql}
       order by e.created_at desc, e.id
-      limit 1000`;
-    return json({ total: rows.length, entries: rows });
+      limit ${limit} offset ${offset}`;
+    const totalCount = Number(total ?? rows.length);
+    return json({ total: totalCount, limit, offset, has_more: offset + rows.length < totalCount, entries: rows });
   }
 
   let m = /^\/me\/entries\/([^/]+)\/prune$/.exec(path);
@@ -609,6 +616,12 @@ export async function handle(req: Request, path: string, owner: string): Promise
             description = ${description}
           where name = ${existing.name}
           returning name, nickname, type, harness, device_id, repos, projects, context, surface, description, computer, strict_projects, last_seen, created_at`;
+        await tx`update memory.mcp_client set
+            session_context = ${context},
+            session_projects = ${repos}::text[],
+            session_computer = ${computer},
+            session_strict_projects = ${strictProjects}
+          where agent = ${existing.name}`;
         await tx`insert into memory.admin_audit (action, target, before, after)
           values ('agent.update', ${"agent:" + existing.name}, ${tx.json(existing)}, ${tx.json(rows[0])})`;
         return rows;
@@ -683,6 +696,9 @@ export async function handle(req: Request, path: string, owner: string): Promise
   }
 
   if (path === "/me/quests" && req.method === "POST") {
+    const ent = await entitlementOf(owner);
+    if (!ent.allowed) return json({ error: ent.reason }, 402);
+    if (!ent.plan.quests) return json({ error: "Quests require a paid Clyde plan." }, 402);
     const body = await readJsonObject(req);
     if (!body) return json({ error: "Body must be a JSON object." }, 400);
 
@@ -828,29 +844,43 @@ export async function handle(req: Request, path: string, owner: string): Promise
       "message", "message_delivery", "board_seen", "quest", "quest_note", "quest_blob",
       "judge_cache", "upload", "event", "burst", "usage", "admin_audit",
     ] as const;
-    const chunks: string[] = [];
-    for (const table of tables) {
-      const rows = await sql`select * from ${sql("memory." + table)} where owner_id = ${owner}::uuid`;
-      for (const r of rows) {
-        if (table === "blob") {
-          let bytes: Uint8Array | null = r.content instanceof Uint8Array ? r.content : null;
-          if (!bytes && r.stored === "storage" && Number(r.size ?? 0) <= EXPORT_BLOB_MAX && storageOn()) {
-            bytes = await getBlob(String(r.sha256), owner);
-          }
-          chunks.push(JSON.stringify({
-            table,
-            row: { ...r, content: bytes ? { base64: encodeBase64(new Uint8Array(bytes)) } : null },
-          }) + "\n");
-        } else {
-          const clean: Record<string, unknown> = {};
-          for (const [k, v] of Object.entries(r)) {
-            clean[k] = v instanceof Uint8Array ? { base64: encodeBase64(v) } : v;
-          }
-          chunks.push(JSON.stringify({ table, row: clean }) + "\n");
+    const enc = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          await asTenant(owner, async () => {
+            let storedBytes = 0;
+            for (const table of tables) {
+              const rows = await sql`select * from ${sql("memory." + table)} where owner_id = ${owner}::uuid`;
+              for (const r of rows) {
+                if (table === "blob") {
+                  let bytes: Uint8Array | null = r.content instanceof Uint8Array ? r.content : null;
+                  const sz = Number(r.size ?? 0);
+                  if (!bytes && r.stored === "storage" && sz <= EXPORT_BLOB_MAX && storedBytes + sz <= EXPORT_STORED_TOTAL && storageOn()) {
+                    bytes = await getBlob(String(r.sha256), owner);
+                    if (bytes) storedBytes += bytes.byteLength;
+                  }
+                  controller.enqueue(enc.encode(JSON.stringify({
+                    table,
+                    row: { ...r, content: bytes ? { base64: encodeBase64(new Uint8Array(bytes)) } : null },
+                  }) + "\n"));
+                } else {
+                  const clean: Record<string, unknown> = {};
+                  for (const [k, v] of Object.entries(r)) {
+                    clean[k] = v instanceof Uint8Array ? { base64: encodeBase64(v) } : v;
+                  }
+                  controller.enqueue(enc.encode(JSON.stringify({ table, row: clean }) + "\n"));
+                }
+              }
+            }
+          });
+          controller.close();
+        } catch (err) {
+          controller.error(err);
         }
-      }
-    }
-    return new Response(chunks.join(""), {
+      },
+    });
+    return new Response(stream, {
       headers: {
         "content-type": "application/x-ndjson; charset=utf-8",
         "content-disposition": 'attachment; filename="clyde-export.ndjson"',

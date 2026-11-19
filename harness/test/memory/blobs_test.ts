@@ -102,6 +102,24 @@ Deno.test('an item lists its artifacts by name, kind and size, and a private one
   assert.ok(!renderItem(1, { ...row, sensitivity: 'private' }).includes('plan.md'))
 })
 
+Deno.test('Quest #42: binary-labelled UTF-8 blobs and blob names redact secrets while true binary passes intact', async () => {
+  const short = { pattern: 'observations', title: 'Secret blob check', body: 'ok', evidence: 'ok', evidence_kind: 'summary' }
+  const secretText = 'token=sk-proj-1234567890abcdefghij123456'
+  const b64Secret = btoa(secretText)
+  const res = await validate({
+    ...short,
+    artifacts: [
+      { name: 'leak-sk-proj-1234567890abcdefghij123456.bin', media_type: 'application/octet-stream', base64: b64Secret },
+      { name: 'img.bin', media_type: 'application/octet-stream', base64: btoa('\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR') },
+    ],
+  }, 'agent')
+  const firstText = new TextDecoder().decode(res.blobs[0].content)
+  assert.ok(!firstText.includes('sk-proj-'), 'binary-labelled UTF-8 secret is redacted')
+  assert.ok(firstText.includes('[redacted:'))
+  assert.ok(!res.blobs[0].name.includes('sk-proj-'), 'secret in blob filename is redacted')
+  assert.equal(res.blobs[1].content?.[0], 0x89, 'true binary payload with NUL bytes stays intact')
+})
+
 const V1 = {
   candidates: 20, packetItems: 5, packetTokens: 1200, filterK: 10, filterThreshold: 0.5, tiltBase: 0.9, tiltUnknownConfidence: 0.7, tiltWindow: 50,
   rowWindow: 30, dormant: 0.15, rrfK: 60, vecWeight: 2, indexDraftFactor: 0.5, scopeBoost: 2, restart: 0.5, iterations: 20, supersededFactor: 0.2,

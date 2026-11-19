@@ -360,10 +360,14 @@ async function artifacts(value: unknown, errs: string[]): Promise<Row[]> {
     if (data.length > MAX_BLOB_BYTES) errs.push(`Blob ${label} is ${data.length} bytes. The limit is ${MAX_BLOB_BYTES}.`);
     if (!typeOk()) continue;
     mediaType = mediaType ?? defaultType;
-    // Text sent as base64 gets the same redaction as text sent as text.
-    const asText = "base64" in b && store.isText(mediaType) ? store.utf8(data) : null;
-    if (asText !== null) data = new TextEncoder().encode(redactText(asText)[0]);
-    out.push({ name, kind: kind ?? store.kindOf(mediaType, name ?? ""), media_type: mediaType, content: data, sha256: await sha256(data) });
+    // Text sent as base64 (including UTF-8 text disguised under a binary media type) gets the same redaction as text.
+    const asText = "base64" in b ? store.utf8(data) : null;
+    if (asText !== null && (store.isText(mediaType) || !asText.includes("\0"))) {
+      const [redacted, found] = redactText(asText);
+      if (store.isText(mediaType) || found.length) data = new TextEncoder().encode(redacted);
+    }
+    const safeName = name ? redactText(name)[0] : name;
+    out.push({ name: safeName, kind: kind ?? store.kindOf(mediaType, safeName ?? ""), media_type: mediaType, content: data, sha256: await sha256(data) });
   }
   const total = out.reduce((n, b) => n + (b.content?.length ?? 0), 0);
   if (total > MAX_BLOBS_BYTES) errs.push(`The blobs add up to ${total} bytes. The limit for one entry is ${MAX_BLOBS_BYTES}.`);
