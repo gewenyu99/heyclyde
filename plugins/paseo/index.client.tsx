@@ -6,26 +6,31 @@ import { Text, View } from "react-native";
 import {nativeRecall} from "./shared/recall";
 import {InlineActivity} from "./client/inline";
 import {activitySchema,recallRpc} from "./shared/clyde";
-import {scheme} from "./client/brand";
+import { scheme, clydeTheme } from "./client/brand";
 import {artwork} from "./client/brand.generated";
 import {clydeIcon} from "./client/icon";
 import { Sidecar } from "./client/sidecar";
 import { ClydeScreen } from "./client/screen";
-import { PALETTE, useLive } from "./client/nodes";
+import { tones, useLive } from "./client/nodes";
 import { homeRpc } from "./shared/clyde";
 
-function Badge({ n, tone }: { n: number; tone: { ink: string; soft: string } }) {
+function Badge({ n, label, tone }: { n: number; label: string; tone: { ink: string; soft: string } }) {
   if (!n) return null;
   return (
-    <View style={{ minWidth: 19, height: 19, paddingHorizontal: 5, borderRadius: 5, backgroundColor: tone.soft, alignItems: "center", justifyContent: "center" }}>
-      <Text style={{ color: tone.ink, fontSize: 10, fontWeight: "700" }}>{n}</Text>
+    <View
+      accessibilityLabel={`${n} ${label}`}
+      style={{ minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 6, backgroundColor: tone.soft, alignItems: "center", justifyContent: "center" }}
+    >
+      <Text style={{ color: tone.ink, fontSize: 12, fontWeight: "700" }}>{n}</Text>
     </View>
   );
 }
 
 /** Clyde in the sidebar: amber counts what needs Wen, blue counts what's running. */
-function ClydeItem({ currentScreen, openScreen,theme }: PluginSidebarItemProps) {
+function ClydeItem({ currentScreen, openScreen, theme: hostTheme }: PluginSidebarItemProps) {
   useLive();
+  const theme = clydeTheme(hostTheme);
+  const t = tones(theme);
   const read = useRpc(homeRpc);
   const q = useQuery({ queryKey: ["clyde", "home"], queryFn: () => read({}), refetchInterval: 15_000 });
   const home = q.data?.data;
@@ -37,8 +42,8 @@ function ClydeItem({ currentScreen, openScreen,theme }: PluginSidebarItemProps) 
       onPress={() => openScreen({ screenId: "clyde" })}
       trailing={home ? (
         <View style={{ flexDirection: "row", gap: 4 }}>
-          <Badge n={home.needsYou.length} tone={PALETTE.amber} />
-          <Badge n={home.running} tone={PALETTE.blue} />
+          <Badge n={home.needsYou.length} label="needs you" tone={t.amber} />
+          <Badge n={home.running} label="running" tone={t.blue} />
         </View>
       ) : null}
     />

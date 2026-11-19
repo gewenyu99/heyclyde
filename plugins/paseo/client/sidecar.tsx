@@ -1,17 +1,19 @@
 import type { PluginAgentPanelProps, PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
 import { useRpc } from "@getpaseo/plugin/client";
-import { Icon } from "@getpaseo/plugin/client/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { homeRpc, rosterRpc, taskRpc } from "../shared/clyde";
+import { homeRpc, rosterRpc, taskRpc, type TaskCard } from "../shared/clyde";
 import { Composer } from "./composer";
 import { Quests } from "./quests";
 import { TaskScreen } from "./task";
-import { Lockup,clydeTheme } from "./brand";
+import { Lockup, clydeTheme } from "./brand";
+import { Pill, useLive } from "./nodes";
+import { formatRpcError, MIN_HIT_HEIGHT } from "./palette";
 
 export function Sidecar(props: PluginAgentPanelProps | PluginWorkspacePanelProps) {
-  const {workspaceId}=props, theme=clydeTheme(props.theme), c=theme.colors;
+  const { workspaceId } = props, theme = clydeTheme(props.theme), c = theme.colors;
+  useLive();
   const origin = props.context === "agent" ? props.params.agentId : undefined;
   const [chosen, setChosen] = useState(""),
     [tab, setTab] = useState<"Quests" | "New task" | "Runs">("Quests"),
@@ -40,36 +42,62 @@ export function Sidecar(props: PluginAgentPanelProps | PluginWorkspacePanelProps
     setTab("Runs");
     void runs.refetch();
   };
+  const homeData = runs.data?.data;
+  const needsSet = new Set(homeData?.needsYou.filter((a) => a.kind === "run").map((a) => a.id) ?? []);
+  const needsCount = homeData?.needsYou.length ?? 0;
+  const orderedRuns: TaskCard[] = homeData
+    ? (() => {
+        const allRuns = homeData.tasks.concat(homeData.failedToday ?? [], homeData.doneToday ?? []).filter((t) => t.kind === "run");
+        const seen = new Set<string>();
+        const deduped = allRuns.filter((t) => (seen.has(t.id) ? false : (seen.add(t.id), true)));
+        return [...deduped.filter((t) => needsSet.has(t.id)), ...deduped.filter((t) => !needsSet.has(t.id))];
+      })()
+    : [];
+  const listError = runs.data?.error ? formatRpcError(runs.data.error) : runs.error ? formatRpcError(runs.error) : "";
+  const detailError = detail.data?.error ? formatRpcError(detail.data.error) : detail.error ? formatRpcError(detail.error) : "";
   return (
     <ScrollView style={{ flex: 1, backgroundColor: c.surface0 }} contentContainerStyle={{ padding: 14, gap: 16 }}>
-      <Lockup theme={theme} width={88}/>
+      <Lockup theme={theme} width={88} />
       <View style={{ flexDirection: "row", gap: 4, borderBottomWidth: 1, borderColor: c.border }}>
-        {(["Quests", "New task", "Runs"] as const).map((v) => (
-          <Pressable
-            accessibilityRole="tab"
-            accessibilityState={{ selected: tab === v }}
-            key={v}
-            onPress={() => {
-              setTab(v);
-              setId("");
-            }}
-            style={{
-              paddingVertical: 8,
-              paddingHorizontal: 9,
-              borderBottomWidth: 2,
-              borderBottomColor: v === tab ? c.accent : "transparent",
-            }}
-          >
-            <Text style={{ color: v === tab ? c.foreground : c.foregroundMuted, fontWeight: "600" }}>{v}</Text>
-          </Pressable>
-        ))}
+        {(["Quests", "New task", "Runs"] as const).map((v) => {
+          const label = v === "Runs" && needsCount > 0 ? `Runs (${needsCount})` : v;
+          return (
+            <Pressable
+              accessibilityRole="tab"
+              accessibilityLabel={v === "Runs" && needsCount > 0 ? `Runs, ${needsCount} awaiting your reply` : v}
+              accessibilityState={{ selected: tab === v }}
+              key={v}
+              onPress={() => {
+                setTab(v);
+                setId("");
+              }}
+              style={{
+                minHeight: MIN_HIT_HEIGHT,
+                justifyContent: "center",
+                paddingHorizontal: 9,
+                borderBottomWidth: 2,
+                borderBottomColor: v === tab ? c.accent : "transparent",
+              }}
+            >
+              <Text style={{ color: v === tab ? c.foreground : c.foregroundMuted, fontSize: 13, fontWeight: "600" }}>{label}</Text>
+            </Pressable>
+          );
+        })}
       </View>
       {!origin && (rows.data?.length ?? 0) > 1 && (
         <View style={{ gap: 5 }}>
           <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>Chat for approvals and feedback</Text>
           {rows.data!.map((a) => (
-            <Pressable key={a.id} accessibilityRole="button" onPress={() => setChosen(a.id)}>
-              <Text style={{ color: agent === a.id ? c.accent : c.foreground }}>{a.title}</Text>
+            <Pressable
+              key={a.id}
+              accessibilityRole="button"
+              accessibilityState={{ selected: agent === a.id }}
+              onPress={() => setChosen(a.id)}
+              style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}
+            >
+              <Text style={{ color: agent === a.id ? c.accent : c.foreground, fontSize: 13, fontWeight: agent === a.id ? "600" : "400" }}>
+                {agent === a.id ? "✓ " : ""}{a.title}
+              </Text>
             </Pressable>
           ))}
         </View>
@@ -81,36 +109,53 @@ export function Sidecar(props: PluginAgentPanelProps | PluginWorkspacePanelProps
         : id
         ? (
           <View style={{ gap: 12 }}>
-            <Pressable accessibilityRole="button" onPress={() => setId("")}>
-              <Text style={{ color: c.accent }}>‹ Runs</Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setId("")}
+              style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}
+            >
+              <Text style={{ color: c.accent, fontSize: 13, fontWeight: "600" }}>‹ Runs</Text>
             </Pressable>
             {detail.data?.data
-              ? <TaskScreen theme={theme} view={detail.data.data} back={() => setId("")} openAgent={props.navigation ? agentId=>props.navigation!.openAgent({agentId}) : undefined} />
+              ? <TaskScreen theme={theme} view={detail.data.data} back={() => setId("")} openAgent={props.navigation ? (agentId) => props.navigation!.openAgent({ agentId }) : undefined} />
               : (
-                <Text style={{ color: c.foregroundMuted }}>
-                  {detail.data?.error || detail.error?.message || "Loading run…"}
+                <Text accessibilityRole={detailError ? "alert" : undefined} style={{ color: detailError ? c.statusDanger : c.foregroundMuted, fontSize: 13 }}>
+                  {detailError || "Loading run…"}
                 </Text>
               )}
           </View>
         )
         : (
           <View style={{ gap: 10 }}>
-            {runs.data?.error || runs.error
-              ? <Text style={{ color: c.statusDanger }}>{runs.data?.error || runs.error?.message}</Text>
+            {listError
+              ? <Text accessibilityRole="alert" style={{ color: c.statusDanger, fontSize: 13 }}>{listError}</Text>
               : null}
-            {(runs.data?.data?.tasks ?? []).concat(runs.data?.data?.failedToday ?? [], runs.data?.data?.doneToday ?? []).filter((t) => t.kind === "run")
-              .map((t) => (
-                <Pressable
-                  key={t.id}
-                  accessibilityRole="button"
-                  onPress={() => setId(t.id)}
-                >
-                  <Text style={{ color: c.foreground, fontWeight: "600" }}>{t.name}</Text>
-                  <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>{t.status}</Text>
-                </Pressable>
-              ))}
-            {runs.data?.data && ![...runs.data.data.tasks,...(runs.data.data.failedToday??[]),...runs.data.data.doneToday].some(t=>t.kind==="run") && (
-              <Text style={{ color: c.foregroundMuted }}>No runs in this workspace yet.</Text>
+            {orderedRuns.map((t) => (
+              <Pressable
+                key={t.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${t.name}, ${t.status}`}
+                onPress={() => setId(t.id)}
+                style={{
+                  minHeight: MIN_HIT_HEIGHT,
+                  justifyContent: "center",
+                  padding: 10,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: c.border,
+                  backgroundColor: c.surface1,
+                  gap: 6,
+                }}
+              >
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                  <Text numberOfLines={2} style={{ color: c.foreground, fontWeight: "600", fontSize: 13, flexShrink: 1 }}>{t.name}</Text>
+                  <Pill theme={theme} status={t.status} />
+                </View>
+                {!!t.current && <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12 }}>{t.current}</Text>}
+              </Pressable>
+            ))}
+            {homeData && orderedRuns.length === 0 && (
+              <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>No runs in this workspace yet.</Text>
             )}
           </View>
         )}

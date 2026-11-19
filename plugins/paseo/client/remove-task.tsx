@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { removeRpc } from "../shared/clyde";
+import { formatRpcError, MIN_HIT_HEIGHT } from "./palette";
 
 export function RemoveTask(
   { theme, kind, id, active, name, onRemoved }: {
@@ -27,7 +28,7 @@ export function RemoveTask(
       await cache.invalidateQueries({ queryKey: ["clyde"] });
       onRemoved?.();
     } catch (e) {
-      setError(String(e));
+      setError(formatRpcError(e));
     } finally {
       lock.current = false;
       setBusy(false);
@@ -39,14 +40,21 @@ export function RemoveTask(
       {armed
         ? (
           <View style={{ flexDirection: "row", gap: 9, alignItems: "center" }}>
-            <Pressable accessibilityRole="button" disabled={busy} onPress={() => setArmed(false)}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Cancel task removal"
+              disabled={busy}
+              onPress={() => setArmed(false)}
+              style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingHorizontal: 8 }}
+            >
               <Text style={{ fontSize: 12, color: c.foregroundMuted }}>Cancel</Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
+              accessibilityState={{ disabled: busy }}
               disabled={busy}
               onPress={() => void confirm()}
-              style={{ padding: 6, borderRadius: 5, borderColor: c.statusDanger, borderWidth: 1 }}
+              style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingHorizontal: 10, borderRadius: 5, borderColor: c.statusDanger, borderWidth: 1 }}
             >
               <Text style={{ fontSize: 12, color: c.statusDanger, fontWeight: "600" }}>
                 {busy ? "Removing…" : active ? "Stop and remove" : "Remove task"}
@@ -59,12 +67,12 @@ export function RemoveTask(
             accessibilityRole="button"
             accessibilityLabel={"Remove task " + name}
             onPress={() => setArmed(true)}
-            style={{ padding: 8 }}
+            style={{ minWidth: MIN_HIT_HEIGHT, minHeight: MIN_HIT_HEIGHT, alignItems: "center", justifyContent: "center" }}
           >
             <Icon icon="Trash2" size={16} color={c.foregroundMuted} />
           </Pressable>
         )}
-      {!!error && <Text style={{ color: c.statusDanger }}>{error}</Text>}
+      {!!error && <Text accessibilityRole="alert" style={{ color: c.statusDanger, fontSize: 12 }}>{error}</Text>}
     </View>
   );
 }

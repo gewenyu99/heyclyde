@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { type Resident, residentRpc, rosterRpc } from "../shared/clyde";
+import { formatRpcError, MIN_HIT_HEIGHT } from "./palette";
 
 type RowProps = {
   agent: Resident;
@@ -35,7 +36,7 @@ function Row({ agent, theme, refresh, openAgent }: RowProps) {
       setEditing(false);
       refresh();
     } catch (e) {
-      setError(String(e));
+      setError(formatRpcError(e));
     } finally {
       setBusy(false);
     }
@@ -47,15 +48,21 @@ function Row({ agent, theme, refresh, openAgent }: RowProps) {
     setEditing(true);
   }
   const button = (label: string, click: () => void, disabled = false) => (
-    <Pressable accessibilityRole="button" disabled={busy || disabled} onPress={click}>
-      <Text style={{ color: disabled ? colors.foregroundMuted : colors.accent, paddingVertical: 6 }}>{label}</Text>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled: busy || disabled }}
+      disabled={busy || disabled}
+      onPress={click}
+      style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}
+    >
+      <Text style={{ fontSize: 13, color: disabled ? colors.foregroundMuted : colors.accent, fontWeight: "600" }}>{label}</Text>
     </Pressable>
   );
   const project = agent.project.split("/").at(-1);
   const status = agent.status && agent.status.charAt(0).toUpperCase() + agent.status.slice(1);
   const metadata = [project, agent.model?.split("/").at(-1), status].filter(Boolean).join(" · ");
   const actions = { flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 16 } as const;
-  const field = { color: colors.foreground, borderWidth: 1, borderColor: colors.border, borderRadius: 4, padding: 8 };
+  const field = { color: colors.foreground, backgroundColor: colors.surface1, borderWidth: 1, borderColor: colors.border, borderRadius: 4, padding: 10, minHeight: MIN_HIT_HEIGHT, fontSize: 14 };
   return (
     <View style={{ borderTopColor: colors.border, borderTopWidth: 1, paddingVertical: 10, gap: 4 }}>
       <Text style={{ color: colors.foreground, fontWeight: "600" }}>{agent.title}</Text>
@@ -98,9 +105,9 @@ function Row({ agent, theme, refresh, openAgent }: RowProps) {
           {button("Pass", () => void action("pass"))}
         </View>
       )}
-      {error && <Text style={{ color: colors.statusDanger }}>{error}</Text>}
+      {error && <Text accessibilityRole="alert" style={{ color: colors.statusDanger, fontSize: 13 }}>{error}</Text>}
       {!editing && agent.pickupError && (
-        <Text style={{ color: colors.statusDanger }}>Quest pickup unavailable. {agent.pickupError}</Text>
+        <Text accessibilityRole="alert" style={{ color: colors.statusDanger, fontSize: 13 }}>Quest pickup unavailable. {agent.pickupError}</Text>
       )}
     </View>
   );
@@ -118,9 +125,9 @@ export function Roster({ theme, workspaceId, openAgent }: {
   return (
     <View style={{ gap: 10 }}>
       <Text accessibilityRole="header" style={{ color: theme.colors.foreground, fontWeight: "700", fontSize: 18 }}>Agents</Text>
-      {query.isPending && <Text style={{ color: theme.colors.foregroundMuted }}>Loading agents…</Text>}
-      {query.error && <Text style={{ color: theme.colors.statusDanger }}>{String(query.error)}</Text>}
-      {query.data?.length === 0 && <Text style={{ color: theme.colors.foregroundMuted }}>Open a project chat to add an agent.</Text>}
+      {query.isPending && <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>Loading agents…</Text>}
+      {query.error && <Text accessibilityRole="alert" style={{ color: theme.colors.statusDanger, fontSize: 13 }}>{formatRpcError(query.error)}</Text>}
+      {query.data?.length === 0 && <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>Open a project chat to add an agent.</Text>}
       {query.data?.map(agent => (
         <Row key={agent.id} agent={agent} theme={theme} openAgent={openAgent} refresh={() => void query.refetch()} />
       ))}

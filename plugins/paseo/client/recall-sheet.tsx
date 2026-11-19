@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { Lockup, scheme } from "./brand";
 import { palette } from "./brand.generated";
+import { formatRpcError, MIN_HIT_HEIGHT, MIN_LOCKUP_WIDTH } from "./palette";
 import { usedFirst } from "../shared/recall";
 import type { Activity } from "../shared/clyde";
 
@@ -36,7 +37,7 @@ function pen(name: string, p: Paper) {
 function Chip({ text, color, fill }: { text: string; color: string; fill: string }) {
   return (
     <View style={{ backgroundColor: fill, borderRadius: 3, paddingHorizontal: 6, paddingVertical: 3 }}>
-      <Text style={{ fontFamily: "Menlo", fontSize: 10.5, letterSpacing: .6, color }}>{text.toUpperCase()}</Text>
+      <Text style={{ fontFamily: "Menlo", fontSize: 12, letterSpacing: .4, color }}>{text.toUpperCase()}</Text>
     </View>
   );
 }
@@ -71,7 +72,7 @@ function MemoryNote(
       setError("");
       setShowDetail(true);
     } catch (e) {
-      setError(String(e));
+      setError(formatRpcError(e));
     } finally {
       setBusy(false);
     }
@@ -92,7 +93,7 @@ function MemoryNote(
     : n.kind === "plan"
     ? p["warn-wash"]
     : p["paper-2"];
-  const meta = { fontFamily: "Menlo", fontSize: 11, color: p["ink-3"] } as const;
+  const meta = { fontFamily: "Menlo", fontSize: 12, color: p["ink-3"] } as const;
   const usedStamp = used
     ? (
       <View
@@ -111,7 +112,7 @@ function MemoryNote(
           paddingVertical: 2,
         }}
       >
-        <Text style={{ fontFamily: "Menlo", fontSize: 11, fontWeight: "700", color: p.ok }}>[USED]</Text>
+        <Text style={{ fontFamily: "Menlo", fontSize: 12, fontWeight: "700", color: p.ok }}>[USED]</Text>
       </View>
     )
     : null;
@@ -219,7 +220,8 @@ function MemoryNote(
                 accessibilityRole="button"
                 accessibilityLabel={"Compact " + n.title}
                 onPress={toggle}
-                hitSlop={4}
+                hitSlop={8}
+                style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}
               >
                 <Text style={{ fontSize: 12, color: p["ink-2"] }}>Less ⌃</Text>
               </Pressable>
@@ -229,7 +231,8 @@ function MemoryNote(
                   accessibilityLabel={"Open " + n.title}
                   disabled={busy}
                   onPress={() => void inspect()}
-                  hitSlop={4}
+                  hitSlop={8}
+                  style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}
                 >
                   <Text style={{ fontSize: 12, color: p["ink-2"] }}>
                     {busy ? "Opening…" : showDetail ? "Close details" : "Open ↗"}
@@ -242,12 +245,17 @@ function MemoryNote(
                 {detail}
               </Text>
             )}
-            {!!error && <Text accessibilityRole="alert" style={{ color: p.bad }}>{error}</Text>}
+            {!!error && <Text accessibilityRole="alert" style={{ color: p.bad, fontSize: 12 }}>{error}</Text>}
           </>
         )
         : (
-          <Pressable accessibilityRole="button" accessibilityState={{ expanded: false }} onPress={toggle}>
-            <Text numberOfLines={1} style={{ fontWeight: "600", color: p.ink, paddingRight: used ? 62 : 0 }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: false }}
+            onPress={toggle}
+            style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}
+          >
+            <Text numberOfLines={1} style={{ fontWeight: "600", fontSize: 14, color: p.ink, paddingRight: used ? 62 : 0 }}>
               {n.title} ▾
             </Text>
           </Pressable>
@@ -280,7 +288,7 @@ export function RecallSheet(
       setQueued(!!saved?.pendingSync);
       setError("");
     } catch (e) {
-      setError(String(e));
+      setError(formatRpcError(e));
     } finally {
       setPending(false);
     }
@@ -294,8 +302,9 @@ export function RecallSheet(
         disabled={pending}
         onPress={() => void vote(v)}
         style={{
-          paddingHorizontal: 11,
-          paddingVertical: 6,
+          minHeight: MIN_HIT_HEIGHT,
+          justifyContent: "center",
+          paddingHorizontal: 12,
           borderRadius: 6,
           backgroundColor: primary ? p.ink : "transparent",
           borderBottomColor: p["carbon-copy"],
@@ -340,18 +349,19 @@ export function RecallSheet(
           borderColor: p.rule,
         }}
       >
-        <Lockup theme={theme} width={72} />
+        <Lockup theme={theme} width={MIN_LOCKUP_WIDTH} />
         <Text numberOfLines={1} style={{ flex: 1, color: p["ink-3"], fontSize: 13 }}>{heading}</Text>
         {badge && width > 400 && (
-          <View style={{ maxWidth: "30%", flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <View style={{ maxWidth: "32%", flexDirection: "row", alignItems: "center", gap: 6 }}>
             <Text
               style={{
-                fontSize: 10,
+                fontSize: 12,
                 fontFamily: "Menlo",
                 color: pen(badge.name, p),
                 borderWidth: 1,
                 borderColor: pen(badge.name, p),
-                padding: 2,
+                paddingHorizontal: 4,
+                paddingVertical: 1,
                 borderRadius: 3,
               }}
             >
@@ -359,7 +369,7 @@ export function RecallSheet(
             </Text>
             <View style={{ flexShrink: 1 }}>
               <Text numberOfLines={1} style={{ fontSize: 12, color: p.ink, fontWeight: "600" }}>{badge.name}</Text>
-              <Text numberOfLines={1} style={{ fontSize: 10, fontFamily: "Menlo", color: p["ink-3"] }}>
+              <Text numberOfLines={1} style={{ fontSize: 12, fontFamily: "Menlo", color: p["ink-3"] }}>
                 {[badge.context, badge.surface].filter(Boolean).join(" · ")}
               </Text>
             </View>
@@ -373,6 +383,7 @@ export function RecallSheet(
               setClosed(
                 allOpen ? new Set(notes.map((n) => n.id)) : new Set(),
               )}
+            style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}
           >
             <Text style={{ fontSize: 12, color: p["ink-2"], fontWeight: "600" }}>
               {allOpen ? "Compact ⌃" : "Expand ▾"}

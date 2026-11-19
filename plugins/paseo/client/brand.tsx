@@ -30,11 +30,17 @@ export function clydeTheme(theme: PluginTheme): PluginTheme {
   };
 }
 export function Lockup({ theme, width = 90 }: { theme: PluginTheme; width?: number }) {
-  const height = width * 92 / 332;
+  const w = Math.max(84, width);
+  const height = w * 92 / 332;
   return (
-    <View accessible accessibilityLabel="Clyde" style={{ width, height, overflow: "hidden", flexShrink: 0 }}>
-      <View style={{ position: "absolute", top: (height - width) / 2, width, height: width }}>
-        <Icon icon={artwork[scheme(theme)].lockup} size={width} color={theme.colors.foreground} />
+    <View
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel="Clyde"
+      style={{ width: w, height, overflow: "hidden", flexShrink: 0 }}
+    >
+      <View style={{ position: "absolute", top: (height - w) / 2, width: w, height: w }}>
+        <Icon icon={artwork[scheme(theme)].lockup} size={w} color={theme.colors.foreground} />
       </View>
     </View>
   );

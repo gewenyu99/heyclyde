@@ -1,7 +1,6 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import type { PluginScreenProps } from "@getpaseo/plugin/client";
 import { useRpc } from "@getpaseo/plugin/client";
-import { Icon } from "@getpaseo/plugin/client/ui";
 import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
@@ -11,6 +10,7 @@ import { Composer } from "./composer";
 import { Roster } from "./roster";
 import { HomeView } from "./home";
 import { useLive } from "./nodes";
+import { formatRpcError, MIN_HIT_HEIGHT } from "./palette";
 import { TaskScreen } from "./task";
 import {Lockup,clydeTheme} from "./brand";
 
@@ -57,18 +57,21 @@ function Board(
     refetchInterval: 5000,
   });
   const data = home.data?.data;
-  const error = home.data?.error || home.error?.message;
+  const rawError = home.data?.error || (home.error ? formatRpcError(home.error) : "");
+  const error = rawError ? formatRpcError(rawError) : "";
   const nav = (value: "board" | "agents" | "quests", label: string) => (
     <Pressable
       accessibilityRole="tab"
+      accessibilityLabel={label}
       accessibilityState={{ selected: tab === value }}
       onPress={() => {
         setPicked("");
         setTab(value);
       }}
       style={{
-        paddingHorizontal: 12,
-        paddingVertical: 7,
+        minHeight: MIN_HIT_HEIGHT,
+        justifyContent: "center",
+        paddingHorizontal: 14,
         borderRadius: 6,
         backgroundColor: tab === value ? c.surface1 : "transparent",
       }}
@@ -85,7 +88,7 @@ function Board(
     </Pressable>
   );
   const queue = <Panel theme={theme}>{data ? <HomeView theme={theme} home={data} open={(k,i)=>setPicked(k+":"+i)}/> :
-    <Text style={{color:error?c.statusDanger:c.foregroundMuted}}>{error||"Loading tasks…"}</Text>}</Panel>;
+    <Text accessibilityRole={error ? "alert" : undefined} style={{color:error?c.statusDanger:c.foregroundMuted,fontSize:13}}>{error||"Loading tasks…"}</Text>}</Panel>;
   const workToReview = !!(data?.needsYou.length || data?.failedToday?.length || data?.doneToday.length || data?.running);
   return (
     <ScrollView
@@ -124,8 +127,8 @@ function Board(
         {picked && id
           ? (
             <Panel theme={theme}>
-              <Pressable accessibilityRole="button" onPress={() => setPicked("")}>
-                <Text style={{ color: c.accent }}>‹ Back to board</Text>
+              <Pressable accessibilityRole="button" onPress={() => setPicked("")} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
+                <Text style={{ color: c.accent, fontSize: 14, fontWeight: "600" }}>‹ Back to board</Text>
               </Pressable>
               {task.data?.data
                 ? (
@@ -137,8 +140,11 @@ function Board(
                   />
                 )
                 : (
-                  <Text style={{ color: c.foregroundMuted }}>
-                    {task.error?.message || task.data?.error || "Opening task…"}
+                  <Text
+                    accessibilityRole={task.error || task.data?.error ? "alert" : undefined}
+                    style={{ color: task.error || task.data?.error ? c.statusDanger : c.foregroundMuted, fontSize: 13 }}
+                  >
+                    {task.error ? formatRpcError(task.error) : task.data?.error ? formatRpcError(task.data.error) : "Opening task…"}
                   </Text>
                 )}
             </Panel>

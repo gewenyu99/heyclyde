@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Linking, Pressable, Text, TextInput, View } from "react-native";
 import { boardRpc, rosterRpc, sharedBoardRpc, spawnQuestRpc } from "../shared/clyde";
+import { formatRpcError, MIN_HIT_HEIGHT, tones } from "./palette";
 
 export function Quests(
   { theme, agent: activeAgent, onStarted }: { theme: PluginTheme; agent?: string; onStarted: (id: string) => void },
@@ -53,26 +54,27 @@ export function Quests(
       void cache.invalidateQueries({ queryKey: ["clyde"] });
       onStarted(run.id);
     } catch (e) {
-      setError(String(e));
+      setError(formatRpcError(e));
     } finally {
       setBusy(false);
     }
   }
+  const linkInk = tones(theme).blue.ink;
   return (
     <View style={{ gap: 10 }}>
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
         <Text accessibilityRole="header" style={{ color: c.foreground, fontWeight: "700", fontSize: 18 }}>Quests</Text>
-        {
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => {
-              void query.refetch();
-              if (agent) void matches.refetch();
-            }}
-          >
-            <Text style={{ fontSize: 12, color: c.accent }}>Refresh</Text>
-          </Pressable>
-        }
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Refresh quests"
+          onPress={() => {
+            void query.refetch();
+            if (agent) void matches.refetch();
+          }}
+          style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingHorizontal: 8 }}
+        >
+          <Text style={{ fontSize: 13, color: c.accent, fontWeight: "600" }}>Refresh</Text>
+        </Pressable>
       </View>
       <TextInput
         accessibilityLabel="Find a quest"
@@ -80,7 +82,7 @@ export function Quests(
         placeholderTextColor={c.foregroundMuted}
         value={search}
         onChangeText={setSearch}
-        style={{ color: c.foreground, borderWidth: 1, borderColor: c.border, borderRadius: 6, padding: 8 }}
+        style={{ color: c.foreground, backgroundColor: c.surface1, borderWidth: 1, borderColor: c.border, borderRadius: 6, padding: 10, minHeight: MIN_HIT_HEIGHT, fontSize: 14 }}
       />
       <View style={{ flexDirection: "row", gap: 12 }}>
         {["Active", "Finished"].map((label, i) => (
@@ -89,24 +91,27 @@ export function Quests(
             accessibilityState={{ selected: showFinished === !!i }}
             onPress={() => setShowFinished(!!i)}
             key={label}
+            style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingHorizontal: 6 }}
           >
-            <Text style={{ color: showFinished === !!i ? c.accent : c.foregroundMuted, fontWeight: "600" }}>
+            <Text style={{ fontSize: 13, color: showFinished === !!i ? c.accent : c.foregroundMuted, fontWeight: "600" }}>
               {label}
             </Text>
           </Pressable>
         ))}
       </View>
       {query.isPending
-        ? <Text style={{ color: c.foregroundMuted }}>Loading quests…</Text>
+        ? <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>Loading quests…</Text>
         : query.error
-        ? <Text style={{ color: c.statusWarning }}>{query.error.message}</Text>
+        ? <Text accessibilityRole="alert" style={{ color: c.statusDanger, fontSize: 13 }}>{formatRpcError(query.error)}</Text>
         : quests.length === 0
         ? (
-          <Text style={{ color: c.foregroundMuted }}>
+          <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>
             {term ? "No matching quests." : showFinished ? "No finished quests." : "No active quests."}
           </Text>
         )
-        : quests.map((q) => (
+        : quests.map((q) => {
+          const startDisabled = busy || !agent || !eligible.has(q.id) || (!!q.state && q.state !== "open");
+          return (
           <View
             key={q.id}
             style={{
@@ -122,13 +127,15 @@ export function Quests(
           >
             <Pressable
               accessibilityRole="button"
+              accessibilityState={{ expanded: expanded === q.id }}
               onPress={() => setExpanded(expanded === q.id ? 0 : q.id)}
+              style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}
             >
               <Text
                 style={{
                   color: paper["ink-2"],
                   fontFamily: "Menlo",
-                  fontSize: 11,
+                  fontSize: 12,
                   letterSpacing: 0.8,
                   marginBottom: 7,
                 }}
@@ -137,42 +144,46 @@ export function Quests(
                 {q.state === "claimed" ? "CLAIMED" : (q.state ?? "open").toUpperCase()}
                 {q.project ? " · " + q.project : ""}
               </Text>
-              <Text style={{ color: c.foreground, fontWeight: "600", fontSize: 15 }}>{q.title}</Text>
+              <Text style={{ color: paper.ink, fontWeight: "600", fontSize: 15 }}>{q.title}</Text>
             </Pressable>
             {expanded === q.id && (
               <>
                 <View
                   style={{ borderTopWidth: 1, borderStyle: "dashed", borderColor: paper["sticky-edge"], paddingTop: 9 }}
                 >
-                  <Text style={{ color: paper["ink-2"], lineHeight: 20 }}>{q.brief}</Text>
+                  <Text style={{ color: paper["ink-2"], fontSize: 13, lineHeight: 20 }}>{q.brief}</Text>
                 </View>
-                <Text style={{ color: c.foregroundMuted }}>Done when {q.done_when}</Text>
+                <Text style={{ color: paper["ink-2"], fontSize: 13 }}>Done when {q.done_when}</Text>
                 {(!activeAgent || !eligible.has(q.id)) && (!q.state || q.state === "open") && (
                   <View style={{ gap: 4 }}>
-                    <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>Run in chat</Text>
+                    <Text style={{ color: paper["ink-2"], fontSize: 12, fontWeight: "600" }}>Run in chat</Text>
                     {chats.data?.map((chat) => (
                       <Pressable
                         key={chat.id}
                         accessibilityRole="button"
+                        accessibilityState={{ selected: chosen === chat.id }}
                         onPress={() => setChosen(chat.id)}
+                        style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}
                       >
-                        <Text style={{ color: chosen === chat.id ? c.accent : c.foreground }}>
+                        <Text style={{ fontSize: 13, color: chosen === chat.id ? linkInk : paper.ink, fontWeight: chosen === chat.id ? "600" : "400" }}>
                           {chosen === chat.id ? "✓ " : ""}
                           {chat.title} · {chat.project}
                         </Text>
                       </Pressable>
                     ))}
                     {chats.data?.length === 0 && (
-                      <Text style={{ color: c.foregroundMuted }}>Open a project chat to start this quest.</Text>
+                      <Text style={{ color: paper["ink-2"], fontSize: 13 }}>Open a project chat to start this quest.</Text>
                     )}
                   </View>
                 )}
                 <Pressable
                   accessibilityRole="button"
-                  disabled={busy || !agent || !eligible.has(q.id) || (!!q.state && q.state !== "open")}
+                  accessibilityState={{ disabled: startDisabled }}
+                  disabled={startDisabled}
                   onPress={() => void start(q.id)}
+                  style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}
                 >
-                  <Text style={{ color: c.accent, fontWeight: "600" }}>
+                  <Text style={{ color: startDisabled ? paper["ink-2"] : linkInk, fontSize: 13, fontWeight: "600" }}>
                     {q.state === "claimed"
                       ? "Claimed by " + (q.claimed_by ?? "another agent")
                       : q.state === "done"
@@ -191,16 +202,18 @@ export function Quests(
               </>
             )}
           </View>
-        ))}
+          );
+        })}
       {query.data?.legacy && (
         <Pressable
           accessibilityRole="link"
           onPress={() => void Linking.openURL("https://heyclyde.me/quests")}
+          style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}
         >
-          <Text style={{ color: c.accent, fontSize: 12 }}>Full account history ↗</Text>
+          <Text style={{ color: c.accent, fontSize: 13 }}>Full account history ↗</Text>
         </Pressable>
       )}
-      {!!error && <Text style={{ color: c.statusDanger }}>{error}</Text>}
+      {!!error && <Text accessibilityRole="alert" style={{ color: c.statusDanger, fontSize: 13 }}>{error}</Text>}
     </View>
   );
 }

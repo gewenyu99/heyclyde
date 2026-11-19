@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRpc } from "@getpaseo/plugin/client";
 import { RecallSheet } from "./recall-sheet";
 import { clydeTheme, Lockup } from "./brand";
+import { formatRpcError, MIN_HIT_HEIGHT, MIN_LOCKUP_WIDTH } from "./palette";
 import { useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { type Activity, feedbackRpc, ratingRpc, readNoteRpc, respondRpc } from "../shared/clyde";
@@ -48,7 +49,7 @@ export function InlineActivity({ agentId, item, theme }: PluginTimelineItemProps
       await action();
       setError("");
     } catch (err) {
-      setError(String(err));
+      setError(formatRpcError(err));
     } finally {
       setBusy(false);
     }
@@ -57,11 +58,13 @@ export function InlineActivity({ agentId, item, theme }: PluginTimelineItemProps
     <Pressable
       key={label}
       accessibilityRole="button"
+      accessibilityState={{ disabled: busy }}
       disabled={busy}
       onPress={onPress}
       style={{
-        paddingHorizontal: 9,
-        paddingVertical: 5,
+        minHeight: MIN_HIT_HEIGHT,
+        justifyContent: "center",
+        paddingHorizontal: 12,
         borderWidth: 1,
         borderColor: active ? c.accent : c.border,
         borderRadius: 6,
@@ -81,22 +84,23 @@ export function InlineActivity({ agentId, item, theme }: PluginTimelineItemProps
       }}
     >
       {data.kind === "notice"
-        ? <Text style={{ color: c.foregroundMuted }}>{data.text}</Text>
+        ? <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>{data.text}</Text>
         : data.kind === "saved"
-        ? <Text style={{ color: c.foregroundMuted }}>Saved to Clyde · {data.title}</Text>
+        ? <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>Saved to Clyde · {data.title}</Text>
         : (
           <>
-            <Lockup theme={theme} width={64} />
-            <Text style={{ color: c.foreground, fontWeight: "700" }}>{data.title}</Text>
-            <Text style={{ color: c.foreground }}>{data.question}</Text>
-            {data.answer ? <Text style={{ color: c.foregroundMuted }}>Answered · {data.answer}</Text> : (
+            <Lockup theme={theme} width={MIN_LOCKUP_WIDTH} />
+            <Text style={{ color: c.foreground, fontWeight: "700", fontSize: 14 }}>{data.title}</Text>
+            <Text style={{ color: c.foreground, fontSize: 13 }}>{data.question}</Text>
+            {data.answer ? <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>Answered · {data.answer}</Text> : (
               <>
                 <TextInput
                   accessibilityLabel="Reply to Clyde"
                   placeholder="Reply or request changes"
+                  placeholderTextColor={c.foregroundMuted}
                   value={text}
                   onChangeText={setText}
-                  style={{ padding: 8, borderWidth: 1, borderColor: c.border, borderRadius: 6, color: c.foreground }}
+                  style={{ padding: 10, minHeight: MIN_HIT_HEIGHT, borderWidth: 1, borderColor: c.border, borderRadius: 6, color: c.foreground, backgroundColor: c.surface1, fontSize: 14 }}
                 />
                 <View style={{ flexDirection: "row", gap: 6 }}>
                   {data.approve && button(
@@ -115,7 +119,7 @@ export function InlineActivity({ agentId, item, theme }: PluginTimelineItemProps
             )}
           </>
         )}
-      {error.length > 0 && <Text style={{ color: c.statusDanger }}>{error}</Text>}
+      {error.length > 0 && <Text accessibilityRole="alert" style={{ color: c.statusDanger, fontSize: 13 }}>{error}</Text>}
     </View>
   );
 }
