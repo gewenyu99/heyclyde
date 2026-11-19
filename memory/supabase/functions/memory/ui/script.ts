@@ -15,7 +15,7 @@ var GH = SM + "cl-btn--ghost ";
 var PR = SM + "cl-btn--primary ";
 var oa = window.openai || null;
 var noIpc = false;
-var st = { data: null, verdicts: {}, sent: false, busy: false };
+var st = { data: null, verdicts: {}, sent: false, busy: false, vote: null };
 
 // ---------- DOM ----------
 function h(tag, props) {
@@ -271,9 +271,9 @@ function artifactView(a, startOpen, onFlip) {
 // ---------- compact items & list cap ----------
 function memoryItem(m, opts) {
   opts = opts || {};
-  var open = false, s = stateOf(m), fold = foldBtn(function () { setOpen(false); });
+  var open = false, s = stateOf(m), fold = foldBtn(function () { setOpen(false, true); });
   var card = h("article", { class: "cl-card cl-memory is-compact" + (m.superseded_by ? " is-superseded" : ""), "data-id": m.id });
-  var sum = h("button", { class: "c-sum", type: "button", "aria-expanded": "false", onclick: function () { setOpen(true); } },
+  var sum = h("button", { class: "c-sum", type: "button", "aria-expanded": "false", onclick: function () { setOpen(true, true); } },
     opts.saved ? h("span", { class: "cl-stamp cl-stamp--ok", text: "Saved" }) : null,
     h("span", { class: "cl-state cl-state--" + s[0], text: s[1] }),
     h("span", { class: "c-sum__title", text: m.title }), confEl(m), icon("more"));
@@ -287,10 +287,11 @@ function memoryItem(m, opts) {
     if (!opts.saved) full.appendChild(h("div", { class: "c-row" }, h("span", { class: "c-sp" }), fold));
   }
   card.appendChild(sum); card.appendChild(full);
-  function setOpen(v) {
+  function setOpen(v, moveFocus) {
     open = !!v;
     card.className = "cl-card cl-memory" + (open ? "" : " is-compact") + (m.superseded_by ? " is-superseded" : "");
     sum.hidden = open; sum.setAttribute("aria-expanded", String(open)); full.hidden = !open;
+    if (moveFocus) (open ? fold : sum).focus();
     if (opts.onFlip) opts.onFlip(); resized();
   }
   return { el: card, isOpen: function () { return open; }, setOpen: setOpen };
@@ -298,10 +299,11 @@ function memoryItem(m, opts) {
 function capList(dk, rows, sync) {
   var showAll = false, extra = rows.length - TOP;
   if (extra <= 0) return { isAll: function () { return true; }, setAll: function () {} };
-  var more = h("button", { class: GH + "c-more", type: "button", onclick: function () { showAll = !showAll; paint(); if (sync) sync(); resized(); } });
+  var more = h("button", { class: GH + "c-more", type: "button", "aria-expanded": "false", onclick: function () { showAll = !showAll; paint(); if (sync) sync(); resized(); } });
   function paint() {
     for (var j = TOP; j < rows.length; j++) rows[j].el.hidden = !showAll;
     more.textContent = showAll ? "Show top " + TOP : "Show " + extra + " more";
+    more.setAttribute("aria-expanded", String(showAll));
   }
   paint(); dk.appendChild(more);
   return { isAll: function () { return showAll; }, setAll: function (v) { showAll = !!v; paint(); } };
@@ -321,23 +323,28 @@ function recallCard(d) {
     dk.appendChild(h("div", { class: "cl-empty" }, h("p", { class: "cl-empty__title", text: "Nothing in Clyde matches that yet." }),
       h("p", { class: "cl-empty__text", text: "Either nobody wrote it down, or it was phrased differently. Ask for more results, or tell your agent to remember it." })));
   }
-  var msg = h("p", { class: "c-say", hidden: true });
-  var yes = h("button", { class: PR.trim(), type: "button", onclick: function () { rate("helpful"); } }, "That helped");
-  var no = h("button", { class: GH.trim(), type: "button", onclick: function () { rate("nothing_useful"); } }, "That didn’t");
+  var msg = h("p", { class: "c-say", role: "status", "aria-live": "polite", hidden: true });
+  var yes = h("button", { class: PR + "c-used", type: "button", "aria-pressed": "false", onclick: function () { rate("helpful"); } }, "That helped");
+  var no = h("button", { class: GH + "c-wrong", type: "button", "aria-pressed": "false", onclick: function () { rate("nothing_useful"); } }, "That didn’t");
   var foot = h("div", { class: "c-foot" }, yes, no);
-  function refresh() { yes.disabled = no.disabled = st.busy || st.sent || noIpc; }
+  function refresh() {
+    yes.disabled = no.disabled = st.busy || st.sent || noIpc;
+    yes.setAttribute("aria-pressed", String(st.vote === "helpful"));
+    no.setAttribute("aria-pressed", String(st.vote === "nothing_useful"));
+  }
   function sync() { if (toggle) toggle.sync(rows.every(function (r) { return r.isOpen(); }) && (!cap || cap.isAll())); }
   function rate(verdict) {
     if (st.busy || st.sent) return;
-    st.busy = true; refresh();
+    st.busy = true; st.vote = verdict; refresh();
     var args = { retrieval_id: d.retrieval_id, verdict: verdict, card_vote: true };
     if (d.card_receipt) args.card_receipt = d.card_receipt;
     callTool("feedback", args).then(function (reply) {
       st.busy = false; var result = textOf(reply);
       st.sent = /^Logged\./.test(result) || /^Already logged/.test(result);
+      if (!st.sent) st.vote = null;
       say(msg, /^Logged\./.test(result) ? "Feedback recorded." : result, st.sent); refresh();
     }, function (error) {
-      st.busy = false;
+      st.busy = false; st.vote = null;
       if (isNoIpc(error)) { noIpc = true; say(msg, "Feedback can't send from this card right now.", "muted"); }
       else say(msg, error.message, false);
       refresh();
@@ -379,7 +386,8 @@ function artifactCard(d) {
 var STAMP = { open: "cl-stamp--carbon", claimed: "cl-stamp--warn", done: "cl-stamp--ok", abandoned: "cl-stamp--bad" };
 function questCard(q, d, startOpen, onFlip) {
   var open = !!startOpen, me = d.badge && d.badge.registered ? d.badge.name : null;
-  var msg = h("p", { class: "c-say", hidden: true }), row = h("div", { class: "c-row" });
+  var msg = h("p", { class: "c-say", role: "status", "aria-live": "polite", hidden: true }), row = h("div", { class: "c-row" });
+  var fold = foldBtn(function () { setOpen(false, true); });
   var who = [h("span", null, "posted by ", h("b", { text: q.posted_by }))];
   if (q.assignee && q.assignee !== "any") who.push(h("span", null, " · for ", h("b", { text: q.assignee })));
   if (q.state === "claimed" && q.claimed_by) who.push(h("span", null, " · claimed by ", h("b", { text: q.claimed_by }), q.lease_until ? " until " + when(q.lease_until) : ""));
@@ -388,21 +396,22 @@ function questCard(q, d, startOpen, onFlip) {
     h("span", { class: "cl-quest__no", text: "Nº" + q.id }));
   var main = h("div", { class: "cl-quest__main", hidden: !open },
     h("div", { class: "cl-quest__head" }, h("h3", { class: "cl-quest__title", text: q.title }),
-      h("span", { class: "c-row" }, h("span", { class: "cl-stamp " + (STAMP[q.state] || ""), text: q.state }), foldBtn(function () { setOpen(false); }))),
+      h("span", { class: "c-row" }, h("span", { class: "cl-stamp " + (STAMP[q.state] || ""), text: q.state }), fold)),
     h("p", { class: "cl-quest__brief", text: q.brief }),
     h("div", { class: "cl-quest__done" }, h("span", { class: "cl-label", text: "Done when" }), h("span", { class: "c-text", text: q.done_when })),
     q.evidence ? h("p", { class: "c-quote", text: q.evidence }) : null,
     q.tags && q.tags.length ? h("div", { class: "c-row" }, q.tags.map(function (t) { return h("span", { class: "cl-chip", text: t }); })) : null,
     h("div", { class: "cl-quest__for" }, who, " · " + q.context), row, msg);
-  var sum = h("button", { class: "c-qsum", type: "button", hidden: open, "aria-expanded": String(open), onclick: function () { setOpen(true); } },
+  var sum = h("button", { class: "c-qsum", type: "button", hidden: open, "aria-expanded": String(open), onclick: function () { setOpen(true, true); } },
     h("span", { class: "c-qno", text: "Nº" + q.id }),
     ["urgent", "high"].includes(q.priority) ? h("span", { class: "cl-quest__pri is-high", text: q.priority }) : null,
     h("span", { class: "c-sum__title", text: q.title }),
     h("span", { class: "cl-stamp " + (STAMP[q.state] || ""), text: q.state }), icon("more"));
   var card = h("article", { class: "cl-quest" + (open ? "" : " is-compact") + (q.state === "done" ? " is-done" : ""), "data-quest": q.id }, sum, stub, main);
-  function setOpen(v) {
+  function setOpen(v, moveFocus) {
     open = !!v; card.className = "cl-quest" + (open ? "" : " is-compact") + (q.state === "done" ? " is-done" : "");
     sum.hidden = open; sum.setAttribute("aria-expanded", String(open)); stub.hidden = !open; main.hidden = !open;
+    if (moveFocus) (open ? fold : sum).focus();
     if (onFlip) onFlip(); resized();
   }
   var item = { el: card, isOpen: function () { return open; }, setOpen: setOpen };
@@ -425,13 +434,15 @@ function questCard(q, d, startOpen, onFlip) {
     row.appendChild(claim);
   }
   if (q.state === "claimed" && me && q.claimed_by === me) {
-    var ev = h("textarea", { class: "cl-textarea", name: "evidence", maxlength: "2000", required: true, placeholder: "How you know done-when holds" });
-    var en = h("input", { class: "cl-input", name: "entry", required: true, placeholder: "The memory the work produced", autocomplete: "off" });
+    var evId = "c-ev-" + q.id, enId = "c-en-" + q.id;
+    var ev = h("textarea", { id: evId, class: "cl-textarea", name: "evidence", maxlength: "2000", required: true, placeholder: "How you know done-when holds" });
+    var en = h("input", { id: enId, class: "cl-input", name: "entry", required: true, placeholder: "The memory the work produced", autocomplete: "off" });
     var go = h("button", { class: PR.trim(), type: "submit" }, icon("check"), "Complete quest");
-    var form = h("form", { class: "c-complete", hidden: true }, h("div", { class: "cl-field" }, h("label", { text: "Evidence" }), ev),
-      h("div", { class: "cl-field" }, h("label", { text: "Memory id" }), en), h("div", { class: "c-row" }, go));
+    var form = h("form", { class: "c-complete", hidden: true }, h("div", { class: "cl-field" }, h("label", { for: evId, text: "Evidence" }), ev),
+      h("div", { class: "cl-field" }, h("label", { for: enId, text: "Memory id" }), en), h("div", { class: "c-row" }, go));
     form.addEventListener("submit", function (e) { e.preventDefault(); act("complete_quest", { id: q.id, evidence: ev.value.trim(), entry_id: en.value.trim() }, go); });
-    row.appendChild(h("button", { class: SM.trim(), type: "button", onclick: function () { form.hidden = !form.hidden; resized(); } }, icon("check"), "Complete"));
+    var toggleForm = h("button", { class: SM.trim(), type: "button", "aria-expanded": "false", onclick: function () { form.hidden = !form.hidden; toggleForm.setAttribute("aria-expanded", String(!form.hidden)); if (!form.hidden) ev.focus(); resized(); } }, icon("check"), "Complete");
+    row.appendChild(toggleForm);
     main.insertBefore(form, msg);
   }
   if (!row.firstChild) row.hidden = true;
@@ -474,7 +485,7 @@ function failed(text) { root.textContent = ""; root.appendChild(errorCard({ erro
 function show(result) {
   var d = cardOf(result);
   root.textContent = "";
-  st = { data: d, verdicts: {}, sent: false, busy: false };
+  st = { data: d, verdicts: {}, sent: false, busy: false, vote: null };
   if (!d) { var s = sheet("", null); s.appendChild(h("div", { class: "c-desk" }, h("p", { class: "c-text", text: textOf(result) }))); root.appendChild(s); resized(); return; }
   var el = d.error ? errorCard(d) : d.card === "recall" ? recallCard(d) : d.card === "entry" ? entryCard(d, false)
     : d.card === "remembered" ? entryCard(d, true) : d.card === "artifact" ? artifactCard(d) : d.card === "quests" ? questsCard(d)

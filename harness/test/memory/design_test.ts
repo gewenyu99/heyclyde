@@ -4,11 +4,12 @@
  * memory/design/css.js in step with the CSS files, and check the Worker's pages carry the tokens.
  */
 import assert from 'node:assert/strict'
-import { LOGO_LOCKUP, LOGO_MARK } from '../../../memory/design/brand.js'
+import { LOGO_LOCKUP, LOGO_MARK } from '../../../design/brand.js'
 import { AUTH_CSS, COMPONENTS_CSS, FONTS_CSS, TOKENS_CSS } from '../../../memory/design/css.js'
 import { homePage, statePage } from '../../../memory/proxy/pages.js'
 
-const read = (p: string) => Deno.readTextFileSync(new URL(`../../../memory/design/${p}`, import.meta.url))
+const read = (p: string) => Deno.readTextFileSync(new URL(`../../../design/${p}`, import.meta.url))
+const readBuilt = (p: string) => Deno.readTextFileSync(new URL(`../../../memory/design/${p}`, import.meta.url))
 const tokensCss = read('tokens.css')
 const componentsCss = read('components.css')
 
@@ -63,7 +64,7 @@ Deno.test('the dark theme is the same whether the system or data-theme asks for 
   for (const k of Object.keys(darkAttr)) assert.ok(k in light, `--cl-${k} has no light value`)
 })
 
-Deno.test('css.js is generated from the CSS files (node memory/design/build.mjs)', () => {
+Deno.test('css.js is generated from the root design CSS files (node design/build.mjs)', () => {
   assert.equal(TOKENS_CSS, tokensCss.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ').replace(/\s*([{}:;,>])\s*/g, '$1').trim())
   assert.equal(FONTS_CSS, read('fonts.css').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ').replace(/\s*([{}:;,>])\s*/g, '$1').trim())
   assert.equal(COMPONENTS_CSS, componentsCss.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ').replace(/\s*([{}:;,>])\s*/g, '$1').trim())
@@ -91,13 +92,11 @@ Deno.test('every Worker page carries the tokens and the components', () => {
 })
 
 Deno.test('built design artifacts carry the logo, the live MCP URL, and current typeface docs', () => {
-  for (const f of ['src/directions.html', 'directions.html']) {
-    const html = read(f)
+  for (const [f, html] of [['src/directions.html', read('src/directions.html')], ['directions.html', readBuilt('directions.html')]] as const) {
     assert.equal((html.match(/class="cl-mark"/g) ?? []).length, 0, `${f} has no removed .cl-mark span`)
   }
-  assert.ok(read('directions.html').includes('class="cl-logo"'), 'directions.html inlines brand.js logo')
-  for (const f of ['src/clyde-prototype.html', 'clyde-prototype.html']) {
-    const html = read(f)
+  assert.ok(readBuilt('directions.html').includes('class="cl-logo"'), 'directions.html inlines brand.js logo')
+  for (const [f, html] of [['src/clyde-prototype.html', read('src/clyde-prototype.html')], ['clyde-prototype.html', readBuilt('clyde-prototype.html')]] as const) {
     assert.equal((html.match(/https:\/\/heyclyde\.me\/mcp/g) ?? []).length, 0, `${f} has no root-host /mcp URL`)
     assert.ok(html.includes('https://memory.heyclyde.me/mcp'), `${f} uses https://memory.heyclyde.me/mcp`)
   }
@@ -117,7 +116,7 @@ Deno.test('sticky-note tokens, doodle components, and Sticky-Note Forehead Clyde
   assert.ok(LOGO_LOCKUP.includes('class="c"') && LOGO_LOCKUP.includes('class="i"'), 'LOGO_LOCKUP uses ink and carbon token classes')
   assert.ok(LOGO_MARK.includes('class="c"') && LOGO_MARK.includes('class="i"'), 'LOGO_MARK uses ink and carbon token classes')
   for (const file of ['clyde-mascot-light.svg', 'clyde-mascot-dark.svg', 'clyde-lockup-light.svg', 'clyde-lockup-dark.svg']) {
-    const a = Deno.readTextFileSync(new URL(`../../../memory/design/brand/${file}`, import.meta.url))
+    const a = Deno.readTextFileSync(new URL(`../../../design/brand/${file}`, import.meta.url))
     const b = Deno.readTextFileSync(new URL(`../../../memory/proxy/public/_clyde/brand/${file}`, import.meta.url))
     assert.equal(a, b, `${file} matches between design/brand and proxy/public/_clyde/brand`)
     if (file.startsWith('clyde-mascot-')) assert.ok(a.length >= 2_500, `${file} is a richly traced hand-drawn mascot`)
@@ -137,14 +136,14 @@ Deno.test('sticky-note tokens, doodle components, and Sticky-Note Forehead Clyde
     'assets/doodles/scribble-underline.svg', 'assets/doodles/scribble-circle.svg',
     'assets/doodles/tape-strip.svg', 'assets/doodles/pushpin.svg', 'assets/doodles/app-handoff.svg',
   ]) {
-    const st = Deno.statSync(new URL(`../../../memory/design/${rel}`, import.meta.url))
+    const st = Deno.statSync(new URL(`../../../design/${rel}`, import.meta.url))
     assert.ok(st.isFile && st.size > 100, `shared asset ${rel} exists and is non-empty`)
   }
   for (const scene of ['relay', 'questboard', 'nosecrets', 'goldfish', 'standing']) {
-    const jpg = Deno.statSync(new URL(`../../../memory/design/assets/scenes/${scene}.jpg`, import.meta.url))
+    const jpg = Deno.statSync(new URL(`../../../design/assets/scenes/${scene}.jpg`, import.meta.url))
     assert.ok(jpg.isFile && jpg.size > 10_000, `scene source ${scene}.jpg exists`)
     for (const theme of ['light', 'dark']) {
-      const a = Deno.readTextFileSync(new URL(`../../../memory/design/assets/scenes/${scene}-${theme}.svg`, import.meta.url))
+      const a = Deno.readTextFileSync(new URL(`../../../design/assets/scenes/${scene}-${theme}.svg`, import.meta.url))
       const b = Deno.readTextFileSync(new URL(`../../../memory/proxy/public/_clyde/scenes/${scene}-${theme}.svg`, import.meta.url))
       assert.equal(a, b, `scene ${scene}-${theme}.svg matches between design/assets/scenes and proxy/public/_clyde/scenes`)
       assert.ok(a.length >= 2_500 && a.includes('<svg'), `scene ${scene}-${theme}.svg is a traced SVG`)

@@ -13,7 +13,7 @@ import { readUiResource, uiResources, uriOf, wantsUi, UI_EXTENSION, UI_MIME } fr
 import { CARDS, cardHtml } from '../../../memory/supabase/functions/memory/ui/cards.ts'
 import { CARD_CSS } from '../../../memory/supabase/functions/memory/ui/style.ts'
 import { COMPONENTS_CSS, LOGO_LOCKUP, TOKENS_CSS } from '../../../memory/supabase/functions/memory/ui/design.ts'
-import { LOGO_LOCKUP as BRAND_LOCKUP } from '../../../memory/design/brand.js'
+import { LOGO_LOCKUP as BRAND_LOCKUP } from '../../../design/brand.js'
 import * as design from '../../../memory/design/css.js'
 import { CALLS, FIXTURES, RID } from './ui-fixtures.ts'
 import { findChrome, hostPage, render, type Frame } from './ui-host.ts'
@@ -204,4 +204,14 @@ test('R67 cards follow the host theme and fit chat width', { skip: NO_CHROME }, 
     }
   }
   assert.equal(checked, 56)
+})
+
+test('Quest #47: MCP cards wire vote state, live status regions, form labels, and focus', () => {
+  const recallHtml = cardHtml('recall')
+  assert.ok(recallHtml.includes('role:"status"') || recallHtml.includes('"role":"status"') || recallHtml.includes('role: "status"'), 'recall status uses role=status')
+  assert.ok(recallHtml.includes('"aria-live": "polite"') || recallHtml.includes('"aria-live":"polite"'), 'recall status uses aria-live=polite')
+  assert.ok(recallHtml.includes('"aria-pressed"') && recallHtml.includes('c-used') && recallHtml.includes('c-wrong'), 'recall vote buttons expose aria-pressed and vote classes')
+  const questsHtml = cardHtml('quests')
+  assert.ok(questsHtml.includes('for: evId') && questsHtml.includes('for: enId'), 'quest completion form associates labels with inputs')
+  assert.ok(questsHtml.includes('(open ? fold : sum).focus()'), 'expand/collapse preserves keyboard focus')
 })

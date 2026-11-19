@@ -53,7 +53,10 @@ const APP_CSS = `
 .gr-node.is-center circle{fill:var(--cl-carbon);stroke:var(--cl-ink);stroke-width:2.5}
 .gr-node.is-dormant circle{stroke:var(--cl-ink-3);stroke-dasharray:3 2}
 .gr-node text{font:500 11px/1.2 var(--cl-font-sans);fill:var(--cl-ink)}
-.gr-node:hover circle{stroke:var(--cl-ink);stroke-width:3}
+.gr-node:hover circle,.gr-node:focus-visible circle{stroke:var(--cl-ink);stroke-width:3}
+.gr-node:focus-visible{outline:2px solid var(--cl-carbon);outline-offset:2px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media (max-width:640px){.bar{flex-wrap:wrap;gap:12px 16px}.app-nav{order:3;flex-basis:100%}}
 .signin-box{max-width:460px;margin:12px auto;display:grid;gap:16px;padding:24px}
 .app-banner{padding:12px 16px;border-radius:var(--cl-radius-md);font:var(--cl-text-small)}
 .app-banner--ok{background:var(--cl-ok-wash);color:var(--cl-ok)}
@@ -203,6 +206,8 @@ async function api(path, opts) {
 function notice(el, kind, msg) {
   if (!el) return;
   el.className = 'app-banner app-banner--' + kind;
+  el.setAttribute('role', kind === 'bad' ? 'alert' : 'status');
+  el.setAttribute('aria-live', kind === 'bad' ? 'assertive' : 'polite');
   el.textContent = msg;
 }
 
@@ -475,7 +480,7 @@ async function renderEntryDetail() {
         '<h3 class="cl-title-3">Actions</h3>' +
         '<div class="app-actions">' +
           '<button type="button" class="cl-btn" id="btn-prune">Prune note</button>' +
-          '<form id="sup-form" class="app-actions"><input id="sup-id" class="cl-input" placeholder="Replacement note ID" required><button type="submit" class="cl-btn">Mark superseded</button></form>' +
+          '<form id="sup-form" class="app-actions"><label for="sup-id" class="sr-only">Replacement note ID</label><input id="sup-id" class="cl-input" placeholder="Replacement note ID" required><button type="submit" class="cl-btn">Mark superseded</button></form>' +
           '<button type="button" class="cl-btn cl-btn--danger" id="btn-del">Delete note</button>' +
           '<button type="button" class="cl-btn cl-btn--danger is-hidden" id="btn-del-yes">Delete note permanently</button>' +
         '</div>' +
@@ -549,7 +554,7 @@ async function renderGraph() {
       '<div class="cl-field"><label for="g-depth">Depth</label><select id="g-depth" class="cl-select"><option value="1">1 hop</option><option value="2">2 hops</option><option value="3">3 hops</option></select></div>' +
       '<div class="app-actions"><button type="submit" class="cl-btn cl-btn--primary">Load graph</button></div>' +
     '</form>' +
-    '<div id="g-status" class="cl-hint">Loading graph...</div>' +
+    '<div id="g-status" class="cl-hint" role="status" aria-live="polite">Loading graph...</div>' +
     '<div id="g-canvas" class="gr-wrap"></div>' +
     '<div id="g-nodes" class="app-table-wrap"></div>';
 
@@ -590,13 +595,13 @@ async function renderGraph() {
         var cls = 'gr-node' + (isCenter ? ' is-center' : '') + (Number(n.confidence) < 0.15 ? ' is-dormant' : '');
         var r = isCenter ? 11 : 7;
         var label = String(n.title || n.id).slice(0, 26);
-        return '<a href="/entries/' + encodeURIComponent(n.id) + '" class="' + cls + '" data-node="' + esc(n.id) + '">' +
+        return '<a href="/entries/' + encodeURIComponent(n.id) + '" class="' + cls + '" data-node="' + esc(n.id) + '" aria-label="' + esc((n.title || n.id) + ', ' + confText(n.confidence)) + '">' +
           '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + r + '"></circle>' +
           '<text x="' + (p.x + 12) + '" y="' + (p.y + 4) + '">' + esc(label) + '</text>' +
         '</a>';
       }).join('');
       document.getElementById('g-canvas').innerHTML =
-        '<svg class="gr-svg" viewBox="0 0 840 520" role="img" aria-label="Note neighborhood graph">' + edgesSvg + nodesSvg + '</svg>';
+        '<svg class="gr-svg" viewBox="0 0 840 520" role="group" aria-label="Note neighborhood graph"><title>Note neighborhood graph</title>' + edgesSvg + nodesSvg + '</svg>';
       document.getElementById('g-nodes').innerHTML =
         '<table class="app-table"><thead><tr><th>Note</th><th>Kind</th><th>Confidence</th></tr></thead><tbody>' +
         d.nodes.map(function(n) {
@@ -711,18 +716,18 @@ async function renderAgents() {
   async function load() {
     var d = await Promise.all([api('/me/agents'), api('/me/devices')]);
     var agents = d[0].agents || [], devices = d[1].devices || [];
-    document.getElementById('ag-list').innerHTML = agents.length ? agents.map(function(a) {
+    document.getElementById('ag-list').innerHTML = agents.length ? agents.map(function(a, idx) {
       return '<form class="cl-card app-form ag-form" data-name="' + esc(a.name) + '">' +
         '<div class="app-meta"><strong>' + esc(a.name) + '</strong>' + (a.device ? '<span class="cl-chip">Device: ' + esc(a.device) + '</span>' : '') + '</div>' +
         '<div class="app-form-row">' +
-          '<div class="cl-field"><label>Nickname</label><input name="nickname" class="cl-input" value="' + esc(a.nickname || '') + '" placeholder="Lowercase slug, e.g. ada"></div>' +
-          '<div class="cl-field"><label>Type</label><select name="type" class="cl-select">' +
+          '<div class="cl-field"><label for="ag-nick-' + idx + '">Nickname</label><input id="ag-nick-' + idx + '" name="nickname" class="cl-input" value="' + esc(a.nickname || '') + '" placeholder="Lowercase slug, e.g. ada"></div>' +
+          '<div class="cl-field"><label for="ag-type-' + idx + '">Type</label><select id="ag-type-' + idx + '" name="type" class="cl-select">' +
             ['coding','exploration','research','review','ops','assistant','other'].map(function(t) {
               return '<option value="' + t + '"' + (a.type === t ? ' selected' : '') + '>' + t + '</option>';
             }).join('') +
           '</select></div>' +
-          '<div class="cl-field"><label>Harness</label><input name="harness" class="cl-input" value="' + esc(a.harness || '') + '" placeholder="e.g. claude-code"></div>' +
-          '<div class="cl-field"><label>Repos</label><input name="repos" class="cl-input" value="' + esc((a.repos || []).join(', ')) + '" placeholder="owner/repo, clyde"></div>' +
+          '<div class="cl-field"><label for="ag-harness-' + idx + '">Harness</label><input id="ag-harness-' + idx + '" name="harness" class="cl-input" value="' + esc(a.harness || '') + '" placeholder="e.g. claude-code"></div>' +
+          '<div class="cl-field"><label for="ag-repos-' + idx + '">Repos</label><input id="ag-repos-' + idx + '" name="repos" class="cl-input" value="' + esc((a.repos || []).join(', ')) + '" placeholder="owner/repo, clyde"></div>' +
         '</div>' +
         '<div class="app-actions"><button type="submit" class="cl-btn cl-btn--primary cl-btn--sm">Save agent</button></div>' +
       '</form>';
@@ -960,7 +965,7 @@ export function appPage(path, nonce) {
   const spec = PAGE_SPEC[view];
   const nav = APP_ROUTES.map(([href, label]) => {
     const active = (view === "entry" && href === "/memories") || path === href;
-    return `<a class="cl-nav__item${active ? " is-current" : ""}" href="${href}">${label}</a>`;
+    return `<a class="cl-nav__item${active ? " is-current" : ""}" href="${href}"${active ? ' aria-current="page"' : ""}>${label}</a>`;
   }).join("");
 
   const header = `<header class="bar wrap"><a class="logo" href="/" aria-label="Clyde home">${LOGO()}</a>` +

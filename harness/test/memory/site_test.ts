@@ -327,7 +327,7 @@ Deno.test('how it works carries the research', async () => {
 Deno.test('every page has the same header nav and footer', async () => {
   for (const path of [...INDEXED, '/nope']) {
     const { html } = await get(`https://heyclyde.me${path}`)
-    const nav = /<nav class="topnav">([\s\S]*?)<\/nav>/.exec(html)?.[1] ?? ''
+    const nav = /<nav class="topnav"[^>]*>([\s\S]*?)<\/nav>/.exec(html)?.[1] ?? ''
     assert.deepEqual(attr(nav, /href="([^"]+)"/g), ['/docs', '/how-it-works', '/guides', '/faq'], `${path}: header nav`)
     assert.deepEqual(h1s(`<h1>${nav}</h1>`), ['DocsHow it worksGuidesFAQ'], `${path}: header nav labels`)
     const bar = /<header class="bar[\s\S]*?<\/header>/.exec(html)?.[0] ?? ''
@@ -572,9 +572,28 @@ Deno.test('no byte caps', () => {
     assert.equal(caps.exec(src)?.[0] ?? null, null, `${f} caps something's bytes`)
   }
   for (const f of ['BRAND.md', 'ASSETS.md']) {
-    const doc = Deno.readTextFileSync(new URL(`../../../memory/design/${f}`, import.meta.url))
+    const doc = Deno.readTextFileSync(new URL(`../../../design/${f}`, import.meta.url))
     assert.equal(/<=\s*`?[\d.,]+\s*(?:KB|bytes)|`<=\s*[\d.,]+`\s*bytes/.exec(doc)?.[0] ?? null, null, `${f} names a byte budget`)
   }
+})
+
+Deno.test('mobile nav, workspace accessibility, and accurate docs hook claims', async () => {
+  const home = (await get('https://heyclyde.me/')).html
+  assert.ok(!home.includes('.topnav{display:none}'), 'mobile header keeps primary navigation visible')
+  assert.ok(home.includes('<nav class="topnav" aria-label="Primary">'), 'primary nav has accessible label')
+  assert.ok(home.includes('<nav aria-label="Footer">'), 'footer nav has accessible label')
+
+  const docs = (await get('https://heyclyde.me/docs')).html
+  assert.ok(docs.includes('quick follow-ups skip recall while keeping the save reminder'), 'Antigravity docs match follow-up behavior')
+  assert.ok(docs.includes('blocks <code>Stop</code> once if <code>remember</code> was skipped'), 'Codex docs match Stop behavior')
+
+  const graph = (await get('https://heyclyde.me/graph')).html
+  assert.ok(graph.includes('aria-current="page"'), 'active workspace nav link marks aria-current="page"')
+  assert.ok(graph.includes('role="group" aria-label="Note neighborhood graph"'), 'graph SVG exposes interactive links with role="group"')
+  assert.ok(graph.includes('role="status" aria-live="polite"'), 'graph status announces updates politely')
+  assert.ok(graph.includes('for="sup-id"'), 'superseded replacement input has an associated label')
+  assert.ok(graph.includes('for="ag-nick-'), 'agent form inputs have associated labels')
+  assert.ok(graph.includes("el.setAttribute('aria-live'"), 'workspace notices announce via aria-live')
 })
 
 // R79 (like-vincent #84), Wen 2026-11-17: "memory, message board, agent coordination, all the keywords". Each phrase someone

@@ -38,7 +38,7 @@ img{max-width:100%}
 .topnav{display:flex;gap:22px;margin-left:auto;font:500 14px/1 var(--cl-font-sans)}
 .topnav a{color:var(--cl-ink-2);text-decoration:none}
 .topnav a:hover{color:var(--cl-ink)}
-@media (max-width:640px){.topnav{display:none}.bar .cl-status{margin-left:auto}}
+@media (max-width:640px){.bar{flex-wrap:wrap;gap:12px 16px}.topnav{order:3;flex-basis:100%;margin-left:0;flex-wrap:wrap;gap:10px 16px;padding-top:10px;border-top:1px dashed var(--cl-rule)}.bar .acts,.bar .cl-status{margin-left:auto}}
 .cl-status .v{text-transform:none;letter-spacing:0}
 .foot{margin-top:auto;padding-block:40px 32px}
 .foot .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px 24px;flex-wrap:wrap;border-top:1px dashed var(--cl-rule-strong);padding-top:22px;font:var(--cl-text-mono);font-size:12px;color:var(--cl-ink-3)}

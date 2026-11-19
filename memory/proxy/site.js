@@ -117,11 +117,11 @@ const FAQ_CSS = `
 const ARROW_SVG = `<svg class="doodle-arrow" viewBox="0 0 120 36" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 20 C36 14 72 23 108 17"/><path d="M95 8 C102 12 108 15 113 17 C107 21 101 25 96 30"/></svg>`;
 
 const header = `<header class="bar wrap"><a class="logo" href="/" aria-label="clyde home">${LOGO()}</a>
-<nav class="topnav"><a href="/docs">Docs</a><a href="/how-it-works">How it works</a><a href="/guides">Guides</a><a href="/faq">FAQ</a></nav>
+<nav class="topnav" aria-label="Primary"><a href="/docs">Docs</a><a href="/how-it-works">How it works</a><a href="/guides">Guides</a><a href="/faq">FAQ</a></nav>
 <span class="acts"><a class="cl-btn cl-btn--primary" href="${CONNECT}">Get Clyde</a></span></header>`;
 
 const footer = `<footer class="foot"><div class="wrap"><span class="brand">${MARK(22)}clyde · a boring memory system</span>
-<nav><a href="/docs">Docs</a><a href="/how-it-works">How it works</a><a href="/guides">Guides</a><a href="/faq">FAQ</a><a href="mailto:${SUPPORT}">${SUPPORT}</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="${DESIGN_URL}">Design system</a></nav>
+<nav aria-label="Footer"><a href="/docs">Docs</a><a href="/how-it-works">How it works</a><a href="/guides">Guides</a><a href="/faq">FAQ</a><a href="mailto:${SUPPORT}">${SUPPORT}</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="${DESIGN_URL}">Design system</a></nav>
 <span class="legal">${LEGAL}</span></div></footer>`;
 
 /** One page. A page with a description is indexed, gets its search tags, and is in the sitemap. */
@@ -588,11 +588,11 @@ ${copyBox(HOOK_INSTALL)}
 <tr><td>Codex</td><td><code>~/.codex/hooks.json</code></td><td><code>.codex/hooks.json</code></td><td>Run <code>/hooks</code> once in Codex CLI to trust new or edited entries. <code>memories = false</code> under <code>[features]</code> in <code>~/.codex/config.toml</code>.</td></tr>
 <tr><td>Gemini CLI</td><td><code>~/.gemini/extensions/clyde/hooks/hooks.json</code></td><td><code>.gemini/settings.json</code></td><td>Reloads on launch. Configure in one file only (the extension or <code>~/.gemini/settings.json</code>), not both.</td></tr>
 </tbody></table></div>
-<p><b>Antigravity (App, IDE, and CLI).</b> Antigravity puts group names at the top level and uses flat arrays on <code>SessionStart</code>, <code>PreInvocation</code>, and <code>Stop</code>. <code>PreInvocation</code> fires before every model step in a tool loop, so <code>clyde-hook.sh</code> hashes <code>lastUserInput</code> per conversation. Mid-turn steps, subagents, and quick follow-ups return <code>{}</code>, while new goals and folder switches inject one transient <code>ephemeralMessage</code>. <code>PreToolUse</code> runs the gate and answers <code>{"decision":"deny"}</code> while a debt is open.</p>
+<p><b>Antigravity (App, IDE, and CLI).</b> Antigravity puts group names at the top level and uses flat arrays on <code>SessionStart</code>, <code>PreInvocation</code>, and <code>Stop</code>. <code>PreInvocation</code> fires before every model step in a tool loop, so <code>clyde-hook.sh</code> hashes <code>lastUserInput</code> per conversation. Mid-turn steps and subagents return <code>{}</code>, quick follow-ups skip recall while keeping the save reminder, and new goals and folder switches inject one transient <code>ephemeralMessage</code>. <code>PreToolUse</code> runs the gate and answers <code>{"decision":"deny"}</code> while a debt is open.</p>
 ${copyPre("~/.gemini/config/hooks.json (or .agents/hooks.json)", ANTIGRAVITY_HOOKS_JSON)}
 <p><b>Claude Code.</b> Merge this into <code>~/.claude/settings.json</code> alongside your existing settings. Plain text on <code>SessionStart</code> and <code>UserPromptSubmit</code> enters model context, <code>PreToolUse</code> on every tool is the gate, and <code>autoMemoryEnabled: false</code> turns off Claude Code's own memory.</p>
 ${copyPre("~/.claude/settings.json", CLAUDE_HOOKS_JSON)}
-<p><b>Codex CLI.</b> Put this in <code>~/.codex/hooks.json</code>, then run <code>/hooks</code> once inside Codex CLI to trust the entries. <code>clyde-hook.sh</code> prints text on shifts, <code>{}</code> on <code>Stop</code>, and a deny decision from <code>PreToolUse</code> while a debt is open. Then turn off Codex memories in <code>~/.codex/config.toml</code>.</p>
+<p><b>Codex CLI.</b> Put this in <code>~/.codex/hooks.json</code>, then run <code>/hooks</code> once inside Codex CLI to trust the entries. <code>clyde-hook.sh</code> prints text on shifts, blocks <code>Stop</code> once if <code>remember</code> was skipped (else <code>{}</code>), and returns a deny decision from <code>PreToolUse</code> while a debt is open. Then turn off Codex memories in <code>~/.codex/config.toml</code>.</p>
 ${copyPre("~/.codex/hooks.json", CODEX_HOOKS_JSON)}
 ${copyPre("~/.codex/config.toml", CODEX_CONFIG_TOML)}
 <p><b>Gemini CLI.</b> Gemini CLI hides plain-text hook output from the model, so <code>clyde-hook.sh</code> returns <code>hookSpecificOutput.additionalContext</code> on shifts, <code>{"decision":"deny"}</code> from <code>BeforeTool</code> while a debt is open, and <code>{}</code> otherwise. The installer puts this in <code>~/.gemini/extensions/clyde/hooks/hooks.json</code>. By hand, put it there or in <code>~/.gemini/settings.json</code>, not both.</p>

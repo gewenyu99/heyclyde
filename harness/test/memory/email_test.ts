@@ -109,3 +109,13 @@ Deno.test("under Gmail's clip", () => {
     assert.ok(bytes < 102_400, `${file}: ${bytes} bytes exceeds 102,400 clip limit`)
   }
 })
+
+Deno.test('dark mode covers both prefers-color-scheme and Outlook data-ogsc/data-ogsb surfaces', () => {
+  for (const { file } of TEMPLATES) {
+    const html = readTemplate(file)
+    for (const cls of ['.cl-ground', '.cl-sheet', '.cl-ink', '.cl-ink-2', '.cl-ink-3', '.cl-btn', '.cl-sticky', '.logo-light', '.logo-dark']) {
+      assert.ok(html.includes(`[data-ogsc] ${cls}`), `${file}: missing Outlook [data-ogsc] dark rule for ${cls}`)
+      assert.ok(html.includes(`[data-ogsb] ${cls}`), `${file}: missing Outlook [data-ogsb] dark rule for ${cls}`)
+    }
+  }
+})
