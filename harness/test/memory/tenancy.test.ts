@@ -87,6 +87,19 @@ test('R48: memory_tenant sees only its owner', { skip: SKIP }, () => {
   assert.deepEqual(unset.filter((r) => r.n !== 0), [], 'with no owner set, every table is empty')
   const forged = asTenant(A, `insert into memory.entry (id, title, owner_id) values ('forged', 'Forged', '${B}')`)
   assert.equal((forged as { code: string }).code, '42501', JSON.stringify(forged))
+
+  // Quest #41: memory_tenant cannot execute privileged SECURITY DEFINER functions.
+  for (const call of [
+    `select memory.reseed_reviewer()`,
+    `select memory.sync_comp(array['evil@example.com'])`,
+    `select memory.claim_free_seat('${A}'::uuid)`,
+    `select memory.cost_reading()`,
+    `select memory.sample_usage()`,
+    `select memory.purge_events(interval '1 day')`,
+  ]) {
+    const denied = asTenant(A, call) as { code?: string }
+    assert.equal(denied.code, '42501', `${call} must be denied to memory_tenant: ${JSON.stringify(denied)}`)
+  }
 })
 
 // ----------------------------------------------------------------------------------------------------- R49

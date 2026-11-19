@@ -582,6 +582,8 @@ test('delete account', { skip: SKIP }, async () => {
   assert.equal(sql(`select count(*)::int as n from storage.objects where bucket_id = 'memory-blobs' and name like '${delId}/%'`)[0].n, 2)
 
   const auditsBefore = sql(`select count(*)::int as n from memory.admin_audit where action = 'account_delete' and before is null and after is null`)[0].n
+  exec(`insert into memory.billing_action (provider, action, target) values ('polar', 'cancel', 'sub-delacc');
+    insert into memory.signup_attempt (client, email) values ('127.0.0.1', '${email}');`)
 
   const delRes = await request('DELETE', `${memory.url}/me`, {
     headers: bearer(jwt({ sub: delId, email, jti: randomUUID() })),
@@ -593,6 +595,8 @@ test('delete account', { skip: SKIP }, async () => {
     const n = sql(`select count(*)::int as n from memory.${table} where owner_id = '${delId}'`)[0].n
     assert.equal(n, 0, `${table} still has ${n} rows for ${delId}`)
   }
+  assert.equal(sql(`select count(*)::int as n from memory.billing_action where target = 'sub-delacc'`)[0].n, 0)
+  assert.equal(sql(`select count(*)::int as n from memory.signup_attempt where lower(email) = lower('${email}')`)[0].n, 0)
   assert.equal(sql(`select count(*)::int as n from storage.objects where bucket_id = 'memory-blobs' and name like '${delId}/%'`)[0].n, 0)
   const remainingObjects = [...(memory.storage?.objects.keys() ?? [])].filter((k) => k.startsWith(`${delId}/`) || k.startsWith(`incoming/${delId}/`))
   assert.equal(remainingObjects.length, 0, JSON.stringify(remainingObjects))
@@ -600,5 +604,16 @@ test('delete account', { skip: SKIP }, async () => {
   assert.ok(memory.auth.deletedUsers.has(delId))
   const auditsAfter = sql(`select count(*)::int as n from memory.admin_audit where action = 'account_delete' and before is null and after is null`)[0].n
   assert.equal(auditsAfter, auditsBefore + 1)
+})
+
+test('Quest #41: geo-blocked entitlement releases free_slot and cannot claim a free seat', { skip: SKIP }, () => {
+  const blockedId = randomUUID()
+  const blockedEmail = `geo-blocked-${nonce()}@example.com`
+  exec(`insert into memory.account (owner_id, email, free_slot) values ('${blockedId}', '${blockedEmail}', true);
+    insert into memory.entitlement (owner_id, provider, plan, state, event_at)
+      values ('${blockedId}', 'polar', 'clyde', 'blocked', now());`)
+  assert.equal(sql(`select free_slot from memory.account where owner_id = '${blockedId}'`)[0].free_slot, false)
+  assert.equal(sql(`select memory.claim_free_seat('${blockedId}'::uuid) as claimed`)[0].claimed, false)
+  assert.equal(sql(`select free_slot from memory.account where owner_id = '${blockedId}'`)[0].free_slot, false)
 })
 

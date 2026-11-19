@@ -14,7 +14,27 @@ const SIGN_IN = new Set(["/oauth/consent", "/oauth/provider", "/oauth/wait", "/o
 // The workspace's sign-in calls, passed to Supabase Auth. /auth/v1/authorize starts a Google or GitHub sign-in (a 302 to
 // the provider) and /auth/v1/settings says which providers are on, both GET only.
 const SITE_AUTH = new Set(["/auth/v1/otp", "/auth/v1/verify", "/auth/v1/token", "/auth/v1/user", "/auth/v1/logout", "/auth/v1/authorize", "/auth/v1/settings"]);
-const SITE_AUTH_GET = new Set(["/auth/v1/authorize", "/auth/v1/settings"]);
+const SITE_AUTH_METHODS = {
+  "/auth/v1/authorize": ["GET"],
+  "/auth/v1/settings": ["GET"],
+  "/auth/v1/user": ["GET"],
+  "/auth/v1/otp": ["POST"],
+  "/auth/v1/token": ["POST"],
+  "/auth/v1/logout": ["POST"],
+  "/auth/v1/verify": ["GET", "POST"],
+};
+const BLOCKED_COUNTRIES = new Set([
+  "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE",
+  "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE",
+  "IS", "LI", "NO", "GB", "CH",
+]);
+function isBlockedRegion(cf) {
+  const country = typeof cf?.country === "string" ? cf.country.trim().toUpperCase() : "";
+  if (!country) return false;
+  if (BLOCKED_COUNTRIES.has(country)) return true;
+  const region = typeof cf?.regionCode === "string" ? cf.regionCode.trim().toUpperCase() : "";
+  return country === "CA" && region === "QC";
+}
 const ID = /^[A-Za-z0-9_-]{8,100}$/;
 let cachedAnonKey = "";
 
@@ -144,7 +164,11 @@ export default {
     if (file) return new Response(file.body, { headers: { "content-type": file.type, "cache-control": "public, max-age=3600" } });
     if (url.hostname === "heyclyde.me" && SITE_API(url.pathname)) return pass(req, url, env, { "x-memory-host": "heyclyde.me" });
     if (url.hostname === "heyclyde.me" && SITE_AUTH.has(url.pathname)) {
-      if (SITE_AUTH_GET.has(url.pathname) && req.method !== "GET") return new Response("Method not allowed", { status: 405, headers: { allow: "GET" } });
+      const allowed = SITE_AUTH_METHODS[url.pathname] ?? ["GET"];
+      if (!allowed.includes(req.method)) return new Response("Method not allowed", { status: 405, headers: { allow: allowed.join(", ") } });
+      if ((url.pathname === "/auth/v1/otp" || url.pathname === "/auth/v1/authorize") && isBlockedRegion(req.cf)) {
+        return Response.json({ error: "Clyde isn't available in this region." }, { status: 403, headers: { "cache-control": "no-store" } });
+      }
       const headers = new Headers(req.headers);
       headers.delete("host");
       headers.delete("x-memory-proxy");
@@ -160,11 +184,28 @@ export default {
         if (key) headers.set("apikey", key);
       }
       const hasBody = !["GET", "HEAD"].includes(req.method);
+      let body = hasBody ? req.body : undefined;
+      // Close auth proxy signup bypass: workspace OTP can only sign in existing accounts (never create_user: true).
+      if (url.pathname === "/auth/v1/otp") {
+        let parsed;
+        try {
+          parsed = await req.json();
+        } catch {
+          return Response.json({ error: "Invalid JSON body." }, { status: 400, headers: { "cache-control": "no-store" } });
+        }
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          return Response.json({ error: "Body must be a JSON object." }, { status: 400, headers: { "cache-control": "no-store" } });
+        }
+        parsed.create_user = false;
+        body = JSON.stringify(parsed);
+        headers.set("content-type", "application/json");
+        headers.delete("content-length");
+      }
       try {
         return await fetch(AUTH_ORIGIN + url.pathname + url.search, {
           method: req.method,
           headers,
-          body: hasBody ? req.body : undefined,
+          body,
           redirect: "manual",
         });
       } catch (e) {

@@ -74,10 +74,18 @@ export async function deleteOwnerAccount(owner: string, actor = "owner"): Promis
   const hashPrefix = (await sha256(owner)).slice(0, 12);
 
   await root.begin(async (tx) => {
+    const [acct] = await tx`select email from memory.account where owner_id = ${owner}::uuid`;
+    const [ent] = await tx`select subscription_id from memory.entitlement where owner_id = ${owner}::uuid`;
+    const email = typeof acct?.email === "string" && acct.email.trim() ? acct.email.trim().toLowerCase() : null;
+    const subId = typeof ent?.subscription_id === "string" && ent.subscription_id.trim() ? ent.subscription_id.trim() : null;
     for (const table of OWNED_DELETE_ORDER) {
       await tx`delete from ${tx("memory." + table)} where owner_id = ${owner}::uuid`;
     }
     await tx`delete from memory.billing_event where owner_id = ${owner}::uuid`;
+    await tx`delete from memory.billing_action where target = ${owner} or (${subId}::text is not null and target = ${subId})`;
+    if (email) {
+      await tx`delete from memory.signup_attempt where lower(email) = ${email}`;
+    }
     if (systemOwner) {
       await tx`insert into memory.admin_audit (owner_id, action, target, before, after, actor)
         values (${systemOwner}::uuid, 'account_delete', ${"account:" + hashPrefix}, null, null, ${actor})`;

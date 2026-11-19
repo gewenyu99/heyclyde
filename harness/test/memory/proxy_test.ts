@@ -431,3 +431,46 @@ Deno.test('the workspace sign-in carries the provider buttons and the callback p
   assert.match(String(cb.headers.get('content-security-policy')), /connect-src 'self'/)
   assert.match(await cb.text(), /data-view="callback"/)
 })
+
+Deno.test('Quest #41: auth proxy forces create_user=false on /auth/v1/otp, enforces methods, and blocks restricted regions', async () => {
+  let lastBody = ''
+  globalThis.fetch = ((input: string, init: RequestInit = {}) => {
+    sent.push({ url: String(input), headers: new Headers(init.headers) })
+    lastBody = typeof init.body === 'string' ? init.body : ''
+    return Promise.resolve(Response.json({ ok: true }))
+  }) as typeof fetch
+
+  sent = []
+  const otp = await worker.fetch(new Request('https://heyclyde.me/auth/v1/otp', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: 'new@example.com', create_user: true }),
+  }), { ...ENV, SUPABASE_ANON_KEY: 'anon-test' })
+  assert.equal(otp.status, 200)
+  assert.equal(JSON.parse(lastBody).create_user, false, 'create_user is forced false')
+
+  sent = []
+  const badJson = await worker.fetch(new Request('https://heyclyde.me/auth/v1/otp', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: 'not-json',
+  }), { ...ENV, SUPABASE_ANON_KEY: 'anon-test' })
+  assert.equal(badJson.status, 400)
+  assert.equal(sent.length, 0)
+
+  const wrongMethod = await worker.fetch(new Request('https://heyclyde.me/auth/v1/otp', { method: 'GET' }), ENV)
+  assert.equal(wrongMethod.status, 405)
+
+  for (const cf of [{ country: 'FR' }, { country: 'GB' }, { country: 'CA', regionCode: 'QC' }]) {
+    sent = []
+    const req = new Request('https://heyclyde.me/auth/v1/otp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'eu@example.com' }),
+    })
+    Object.defineProperty(req, 'cf', { value: cf })
+    const blocked = await worker.fetch(req, { ...ENV, SUPABASE_ANON_KEY: 'anon-test' })
+    assert.equal(blocked.status, 403, JSON.stringify(cf))
+    assert.equal(sent.length, 0, JSON.stringify(cf))
+  }
+})
