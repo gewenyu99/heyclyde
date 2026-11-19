@@ -474,3 +474,51 @@ Deno.test('Quest #41: auth proxy forces create_user=false on /auth/v1/otp, enfor
     assert.equal(sent.length, 0, JSON.stringify(cf))
   }
 })
+
+Deno.test('Quest #37: confirm_allow, POST /oauth/approve, and denied state render safely through Worker', async () => {
+  const allowCookie = '__Host-clyde_allow=abc12345.bindtok; Path=/; Max-Age=900; HttpOnly; Secure; SameSite=Lax'
+  stub(() => Response.json({
+    state: 'confirm_allow',
+    message: 'memory: Allow ChatGPT to use your Clyde? Callback: chatgpt.com.',
+    client: 'ChatGPT',
+    callback: 'https://chatgpt.com/connector/oauth/attacker',
+    callback_host: 'chatgpt.com',
+    email: 'wen@example.com',
+    decision_token: 'formtok-123',
+  }, { status: 200, headers: { 'set-cookie': allowCookie } }))
+  const page = await get('/oauth/approve?authorization_id=abc12345&code=c1')
+  assert.equal(page.status, 200)
+  assert.equal(page.headers.get('set-cookie'), allowCookie)
+  assert.equal(page.headers.get('cache-control'), 'no-store, no-transform')
+  const html = await page.text()
+  assert.ok(html.includes('Allow <strong>ChatGPT</strong> to use your Clyde?'), html)
+  assert.ok(html.includes('<code>chatgpt.com</code>') && html.includes('<code>https://chatgpt.com/connector/oauth/attacker</code>'), html)
+  assert.ok(html.includes('<strong>wen@example.com</strong>'), html)
+  assert.ok(html.includes('action="/oauth/approve?authorization_id=abc12345"'), html)
+  assert.ok(html.includes('name="decision_token" value="formtok-123"'), html)
+  assert.ok(html.includes('name="decision" value="allow"') && html.includes('name="decision" value="deny"'), html)
+
+  const clearAllow = '__Host-clyde_allow=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax'
+  stub(() => new Response(null, { status: 303, headers: { location: '/oauth/wait?authorization_id=abc12345', 'set-cookie': clearAllow } }))
+  const post = await at('https://memory.heyclyde.me/oauth/approve?authorization_id=abc12345', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: '__Host-clyde_allow=abc12345.bindtok' },
+    body: 'decision=allow&decision_token=formtok-123',
+  })
+  assert.equal(post.status, 303)
+  assert.equal(post.headers.get('location'), '/oauth/wait?authorization_id=abc12345')
+  assert.equal(post.headers.get('set-cookie'), clearAllow)
+  assert.equal(sent[0].headers.get('cookie'), '__Host-clyde_allow=abc12345.bindtok')
+  assert.equal(sent[0].headers.get('accept'), 'application/json')
+
+  stub(json({ state: 'denied', message: 'memory: denied ChatGPT. Nothing was shared.', client: 'ChatGPT' }))
+  const denied = await at('https://memory.heyclyde.me/oauth/approve?authorization_id=abc12345', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: '__Host-clyde_allow=abc12345.bindtok' },
+    body: 'decision=deny&decision_token=formtok-123',
+  })
+  assert.equal(denied.status, 200)
+  const deniedHtml = await denied.text()
+  assert.ok(deniedHtml.includes('Connection denied'), deniedHtml)
+  assert.ok(deniedHtml.includes('<strong>ChatGPT</strong>'), deniedHtml)
+})

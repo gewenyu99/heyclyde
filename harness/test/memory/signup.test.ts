@@ -7,10 +7,10 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, test } from 'node:test'
 import { request } from '../../src/request.ts'
-import { jwt } from './auth.ts'
+import { cookiePair, extractAllow, jwt, submitAllow } from './auth.ts'
 import { bearer, nonce } from './bed.ts'
 import { putSecret, setSetting, sha } from './billing.ts'
-import { exec, SKIP, sql, startRealMemory, TURNSTILE_SECRET, type RealMemory } from './server.ts'
+import { exec, SKIP, sql, startRealMemory, startSibling, TURNSTILE_SECRET, type RealMemory } from './server.ts'
 
 const PROXY = `proxy-${nonce()}`
 let memory: RealMemory
@@ -126,7 +126,9 @@ test('R54: store callbacks', { skip: SKIP }, async () => {
     memory.auth.signIns[`code-${auth}`] = who
     memory.auth.authorizations[auth] = { redirect_uri, client: { id: `client-${nonce()}`, name: 'App' } }
     exec(`insert into memory.oauth_consent (authorization_id, code_verifier) values ('${auth}', 'verifier-${nonce()}');`)
-    return await request('GET', `${memory.url}/oauth/approve?authorization_id=${auth}&code=code-${auth}`, { timeoutMs: 30_000 })
+    const r = await request('GET', `${memory.url}/oauth/approve?authorization_id=${auth}&code=code-${auth}`, { timeoutMs: 30_000 })
+    if (r.status !== 200) return r
+    return await submitAllow(memory.url, r, auth)
   }
   for (const uri of ['https://claude.ai/api/mcp/auth_callback', 'http://127.0.0.1:53111/callback',
     'https://chatgpt.com/connector_platform_oauth_redirect', 'https://chat.openai.com/connector_platform_oauth_redirect',
@@ -208,9 +210,12 @@ test('R54/R55: /oauth/provider and CSP-safe 303 direct wait redirect', { skip: S
     memory.auth.signIns[`code-${authId}`] = who
     memory.auth.authorizations[authId] = { redirect_uri: 'https://platform.openai.com/oauth/callback', client: { id: 'openai-test', name: 'ChatGPT' } }
     const { bind, cookie } = bound(ok)
-    const direct = await request('GET', `${sibling.url}/oauth/approve?authorization_id=${authId}&direct=1&bind=${bind}&code=code-${authId}`, {
+    const prompt = await request('GET', `${sibling.url}/oauth/approve?authorization_id=${authId}&direct=1&bind=${bind}&code=code-${authId}`, {
       headers: { ...proxied('US'), accept: 'application/json', cookie }, timeoutMs: 30_000,
     })
+    assert.equal(prompt.status, 200, prompt.text)
+    assert.equal(JSON.parse(prompt.text).state, 'confirm_allow', prompt.text)
+    const direct = await submitAllow(sibling.url, prompt, authId, { headers: { ...proxied('US'), accept: 'application/json' } })
     assert.equal(direct.status, 303, direct.text)
     assert.equal(direct.headers.location, `/oauth/wait?authorization_id=${authId}`)
 
@@ -251,17 +256,21 @@ test('provider sign-in: bound to the starting browser, with denial, expiry, mism
     for (const attr of ['Path=/', 'HttpOnly', 'Secure', 'SameSite=Lax', 'Max-Age=900']) assert.ok(a.set.includes(attr), `${attr} in ${a.set}`)
     assert.ok(!a.set.includes('Domain='), 'no Domain, so the cookie stays on this host')
 
-    // Success: the code is spent once, with the stored verifier, and the window goes on to the app.
+    // Success: the PKCE code trades for the Allow screen first, spending the OAuth bind cookie and verifier, and only
+    // clicking Allow sends the window on to the app.
     memory.auth.signIns[`code-${a.id}`] = email()
     memory.auth.authorizations[a.id] = { redirect_uri: 'https://claude.ai/api/mcp/auth_callback', client: { id: `c-${nonce()}`, name: 'Claude' } }
     let n = exchanges()
-    const ok = await back(a.id, `bind=${a.bind}&code=code-${a.id}`, a.cookie)
-    assert.equal(ok.status, 303, ok.text)
-    assert.equal(ok.headers.location, `/oauth/wait?authorization_id=${a.id}`)
-    assert.ok(cleared(ok), 'the binding is spent')
+    const allowPrompt = await back(a.id, `bind=${a.bind}&code=code-${a.id}`, a.cookie)
+    assert.equal(allowPrompt.status, 200, allowPrompt.text)
+    assert.equal(JSON.parse(allowPrompt.text).state, 'confirm_allow', allowPrompt.text)
+    assert.ok(cleared(allowPrompt), 'the OAuth binding is spent')
     assert.equal(exchanges(), n + 1)
     const verifier = sql(`select code_verifier from memory.oauth_consent where authorization_id = '${a.id}'`)
     assert.equal(verifier[0]?.code_verifier, '', 'the verifier is gone once used')
+    const ok = await submitAllow(sibling.url, allowPrompt, a.id, { headers: { ...proxied('US'), accept: 'application/json' } })
+    assert.equal(ok.status, 303, ok.text)
+    assert.equal(ok.headers.location, `/oauth/wait?authorization_id=${a.id}`)
     const went = await request('GET', `${sibling.url}/oauth/wait?authorization_id=${a.id}`, { timeoutMs: 30_000 })
     assert.equal(went.status, 302)
     assert.match(String(went.headers.location), /^https:\/\/claude\.ai\/api\/mcp\/auth_callback\?code=/)
@@ -330,6 +339,120 @@ test('provider sign-in: bound to the starting browser, with denial, expiry, mism
     assert.equal(evil.headers.location, undefined)
     const after = await request('GET', `${sibling.url}/oauth/wait?authorization_id=${e.id}`, { timeoutMs: 30_000 })
     assert.ok(!String(after.headers.location ?? '').startsWith('https://evil.example'), String(after.headers.location))
+  } finally {
+    await sibling.close()
+  }
+})
+
+test('Quest #37: no authorization is approved without an explicit Allow click naming the client', { skip: SKIP }, async () => {
+  const consentsFor = (id: string) =>
+    memory.auth.calls.filter((c) => c.path === `/auth/v1/oauth/authorizations/${id}/consent`)
+  const allowCleared = (r: { headers: Record<string, any> }) =>
+    ([] as string[]).concat(r.headers['set-cookie'] ?? []).some((c) => /^__Host-clyde_allow=;.*Max-Age=0/.test(c))
+
+  // 1. Email link sign-in with an allowed ChatGPT callback (attacker's connector): stops at Allow, names client & host.
+  const mailAuth = `q37-mail-${nonce()}`, who = email()
+  const mailClientId = `evil-chatgpt-${nonce()}`
+  memory.auth.signIns[`code-${mailAuth}`] = who
+  memory.auth.authorizations[mailAuth] = {
+    redirect_uri: 'https://chatgpt.com/connector/oauth/attacker',
+    client: { id: mailClientId, name: 'Evil Phish App' },
+  }
+  exec(`insert into memory.oauth_consent (authorization_id, code_verifier) values ('${mailAuth}', 'v-${nonce()}');`)
+  const mailPrompt = await request('GET', `${memory.url}/oauth/approve?authorization_id=${mailAuth}&code=code-${mailAuth}`, { timeoutMs: 30_000 })
+  assert.equal(mailPrompt.status, 200, mailPrompt.text)
+  assert.match(mailPrompt.text, /Allow\s+<strong>Evil Phish App<\/strong>\s+to use your Clyde\?/)
+  assert.ok(mailPrompt.text.includes('<code>chatgpt.com</code>'), mailPrompt.text)
+  assert.equal(consentsFor(mailAuth).length, 0, 'sign-in alone must never approve the authorization')
+  const stillWaiting = await request('GET', `${memory.url}/oauth/wait?authorization_id=${mailAuth}`, { timeoutMs: 30_000 })
+  assert.equal(stillWaiting.status, 200, 'waiting window must stay pending until Allow/Deny')
+  const parsedMail = extractAllow(mailPrompt)
+  assert.ok(parsedMail.token && parsedMail.cookie.startsWith(`__Host-clyde_allow=${mailAuth}.`), 'Allow cookie and CSRF token issued')
+
+  // 2. Missing/forged cookie or token is rejected 403 WITHOUT consuming the real user's pending token.
+  for (const attempt of [
+    { token: parsedMail.token, cookie: '' },
+    { token: parsedMail.token, cookie: `__Host-clyde_allow=${mailAuth}.wrong` },
+    { token: `${parsedMail.token}x`, cookie: parsedMail.cookie },
+    { token: parsedMail.token, cookie: `__Host-clyde_allow=other-${nonce()}.bind` },
+  ]) {
+    const forged = await submitAllow(memory.url, mailPrompt, mailAuth, attempt)
+    assert.equal(forged.status, 403, forged.text)
+    assert.equal(consentsFor(mailAuth).length, 0, 'forged Allow must not call Auth consent')
+  }
+
+  // 3. Explicit Deny click calls /consent{deny}, audits oauth_deny, clears cookie, and blocks replay (and reload isn't "connected").
+  const denied = await submitAllow(memory.url, mailPrompt, mailAuth, { decision: 'deny' })
+  assert.equal(denied.status, 200, denied.text)
+  assert.deepEqual(consentsFor(mailAuth).map((c) => c.body.action), ['deny'])
+  assert.ok(allowCleared(denied), 'Allow cookie must be cleared after decision')
+  assert.equal(sql(`select count(*)::int as n from memory.admin_audit where action = 'oauth_deny' and target = 'client:${mailClientId}'`)[0].n, 1)
+  assert.equal(sql(`select count(*)::int as n from memory.account where email = '${who}' and oauth_apps ? '${mailClientId}'`)[0].n, 0)
+  const reloadAfterDeny = await request('GET', `${memory.url}/oauth/approve?authorization_id=${mailAuth}`, { timeoutMs: 30_000 })
+  assert.equal(reloadAfterDeny.status, 200)
+  assert.match(reloadAfterDeny.text, /denied Evil Phish App/i)
+  const replay = await submitAllow(memory.url, mailPrompt, mailAuth, { decision: 'allow' })
+  assert.equal(replay.status, 400, 'consumed decision token cannot be replayed')
+  const mailMoved = await request('GET', `${memory.url}/oauth/wait?authorization_id=${mailAuth}`, { timeoutMs: 30_000 })
+  assert.equal(mailMoved.status, 302)
+  assert.match(String(mailMoved.headers.location), /error=access_denied/)
+
+  // 4. Password sign-in (direct=1 via Worker JSON): stops on confirm_allow naming client & host before /consent.
+  const pwEmail = `q37-pw-${nonce()}@example.com`, pw = `pw-${randomUUID()}`, pwAuth = `q37-pw-${nonce()}`
+  memory.auth.passwords[pwEmail] = pw
+  memory.auth.authorizations[pwAuth] = {
+    redirect_uri: 'https://antigravity.google/oauth-callback',
+    client: { id: `ag-${nonce()}`, name: 'Antigravity' },
+  }
+  const pwPrompt = await request('POST', `${memory.url}/oauth/consent?authorization_id=${pwAuth}`, {
+    headers: { ...proxied('US'), accept: 'application/json', 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ email: pwEmail, password: pw }).toString(),
+    timeoutMs: 30_000,
+  })
+  assert.equal(pwPrompt.status, 200, pwPrompt.text)
+  const pwBody = JSON.parse(pwPrompt.text)
+  assert.deepEqual([pwBody.state, pwBody.client, pwBody.callback_host], ['confirm_allow', 'Antigravity', 'antigravity.google'])
+  assert.equal(consentsFor(pwAuth).length, 0, 'password sign-in must stop at Allow before calling /consent')
+  const pwAllowed = await submitAllow(memory.url, pwPrompt, pwAuth, { headers: { ...proxied('US'), accept: 'application/json' } })
+  assert.equal(pwAllowed.status, 303, pwAllowed.text)
+  assert.ok(allowCleared(pwAllowed))
+  assert.deepEqual(consentsFor(pwAuth).map((c) => c.body.action), ['approve'])
+  const pwWaited = await request('GET', `${memory.url}/oauth/wait?authorization_id=${pwAuth}`, { timeoutMs: 30_000 })
+  assert.equal(pwWaited.status, 302)
+  assert.match(String(pwWaited.headers.location), /^https:\/\/antigravity\.google\/oauth-callback\?code=/)
+
+  // 5. Provider sign-in (direct=1): Google/GitHub callback shows confirm_allow first; explicit Deny returns access_denied.
+  const sibling = await startSibling(memory, { MEMORY_OAUTH_PROVIDERS: 'google' })
+  try {
+    const provAuth = `q37-prov-${nonce()}`
+    const start = await request('GET', `${sibling.url}/oauth/provider?authorization_id=${provAuth}&provider=google`, {
+      headers: proxied('US'), timeoutMs: 30_000,
+    })
+    const { bind, cookie } = bound(start)
+    memory.auth.signIns[`code-${provAuth}`] = email()
+    memory.auth.authorizations[provAuth] = {
+      redirect_uri: 'https://claude.ai/api/mcp/auth_callback',
+      client: { id: `claude-${nonce()}`, name: 'Claude Desktop' },
+    }
+    const provPrompt = await request('GET', `${sibling.url}/oauth/approve?authorization_id=${provAuth}&direct=1&bind=${bind}&code=code-${provAuth}`, {
+      headers: { ...proxied('US'), accept: 'application/json', cookie }, timeoutMs: 30_000,
+    })
+    assert.equal(provPrompt.status, 200, provPrompt.text)
+    const provBody = JSON.parse(provPrompt.text)
+    assert.deepEqual([provBody.state, provBody.client, provBody.callback_host], ['confirm_allow', 'Claude Desktop', 'claude.ai'])
+    assert.ok(cookiePair(provPrompt.headers, '__Host-clyde_allow').startsWith(`__Host-clyde_allow=${provAuth}.`))
+    assert.equal(consentsFor(provAuth).length, 0, 'provider callback must stop at Allow before calling /consent')
+    const provDenied = await submitAllow(sibling.url, provPrompt, provAuth, {
+      decision: 'deny',
+      headers: { ...proxied('US'), accept: 'application/json' },
+    })
+    assert.equal(provDenied.status, 303, provDenied.text)
+    assert.equal(provDenied.headers.location, `/oauth/wait?authorization_id=${provAuth}`)
+    assert.ok(allowCleared(provDenied))
+    assert.deepEqual(consentsFor(provAuth).map((c) => c.body.action), ['deny'])
+    const provWaited = await request('GET', `${sibling.url}/oauth/wait?authorization_id=${provAuth}`, { timeoutMs: 30_000 })
+    assert.equal(provWaited.status, 302)
+    assert.match(String(provWaited.headers.location), /^https:\/\/claude\.ai\/api\/mcp\/auth_callback\?error=access_denied/)
   } finally {
     await sibling.close()
   }

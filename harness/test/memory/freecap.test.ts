@@ -9,7 +9,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, test } from 'node:test'
 import { request } from '../../src/request.ts'
-import { jwt } from './auth.ts'
+import { jwt, submitAllow } from './auth.ts'
 import { bearer, nonce } from './bed.ts'
 import { apply, exec, SKIP, sql, startRealMemory, type RealMemory } from './server.ts'
 import { WEN_ID } from './tenants.ts'
@@ -80,7 +80,9 @@ test('R74: a full free tier says so, with the plan', { skip: SKIP }, async () =>
   memory.auth.signIns[`code-${auth}`] = email
   memory.auth.authorizations[auth] = { redirect_uri: 'https://claude.ai/api/mcp/auth_callback', client: { id: 'claude-client', name: 'Claude' } }
   exec(`insert into memory.oauth_consent (authorization_id, code_verifier) values ('${auth}', 'verifier-${nonce()}');`)
-  const r = await request('GET', `${memory.url}/oauth/approve?authorization_id=${auth}&code=code-${auth}`)
+  const prompt = await request('GET', `${memory.url}/oauth/approve?authorization_id=${auth}&code=code-${auth}`)
+  assert.equal(prompt.status, 200, prompt.text)
+  const r = await submitAllow(memory.url, prompt, auth)
   assert.equal(r.status, 200, r.text)
   assert.match(r.text, /connected/)
   assert.ok(r.text.includes('free tier is full') && r.text.includes('$12.99') && r.text.includes('/billing/checkout'), r.text)

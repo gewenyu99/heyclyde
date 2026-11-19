@@ -8,6 +8,7 @@
  */
 import { createHash } from 'node:crypto'
 import http from 'node:http'
+import { request, type Response } from '../../src/request.ts'
 
 export type FakeAuth = {
   url: string
@@ -132,4 +133,61 @@ export async function startFakeAuth(extra?: (req: http.IncomingMessage, res: htt
   const { port } = server.address() as { port: number }
   state.url = `http://127.0.0.1:${port}`
   return state
+}
+
+export function cookiePair(headers: Record<string, string | string[] | undefined>, name: string): string {
+  const raw = headers['set-cookie']
+  const list = Array.isArray(raw) ? raw : raw ? [raw] : []
+  for (const item of list) {
+    const part = item.split(';', 1)[0]?.trim() ?? ''
+    if (part.startsWith(`${name}=`)) return part
+  }
+  return ''
+}
+
+const decodeHtml = (s: string) =>
+  s.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+
+export function extractAllow(res: Pick<Response, 'status' | 'text' | 'headers'>): {
+  token: string; cookie: string; action: string | null; json: Record<string, any> | null
+} {
+  const cookie = cookiePair(res.headers, '__Host-clyde_allow')
+  try {
+    const json = JSON.parse(res.text)
+    if (json && typeof json === 'object' && json.state === 'confirm_allow') {
+      return { token: String(json.decision_token ?? ''), cookie, action: null, json }
+    }
+  } catch { /* HTML response */ }
+  const actionMatch = /<form[^>]*\baction="([^"]+)"/i.exec(res.text)
+  const tokenMatch = /name="decision_token"\s+value="([^"]+)"/i.exec(res.text)
+  return {
+    token: tokenMatch ? decodeHtml(tokenMatch[1]) : '',
+    cookie,
+    action: actionMatch ? decodeHtml(actionMatch[1]) : null,
+    json: null,
+  }
+}
+
+export async function submitAllow(
+  baseUrl: string,
+  promptRes: Pick<Response, 'status' | 'text' | 'headers'>,
+  id: string,
+  opts: { decision?: 'allow' | 'deny'; headers?: Record<string, string>; token?: string; cookie?: string } = {},
+): Promise<Response> {
+  const parsed = extractAllow(promptRes)
+  const target = parsed.action
+    ? new URL(parsed.action, `${baseUrl}/oauth/`).toString()
+    : `${baseUrl}/oauth/approve?authorization_id=${encodeURIComponent(id)}`
+  const token = opts.token ?? parsed.token
+  const cookie = opts.cookie ?? parsed.cookie
+  const headers: Record<string, string> = {
+    ...(opts.headers ?? {}),
+    'content-type': 'application/x-www-form-urlencoded',
+  }
+  if (cookie) headers.cookie = headers.cookie ? `${headers.cookie}; ${cookie}` : cookie
+  return await request('POST', target, {
+    headers,
+    body: new URLSearchParams({ decision: opts.decision ?? 'allow', decision_token: token }).toString(),
+    timeoutMs: 30_000,
+  })
 }

@@ -88,4 +88,5 @@ The tests run everything against a fake Supabase Auth: `harness/test/memory/sign
 
 - **The installer** signs in with an email link. It could open Google or GitHub with the same PKCE hand-off (`/install/approve` stores any Supabase Auth code, and only the installer holds the verifier). `install.sh` is client surface, so it needs a `CLIENT_VERSION` bump and an offline-signed release.
 - **Grok** has no documented callback. Its first live connect shows the real one in `admin_audit`.
-- **Consent.** A signed-in person's approved app connects without a separate *Allow* screen. The callback check above keeps codes on approved apps' own hosts, but an attacker's own ChatGPT connector or Gemini Connected App would pass it. An *Allow Clyde for <app>* step before approval would close that.
+- **Consent.** Signing in now shows an explicit *Allow \<app\> to use your Clyde?* confirmation with the client name, signed-in email, and callback host before `/oauth/authorizations/:id/consent` runs (for email link, password, Google, and GitHub sign-ins).
+- **Allow screen live check.** Verify `confirm_allow` in a real browser through `memory.heyclyde.me` for email link, password, and social sign-in once deployed with migration `20261118140000_oauth_consent_allow.sql`.

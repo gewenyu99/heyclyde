@@ -236,8 +236,8 @@ export default {
       return html(homePage, 200, { "cache-control": "public, max-age=300" });
     }
     if (read && SIGN_IN.has(url.pathname)) return signIn(req, url, env);
-    // With open sign-up (R38), the consent page's email form posts back here, and the reply is a page too.
-    if (req.method === "POST" && url.pathname === "/oauth/consent") return signIn(req, url, env);
+    // With open sign-up (R38), the consent page's email form and /oauth/approve's Allow form post back here.
+    if (req.method === "POST" && (url.pathname === "/oauth/consent" || url.pathname === "/oauth/approve")) return signIn(req, url, env);
     // Polar sends the buyer here after checkout (R38). The page says only what the function's text does.
     if (read && url.pathname === "/billing/thanks" && wantsPage(req)) return html((n) => statePage({ state: "subscribed" }, n));
     return pass(req, url, env);

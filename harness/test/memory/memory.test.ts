@@ -15,7 +15,7 @@ import { request } from '../../src/request.ts'
 import { CLIENT_VERSION, SERVER_VERSION } from '../../../memory/supabase/functions/memory/version.ts'
 import { tempDir, waitFor } from '../helpers.ts'
 import { repoRoot } from '../../src/config.ts'
-import { jwt } from './auth.ts'
+import { extractAllow, jwt, submitAllow } from './auth.ts'
 import { FAKE_DOWN, FAKE_REFUSE } from './openai.ts'
 import { apply, exec, purge, SKIP, sql, startRealMemory, type RealMemory } from './server.ts'
 import { verifies } from './signing.ts'
@@ -247,7 +247,12 @@ test('oauth: agent app callbacks allowed, others denied and logged', { skip: SKI
     sql(`insert into memory.oauth_consent (authorization_id, code_verifier) values ('${id}', 'verifier-${name}')`)
     memory.auth.signIns[code] = ownerEmail()
     memory.auth.authorizations[id] = { redirect_uri: target, client: { id: `client-${name}`, name: `App ${name}` } }
-    const r = await call('GET', `/oauth/approve?authorization_id=${id}&code=${code}`)
+    let r = await call('GET', `/oauth/approve?authorization_id=${id}&code=${code}`)
+    if (want === 'approve') {
+      assert.equal(r.status, 200, `${name}: ${r.text}`)
+      assert.equal(memory.auth.calls.filter((c) => c.path === `/auth/v1/oauth/authorizations/${id}/consent`).length, 0, `${name}: no consent before Allow`)
+      r = await submitAllow(memory.url, r, id)
+    }
     assert.equal(r.status, want === 'approve' ? 200 : 403, `${name}: ${r.text}`)
     const consent = memory.auth.calls.filter((c) => c.path === `/auth/v1/oauth/authorizations/${id}/consent`)
     assert.deepEqual(consent.map((c) => c.body.action), [want], name)
@@ -292,9 +297,15 @@ test('oauth JSON mode: each sign-in state comes back as JSON through the Worker'
 
     memory.auth.signIns['pkce-json'] = owner
     memory.auth.authorizations['json-test-0001'] = { client: { id: 'json-claude', name: 'Claude' }, redirect_uri: 'https://claude.ai/api/mcp/auth_callback' }
-    const connected = await get('/oauth/approve?authorization_id=json-test-0001&code=pkce-json')
-    assert.equal(connected.status, 200, connected.text)
-    assert.deepEqual([connected.body?.state, connected.body?.client], ['connected', 'Claude'], connected.text)
+    const allowPrompt = await get('/oauth/approve?authorization_id=json-test-0001&code=pkce-json')
+    assert.equal(allowPrompt.status, 200, allowPrompt.text)
+    assert.deepEqual([allowPrompt.body?.state, allowPrompt.body?.client, allowPrompt.body?.callback_host], ['confirm_allow', 'Claude', 'claude.ai'], allowPrompt.text)
+    const allow = extractAllow(allowPrompt)
+    assert.ok(allow.token && allow.cookie, 'Allow prompt returns token and __Host-clyde_allow cookie')
+    const connectedRes = await submitAllow(memory.url, allowPrompt, 'json-test-0001', { headers: worker })
+    const connectedBody = JSON.parse(connectedRes.text)
+    assert.equal(connectedRes.status, 200, connectedRes.text)
+    assert.deepEqual([connectedBody?.state, connectedBody?.client], ['connected', 'Claude'], connectedRes.text)
     const moved = await get('/oauth/wait?authorization_id=json-test-0001')
     assert.equal(moved.status, 302, moved.text)
     assert.match(String(moved.headers.location), /^https:\/\/claude\.ai\/api\/mcp\/auth_callback\?code=code-json-test-0001/)

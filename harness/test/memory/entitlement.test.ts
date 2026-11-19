@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto'
 import { after, before, test } from 'node:test'
 import { repoRoot } from '../../src/config.ts'
 import { request } from '../../src/request.ts'
-import { jwt } from './auth.ts'
+import { jwt, submitAllow } from './auth.ts'
 import { bearer, bedFor, nonce, note } from './bed.ts'
 import {
   deliver, newPaddleSecret, newPolarSecret, paddleRefund, paddleSubscription, polarRefund, polarSubscription, putSecret, setSetting,
@@ -178,7 +178,9 @@ test('entitlement: a stranger signs in and connects, and only tools/call is refu
   assert.equal(otp.at(-1)!.body.create_user, true)
   memory.auth.signIns[`code-${auth}`] = email
   memory.auth.authorizations[auth] = { redirect_uri: 'https://claude.ai/api/mcp/auth_callback', client: { id: 'claude-client', name: 'Claude' } }
-  const approved = await request('GET', `${memory.url}/oauth/approve?authorization_id=${auth}&code=code-${auth}`)
+  const prompt = await request('GET', `${memory.url}/oauth/approve?authorization_id=${auth}&code=code-${auth}`)
+  assert.equal(prompt.status, 200, prompt.text)
+  const approved = await submitAllow(memory.url, prompt, auth)
   assert.equal(approved.status, 200, approved.text)
   assert.match(approved.text, /connected/)
   assert.ok(sql(`select redirect_url from memory.oauth_consent where authorization_id = '${auth}'`)[0].redirect_url)

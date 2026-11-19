@@ -8,6 +8,7 @@ import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 import { SERVER_VERSION } from '../../../memory/supabase/functions/memory/version.ts'
+import { submitAllow } from './auth.ts'
 import { bearer, bedFor, idOf, marker, nonce, note } from './bed.ts'
 import { waitFor } from '../helpers.ts'
 import { SKIP, sql, startRealMemory, type RealMemory } from './server.ts'
@@ -218,8 +219,14 @@ test('R67 ChatGPT\'s OAuth callbacks are allowed', { skip: SKIP }, async () => {
     sql(`insert into memory.oauth_consent (authorization_id, code_verifier) values ('${id}', 'verifier-${name}')`)
     memory.auth.signIns[code] = owner
     memory.auth.authorizations[id] = { redirect_uri: target, client: { id: `client-${name}`, name: `App ${name}` } }
-    const r = await bed.call('GET', `/oauth/approve?authorization_id=${id}&code=${code}`)
-    assert.equal(r.status, want === 'approve' ? 200 : 403, `${name}: ${r.text}`)
+    const prompt = await bed.call('GET', `/oauth/approve?authorization_id=${id}&code=${code}`)
+    if (want === 'approve') {
+      assert.equal(prompt.status, 200, `${name}: ${prompt.text}`)
+      const r = await submitAllow(memory.url, prompt, id)
+      assert.equal(r.status, 200, `${name}: ${r.text}`)
+    } else {
+      assert.equal(prompt.status, 403, `${name}: ${prompt.text}`)
+    }
   }
 })
 
@@ -241,8 +248,14 @@ test('R58 Google\'s OAuth redirects are allowed', { skip: SKIP }, async () => {
     sql(`insert into memory.oauth_consent (authorization_id, code_verifier) values ('${id}', 'verifier-${name}')`)
     memory.auth.signIns[code] = owner
     memory.auth.authorizations[id] = { redirect_uri: target, client: { id: `client-${name}`, name: `App ${name}` } }
-    const r = await bed.call('GET', `/oauth/approve?authorization_id=${id}&code=${code}`)
-    assert.equal(r.status, want === 'approve' ? 200 : 403, `${name}: ${r.text}`)
+    const prompt = await bed.call('GET', `/oauth/approve?authorization_id=${id}&code=${code}`)
+    if (want === 'approve') {
+      assert.equal(prompt.status, 200, `${name}: ${prompt.text}`)
+      const r = await submitAllow(memory.url, prompt, id)
+      assert.equal(r.status, 200, `${name}: ${r.text}`)
+    } else {
+      assert.equal(prompt.status, 403, `${name}: ${prompt.text}`)
+    }
   }
 })
 

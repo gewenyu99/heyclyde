@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
 import { after, before, test } from 'node:test'
 import { request } from '../../src/request.ts'
-import { jwt } from './auth.ts'
+import { jwt, submitAllow } from './auth.ts'
 import { bearer, nonce } from './bed.ts'
 import { apply, exec, SKIP, sql, startRealMemory, type RealMemory } from './server.ts'
 
@@ -46,7 +46,10 @@ test('R55: the reviewer signs in with a password and holds 40 notes', { skip: SK
   })
   const wrong = await consent('not-it')
   assert.equal(wrong.status, 401, wrong.text)
-  const ok = await consent(password)
+  const prompt = await consent(password)
+  assert.equal(prompt.status, 200, prompt.text)
+  assert.match(prompt.text, /Allow.*Claude/i)
+  const ok = await submitAllow(memory.url, prompt, auth)
   assert.equal(ok.status, 302, ok.text)
   assert.match(String(ok.headers.location), /^https:\/\/claude\.ai\/api\/mcp\/auth_callback\?code=/)
   const r = await mine()

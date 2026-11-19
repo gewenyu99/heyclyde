@@ -43,14 +43,24 @@ const EMAIL = /^[^\s@<>"]{1,64}@[^\s@<>"]{1,255}\.[^\s@<>"]{2,63}$/;
 // both match. A callback opened in another browser, or one an attacker started and sent on, is refused before any code is
 // spent. __Host- keeps it on memory.heyclyde.me alone, and SameSite=Lax still sends it on the provider's redirect back.
 const BIND_COOKIE = "__Host-clyde_oauth";
+const ALLOW_COOKIE = "__Host-clyde_allow";
 const BIND = /^[A-Za-z0-9_-]{16,64}$/;
 const bindCookie = (value: string, maxAge: number) => `${BIND_COOKIE}=${value}; Path=/; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Lax`;
+const allowCookie = (value: string, maxAge: number) => `${ALLOW_COOKIE}=${value}; Path=/; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Lax`;
 export const CLEAR_BIND = bindCookie("", 0);
+export const CLEAR_ALLOW = allowCookie("", 0);
 
 const text = (body: string, status = 200, headers: Record<string, string> = {}) =>
   new Response(body + "\n", { status, headers: { "content-type": "text/plain; charset=utf-8", ...headers } });
 
-/** One of the sign-in pages (R46): check_email, waiting, connected, refused, expired or error. A caller straight to
+const esc = (s: string) =>
+  String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+function callbackHost(uri: string) {
+  try { return new URL(uri).host || uri; } catch { return uri; }
+}
+
+/** One of the sign-in pages (R46): check_email, waiting, confirm_allow, connected, refused, expired or error. A caller straight to
  * Supabase gets the line as text. The Worker at memory.heyclyde.me asks for JSON and renders the page itself, since
  * Supabase won't serve HTML from its own domain. */
 type Page = { json: boolean };
@@ -58,7 +68,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function page(p: Page, state: string, line: string, status = 200, extra: Record<string, unknown> = {}, headers: Record<string, string> = {}) {
   if (!p.json) return text(`memory: ${line}`, status, headers);
-  return Response.json({ state, message: `memory: ${line}`, ...extra }, { status, headers: { "cache-control": "no-store" } });
+  return Response.json({ state, message: `memory: ${line}`, ...extra }, { status, headers: { ...headers, "cache-control": "no-store" } });
 }
 
 /** The resource metadata (RFC 9728) an MCP client reads from the 401's WWW-Authenticate. It names Supabase Auth as the
@@ -81,12 +91,15 @@ function same(a: string, b: string) {
   return diff === 0;
 }
 
+function cookieOf(req: Request, name: string) {
+  const jar = (req.headers.get("cookie") ?? "").split(/;\s*/);
+  return jar.find((c) => c.startsWith(`${name}=`))?.slice(name.length + 1) ?? "";
+}
+
 /** Whether this browser started the provider sign-in for this request (BIND_COOKIE). */
 function boundHere(req: Request, id: string, bind: string | null) {
   if (!bind || !BIND.test(bind)) return false;
-  const jar = (req.headers.get("cookie") ?? "").split(/;\s*/);
-  const got = jar.find((c) => c.startsWith(`${BIND_COOKIE}=`))?.slice(BIND_COOKIE.length + 1) ?? "";
-  return same(got, `${id}.${bind}`);
+  return same(cookieOf(req, BIND_COOKIE), `${id}.${bind}`);
 }
 
 function b64url(bytes: Uint8Array) {
@@ -132,7 +145,16 @@ async function sendLink(p: Page, base: string, id: string, email: string, create
   const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
   const challenge = b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
   await sql`insert into memory.oauth_consent (authorization_id, code_verifier) values (${id}, ${verifier})
-    on conflict (authorization_id) do update set code_verifier = excluded.code_verifier, redirect_url = null, created_at = now()`;
+    on conflict (authorization_id) do update set
+      code_verifier = excluded.code_verifier,
+      client_name = null,
+      redirect_url = null,
+      pending_jwt = null,
+      pending_user = null,
+      decision_token = null,
+      callback_uri = null,
+      direct = false,
+      created_at = now()`;
   const redirect = encodeURIComponent(`${base}/oauth/approve?authorization_id=${encodeURIComponent(id)}`);
   const sent = await auth(`/otp?redirect_to=${redirect}`, {
     method: "POST",
@@ -205,22 +227,34 @@ async function askAgain(p: Page, id: string, email: string, error: string) {
 /** POST /oauth/consent with sign-in open: email a sign-in link to whoever asked, creating their account. Refused from a
  * blocked country (451), straight to the function rather than through memory.heyclyde.me unless the email is allowlisted
  * (403), and past the hourly caps (429). Nothing is written or sent for a refusal. */
-type Form = { email: string; human: string; password: string };
+type Form = { email: string; human: string; password: string; decision: string; decisionToken: string };
 
-/** A consent POST's fields, from a form or JSON, read once: the email, the Turnstile token and a password if one came. */
+/** A consent POST's fields, from a form or JSON, read once: email, Turnstile, password, or Allow/Deny fields. */
 async function readForm(req: Request): Promise<Form> {
   const type = req.headers.get("content-type") ?? "";
   const raw = (await req.text()).slice(0, 4096);
   if (type.includes("application/json")) {
     try {
       const body = JSON.parse(raw);
-      return { email: String(body?.email ?? ""), human: String(body?.turnstile ?? body?.["cf-turnstile-response"] ?? ""), password: String(body?.password ?? "") };
+      return {
+        email: String(body?.email ?? ""),
+        human: String(body?.turnstile ?? body?.["cf-turnstile-response"] ?? ""),
+        password: String(body?.password ?? ""),
+        decision: String(body?.decision ?? ""),
+        decisionToken: String(body?.decision_token ?? ""),
+      };
     } catch {
-      return { email: "", human: "", password: "" };
+      return { email: "", human: "", password: "", decision: "", decisionToken: "" };
     }
   }
   const form = new URLSearchParams(raw);
-  return { email: form.get("email") ?? "", human: form.get("cf-turnstile-response") ?? "", password: form.get("password") ?? "" };
+  return {
+    email: form.get("email") ?? "",
+    human: form.get("cf-turnstile-response") ?? "",
+    password: form.get("password") ?? "",
+    decision: form.get("decision") ?? "",
+    decisionToken: form.get("decision_token") ?? "",
+  };
 }
 
 async function signUp(p: Page, req: Request, base: string, id: string, form: Form) {
@@ -283,7 +317,7 @@ function clientAllowed(uri: string) {
  * and a cancelled or failed one offers this request's sign-in page again. */
 async function approve(p: Page, req: Request, id: string, code: string | null, error: { code: string | null; text: string | null },
   direct = false, bind: string | null = null) {
-  const [row] = await sql`select code_verifier, redirect_url, client_name from memory.oauth_consent
+  const [row] = await sql`select code_verifier, redirect_url, pending_jwt, client_name from memory.oauth_consent
     where authorization_id = ${id} and created_at > now() - ${FRESH}::interval`;
   if (!row) return page(p, "expired", "that sign-in expired. Start connecting again from the app.", 410);
   if (direct && !code) {
@@ -295,9 +329,14 @@ async function approve(p: Page, req: Request, id: string, code: string | null, e
   if (direct && !boundHere(req, id, bind)) {
     return page(p, "error", "that sign-in didn't start in this browser, so Clyde ignored it. Go back to sign-in and start again here.", 403, { retry: true });
   }
-  // A link works once. Opened again after it already signed this request in (a second click, a reload, a mail app that
-  // opens it twice), it's done, not failed.
-  if (!code && row.redirect_url) {
+  // A link works once. Opened again after it already approved/denied this request, it's done, not failed.
+  if (!code && row.redirect_url && !row.pending_jwt) {
+    let denied = false;
+    try { denied = Boolean(new URL(String(row.redirect_url)).searchParams.get("error")); } catch { /* ignore */ }
+    if (denied) {
+      return page(p, "denied", `denied${row.client_name ? ` ${row.client_name}` : ""}. Nothing was shared.`, 200,
+        row.client_name ? { client: row.client_name } : {});
+    }
     return page(p, "connected", `connected${row.client_name ? ` ${row.client_name}` : ""}. Go back to the window that asked. It finishes by itself.`, 200);
   }
   if (!code) return page(p, "error", `that sign-in link didn't work. ${error.text ?? ""}`.trim(), 400);
@@ -319,8 +358,73 @@ async function approve(p: Page, req: Request, id: string, code: string | null, e
   return await finish(p, id, jwt, user, direct);
 }
 
-/** With a signed-in session: approve the app's request if its callback is one Clyde approves, else deny and log it.
- * Direct browser sign-ins (password or social OAuth) bounce through same-origin /oauth/wait (303) to respect form-action 'self'. */
+/** Call Supabase Auth's /consent, write admin_audit, and record an approved app on the owner's account. */
+async function applyConsent(
+  p: Page,
+  jwt: string,
+  id: string,
+  details: { body: Record<string, any> },
+  action: "approve" | "deny",
+  name: string,
+  target: string,
+  user: Record<string, any>,
+  extraAudit: Record<string, unknown> = {},
+  headers: Record<string, string> = {},
+): Promise<{ redirect?: string; error?: Response }> {
+  const decided = await auth(`/oauth/authorizations/${encodeURIComponent(id)}/consent`, {
+    method: "POST",
+    jwt,
+    body: JSON.stringify({ action }),
+  });
+  if (!decided.ok || !decided.body.redirect_url) {
+    return { error: page(p, "error", `couldn't ${action} that request (${decided.status}).`, 502, {}, headers) };
+  }
+  await sql`insert into memory.admin_audit (action, target, after)
+    values (${`oauth_${action}`}, ${`client:${details.body.client?.id ?? details.body.client?.client_id ?? "?"}`},
+      ${sql.json({ name, redirect_uri: target, ...extraAudit })})`;
+  const cid = String(details.body.client?.id ?? details.body.client?.client_id ?? "");
+  const uid = UUID.test(String(user?.id ?? "")) ? String(user.id).toLowerCase() : null;
+  if (action === "approve" && cid && uid) {
+    const entry = { id: cid, name: String(name || cid), granted_at: new Date().toISOString(), revoked_at: null };
+    await sql`update memory.account set oauth_apps = coalesce(oauth_apps, '{}'::jsonb) || ${sql.json({ [cid]: entry })}
+      where owner_id = ${uid}::uuid`.catch(() => {});
+  }
+  return { redirect: String(decided.body.redirect_url) };
+}
+
+/** Deliver an approved redirect to the direct caller or the waiting window, respecting form-action 'self'. */
+async function complete(
+  p: Page,
+  id: string,
+  redirect: string,
+  name: string,
+  user: Record<string, any>,
+  direct: boolean,
+  headers: Record<string, string> = {},
+): Promise<Response> {
+  if (direct && p.json) {
+    await sql`insert into memory.oauth_consent (authorization_id, code_verifier, redirect_url, client_name, direct)
+      values (${id}, '', ${redirect}, ${name}, true)
+      on conflict (authorization_id) do update
+      set code_verifier = '', redirect_url = excluded.redirect_url, client_name = excluded.client_name,
+        pending_jwt = null, pending_user = null, decision_token = null, callback_uri = null, direct = true, created_at = now()`;
+    return new Response(null, {
+      status: 303,
+      headers: { ...headers, location: `/oauth/wait?authorization_id=${encodeURIComponent(id)}`, "cache-control": "no-store" },
+    });
+  }
+  if (direct) {
+    await sql`delete from memory.oauth_consent where authorization_id = ${id}`;
+    return new Response(null, { status: 302, headers: { ...headers, location: redirect, "cache-control": "no-store" } });
+  }
+  await sql`update memory.oauth_consent set redirect_url = ${redirect}, client_name = ${name} where authorization_id = ${id}`;
+  const full = await freeTierFull(user);
+  return page(p, "connected", `connected ${name}. Go back to the window that asked. It finishes by itself.${full ? ` ${full.line}` : ""}`, 200,
+    { client: name, ...(full ? { free_full: true, checkout_url: full.url } : {}) }, headers);
+}
+
+/** With a signed-in session: refuse disallowed callbacks immediately, or show an explicit Allow step naming the client
+ * and callback host before calling Supabase Auth's /consent. Direct browser sign-ins bounce through /oauth/wait on decision. */
 async function finish(p: Page, id: string, jwt: string, user: Record<string, any>, direct: boolean): Promise<Response> {
   // A Google or GitHub account counts only with an email the provider verified, the same bar an email link sets.
   if (!(user?.email && user.email_confirmed_at)) {
@@ -331,51 +435,148 @@ async function finish(p: Page, id: string, jwt: string, user: Record<string, any
   }
   const details = await auth(`/oauth/authorizations/${encodeURIComponent(id)}`, { jwt });
   if (!details.ok) return page(p, "error", `Supabase didn't recognize that request (${details.body.msg ?? details.status}).`, 400);
-  let redirect: string | undefined = details.body.redirect_url;
-  const name = details.body.client?.name ?? details.body.client?.client_name ?? "an app";
-  if (!redirect) {
-    const target = details.body.redirect_uri ?? "";
-    const action = clientAllowed(target) ? "approve" : "deny";
-    const decided = await auth(`/oauth/authorizations/${encodeURIComponent(id)}/consent`, {
-      method: "POST", jwt, body: JSON.stringify({ action }),
-    });
-    if (!decided.ok || !decided.body.redirect_url) return page(p, "error", `couldn't ${action} that request (${decided.status}).`, 502);
-    redirect = decided.body.redirect_url;
-    await sql`insert into memory.admin_audit (action, target, after)
-      values (${`oauth_${action}`}, ${`client:${details.body.client?.id ?? details.body.client?.client_id ?? "?"}`},
-        ${sql.json({ name, redirect_uri: target })})`;
-    const cid = String(details.body.client?.id ?? details.body.client?.client_id ?? "");
-    const uid = UUID.test(String(user?.id ?? "")) ? String(user.id).toLowerCase() : null;
-    if (action === "approve" && cid && uid) {
-      const entry = { id: cid, name: String(name || cid), granted_at: new Date().toISOString(), revoked_at: null };
-      await sql`update memory.account set oauth_apps = coalesce(oauth_apps, '{}'::jsonb) || ${sql.json({ [cid]: entry })}
-        where owner_id = ${uid}::uuid`.catch(() => {});
+  const name = String(details.body.client?.name ?? details.body.client?.client_name ?? "an app");
+  if (details.body.redirect_url) {
+    return await complete(p, id, String(details.body.redirect_url), name, user, direct);
+  }
+  const target = String(details.body.redirect_uri ?? "");
+  if (!clientAllowed(target)) {
+    const out = await applyConsent(p, jwt, id, details, "deny", name, target, user);
+    if (out.error) return out.error;
+    console.warn(`memory: oauth_deny for ${name}: redirect_uri ${target}`);
+    if (!direct) await sql`update memory.oauth_consent set redirect_url = ${out.redirect!} where authorization_id = ${id}`;
+    return page(p, "refused", `refused ${name}. Its callback, ${target}, isn't one Clyde approves (Claude, ChatGPT, OpenAI, Antigravity, Grok, the Gemini app, or localhost).`, 403,
+      { client: name, callback: target });
+  }
+  const formToken = b64url(crypto.getRandomValues(new Uint8Array(24)));
+  const cookieBind = b64url(crypto.getRandomValues(new Uint8Array(24)));
+  const token = `${formToken}.${cookieBind}`;
+  const storedUser = { id: user.id ?? null, email: user.email, email_confirmed_at: user.email_confirmed_at };
+  await sql`insert into memory.oauth_consent (
+      authorization_id, code_verifier, client_name, redirect_url,
+      pending_jwt, pending_user, decision_token, callback_uri, direct
+    ) values (
+      ${id}, '', ${name}, null,
+      ${jwt}, ${sql.json(storedUser)}, ${token}, ${target}, ${direct}
+    )
+    on conflict (authorization_id) do update set
+      code_verifier = '',
+      client_name = excluded.client_name,
+      redirect_url = null,
+      pending_jwt = excluded.pending_jwt,
+      pending_user = excluded.pending_user,
+      decision_token = excluded.decision_token,
+      callback_uri = excluded.callback_uri,
+      direct = excluded.direct,
+      created_at = now()`;
+  const host = callbackHost(target);
+  const cookie = allowCookie(`${id}.${cookieBind}`, 15 * 60);
+  if (p.json) {
+    return page(p, "confirm_allow", `Allow ${name} to use your Clyde? Callback: ${host}.`, 200, {
+      client: name,
+      callback: target,
+      callback_host: host,
+      email: String(user.email),
+      decision_token: formToken,
+    }, { "set-cookie": cookie });
+  }
+  const action = `approve?authorization_id=${encodeURIComponent(id)}`;
+  return new Response(
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Allow ${esc(name)}? · Clyde</title></head><body style="font-family:system-ui,sans-serif;max-width:28rem;margin:4rem auto;padding:0 1rem">
+<h1>Allow <strong>${esc(name)}</strong> to use your Clyde?</h1>
+<p>Signed in as <strong>${esc(String(user.email))}</strong>.</p>
+<p>Callback host: <code>${esc(host)}</code></p>
+<p>Callback URL: <code>${esc(target)}</code></p>
+<form method="post" action="${esc(action)}">
+<input type="hidden" name="decision_token" value="${esc(formToken)}">
+<button type="submit" name="decision" value="allow">Allow ${esc(name)}</button>
+<button type="submit" name="decision" value="deny">Deny</button>
+</form></body></html>`,
+    {
+      status: 200,
+      headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "set-cookie": cookie },
+    },
+  );
+}
+
+/** POST /oauth/approve (Quest #37): verify the single-use Allow/Deny form token + __Host-clyde_allow cookie, then ask
+ * Supabase Auth to approve or deny the client request. */
+async function decide(p: Page, req: Request, id: string): Promise<Response> {
+  const form = await readForm(req);
+  const decision = form.decision.trim().toLowerCase();
+  if (decision !== "allow" && decision !== "deny") {
+    return page(p, "error", "choose Allow or Deny to finish connecting.", 400);
+  }
+  const [row] = await sql`select pending_jwt, pending_user, decision_token, callback_uri, client_name, direct, redirect_url,
+      created_at > now() - ${FRESH}::interval as fresh
+    from memory.oauth_consent where authorization_id = ${id}`;
+  if (!row || !row.fresh) {
+    return page(p, "expired", "that sign-in expired. Start connecting again from the app.", 410, {}, { "set-cookie": CLEAR_ALLOW });
+  }
+  if (!row.pending_jwt || !row.decision_token || row.redirect_url) {
+    return page(p, "error", "that approval request was already used. Start connecting again from the app.", 400, {}, { "set-cookie": CLEAR_ALLOW });
+  }
+  const rawCookie = cookieOf(req, ALLOW_COOKIE);
+  const dot = rawCookie.indexOf(".");
+  const cookieId = dot >= 0 ? rawCookie.slice(0, dot) : "";
+  const cookieBind = dot >= 0 ? rawCookie.slice(dot + 1) : "";
+  const expected = String(row.decision_token);
+  if (cookieId !== id || !form.decisionToken || !cookieBind || !same(`${form.decisionToken}.${cookieBind}`, expected)) {
+    return page(p, "error", "that approval check didn't match this browser session. Start connecting again from the app.", 403);
+  }
+  const [claimed] = await sql`update memory.oauth_consent
+    set pending_jwt = null, pending_user = null, decision_token = null, code_verifier = ''
+    where authorization_id = ${id} and decision_token = ${expected} and created_at > now() - ${FRESH}::interval
+    returning authorization_id`;
+  if (!claimed) {
+    return page(p, "error", "that approval request was already used. Start connecting again from the app.", 409, {}, { "set-cookie": CLEAR_ALLOW });
+  }
+  const jwt = String(row.pending_jwt);
+  let rawUser: unknown = row.pending_user ?? {};
+  if (typeof rawUser === "string") {
+    try { rawUser = JSON.parse(rawUser); } catch { rawUser = {}; }
+  }
+  const user = (rawUser && typeof rawUser === "object" ? rawUser : {}) as Record<string, any>;
+  const direct = Boolean(row.direct);
+  const clear = { "set-cookie": CLEAR_ALLOW };
+  const details = await auth(`/oauth/authorizations/${encodeURIComponent(id)}`, { jwt });
+  if (!details.ok) {
+    return page(p, "error", `Supabase didn't recognize that request (${details.body.msg ?? details.status}).`, 400, {}, clear);
+  }
+  const name = String(details.body.client?.name ?? details.body.client?.client_name ?? row.client_name ?? "an app");
+  if (details.body.redirect_url) {
+    return await complete(p, id, String(details.body.redirect_url), name, user, direct, clear);
+  }
+  const target = String(details.body.redirect_uri ?? row.callback_uri ?? "");
+  const allowedCallback = clientAllowed(target);
+  const action: "approve" | "deny" = decision === "allow" && allowedCallback ? "approve" : "deny";
+  const extraAudit = decision === "deny" ? { reason: "user_denied" } : {};
+  const out = await applyConsent(p, jwt, id, details, action, name, target, user, extraAudit, clear);
+  if (out.error) return out.error;
+  const redirect = out.redirect!;
+  if (decision === "allow" && !allowedCallback) {
+    console.warn(`memory: oauth_deny for ${name}: redirect_uri ${target}`);
+    if (!direct) await sql`update memory.oauth_consent set redirect_url = ${redirect} where authorization_id = ${id}`;
+    return page(p, "refused", `refused ${name}. Its callback, ${target}, isn't one Clyde approves (Claude, ChatGPT, OpenAI, Antigravity, Grok, the Gemini app, or localhost).`, 403,
+      { client: name, callback: target }, clear);
+  }
+  if (decision === "deny") {
+    if (direct && p.json) {
+      await sql`update memory.oauth_consent set redirect_url = ${redirect}, client_name = ${name} where authorization_id = ${id}`;
+      return new Response(null, {
+        status: 303,
+        headers: { ...clear, location: `/oauth/wait?authorization_id=${encodeURIComponent(id)}`, "cache-control": "no-store" },
+      });
     }
-    if (action === "deny") {
-      console.warn(`memory: oauth_deny for ${name}: redirect_uri ${target}`);
-      if (!direct) await sql`update memory.oauth_consent set redirect_url = ${redirect!} where authorization_id = ${id}`;
-      return page(p, "refused", `refused ${name}. Its callback, ${target}, isn't one Clyde approves (Claude, ChatGPT, OpenAI, Antigravity, Grok, the Gemini app, or localhost).`, 403,
-        { client: name, callback: target });
+    if (direct) {
+      await sql`delete from memory.oauth_consent where authorization_id = ${id}`;
+      return new Response(null, { status: 302, headers: { ...clear, location: redirect, "cache-control": "no-store" } });
     }
+    await sql`update memory.oauth_consent set redirect_url = ${redirect}, client_name = ${name} where authorization_id = ${id}`;
+    return page(p, "denied", `denied ${name}. Nothing was shared.`, 200, { client: name }, clear);
   }
-  if (direct && p.json) {
-    await sql`insert into memory.oauth_consent (authorization_id, code_verifier, redirect_url, client_name)
-      values (${id}, '', ${redirect!}, ${name})
-      on conflict (authorization_id) do update
-      set code_verifier = '', redirect_url = excluded.redirect_url, client_name = excluded.client_name, created_at = now()`;
-    return new Response(null, {
-      status: 303,
-      headers: { location: `/oauth/wait?authorization_id=${encodeURIComponent(id)}`, "cache-control": "no-store" },
-    });
-  }
-  if (direct) {
-    await sql`delete from memory.oauth_consent where authorization_id = ${id}`;
-    return new Response(null, { status: 302, headers: { location: redirect!, "cache-control": "no-store" } });
-  }
-  await sql`update memory.oauth_consent set redirect_url = ${redirect!}, client_name = ${name} where authorization_id = ${id}`;
-  const full = await freeTierFull(user);
-  return page(p, "connected", `connected ${name}. Go back to the window that asked. It finishes by itself.${full ? ` ${full.line}` : ""}`, 200,
-    { client: name, ...(full ? { free_full: true, checkout_url: full.url } : {}) });
+  return await complete(p, id, redirect, name, user, direct, clear);
 }
 
 /** With sign-up open (R74): a new account past the free tier's last seat, or while it is closed, connects but its tools need a
@@ -437,7 +638,16 @@ async function startProvider(p: Page, req: Request, base: string, id: string, ra
   const challenge = b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
   const bind = b64url(crypto.getRandomValues(new Uint8Array(16)));
   await sql`insert into memory.oauth_consent (authorization_id, code_verifier) values (${id}, ${verifier})
-    on conflict (authorization_id) do update set code_verifier = excluded.code_verifier, redirect_url = null, created_at = now()`;
+    on conflict (authorization_id) do update set
+      code_verifier = excluded.code_verifier,
+      client_name = null,
+      redirect_url = null,
+      pending_jwt = null,
+      pending_user = null,
+      decision_token = null,
+      callback_uri = null,
+      direct = false,
+      created_at = now()`;
   const redirect = encodeURIComponent(`${base}/oauth/approve?authorization_id=${encodeURIComponent(id)}&direct=1&bind=${bind}`);
   const dest = `${AUTH()}/authorize?provider=${encodeURIComponent(provider)}&redirect_to=${redirect}&code_challenge=${challenge}&code_challenge_method=s256`;
   return new Response(null, {
@@ -452,8 +662,14 @@ export async function handle(req: Request, base: string, path: string, url: URL,
   const id = url.searchParams.get("authorization_id") ?? "";
   if (!ID.test(id)) return page(p, "error", "that link is missing its authorization_id. Start connecting again from the app.", 400);
   await sql`delete from memory.oauth_consent where created_at < now() - interval '1 day'`;
+  await sql`update memory.oauth_consent
+    set pending_jwt = null, pending_user = null, decision_token = null
+    where pending_jwt is not null and created_at <= now() - ${FRESH}::interval`;
   if (path === "/oauth/provider" && req.method === "GET") {
     return startProvider(p, req, base, id, url.searchParams.get("provider") ?? "");
+  }
+  if (path === "/oauth/approve" && req.method === "POST") {
+    return decide(p, req, id);
   }
   const form = path === "/oauth/consent" && req.method === "POST" ? await readForm(req) : null;
   if (form?.password) return passwordSignIn(p, req, id, form);

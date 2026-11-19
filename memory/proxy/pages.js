@@ -225,6 +225,7 @@ const svg = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 const ICON = {
   mail: svg(`<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 6.5 8.5 6.5 8.5-6.5"/>`),
   wait: svg(`<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>`),
+  shield: svg(`<path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-3Z"/><path d="m9.5 12 2 2 3.5-4"/>`),
 };
 
 
@@ -268,6 +269,23 @@ export function statePage(data, nonce, id = "") {
       lead = `${app("This client")} wasn't connected. Nothing was shared.`;
       extra = note(`The callback URL${data?.callback ? ` <code>${esc(data.callback)}</code>` : ""} didn't match a supported app or localhost. Clyde refused it and logged the attempt.`);
       break;
+    case "confirm_allow": {
+      kind = "Authorization";
+      mark = `<div class="badge">${ICON.shield}</div>`; h1 = `Allow ${app("this app")} to use your Clyde?`; title = "Allow access";
+      const host = data?.callback_host ? `<code>${esc(data.callback_host)}</code>` : "this app";
+      lead = `${data?.email ? `Signed in as <strong>${esc(data.email)}</strong>. ` : ""}Approve only if you meant to connect to ${host}.`;
+      const details = [
+        data?.client ? `<p><strong>App:</strong> ${esc(data.client)}</p>` : "",
+        data?.callback ? `<p><strong>Callback:</strong> <code>${esc(data.callback)}</code></p>` : "",
+        `<p><strong>Access:</strong> Read and write your Clyde notes and quests</p>`,
+      ].filter(Boolean).join("");
+      const action = `/oauth/approve?authorization_id=${esc(encodeURIComponent(id))}`;
+      extra = `<div class="cl-well">${details}</div><form class="ask" id="allow" method="post" action="${action}">
+<input type="hidden" name="decision_token" value="${esc(String(data?.decision_token ?? ""))}">
+<button class="cl-btn cl-btn--primary cl-btn--lg cl-btn--block" type="submit" name="decision" value="allow">Allow ${esc(data?.client || "app")}</button>
+<button class="cl-btn cl-btn--ghost cl-btn--lg cl-btn--block" type="submit" name="decision" value="deny">Deny</button></form>`;
+      break;
+    }
     case "ask_email": {
       mark = `<div class="badge">${ICON.mail}</div>`; h1 = "Sign in to Clyde"; title = "Sign in";
       const providers = Array.isArray(data?.providers) ? data.providers.filter((x) => x === "google" || x === "github") : [];
@@ -308,8 +326,12 @@ ${human ? `<div class="cf-turnstile" data-sitekey="${esc(data.turnstile_site_key
       extra = note("Close this tab and return to your app.");
       break;
     case "denied":
-      mark = stamp("warn", "Cancelled", date); h1 = "Sign-in cancelled"; title = "Sign-in cancelled";
-      lead = esc(sentence(data?.message, "Sign-in was cancelled at the provider. Nothing was shared."));
+      mark = stamp("warn", data?.client ? "Denied" : "Cancelled", date);
+      h1 = data?.client ? "Connection denied" : "Sign-in cancelled";
+      title = data?.client ? "Connection denied" : "Sign-in cancelled";
+      lead = data?.client
+        ? `${app("This app")} wasn't connected. Nothing was shared.`
+        : esc(sentence(data?.message, "Sign-in was cancelled at the provider. Nothing was shared."));
       break;
     case "expired":
       mark = stamp("warn", "Expired", date); h1 = "Link expired"; title = "Link expired";
