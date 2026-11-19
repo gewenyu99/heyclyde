@@ -5,13 +5,13 @@ import { lastJsonBlock } from '../backends/spawn.ts'
 import { clydeHome,repoRoot, clydeBin } from '../config.ts'
 import { ladder } from '../roles.ts'
 import { rungLabel } from '../threads.ts'
-import type { Rung } from '../types.ts'
+import type { Rung, Thread } from '../types.ts'
 import { skillPath } from './gate.ts'
 import { verdictEntry } from './memory.ts'
-import { memoryMaintenance,blockQuestion, firstLine, judgePrompt, limitQuestion, workerPrompt } from './prompts.ts'
+import { memoryMaintenance,planning,blockQuestion, firstLine, judgePrompt, limitQuestion, workerPrompt } from './prompts.ts'
 import type { Driver } from './runtime.ts'
 import { commitsSince, diffSince, headSha } from './shell.ts'
-import type { Attempt, Check, StageRecord, StageResult, StageSpec, Verdict } from './types.ts'
+import type { Attempt, Check, StageRecord, StageResult, StageSpec, Verdict, WorkerResult } from './types.ts'
 import { failureNotes, parseVerdict, passes, pickJudge, VERDICT_SCHEMA, workerResult } from './verdict.ts'
 
 const LOST = 'Lost when the daemon stopped.'
@@ -70,8 +70,14 @@ export async function runStage(d: Driver, spec: StageSpec): Promise<StageResult>
     rec.round += 1
     rec.status = 'running'
     d.save()
-    const rung = routed ? await d.route(routed) : workers[Math.min(rec.attempts.length, workers.length - 1)]
-    const out = await attempt(d, spec, rec, rung, notes)
+    // Replaying a paused legacy run reaches this only after its explicit provider answer above.
+    const previous = rec.attempts.at(-1)
+    const saved = planning(spec) && spec.extract && previous?.ok === false && !previous.verdict && previous.reason === 'The worker failed: ' + UNSENT_PARENT_FAILURE
+      ? recoverPlan(spec, d.threads.get(previous.threadId), run.id) : undefined
+    const currentSpec = withUndeliveredRequirements(d, spec, rec)
+    const out = saved
+      ? await recoveredAttempt(d, currentSpec, rec, previous!, saved)
+      : await attempt(d, currentSpec, rec, routed ? await d.route(routed) : workers[Math.min(rec.attempts.length, workers.length - 1)], notes)
     if (out.ok) return pass(d, rec, out)
     notes = out.notes
     // Attempts that die within seconds aren't the worker trying and failing. Something underneath is broken, and with no
@@ -119,7 +125,7 @@ async function attempt(d: Driver, spec: StageSpec, rec: StageRecord, rung: Rung,
   const representative = !run.parentThreadId && rec.attempts.length === 0 &&
     ((run.flow === 'task' && spec.name === 'task') || (run.flow === 'ship' && spec.name === 'plan'))
   const worker = d.startThread({ title: `${run.id} ${spec.name} #${n} worker`, prompt, rung, stage: spec.name,
-    list: [...spec.criteria, REPORT_ITEM], ...(representative ? { mirrorTitle: run.title } : {}) })
+    ...(!(planning(spec) && spec.extract) ? { list: [...spec.criteria, REPORT_ITEM] } : {}), ...(representative ? { mirrorTitle: run.title } : {}) })
   const a: Attempt = { n, round: rec.round, rung, threadId: worker.id, startedAt: now() }
   rec.attempts.push(a)
   d.save()
@@ -127,6 +133,13 @@ async function attempt(d: Driver, spec: StageSpec, rec: StageRecord, rung: Rung,
   const turn = done.turns.at(-1)
   if (!turn?.ok) {
     const error = turn?.error ?? done.status
+    const saved = recoverPlan(spec, done, run.id)
+    if (saved && rec.attempts.length < maxStageAttempts()) {
+      // Preserve the failed launch as its own attempt. The saved artifact gets a separate independent ruling.
+      fail(d, a, 'The worker failed: ' + error)
+      rec.round += 1
+      return recoveredAttempt(d, withUndeliveredRequirements(d, spec, rec), rec, a, saved)
+    }
     const perm = permissionFailure(error)
     if (perm) return { ...fail(d, a, 'The worker failed: ' + error), providerError: perm }
     const det = deterministicProviderFailure(error)
@@ -136,6 +149,11 @@ async function attempt(d: Driver, spec: StageSpec, rec: StageRecord, rung: Rung,
   const text = turn.text ?? ''
   const result = workerResult(d.threads.result(worker.id), text)
   if (!result) return fail(d, a, 'The worker reported no result. Report with clyde result, or end the last message with the fenced json block.')
+  return gradeOutput(d, spec, rec, a, text, result)
+}
+
+async function gradeOutput(d: Driver, spec: StageSpec, rec: StageRecord, a: Attempt, text: string, result: WorkerResult): Promise<Outcome> {
+  const run = d.run
   a.result = result
   if (result.status === 'blocked') {
     const reason = result.summary
@@ -179,6 +197,42 @@ async function attempt(d: Driver, spec: StageSpec, rec: StageRecord, rung: Rung,
   Object.assign(a, { ok: true, endedAt: now() })
   d.save()
   return { ok: true, verdict, summary: result.summary, artifact, diff, checks }
+}
+
+// This exact launcher error is raised before child.send, so later work cannot have invalidated the saved plan.
+const UNSENT_PARENT_FAILURE = 'The originating Paseo agent is unavailable'
+type SavedPlan = { text: string; result: WorkerResult; turn: number; followups: string[] }
+
+function recoverPlan(spec: StageSpec, thread: Thread | undefined, runId: string): SavedPlan | undefined {
+  if (!planning(spec) || !spec.extract || !thread?.paseoAgentId || thread.runId !== runId || thread.stage !== spec.name || thread.readOnly || thread.status !== 'failed') return
+  const index = thread.turns.findLastIndex(t => t.ok === true && !!t.endedAt)
+  if (index < 0 || index === thread.turns.length - 1) return
+  const turn = thread.turns[index]
+  const later = thread.turns.slice(index + 1)
+  if (!later.every(t => t.ok === false && !!t.endedAt && t.error === UNSENT_PARENT_FAILURE && !t.text?.trim() && t.json === undefined)) return
+  // Read the completed turn's own fenced result, never a mutable thread.result left by another turn.
+  const text = turn.text ?? ''
+  const result = workerResult(undefined, text)
+  if (result?.status !== 'done') return
+  try {
+    if (spec.extract({ text, result }) === undefined) return
+  } catch { return }
+  return { text, result, turn: turn.n, followups: [...later.map(t => t.prompt), ...thread.queue].filter(t => t.trim()) }
+}
+
+function withUndeliveredRequirements(d: Driver, spec: StageSpec, rec: StageRecord): StageSpec {
+  if (!planning(spec) || !spec.extract) return spec
+  const followups = rec.attempts.flatMap(a => recoverPlan(spec, d.threads.get(a.threadId), d.run.id)?.followups ?? [])
+  const criteria = [...new Set([...spec.criteria, ...followups.map(prompt => `The plan accounts for this user follow-up, which could not be delivered to the planner: ${prompt}`)])]
+  return { ...spec, criteria }
+}
+
+async function recoveredAttempt(d: Driver, spec: StageSpec, rec: StageRecord, previous: Attempt, saved: SavedPlan): Promise<Outcome> {
+  const a: Attempt = { n: rec.attempts.length + 1, round: rec.round, rung: previous.rung, threadId: previous.threadId, startedAt: now() }
+  rec.attempts.push(a)
+  d.save()
+  d.emit('run.stage', `Run ${d.run.id} stage ${spec.name}: judging the saved plan from turn ${saved.turn} of ${a.threadId} after an undelivered follow-up.`, { stage: spec.name, attempt: a.n, recoveredFromAttempt: previous.n, threadId: a.threadId, turn: saved.turn })
+  return gradeOutput(d, spec, rec, a, saved.text, saved.result)
 }
 
 /**

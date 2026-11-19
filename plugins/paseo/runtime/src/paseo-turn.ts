@@ -129,6 +129,19 @@ export async function runManagedWorker(t:Thread,input:TurnInput):Promise<TurnOut
   let answer:TurnOutput|undefined
   const n=t.turns.length
   const timeoutMs=turnTimeoutMs()
+  // The launcher owns the execution budget and pauses it for live user permission requests.
+  // This separate watchdog only bounds a launcher that stops reporting fresh state.
+  const monitor=new AbortController()
+  const abort=()=>monitor.abort()
+  input.signal.addEventListener('abort',abort,{once:true})
+  if(input.signal.aborted)monitor.abort()
+  let monitorTimedOut=false
+  let watchdog:ReturnType<typeof setTimeout>
+  const heartbeat=()=>{
+    clearTimeout(watchdog)
+    watchdog=setTimeout(()=>{monitorTimedOut=true;monitor.abort()},60_000)
+  }
+  heartbeat()
   const run=t.runId && readJson<Run>(join(clydeHome(),'runs',t.runId+'.json'))
   const launch={memoryTask:!!run&&memoryMaintenance(run),id:t.paseoAgentId,parent:t.paseoParentId,first:n===1,messageId:t.id+'-turn-'+n,cwd:t.cwd,
     thread:t.id,run:t.runId,taskTitle:run ? run.title : t.title,
@@ -136,13 +149,18 @@ export async function runManagedWorker(t:Thread,input:TurnInput):Promise<TurnOut
     allowFullAccess:!!run && (run.allowAntigravityFullAccess===true || (run.input as {allowAntigravityFullAccess?:boolean})?.allowAntigravityFullAccess===true),
     env,system:input.systemAppend,prompt:input.prompt,timeoutMs}
   const result=await runProcess({bin:command.cmd,args:command.args,env:command.env as Record<string,string>,cwd:t.cwd,
-    stdin:JSON.stringify(launch),timeoutMs:timeoutMs+10000,signal:input.signal,onLine:line=>{
+    stdin:JSON.stringify(launch),timeoutMs:2_147_483_647,signal:monitor.signal,onLine:line=>{
       let msg
       try{msg=JSON.parse(line)}catch{return}
+      if(msg.workerState && msg.workerState.agentId===t.paseoAgentId && msg.workerState.messageId===launch.messageId){
+        heartbeat()
+        Object.assign(t,{workerState:msg.workerState})
+      }
       if(msg.progress)input.onProgress?.(msg.progress)
       if(msg.started)input.onProgress?.('Working in Paseo · '+msg.started)
       if(typeof msg.ok==='boolean')answer={ok:msg.ok,text:msg.text??'',error:msg.error,json:lastJsonBlock(msg.text??'')}
-    }}).done
+    }}).done.finally(()=>{clearTimeout(watchdog);input.signal.removeEventListener('abort',abort)})
+  if(monitorTimedOut)return {ok:false,text:'',error:'Paseo worker status monitor stopped responding for 60 seconds'}
   if(result.aborted||result.timedOut||!answer)return {ok:false,text:'',error:exitReason('Paseo worker',result,timeoutMs)}
   return answer
 }

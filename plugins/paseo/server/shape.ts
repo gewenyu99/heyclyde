@@ -7,7 +7,10 @@ import type { Ask, AttemptView, Criterion, Home, Phase, Piece, Status, Step, Tas
 
 export type RawRung = { backend: string; model?: string; effort?: string };
 export type RawTurn = { n: number; prompt: string; startedAt: string; endedAt?: string; ok?: boolean; text?: string; error?:string };
+export type RawWorkItem = { id:number; text:string; status:"todo"|"doing"|"done"|"blocked"; how?:string; evidence?:string; why?:string; updatedAt:string };
 export type RawThread = {
+  nativeActivity?: { permissionPending:boolean; observedAt:string; status?:string; lastActivityAt?:string };
+  workList?: { items:RawWorkItem[] };
   archivedAt?:string; paseoAgentId?:string; paseoParentId?: string;
   cwd?:string;
   id: string; title: string; status: string; rung: RawRung; runId?: string; stage?: string; readOnly?: boolean;
@@ -102,7 +105,7 @@ function makePiece(id: string, title: string, phases: { stage: string; label: st
     id, title, status, phases: ps, doneWhen: checks,
     attempts: attempts.filter((a) => !interrupted(a)).length, sentBack: attempts.filter(failed).length, interrupted: attempts.filter(interrupted).length,
     verdict: status === "passed" ? "pass" : judged?.verdict?.verdict ?? "pending",
-    rung: rung(last?.rung), progress: progress && progress !== "SessionEnd" ? progress : undefined,
+    rung: rung(last?.rung), progress: progress && progress !== "SessionEnd" && !/^Permission (requested|resolved) in Paseo worker /i.test(progress) ? progress : undefined,
     startedAt: ran[0]?.startedAt, endedAt: status === "passed" ? ran[ran.length - 1]?.endedAt : undefined,
     handoff: ran.some((s) => !!s.entry),
   };
@@ -199,8 +202,12 @@ function runAgentId(r: RawRun, threads: RawThread[], agents: Record<string, stri
 function runActivity(r: RawRun, threads: RawThread[]): NonNullable<TaskView["runActivity"]> {
   const stage = r.stages.findLast(s => s.status === "running" || s.status === "asking") ?? r.stages.at(-1);
   const attempt = stage?.attempts.at(-1);
+  const worker = threads.find(t => t.id === attempt?.threadId);
+  const work = (worker?.workList?.items ?? []).filter(item => !attempt?.startedAt || item.updatedAt >= attempt.startedAt);
+  const doing = work.find(item => item.status === "doing");
+  const recordedResult = work.filter(item => item.status === "done" && item.evidence?.trim()).sort((a,b) => b.updatedAt.localeCompare(a.updatedAt))[0];
   const label = stage ? stageLabel(stage, r) : "task";
-  const currentResult = stage?.summary || [...(stage?.attempts ?? [])].reverse().find(a => a.result?.summary)?.result?.summary;
+  const currentResult = (attempt && !attempt.result && !attempt.endedAt ? recordedResult?.evidence : undefined) || stage?.summary || [...(stage?.attempts ?? [])].reverse().find(a => a.result?.summary)?.result?.summary;
   // Boilerplate completion tokens do not explain what the worker produced.
   const result = firstSentence(currentResult, 360);
   const latestResult = result && !/^(done|completed|finished|success|task (done|completed)|no result posted yet)[.!]?$/i.test(result) ? result : undefined;
@@ -225,15 +232,12 @@ function runActivity(r: RawRun, threads: RawThread[]): NonNullable<TaskView["run
     ? firstSentence(retry.reason || retry.verdict?.criteria.filter(c => !c.pass).map(c => c.evidence || c.criterion).join("; ") || retry.verdict?.notes || retry.checks?.filter(c => c.code !== 0).map(c => `${c.cmd} exited ${c.code}`).join("; "), 360)
     : undefined;
   const round = attempt && stage.attempts.length > 1 ? ` (attempt ${attempt.n})` : "";
-  const worker = threads.find(t => t.id === attempt?.threadId);
   const reviewer = threads.find(t => t.id === attempt?.judgeId);
   const active = (t?: RawThread) => t?.status === "running" || t?.status === "queued";
   if (attempt?.verdict?.verdict === "pass") return activity(`Review passed for ${label}`);
-  // Only the currently running worker's own exact launcher marker can offer a permission link.
-  // Older helpers did not clear this marker on resolution, so describe the request rather than claiming a live block.
-  const permission = worker?.progress?.match(/^Permission requested in Paseo worker ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i)?.[1];
-  if (permission && worker?.paseoAgentId === permission && worker.runId === r.id && !worker.archivedAt && !worker.readOnly && worker.status === "running" && stage.status === "running" && !attempt?.result && !attempt?.endedAt && !attempt?.verdict && attempt?.ok !== false && !attempt?.judgeId) {
-    return { ...activity(`Permission requested by worker for ${label}${round}`, reason), permissionAgentId: worker.paseoAgentId };
+  // Launcher text is a historical log, not proof that a native request is still pending.
+  if (worker?.nativeActivity?.permissionPending && worker.paseoAgentId && worker.runId === r.id && !worker.archivedAt && !worker.readOnly && worker.status === "running" && stage.status === "running" && !attempt?.result && !attempt?.endedAt && !attempt?.verdict && attempt?.ok !== false && !attempt?.judgeId) {
+    return { ...activity(`Worker needs your permission for ${label}${round}`, reason), permissionAgentId: worker.paseoAgentId };
   }
   if (attempt?.judgeId && !attempt.verdict && active(reviewer)) return activity(`Reviewer is checking ${label}${round}`, reason);
   if (rejected && !active(worker)) {
@@ -241,7 +245,8 @@ function runActivity(r: RawRun, threads: RawThread[]): NonNullable<TaskView["run
     return activity(`${capitalize(label)} ${outcome}${round}`, reason);
   }
   if (!active(worker) && (attempt?.result || attempt?.endedAt || worker?.status === "idle")) return activity(`Waiting for review of ${label}${round}`, reason);
-  const progress = worker?.progress && worker.progress !== "SessionEnd" && !worker.progress.startsWith("Permission requested in Paseo worker ") ? firstSentence(worker.progress, 140) : undefined;
+  const recordedProgress = doing ? `${doing.text}${doing.how ? ` — ${doing.how}` : ""}` : undefined;
+  const progress = recordedProgress ? firstSentence(recordedProgress, 220) : worker?.progress && worker.progress !== "SessionEnd" && !/^Permission (requested|resolved) in Paseo worker /i.test(worker.progress) ? firstSentence(worker.progress, 140) : undefined;
   return activity(`Worker is ${reason ? "retrying" : "working on"} ${label}${round}${progress ? ` — ${progress}` : ""}`, reason);
 }
 
@@ -274,7 +279,7 @@ function runCard(r: RawRun, agents: Record<string, string>, threads: RawThread[]
 /** The latest sign of life: the run record or any thread working on it. */
 function lastActivity(r: RawRun, threads: RawThread[]): string {
   const ids = new Set(r.stages.flatMap((st) => st.attempts.flatMap((a) => [a.threadId, a.judgeId].filter(Boolean) as string[])));
-  return [r.updatedAt, ...threads.filter((t) => ids.has(t.id)).map((t) => t.updatedAt)].sort().slice(-1)[0];
+  return [r.updatedAt, ...threads.filter(t => ids.has(t.id)).flatMap(t => [t.updatedAt, t.nativeActivity?.lastActivityAt, ...(t.workList?.items ?? []).map(item => item.updatedAt)])].filter((value): value is string => !!value).sort().slice(-1)[0];
 }
 
 function threadCard(t: RawThread, agents: Record<string, string>): TaskCard {

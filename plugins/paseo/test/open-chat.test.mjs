@@ -162,6 +162,12 @@ test("clyde.open-chat resolves live origin, reattaches archived runs, falls back
   assert.ok(timelineAppends.some((x) => x.agentId === "live-chat-2" && x.item.data.kind === "approval" && x.item.data.run === "r-archived"));
   assert.ok(timelineAppends.some((x) => x.agentId === "live-chat-2" && x.item.data.kind === "notice" && x.item.data.text.includes("Attached Clyde task r-archived")));
 
+  // The retry action itself repairs the missing parent without first opening another chat.
+  runs.get("r-archived").paseoParentId = "archived-origin";
+  const retry = await rpc.get("clyde.answer")({ kind: "run", id: "r-archived", askKey: "plan:provider:19", text: "retry" }, { paseo });
+  assert.deepEqual(retry, { ok: true });
+  assert.equal(runs.get("r-archived").paseoParentId, "live-chat-2");
+
   // 3. Quest-owned run with archived origin AND daemon returning 404 on /parent: resolves live project chat, preserves quest origin in chat-runs.json.
   return404ForParent = true;
   runs.set("r-quest", {

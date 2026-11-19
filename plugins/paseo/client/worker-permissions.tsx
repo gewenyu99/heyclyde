@@ -53,14 +53,14 @@ function PermissionRequest({ theme, request, runId, agentId, openAgent, onAnswer
   </View>;
 }
 
-export function WorkerPermissions({ theme, runId, openAgent, onPending }: {
-  theme: PluginTheme; runId: string; openAgent?: (id: string) => void; onPending: (id?: string) => void;
+export function WorkerPermissions({ theme, runId, openAgent, onPending, expected = false }: {
+  theme: PluginTheme; runId: string; openAgent?: (id: string) => void; onPending: (id: string | null | undefined) => void; expected?: boolean;
 }) {
   const read = useRpc(workerPermissionsRpc), cache = useQueryClient();
   const [answered, setAnswered] = useState(false);
   const query = useQuery({ queryKey: ["clyde", "worker-permissions", runId], queryFn: () => read({ runId }), refetchInterval: 3000, retry: false });
   const error = query.error ? formatRpcError(query.error) : query.data?.error;
-  const pendingAgent = !error && query.data?.requests.length ? query.data.agentId : undefined;
+  const pendingAgent = error || query.isPending ? undefined : query.data?.requests.length ? query.data.agentId : null;
   useEffect(() => {
     onPending(pendingAgent);
     return () => onPending(undefined);
@@ -69,8 +69,9 @@ export function WorkerPermissions({ theme, runId, openAgent, onPending }: {
     setAnswered(true);
     void cache.invalidateQueries({ queryKey: ["clyde"] });
   }
+  if (!error && !query.data?.requests.length && !answered && (!query.isPending || !expected)) return null;
   return <View style={{ gap: 12, paddingVertical: 6 }}>
-    {query.isPending && <Text accessibilityLiveRegion="polite" style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>Loading permission request…</Text>}
+    {query.isPending && expected && <Text accessibilityLiveRegion="polite" style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>Loading permission request…</Text>}
     {!!error && <View style={{ gap: 4 }}>
       <Text accessibilityRole="alert" style={{ color: theme.colors.statusDanger, fontSize: 13, lineHeight: 20 }}>{error}</Text>
       <Pressable accessibilityRole="button" accessibilityState={{ disabled: query.isFetching }} disabled={query.isFetching} onPress={() => void query.refetch()} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
@@ -78,6 +79,6 @@ export function WorkerPermissions({ theme, runId, openAgent, onPending }: {
       </Pressable>
     </View>}
     {!error && query.data?.requests.map(request => <PermissionRequest key={`${query.data?.agentId}:${request.id}:${request.revision}`} theme={theme} request={request} runId={runId} agentId={query.data?.agentId} openAgent={openAgent} onAnswered={onAnswered} />)}
-    {!query.isPending && !error && !query.data?.requests.length && <Text accessibilityLiveRegion="polite" style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>{answered ? "Permission answered. The worker can continue." : "No permission requests are waiting."}</Text>}
+    {!query.isPending && !error && !query.data?.requests.length && answered && <Text accessibilityLiveRegion="polite" style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>Permission answered. The worker can continue.</Text>}
   </View>;
 }

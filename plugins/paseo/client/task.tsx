@@ -341,8 +341,8 @@ export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = 
   const tries = selected ? view.attempts[selected.stage] || [] : [];
   const lastThread = tries[tries.length - 1]?.threadId;
   const activity = view.runActivity;
-  const [pendingFor, setPendingFor] = useState<string>();
-  const waiting = !!activity?.permissionAgentId && activity.permissionAgentId === pendingFor;
+  const [pendingFor, setPendingFor] = useState<string | null>();
+  const waiting = !!pendingFor;
   return (
     <View style={{ gap: 14 }}>
       {!embeddedSupervisor && <Pressable accessibilityRole="button" onPress={back} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
@@ -350,7 +350,7 @@ export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = 
       </Pressable>}
       <Text accessibilityRole="header" style={{ color: theme.colors.foreground, fontSize: 20, fontWeight: "700" }}>{view.name}</Text>
       <View accessibilityLiveRegion="polite" style={{ gap: 8 }}>
-        <Text style={{ color: theme.colors.foreground, fontSize: 15, lineHeight: 22, fontWeight: "600" }}>{activity?.headline || view.summary || STATUS_LABEL[view.status]}</Text>
+        <Text style={{ color: theme.colors.foreground, fontSize: 15, lineHeight: 22, fontWeight: "600" }}>{waiting ? "Worker needs your permission" : pendingFor === null && activity?.permissionAgentId ? "Worker is working on this task" : activity?.headline || view.summary || STATUS_LABEL[view.status]}</Text>
         {activity?.latestResult && <View style={{ gap: 5 }}>
           <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "600" }}>Latest finding</Text>
           <FormattedBody theme={theme} text={activity.latestResult} />
@@ -360,7 +360,7 @@ export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = 
           <Text style={{ color: theme.colors.foreground, fontSize: 13, lineHeight: 20 }}>{activity.retryReason}</Text>
         </View>}
       </View>
-      {view.kind === "run" && activity?.permissionAgentId && <WorkerPermissions key={view.id} theme={theme} runId={view.id} openAgent={openAgent} onPending={setPendingFor} />}
+      {view.kind === "run" && ["running", "asking", "sent-back"].includes(view.status) && <WorkerPermissions key={view.id} theme={theme} runId={view.id} openAgent={openAgent} onPending={setPendingFor} expected={!!activity?.permissionAgentId} />}
         {view.question ? (
           <View style={{ borderLeftWidth: 2, borderLeftColor: t.amber.ink, paddingLeft: 12, marginTop: 12, gap: 8 }}>
             <Text style={{ color: theme.colors.foreground, fontWeight: "500", fontSize: 14 }}>{view.question}</Text>

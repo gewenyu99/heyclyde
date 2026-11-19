@@ -35,7 +35,10 @@ export function Composer(
   const [allowNeon, setAllowNeon] = useState(false);
   const pending = useRef<{ key: string; id: string } | null>(null);
   const locked = useRef(false);
-  const selected = projects.data?.find((p) => p.id === project) ?? (!board ? projects.data?.find((p) => p.chats.length > 0) : undefined) ?? projects.data?.[0];
+  // A global board has no active workspace. Its first project is just a list item.
+  const selected = workspaceId
+    ? projects.data?.length === 1 ? projects.data[0] : undefined
+    : projects.data?.find((p) => p.id === project);
   const chats = selected?.chats ?? [];
   const wantsNewChat = !agentId && (board || chatId === "__new__" || chats.length === 0);
   const selectedChat = wantsNewChat ? undefined : (chats.find((ch) => ch.id === chatId) ?? chats[0]);
@@ -148,7 +151,7 @@ export function Composer(
       </Pressable>}
 
       <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-        {control((selected?.name || "Select project") + " ▾", () => setMenu(menu === "project" ? null : "project"), false, { expanded: menu === "project" })}
+        {workspaceId && selected ? <Text style={{ color: c.foreground, fontSize: 13 }}>{selected.name}</Text> : control((selected?.name || "Choose a project") + " ▾", () => setMenu(menu === "project" ? null : "project"), false, { expanded: menu === "project" })}
         {!board && !agentId && selected && control(
           "Chat · " + (wantsNewChat ? "New chat (auto)" : selectedChat!.title) + " ▾",
           () => setMenu(menu === "chat" ? null : "chat"),
@@ -264,7 +267,7 @@ export function Composer(
           No open chats in {selected.name} yet. Clyde will open one when you start.
         </Text>
       )}
-      {projects.isSuccess && !selected && (
+      {projects.isSuccess && !projects.data.length && (
         <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>Open a Git project in Paseo to start a task here.</Text>
       )}
       {(error || projects.error) && (

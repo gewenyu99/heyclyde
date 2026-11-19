@@ -58,7 +58,7 @@ async function approvedPlan(ctx: FlowCtx, input: ShipInput): Promise<Plan> {
   let notes = input.notes ?? ''
   for (let round = 1; round <= MAX_PLAN_ROUNDS; round++) {
     const stage = await ctx.stage({
-      name: round === 1 ? 'plan' : `plan-${round}`, skill: 'plan', role: 'planner', route: 'planner', prompt: planPrompt(input.intent, notes),
+      name: round === 1 ? 'plan' : `plan-${round}`, skill: 'plan', role: 'planner', route: 'planner', prompt: round === 1 ? [planPrompt(input.intent), notes].filter(Boolean).join('\n\n') : planPrompt(input.intent, notes),
       criteria: PLAN_CRITERIA, extract: extractPlan, resultTemplate: PLAN_RESULT_BLOCK,
     })
     if (!stage.passed) throw new Error('the plan stage was skipped, so there is nothing to build')

@@ -22,6 +22,16 @@ export function memoryMaintenance(run:Run):boolean {
 
 export function workerPrompt(o: WorkerPromptInput): string {
   const { run, spec } = o
+  if (planning(spec) && spec.extract && spec.resultTemplate) {
+    return [
+      `You're the worker for stage ${spec.name} of clyde run ${run.id}, attempt ${o.attempt}. Prepare a plan for review in ${run.cwd}, the worktree for ${run.repo}. Implementation starts only after the user approves it.`,
+      o.skillFile && `Read the planning guidance in ${o.skillFile}.`,
+      spec.prompt.trim(),
+      `The reviewer will check these criteria:\n${numbered(spec.criteria)}`,
+      o.notes && `Feedback on the previous attempt:\n${o.notes}`,
+      `Inspect the relevant source. Return the plan and its evidence directly in one final fenced JSON block. Clyde records this response automatically. No file edits, commits, CLI progress reports, or separate result files are needed.\n\n${spec.resultTemplate}`,
+    ].filter(Boolean).join('\n\n')
+  }
   const scope = `run:${run.id}`
   const parts = [
     `You're the worker for stage ${spec.name} of clyde run ${run.id}, attempt ${o.attempt}.`,

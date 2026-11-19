@@ -341,21 +341,19 @@ test('task history reopens stopped and older runs and excludes removed work', ()
 const permissionAgent = 'ba8856e8-59c6-4e17-8c79-1d5168b8d731'
 const permissionWorker = (extra: Partial<RawThread> = {}) => thread({
   id: 'worker', runId: 'r-ship', stage: 'task', status: 'running', paseoAgentId: permissionAgent,
-  progress: 'Permission requested in Paseo worker ' + permissionAgent, ...extra,
+  progress: 'Permission requested in Paseo worker ' + permissionAgent, nativeActivity: { permissionPending: true, observedAt: at(0) }, ...extra,
 })
 
 test('current managed worker permission request offers only its verified Paseo agent', () => {
   const r = taskRun(taskStage([attempt(1, 'worker')]))
   const worker = permissionWorker()
   assert.deepEqual(task(r, [worker], {}).runActivity, {
-    headline: 'Permission requested by worker for the task', permissionAgentId: permissionAgent,
+    headline: 'Worker needs your permission for the task', permissionAgentId: permissionAgent,
   })
-  assert.equal(home([worker], [r], {}, 1, NOW).tasks[0].current, 'Permission requested by worker for the task')
+  assert.equal(home([worker], [r], {}, 1, NOW).tasks[0].current, 'Worker needs your permission for the task')
   for (const extra of [
-    { paseoAgentId: undefined }, { paseoAgentId: 'another-agent' }, { runId: 'another-run' },
+    { paseoAgentId: undefined }, { nativeActivity: undefined }, { nativeActivity: { permissionPending: false, observedAt: at(0) } }, { runId: 'another-run' },
     { archivedAt: at(1) }, { readOnly: true }, { status: 'queued' }, { status: 'idle' }, { status: 'failed' },
-    { progress: 'Permission requested in Paseo worker ' + permissionAgent + ' trailing text' },
-    { progress: 'Permission requested in Paseo worker https://example.com' },
   ]) {
     const activity = task(r, [permissionWorker(extra)], {}).runActivity!
     assert.equal(activity.permissionAgentId, undefined)
@@ -366,7 +364,7 @@ test('current managed worker permission request offers only its verified Paseo a
 test('resolved, historical, reviewed and terminal permission requests have no permission action', () => {
   const worker = permissionWorker()
   const r = taskRun(taskStage([attempt(1, 'worker')]))
-  assert.deepEqual(task(r, [{ ...worker, progress: 'Paseo worker resumed after permission request' }], {}).runActivity, {
+  assert.deepEqual(task(r, [{ ...worker, nativeActivity: { permissionPending: false, observedAt: at(0) }, progress: 'Paseo worker resumed after permission request' }], {}).runActivity, {
     headline: 'Worker is working on the task — Paseo worker resumed after permission request',
   })
   for (const run of [
@@ -388,20 +386,22 @@ test('native launcher clears permission progress as soon as Paseo resolves the r
   writeFileSync(join(dist, 'utils/daemon-target.js'), 'export const selectDaemonTarget=()=>({})')
   writeFileSync(join(dist, 'utils/client.js'), 'export const connectToDaemon=async()=>({close:async()=>{}})')
   writeFileSync(join(sdk, 'index.js'), `
-    let waits=0
-    const child={id:${JSON.stringify(permissionAgent)},cwd:${JSON.stringify(base)},pendingPermissions:[],refresh:async()=>{},send:async()=>{},
-      waitForFinish:async()=>++waits===1?{status:'permission'}:{status:'idle',lastMessage:'finished'}}
-    export const createPaseoApi=()=>({agents:{ref:id=>id==='parent'?{refresh:async()=>{},current:()=>({provider:'codex'})}:child}})
+    let listener,sent=false,polls=0
+    const snapshot={provider:'codex',status:'idle',activeTurn:null,pendingPermissions:[],labels:{'clyde.run':'run-one','clyde.thread':'thread-one'}}
+    const emit=event=>listener?.({agentId:${JSON.stringify(permissionAgent)},event})
+    const child={id:${JSON.stringify(permissionAgent)},cwd:${JSON.stringify(base)},current:()=>snapshot,
+      refresh:async()=>{if(sent){polls++;snapshot.pendingPermissions=polls===1?[{id:'request-one'}]:[];if(polls===2){snapshot.status='idle';snapshot.activeTurn=null;emit({type:'timeline',turnId:'turn-one',item:{type:'assistant_message',text:'finished'}});emit({type:'turn_completed',turnId:'turn-one'})}}},
+      send:async(text,opts)=>{sent=true;snapshot.status='running';snapshot.activeTurn={turnId:'turn-one'};emit({type:'timeline',turnId:'turn-one',item:{type:'user_message',messageId:opts.messageId,text}})},
+      timeline:{subscribe:fn=>{listener=fn;const unsubscribe=()=>{};unsubscribe.ready=Promise.resolve();return unsubscribe},refetch:async()=>({entries:[]})}}
+    export const createPaseoApi=()=>({agents:{ref:()=>child}})
   `)
   const output = execFileSync(process.execPath, [new URL('../src/paseo-worker.mjs', import.meta.url).pathname, dist], {
-    input: JSON.stringify({ first: false, id: permissionAgent, parent: 'parent', cwd: base, backend: 'codex', prompt: 'continue', timeoutMs: 5000 }),
-    encoding: 'utf8',
+    input: JSON.stringify({ first: false, id: permissionAgent, parent: 'parent', cwd: base, backend: 'codex',run:'run-one',thread:'thread-one',messageId:'message-one', prompt: 'continue', timeoutMs: 5000 }),
+    encoding: 'utf8',env:{...process.env,CLYDE_PASEO_POLL_MS:'10'},
   })
   const events = output.trim().split('\n').map(line => JSON.parse(line))
-  assert.deepEqual(events, [
-    { started: permissionAgent },
-    { progress: 'Permission requested in Paseo worker ' + permissionAgent },
-    { progress: 'Paseo worker resumed after permission request' },
-    { ok: true, text: 'finished' },
-  ])
+  assert.ok(events.some(e=>e.progress==='Permission requested in Paseo worker '+permissionAgent))
+  assert.equal(events.filter(e=>e.workerState).at(-1)?.workerState.permissionPending,false)
+  assert.equal(events.filter(e=>e.workerState).at(-1)?.workerState.status,'idle')
+  assert.deepEqual(events.at(-1),{ok:true,text:'finished'})
 })

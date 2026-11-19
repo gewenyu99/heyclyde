@@ -1,3 +1,4 @@
+import { currentActivity, workspaceActivity } from "./server/current-activity.ts";
 import { workerPermissions } from "./server/worker-permissions.ts";
 import { clydeLookupPolicy } from "./shared/paseo-tool-policy.ts";
 import { isProjectChat, listAllAgents, projectSlug, residents } from "./server/residents.ts";
@@ -151,6 +152,7 @@ async function resolveProjectChat(
   allAgents: Awaited<ReturnType<typeof listAllAgents>>,
   targetPath: string | undefined,
   title: string,
+  exactRepository = false,
 ): Promise<{ agentId: string; created: boolean } | null> {
   const [{ projects }, { entries: workspaces }] = await Promise.all([
     paseo.projects.list(),
@@ -158,6 +160,8 @@ async function resolveProjectChat(
   ]);
   const match = findProjectForPath(targetPath, projects, workspaces);
   if (!match) return null;
+  if (exactRepository && canonicalPath(match.project.projectRootPath) !== canonicalPath(targetPath) &&
+      !match.workspaces.some(w => canonicalPath(w.workspaceDirectory) === canonicalPath(targetPath))) return null;
   const workspaceIds = new Set(match.workspaces.map((w) => w.id));
   const chats = allAgents
     .filter((a) => a.workspaceId && workspaceIds.has(a.workspaceId) && isProjectChat(a))
@@ -313,17 +317,18 @@ export default function contribute(server: PluginServerContext) {
       const [threads, runs] = await Promise.all([call<RawThread[]>("GET", "/threads"), call<RawRun[]>("GET", "/runs")]);
       const workspace=workspaceId ? (await paseo.workspaces.list()).entries.find(w=>w.id===workspaceId) : undefined;
       const root=workspaceId ? (await paseo.projects.list()).projects.find(p=>p.projectId===workspace?.projectId)?.projectRootPath : undefined;
-      return { data: home(workspaceId ? threads.filter(t=>t.cwd===root || t.cwd===workspace?.workspaceDirectory) : threads,
-        workspaceId ? runs.filter(r=>r.repo===root || r.repo===workspace?.workspaceDirectory) : runs, agents(), live.revision()) };
+      const scoped = workspaceId ? workspaceActivity(threads, runs, [root, workspace?.workspaceDirectory]) : {threads,runs};
+      const observed = await currentActivity(paseo, scoped.threads, scoped.runs);
+      return { data: home(observed, scoped.runs, agents(), live.revision()) };
     } catch (err) { return failed(err); }
   });
-  server.handle(taskRpc, async ({ kind, id }) => {
+  server.handle(taskRpc, async ({ kind, id }, {paseo}) => {
     try {
       const threads = await call<RawThread[]>("GET", "/threads");
       const safeId = encodeURIComponent(id);
       if (kind === "thread") return { data: threadTask(await call<RawThread>("GET", `/threads/${safeId}`), agents()) };
       const run = await call<RawRun>("GET", `/runs/${safeId}`);
-      return { data: { ...task(run, threads, agents()), diff: diffOf(run) } };
+      return { data: { ...task(run, await currentActivity(paseo, threads, [run], id), agents()), diff: diffOf(run) } };
     } catch (err) { return failed(err); }
   });
   server.handle(supervisorRpc, ({ id }) =>
@@ -336,9 +341,24 @@ export default function contribute(server: PluginServerContext) {
     try { return { data: transcript(await call<RawThread>("GET", `/threads/${encodeURIComponent(threadId)}`)) }; } catch (err) { return failed(err); }
   });
   server.handle(waitRpc, async ({ after }) => ({ revision: await live.wait(after) }));
-  server.handle(answerRpc, async ({ kind, id, text, askKey, allowAntigravityFullAccess }) => {
+  server.handle(answerRpc, async ({ kind, id, text, askKey, allowAntigravityFullAccess }, { paseo }) => {
     try {
       const safeId = encodeURIComponent(id);
+      if (kind === "run" && text.trim().toLowerCase() === "retry" && askKey) {
+        const run = await call<RawRun>("GET", `/runs/${safeId}`);
+        const ask = run.asks?.find(a => a.key === askKey && a.answer === undefined);
+        if (run.status === "asking" && ask?.kind === "provider" && /originating Paseo (agent|workspace)/i.test(ask.question)) {
+          const candidates = await listAllAgents(paseo);
+          const previous = candidates.find(a => a.id === run.paseoParentId);
+          if (!previous || previous.archivedAt || !previous.workspaceId) {
+            // A retry repairs the execution parent; the quest claim stays with its original owner.
+            const destination = await resolveProjectChat(paseo, candidates, run.repo ?? run.cwd, run.title, true);
+            if (!destination) throw new Error("Open the run's Git project in Paseo before retrying.");
+            await call("POST", `/runs/${safeId}/parent`, { paseoParentId: destination.agentId });
+            await residentControl.openForRun(run, destination.agentId, paseo, !residentControl.isQuestRun(id));
+          }
+        }
+      }
       await call("POST", kind === "run" ? `/runs/${safeId}/answer` : `/threads/${safeId}/messages`, { text, via: "paseo", askKey, allowAntigravityFullAccess });
       return { ok: true };
     } catch (err) { return { ok: false, error: (err as Error).message }; }

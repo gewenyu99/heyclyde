@@ -7,10 +7,14 @@ import {pathToFileURL} from 'node:url'
 const [dist]=process.argv.slice(2)
 const load=path=>import(pathToFileURL(join(dist,path)).href)
 const input=JSON.parse(await new Promise(resolve=>{let data='';process.stdin.on('data',chunk=>data+=chunk);process.stdin.on('end',()=>resolve(data))}))
-let client, child, aborted=false
+let client, child, aborted=false, ownedTurnId, unsubscribe
 async function stop(){
   aborted=true
-  if(child && client)await client.cancelAgent(child.id).catch(()=>{})
+  if(child && client){
+    await child.refresh().catch(()=>{})
+    const active=child.current?.()?.activeTurn?.turnId
+    if(!ownedTurnId || !active || active===ownedTurnId)await client.cancelAgent(child.id).catch(()=>{})
+  }
 }
 // Stage workers in a run share one durable private workspace, even when two start together.
 async function workerWorkspace(api, owner) {
@@ -50,16 +54,19 @@ try{
   const {createPaseoApi}=await load('../../client/dist/index.js')
   client=await connectToDaemon({target:selectDaemonTarget({},process.env,false)})
   const api=createPaseoApi(client), parent=api.agents.ref(input.parent)
-  await parent.refresh()
-  const owner=parent.current()
-  if(!owner || owner.archivedAt)throw Error('The originating Paseo agent is unavailable')
-  const inherited=owner.provider===input.backend ? owner.currentModeId : undefined
+  let owner
+  if(input.first){
+    await parent.refresh()
+    owner=parent.current()
+    if(!owner || owner.archivedAt)throw Error('The originating Paseo agent is unavailable')
+  }
+  const inherited=owner?.provider===input.backend ? owner.currentModeId : undefined
   let modeId=inherited ?? ({codex:'auto-review',claude:'auto'})[input.backend]
-  if(input.backend==='antigravity'){
+  if(input.first && input.backend==='antigravity'){
     if(inherited!=='full-access' && !input.allowFullAccess)throw Error('Permission required: allow Antigravity full access for this run to launch its Paseo worker.')
     modeId='full-access'
   }
-  if(input.memoryTask){
+  if(input.memoryTask && input.first){
     const page=await parent.timeline.refetch({direction:'tail',limit:200})
     const missed=page.entries.map(e=>e.item).filter(i=>i.type==='plugin' && i.pluginId==='clyde' && i.data?.kind==='recall' &&
       (!i.data.notes?.length || i.data.choice==='nothing_useful')).map(i=>i.data.query).filter(q=>typeof q==='string'&&q.trim()).slice(-12)
@@ -77,32 +84,86 @@ try{
     child=api.agents.ref(input.id)
   }
   await child.refresh()
-  if(!child.cwd || realpathSync(child.cwd)!==realpathSync(input.cwd))throw Error('Paseo worker placement does not match the run worktree')
+  const initial=child.current()
+  if(!initial || initial.archivedAt || initial.provider!==input.backend || initial.labels?.['clyde.run']!==input.run || initial.labels?.['clyde.thread']!==input.thread || !child.cwd || realpathSync(child.cwd)!==realpathSync(input.cwd))throw Error('Paseo worker placement or ownership does not match the run worktree')
+  if(initial.activeTurn || initial.pendingPermissions?.length)throw Error('Paseo worker already has an active turn or permission request')
   if(aborted){await stop();throw Error('Cancelled')}
-  await child.send(input.prompt,{clientMessageId:input.messageId})
+
+  // Subscribe before sending so even a fast completion is bound to this exact outbound message.
+  let sent=false, ownMessage=false, completed=false, failure, lastMessage='', activity='', lastProgress='', previousStatus='queued'
+  const pollMs=Math.min(1500,Math.max(10,Number(process.env.CLYDE_PASEO_POLL_MS)||1500))
+  const emit=(status,snapshot)=>{
+    const requestIds=(snapshot.pendingPermissions??[]).map(p=>p.id)
+    const state={agentId:child.id,status,permissionPending:status==='permission',observedAt:new Date().toISOString(),messageId:input.messageId,
+      ...(ownedTurnId?{turnId:ownedTurnId}:{}),requestIds,...(activity?{activity}:{}),...(failure?{error:failure}:{})}
+    console.log(JSON.stringify({workerState:state}))
+    const progress=status==='permission' ? 'Permission requested in Paseo worker '+child.id
+      : status==='active' ? (previousStatus==='permission' ? 'Paseo worker resumed after permission request' : 'Paseo worker active'+(activity?' · '+activity:''))
+      : status==='queued' ? 'Paseo worker queued for its turn' : status==='idle' ? 'Paseo worker finished its turn' : 'Paseo worker error: '+failure
+    if(progress!==lastProgress){console.log(JSON.stringify({progress}));lastProgress=progress}
+    previousStatus=status
+  }
+  const bind=id=>{
+    if(!id)return
+    if(ownedTurnId && ownedTurnId!==id){if(!completed)failure='Paseo worker changed turns before the requested turn completed';return}
+    ownedTurnId=id
+  }
+  const observe=(item,turnId)=>{
+    if(item.type==='user_message'){
+      if(item.clientMessageId===input.messageId || item.messageId===input.messageId){ownMessage=true;bind(turnId)}
+      return
+    }
+    if(!ownMessage || (turnId && ownedTurnId && turnId!==ownedTurnId) || (completed && turnId!==ownedTurnId))return
+    if(item.type==='assistant_message' && item.text?.trim()){lastMessage=item.text;activity=item.text.replace(/\s+/g,' ').slice(0,250)}
+    else if(item.type==='tool_call')activity='Using '+(item.name||'tool')
+    else if(item.type==='todo')activity=item.items.find(i=>i.status==='in_progress')?.activeForm || item.items.find(i=>i.status==='in_progress')?.text || activity
+    else if(item.type==='reasoning')activity='Considering the task'
+  }
+  unsubscribe=child.timeline.subscribe(({agentId,event})=>{
+    if(agentId!==child.id || !sent)return
+    if(event.type==='timeline')observe(event.item,event.turnId)
+    else if(event.type==='turn_started')bind(event.turnId)
+    else if(['turn_completed','turn_failed','turn_canceled'].includes(event.type) && ownMessage && (!event.turnId || event.turnId===ownedTurnId)){
+      if(event.type==='turn_completed')completed=true
+      else failure=event.error || event.reason || 'Paseo worker turn failed'
+    }
+  })
+  await unsubscribe.ready
+  sent=true
+  await child.send(input.prompt,{messageId:input.messageId,activeTurnBehavior:'queue'})
   console.log(JSON.stringify({started:child.id}))
-  const deadline=Date.now()+input.timeoutMs
-  let result=await child.waitForFinish(input.timeoutMs)
-  while(result.status==='permission' && !aborted && Date.now()<deadline){
-    console.log(JSON.stringify({progress:'Permission requested in Paseo worker '+child.id}))
-    do {
-      await new Promise(resolve=>setTimeout(resolve,1500))
-      await child.refresh()
-    }while(child.pendingPermissions?.length && !aborted && Date.now()<deadline)
-    if(aborted || Date.now()>=deadline){await stop();throw Error('Paseo worker stopped while awaiting permission')}
-    console.log(JSON.stringify({progress:'Paseo worker resumed after permission request'}))
-    result=await child.waitForFinish(Math.max(1,deadline-Date.now()))
+  let remaining=input.timeoutMs,lastTick=Date.now(),wasPermission=false
+  while(!aborted){
+    await child.refresh()
+    const snapshot=child.current()
+    if(!snapshot || snapshot.archivedAt)throw Error('Paseo worker became unavailable')
+    if(snapshot.activeTurn?.turnId)bind(snapshot.activeTurn.turnId)
+    if(!ownedTurnId || (!snapshot.activeTurn && snapshot.status==='idle' && !completed)){
+      const page=await child.timeline.refetch({direction:'tail',limit:1,wholeTurns:true})
+      for(const entry of page.entries)observe(entry.item,entry.turnId)
+      // A refreshed idle snapshot and exact-turn assistant response recover missed completion events.
+      if(ownMessage && ownedTurnId && !snapshot.activeTurn && snapshot.status==='idle' && !snapshot.pendingPermissions?.length && lastMessage)completed=true
+    }
+    const now=Date.now(),permission=!!snapshot.pendingPermissions?.length
+    // User approval time is unbounded; only execution/queue time spends this turn's budget.
+    if(!wasPermission && !permission)remaining-=now-lastTick
+    lastTick=now;wasPermission=permission
+    if(completed){emit('idle',{...snapshot,pendingPermissions:[]});break}
+    if(snapshot.status==='error' || snapshot.status==='closed')failure=snapshot.lastError || 'Paseo worker '+snapshot.status
+    if(failure){emit('error',snapshot);throw Error(failure)}
+    if(permission){emit('permission',snapshot)}
+    else if(snapshot.activeTurn){emit('active',snapshot)}
+    else emit('queued',snapshot)
+    if(remaining<=0){await stop();throw Error('Paseo worker active execution timed out after '+input.timeoutMs+' ms')}
+    await new Promise(resolve=>setTimeout(resolve,pollMs))
   }
-  if(result.status!=='idle'){
-    if(result.status==='timeout')await stop()
-    throw Error(result.error || ('Paseo worker '+result.status))
-  }
-  let text=result.lastMessage
-  if(!text){
+  if(aborted)throw Error('Paseo worker was stopped')
+  if(!lastMessage?.trim()){
     const page=await child.timeline.refetch({direction:'tail',limit:1,wholeTurns:true})
-    text=page.entries.filter(e=>e.item.type==='assistant_message').map(e=>e.item.text).at(-1)
+    for(const entry of page.entries)observe(entry.item,entry.turnId)
   }
-  if(!text?.trim())throw Error('Paseo worker finished without a response')
-  console.log(JSON.stringify({ok:true,text}))
+  if(!lastMessage?.trim())throw Error('Paseo worker finished without a response for the requested turn')
+  console.log(JSON.stringify({ok:true,text:lastMessage}))
+
 }catch(e){console.log(JSON.stringify({ok:false,error:e.message||String(e)}));process.exitCode=1}
-finally{await client?.close().catch(()=>{})}
+finally{unsubscribe?.();await client?.close().catch(()=>{})}

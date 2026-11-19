@@ -32,7 +32,13 @@ test('native workers use the parent project and reuse their private task workspa
     import {appendFileSync,existsSync,readFileSync,writeFileSync} from 'node:fs'
     const put=x=>appendFileSync(process.env.WORKER_LOG,JSON.stringify(x)+'\\n')
     const saved=process.env.WORKER_LOG+'.workspace'
-    const child={id:'child',cwd:process.env.CHILD_DIR,refresh:async()=>{},send:async()=>put('sent'),waitForFinish:async()=>({status:'idle',lastMessage:'finished'})}
+    let listener
+    const snapshot={provider:'antigravity',labels:{'clyde.run':'r-original','clyde.thread':process.env.WORKER_THREAD},status:'idle',activeTurn:null,pendingPermissions:[]}
+    const rows=[]
+    const emit=event=>listener?.({agentId:'child',event})
+    const child={id:'child',cwd:process.env.CHILD_DIR,current:()=>snapshot,refresh:async()=>{},
+      send:async(text,opts)=>{put('sent');rows.push({turnId:'turn-one',item:{type:'user_message',messageId:opts.messageId,text}},{turnId:'turn-one',item:{type:'assistant_message',text:'finished'}});for(const e of rows)emit({type:'timeline',...e});emit({type:'turn_started',turnId:'turn-one'});emit({type:'turn_completed',turnId:'turn-one'})},
+      timeline:{subscribe:fn=>{listener=fn;const unsubscribe=()=>{};unsubscribe.ready=Promise.resolve();return unsubscribe},refetch:async()=>({entries:rows})}}
     function handle(record){
       return {
         ...record,current:()=>record,refresh:async()=>record,
@@ -78,7 +84,7 @@ test('native workers use the parent project and reuse their private task workspa
       const out = execFileSync(process.execPath, [new URL('../src/paseo-worker.mjs', import.meta.url).pathname, dist], {
         input: JSON.stringify({ ...input, ...overrides, allowFullAccess: allow }),
         encoding: 'utf8',
-        env: { ...process.env, ORIGIN_DIR: base, CHILD_DIR: cwd, WORKER_LOG: log },
+        env: { ...process.env, ORIGIN_DIR: base, CHILD_DIR: cwd, WORKER_LOG: log, WORKER_THREAD: overrides.thread ?? input.thread },
       })
       return JSON.parse(out.trim().split('\n').at(-1)!)
     } catch (e) {
