@@ -65,8 +65,21 @@ if [ ! -f "$HERE/memory-hook" ]; then
   [ -z "$UPDATE" ] || { echo "install.sh --update: no memory-hook beside it to install." >&2; exit 1; }
   HERE=$(mktemp -d)
   trap 'rm -rf "$HERE"' EXIT
+  curl -fsS -m 15 "$URL/install/files/manifest" -o "$HERE/manifest"
+  curl -fsS -m 15 "$URL/install/files/manifest.sig" -o "$HERE/manifest.b64"
   for f in $FILES; do
     curl -fsS -m 15 "$URL/install/files/$f" -o "$HERE/$f"
+  done
+  pub=$HERE/signing-pub.pem
+  [ -s "$DIR/signing-pub.pem" ] && pub=$DIR/signing-pub.pem
+  openssl base64 -d -A -in "$HERE/manifest.b64" -out "$HERE/manifest.sig" 2>/dev/null &&
+    openssl dgst -sha256 -verify "$pub" -signature "$HERE/manifest.sig" "$HERE/manifest" >/dev/null 2>&1 ||
+    { echo "install.sh: manifest signature failed to verify." >&2; exit 1; }
+  for f in $FILES; do
+    [ "$(awk -v n="$f" '$1 == n' "$HERE/manifest" | wc -l)" -eq 1 ] || { echo "install.sh: manifest missing $f." >&2; exit 1; }
+    want=$(awk -v n="$f" '$1 == n { print $2 }' "$HERE/manifest")
+    [ -n "$want" ] && [ "$(openssl dgst -sha256 "$HERE/$f" 2>/dev/null | awk '{ print $NF }')" = "$want" ] ||
+      { echo "install.sh: $f did not match the signed manifest." >&2; exit 1; }
   done
 fi
 
@@ -125,29 +138,31 @@ print(v, base64.urlsafe_b64encode(hashlib.sha256(v.encode()).digest()).rstrip(b"
 # has these bytes. A checkout's copy has no version yet, so it gets the newest client version. A fetched one was stamped
 # when the server baked it.
 put_hook() {
-  new=$DIR/.memory-hook.$$
+  new=$(mktemp "$DIR/.memory-hook.XXXXXX") || return 1
   if grep -q '^VERSION=@MEMORY_VERSION@$' "$HERE/memory-hook"; then
     ver=$(curl -fsS -m 10 "$URL/healthz" 2>/dev/null | field client_version 2>/dev/null || true)
     case $ver in ''|*[!0-9.]*) ver=@MEMORY_VERSION@ ;; esac
-    sed "s/^VERSION=@MEMORY_VERSION@\$/VERSION=$ver/" "$HERE/memory-hook" > "$new"
+    sed "s/^VERSION=@MEMORY_VERSION@\$/VERSION=$ver/" "$HERE/memory-hook" > "$new" || { rm -f "$new"; return 1; }
   else
-    cp "$HERE/memory-hook" "$new"
+    cp "$HERE/memory-hook" "$new" || { rm -f "$new"; return 1; }
   fi
   if cmp -s "$new" "$DIR/memory-hook" 2>/dev/null; then rm -f "$new"; return 0; fi
-  chmod 700 "$new" && mv -f "$new" "$DIR/memory-hook"
+  chmod 700 "$new" && mv -f "$new" "$DIR/memory-hook" || { rm -f "$new"; return 1; }
 }
 
 # The public key memory-hook verifies updates against, moved into place the same way.
 put_pub() {
-  new=$DIR/.signing-pub.$$
-  cp "$HERE/signing-pub.pem" "$new" && chmod 600 "$new" && mv -f "$new" "$DIR/signing-pub.pem"
+  new=$(mktemp "$DIR/.signing-pub.XXXXXX") || return 1
+  cp "$HERE/signing-pub.pem" "$new" && chmod 600 "$new" && mv -f "$new" "$DIR/signing-pub.pem" || { rm -f "$new"; return 1; }
 }
 
 # put <source> <target> <mode>: the target becomes the source's bytes, moved into place in one step, and is not touched
 # when it already has them.
 put() {
   cmp -s "$1" "$2" 2>/dev/null && return 0
-  mkdir -p "$(dirname "$2")" && cp "$1" "$2.new.$$" && chmod "$3" "$2.new.$$" && mv -f "$2.new.$$" "$2"
+  mkdir -p "$(dirname "$2")" || return 1
+  tmp=$(mktemp "$(dirname "$2")/.$(basename "$2").XXXXXX") || return 1
+  cp "$1" "$tmp" && chmod "$3" "$tmp" && mv -f "$tmp" "$2" || { rm -f "$tmp"; return 1; }
 }
 
 # clyde-hook.sh, the hook every app runs, and the clyde-gate.sh shim for settings that still name the old gate script.
@@ -458,14 +473,16 @@ if [ -n "$UPDATE" ]; then
   if grep -qs 'memory-hook\|clyde-hook' "$HOME/.gemini/config/hooks.json"; then
     merge_antigravity "$HOME/.gemini/config/hooks.json" "$HERE/antigravity-hooks.json" >/dev/null || failed=1
   fi
-  newpub=$DIR/.signing-pub.$$
-  cp "$HERE/signing-pub.pem" "$newpub" && chmod 600 "$newpub" || failed=1
+  newpub=$(mktemp "$DIR/.signing-pub.XXXXXX") || { failed=1; newpub=; }
+  if [ -n "$newpub" ]; then
+    cp "$HERE/signing-pub.pem" "$newpub" && chmod 600 "$newpub" || { failed=1; rm -f "$newpub"; newpub=; }
+  fi
   # The key moves in only after memory-hook did, so a key never arrives without the client that came with it.
-  if put_hook; then
-    mv -f "$newpub" "$DIR/signing-pub.pem" || failed=1
+  if [ -n "$newpub" ] && put_hook; then
+    mv -f "$newpub" "$DIR/signing-pub.pem" || { failed=1; rm -f "$newpub"; }
   else
     failed=1
-    rm -f "$newpub"
+    [ -z "$newpub" ] || rm -f "$newpub"
   fi
   exit "$failed"
 fi

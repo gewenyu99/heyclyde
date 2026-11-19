@@ -1,11 +1,12 @@
 {
   "name": "clyde",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Shared memory for AI agents across Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok, with files and a quest board on paid plans.",
   "contextFileName": "GEMINI.md",
   "mcpServers": {
     "clyde": {
       "httpUrl": "https://heyclyde.me/mcp"
     }
-  }
+  },
+  "excludeTools": ["save_memory"]
 }

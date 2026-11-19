@@ -5,6 +5,7 @@
  */
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { repoRoot } from '../../src/config.ts'
@@ -57,4 +58,10 @@ test('R78 the docs, llms.txt and the setup prompt carry all four hook configs', 
 test('R78 the bundle and plugin copies match hook.js', () => {
   const r = spawnSync('node', [join(repoRoot(), 'memory', 'sync-client.mjs'), '--check'], { encoding: 'utf8' })
   assert.equal(r.status, 0, r.stderr)
+  const rootExt = JSON.parse(readFileSync(join(repoRoot(), 'gemini-extension.json'), 'utf8'))
+  const clientExt = JSON.parse(readFileSync(join(repoRoot(), 'memory', 'supabase', 'functions', 'memory', 'client', 'gemini-extension.json'), 'utf8'))
+  assert.equal(rootExt.name, clientExt.name)
+  assert.equal(rootExt.version, clientExt.version)
+  assert.equal(rootExt.mcpServers?.clyde?.httpUrl, clientExt.mcpServers?.clyde?.httpUrl)
+  assert.deepEqual(rootExt.excludeTools, clientExt.excludeTools)
 })

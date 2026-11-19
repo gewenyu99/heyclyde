@@ -5,7 +5,7 @@
  */
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -29,6 +29,7 @@ function makeEnv() {
           CLYDE_CONFIG_DIR: join(dir, 'cfg'),
           CLYDE_HOOK_STATE_DIR: join(dir, 'state'),
           CLYDE_HOOK_NOW: String(now),
+          CLYDE_PASEO_AGENT: '',
           MEMORY_TOKEN: '',
           MEMORY_URL: '',
           ...extraEnv,
@@ -53,6 +54,7 @@ Deno.test('hook JSON configs parse cleanly and match each client schema', () => 
   assert.ok(Array.isArray(agy.PreInvocation) && !('hooks' in agy.PreInvocation[0]), 'Antigravity PreInvocation uses flat handler array')
   assert.equal(agy.PreToolUse[0].matcher, 'invoke_subagent')
   assert.match(agy.PostToolUse[0].matcher, /clyde/)
+  assert.ok(new RegExp(agy.PostToolUse[0].matcher).test('call_mcp_tool'), 'Antigravity PostToolUse matcher matches call_mcp_tool')
   assert.ok(Array.isArray(agy.Stop) && !('hooks' in agy.Stop[0]), 'Antigravity Stop uses flat handler array')
 
   const claude = JSON.parse(CLAUDE_HOOKS_JSON)
@@ -372,6 +374,134 @@ Deno.test('CLYDE_VERIFY_SH runs initialize, register_agent, and remember with re
     assert.ok(out.includes('note-first-1'), 'prints returned first note id')
   } finally {
     srv.close()
+  }
+})
+
+Deno.test('installed hook token is pinned to configured origin and never sent to an untrusted MEMORY_URL', async () => {
+  const h = makeEnv()
+  const evilHits: { url: string; auth: string }[] = []
+  const goodHits: { url: string; auth: string }[] = []
+  const makeServer = (hits: { url: string; auth: string }[]) => createServer((req, res) => {
+    req.resume()
+    req.on('end', () => {
+      hits.push({ url: req.url || '', auth: String(req.headers.authorization || '') })
+      res.writeHead(200, { 'content-type': 'text/plain' })
+      res.end('')
+    })
+  })
+  const good = makeServer(goodHits)
+  const evil = makeServer(evilHits)
+  await Promise.all([
+    new Promise<void>((r) => good.listen(0, '127.0.0.1', r)),
+    new Promise<void>((r) => evil.listen(0, '127.0.0.1', r)),
+  ])
+  const goodUrl = `http://127.0.0.1:${(good.address() as { port: number }).port}`
+  const evilUrl = `http://127.0.0.1:${(evil.address() as { port: number }).port}`
+  mkdirSync(join(h.dir, 'cfg'), { recursive: true })
+  writeFileSync(join(h.dir, 'cfg', 'url'), `${goodUrl}\n`, { mode: 0o600 })
+  writeFileSync(join(h.dir, 'cfg', 'token'), 'installed-secret-token\n', { mode: 0o600 })
+  try {
+    // Untrusted MEMORY_URL without MEMORY_TOKEN must not receive the installed token.
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(h.script, ['claude', 'UserPromptSubmit'], {
+        env: {
+          ...process.env,
+          CLYDE_CONFIG_DIR: join(h.dir, 'cfg'),
+          CLYDE_HOOK_STATE_DIR: join(h.dir, 'state'),
+          CLYDE_HOOK_NOW: '500',
+          CLYDE_PASEO_AGENT: '',
+          MEMORY_TOKEN: '',
+          MEMORY_URL: evilUrl,
+          NO_PROXY: '127.0.0.1,localhost',
+          no_proxy: '127.0.0.1,localhost',
+        },
+      })
+      child.on('error', reject)
+      child.on('close', (code) => code === 0 ? resolve() : reject(new Error(`exit ${code}`)))
+      child.stdin.end(JSON.stringify({ session_id: 'pin-1', cwd: '/repo', prompt: 'Check pinned origin' }))
+    })
+    assert.equal(evilHits.length, 0, 'installed token must never be sent to an untrusted MEMORY_URL')
+
+    // Matching configured origin receives the installed token normally.
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(h.script, ['claude', 'UserPromptSubmit'], {
+        env: {
+          ...process.env,
+          CLYDE_CONFIG_DIR: join(h.dir, 'cfg'),
+          CLYDE_HOOK_STATE_DIR: join(h.dir, 'state'),
+          CLYDE_HOOK_NOW: '501',
+          CLYDE_PASEO_AGENT: '',
+          MEMORY_TOKEN: '',
+          MEMORY_URL: `${goodUrl}/`,
+          NO_PROXY: '127.0.0.1,localhost',
+          no_proxy: '127.0.0.1,localhost',
+        },
+      })
+      child.on('error', reject)
+      child.on('close', (code) => code === 0 ? resolve() : reject(new Error(`exit ${code}`)))
+      child.stdin.end(JSON.stringify({ session_id: 'pin-2', cwd: '/repo', prompt: 'Check pinned origin' }))
+    })
+    assert.ok(goodHits.some((hit) => hit.auth === 'Bearer installed-secret-token'), 'configured origin receives installed token')
+  } finally {
+    good.close()
+    evil.close()
+    h.cleanup()
+  }
+})
+
+Deno.test('Antigravity call_mcp_tool normalizes ServerName+ToolName for remember receipts and Paseo unchanged follow-ups', () => {
+  const h = makeEnv()
+  try {
+    const paseoEnv = { CLYDE_PASEO_AGENT: 'agy-worker-1' }
+    // First task nudges recall and arms check_before_reply.
+    const first = JSON.parse(h.run('antigravity', 'PreInvocation', {
+      conversationId: 'agy-1',
+      workspacePaths: ['/work/clyde'],
+      lastUserInput: 'Fix the hook credential pinning',
+    }, 2000, paseoEnv))
+    assert.match(first.injectSteps[0].ephemeralMessage, /recall/)
+
+    // A non-Clyde MCP server's remember tool must not clear check_before_reply or write a saved receipt.
+    h.run('antigravity', 'PostToolUse', {
+      conversationId: 'agy-1',
+      toolCall: { name: 'call_mcp_tool', args: { ServerName: 'other', ToolName: 'remember', Arguments: { title: 'x' } } },
+    }, 2005, paseoEnv)
+    const held = JSON.parse(h.run('antigravity', 'Stop', { conversationId: 'agy-1' }, 2006, paseoEnv))
+    assert.equal(held.decision, 'continue')
+    assert.equal(JSON.parse(readFileSync(join(h.dir, 'state', 'paseo-agy-worker-1.json'), 'utf8')).outcome, 'held')
+
+    // Clyde's remember via call_mcp_tool clears check_before_reply and writes the saved receipt.
+    h.run('antigravity', 'PreInvocation', {
+      conversationId: 'agy-1',
+      workspacePaths: ['/work/clyde'],
+      lastUserInput: 'Fix the hook credential pinning and verify',
+    }, 2010, paseoEnv)
+    h.run('antigravity', 'PostToolUse', {
+      conversationId: 'agy-1',
+      toolCall: { name: 'call_mcp_tool', args: { ServerName: 'clyde', ToolName: 'remember', Arguments: { title: 'Pinned token' } } },
+    }, 2012, paseoEnv)
+    const allowed = JSON.parse(h.run('antigravity', 'Stop', { conversationId: 'agy-1' }, 2013, paseoEnv))
+    assert.deepEqual(allowed, { decision: 'allow' })
+    assert.equal(JSON.parse(readFileSync(join(h.dir, 'state', 'paseo-agy-worker-1.json'), 'utf8')).outcome, 'saved')
+
+    // Unchanged follow-ups in Paseo mode must not re-nudge recall; changed follow-ups do.
+    for (const [i, follow] of ['continue', 'run it again', 'ship it', 'looks good', 'yes!'].entries()) {
+      const out = JSON.parse(h.run('antigravity', 'PreInvocation', {
+        conversationId: 'agy-1',
+        workspacePaths: ['/work/clyde'],
+        lastUserInput: follow,
+      }, 2020 + i, paseoEnv))
+      const msg = out.injectSteps?.[0]?.ephemeralMessage ?? ''
+      assert.doesNotMatch(msg, /recall/, `Paseo unchanged follow-up "${follow}" must not re-nudge recall`)
+    }
+    const shifted = JSON.parse(h.run('antigravity', 'PreInvocation', {
+      conversationId: 'agy-1',
+      workspacePaths: ['/work/clyde'],
+      lastUserInput: 'continue with a different release scope',
+    }, 2030, paseoEnv))
+    assert.match(shifted.injectSteps[0].ephemeralMessage, /recall/)
+  } finally {
+    h.cleanup()
   }
 })
 

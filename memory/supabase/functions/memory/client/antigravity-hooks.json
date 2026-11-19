@@ -12,7 +12,7 @@
     ]
   },
   "Track Clyde memory calls": {
-    "PostToolUse": [{ "matcher": "^(mcp_+)?(clyde|memory)[_:\\.].*", "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh antigravity PostToolUse", "timeout": 5 }] }]
+    "PostToolUse": [{ "matcher": "^(call_mcp_tool|(mcp_+)?(clyde|memory)[_:\\.].*)$", "hooks": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh antigravity PostToolUse", "timeout": 5 }] }]
   },
   "Save decisions and results to Clyde": {
     "Stop": [{ "type": "command", "command": "~/.config/memory/clyde-hook.sh antigravity Stop", "timeout": 5 }]

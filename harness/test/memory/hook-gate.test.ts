@@ -24,7 +24,7 @@ function env() {
   const run = (client: string, event: string, payload: unknown, now = 1_800_000_000) => {
     const r = spawnSync(script, [client, event], {
       input: JSON.stringify(payload), encoding: 'utf8',
-      env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: dir, CLYDE_CONFIG_DIR: join(dir, 'cfg'), CLYDE_HOOK_STATE_DIR: join(dir, 'state'), CLYDE_HOOK_NOW: String(now), MEMORY_TOKEN: '', MEMORY_URL: '' },
+      env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: dir, CLYDE_CONFIG_DIR: join(dir, 'cfg'), CLYDE_HOOK_STATE_DIR: join(dir, 'state'), CLYDE_HOOK_NOW: String(now), CLYDE_PASEO_AGENT: '', MEMORY_TOKEN: '', MEMORY_URL: '' },
     })
     assert.equal(r.status, 0, r.stderr)
     return r.stdout.trim()

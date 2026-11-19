@@ -44,7 +44,7 @@
   "Track Clyde memory calls": {
     "PostToolUse": [
       {
-        "matcher": "^(mcp_+)?(clyde|memory)[_:\\.].*",
+        "matcher": "^(call_mcp_tool|(mcp_+)?(clyde|memory)[_:\\.].*)$",
         "hooks": [
           {
             "type": "command",

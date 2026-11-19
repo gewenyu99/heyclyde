@@ -104,8 +104,16 @@ try:
     sdir.mkdir(parents=True, exist_ok=True)
     sdir.chmod(0o700)
 except Exception:
-    sdir = Path(tempfile.gettempdir()) / f"clyde-hook-{os.getuid()}"
-    sdir.mkdir(parents=True, exist_ok=True)
+    fallback_dir = Path(tempfile.gettempdir()) / f"clyde-hook-{os.getuid()}"
+    try:
+        if fallback_dir.is_symlink() or (fallback_dir.exists() and fallback_dir.stat().st_uid != os.getuid()):
+            sdir = Path(tempfile.mkdtemp(prefix=f"clyde-hook-{os.getuid()}-"))
+        else:
+            fallback_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+            fallback_dir.chmod(0o700)
+            sdir = fallback_dir
+    except Exception:
+        sdir = Path(tempfile.mkdtemp(prefix=f"clyde-hook-{os.getuid()}-"))
 
 def sha(s):
     return hashlib.sha256(s.encode("utf-8", "ignore")).hexdigest()[:24]
@@ -117,13 +125,20 @@ def load_json(p):
         return {}
 
 def save_json(p, obj):
+    tmp = None
     try:
-        tmp = p.with_name(f".{p.name}.{os.getpid()}")
-        tmp.write_text(json.dumps(obj))
-        tmp.chmod(0o600)
+        fd, tmp = tempfile.mkstemp(dir=p.parent, prefix=f".{p.name}.")
+        with os.fdopen(fd, "w") as out:
+            json.dump(obj, out)
+        os.chmod(tmp, 0o600)
         os.replace(tmp, p)
+        tmp = None
     except Exception:
-        pass
+        if tmp:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
 
 sid = str(data.get("conversationId") or data.get("session_id") or data.get("conversation_id") or "default")
 wpaths = data.get("workspacePaths") or data.get("workspace_roots") or []
@@ -132,15 +147,26 @@ prompt = str(data.get("prompt") or data.get("lastUserInput") or "")
 tc = data.get("toolCall") if isinstance(data.get("toolCall"), dict) else {}
 tname = str(data.get("tool_name") or tc.get("name") or "")
 tinput = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else (tc.get("args") if isinstance(tc.get("args"), dict) else {})
-# Antigravity runs every MCP tool through call_mcp_tool, and the tool itself is in ToolName.
+# Antigravity runs every MCP tool through call_mcp_tool, with ServerName, ToolName, and Arguments in args.
 if tname == "call_mcp_tool":
-    tname = str(tinput.get("ToolName") or tinput.get("toolName") or tinput.get("tool_name") or tinput.get("name") or tname)
+    mcp_server = str(tinput.get("ServerName") or tinput.get("serverName") or tinput.get("server_name") or tinput.get("server") or "").strip()
+    mcp_tool = str(tinput.get("ToolName") or tinput.get("toolName") or tinput.get("tool_name") or tinput.get("name") or "").strip()
+    if mcp_tool:
+        if mcp_server and not re.search(r"[_:.]", mcp_tool):
+            tname = f"mcp_{mcp_server}_{mcp_tool}"
+        else:
+            tname = mcp_tool
+    mcp_args = tinput.get("Arguments") or tinput.get("arguments")
+    if isinstance(mcp_args, dict):
+        tinput = mcp_args
 
 CLYDE_TOOLS = ("recall", "recall_more", "remember", "feedback", "register_agent", "check_messages", "ack_messages",
     "dismiss_messages", "post_message", "post_quest", "list_quests", "claim_quest", "update_quest", "complete_quest",
     "abandon_quest", "get_entry", "get_blob", "upload_blob")
 def is_tool(name, *names):
-    return any(re.search(r"(^|[_:.])" + n + "$", name) for n in names)
+    return any(re.search(r"(^|[_:.])" + n + "$", name, re.I) for n in names)
+def is_clyde_tool(name, *names):
+    return any(re.search(r"(?:^|[_:.])(?:memory|clyde)[_:.]+" + n + "$", name, re.I) for n in names)
 
 sfile = sdir / f"{sha(client + chr(58) + sid)}.json"
 state = load_json(sfile)
@@ -184,7 +210,7 @@ if canon == "PreToolUse":
         deny("Clyde is the only memory for this agent, so the memory files of this app are off. Save it with Clyde remember, and recall from Clyde.")
     if state.get("subagent"):
         emit()
-    if is_tool(tname, "register_agent"):
+    if is_clyde_tool(tname, "register_agent"):
         mark_registered()
         emit()
     owed = state.get("register_debt")
@@ -196,7 +222,7 @@ if canon == "PreToolUse":
             deny(f"Register with Clyde first. Call Clyde {REGISTER} before anything else (load it with ToolSearch if it is deferred), then carry on.")
     debt = state.get("debt")
     if isinstance(debt, dict):
-        if is_tool(tname, "recall", "recall_more") or now - float(debt.get("at", 0)) > DEBT_TTL:
+        if is_clyde_tool(tname, "recall", "recall_more") or now - float(debt.get("at", 0)) > DEBT_TTL:
             state.pop("debt", None)
             save_json(sfile, state)
         elif tname != "ToolSearch":
@@ -204,7 +230,7 @@ if canon == "PreToolUse":
             deny(f"Clyde recall comes first on a new task. Call Clyde recall with query \\"{q}\\" (load it with ToolSearch if it is deferred), then carry on.")
     emit()
 
-if canon == "PostToolUse" and not is_tool(tname, *CLYDE_TOOLS):
+if canon == "PostToolUse" and not is_clyde_tool(tname, *CLYDE_TOOLS):
     emit()
 
 phash = sha(prompt.strip()) if prompt.strip() else ""
@@ -235,7 +261,7 @@ STOP = {
 FOLLOW_RE = re.compile(
     r"^(y|yes|yep|yeah|ok|okay|sure|k|kk|thanks|thank you|thx|ty|cool|nice|great|good|lgtm|"
     r"ship it|push|push it|push up|commit|commit it|commit and push|merge it|deploy|deploy it|"
-    r"do it|go ahead|proceed|continue|keep going|try again|retry|rerun|run it|test it|fix it|revert|undo|stop)\\b",
+    r"do it|go ahead|proceed|continue|keep going|try again|retry|rerun|run it|run it again|test it|fix it|revert|undo|stop)\\b",
     re.I,
 )
 TWEAK_RE = re.compile(r"(?:fix line \\d+(?: and show me a screenshot)?|show me a screenshot|same thing|as above|looks good|run the tests)", re.I)
@@ -297,8 +323,7 @@ elif canon == "UserPromptSubmit":
     should_nudge = cwd_shifted or bool(t and (first_task or (not followup and (idle_gap or topic_shifted))))
     if paseo_agent and t:
         # Other follow-ups can be short and still ask about an earlier decision.
-        unchanged = t.strip().lower().rstrip(".!") in ("continue", "rerun", "run it again", "push it", "commit it", "yes", "ok", "thanks")
-        should_nudge = first_task or cwd_shifted or not unchanged
+        should_nudge = first_task or cwd_shifted or not followup
     if phash:
         state["last_prompt_hash"] = phash
     if cwd:
@@ -314,14 +339,14 @@ elif canon == "UserPromptSubmit":
         local_msg = SCOPE
         state["task_words"] = list(dict.fromkeys((state.get("task_words") or []) + pwords))[:24]
 elif canon == "PostToolUse":
-    if re.search(r"(?:^|[_:.])(?:memory|clyde)[_:.]+remember$", tname, re.I):
+    if is_clyde_tool(tname, "remember"):
         response = data.get("tool_response") or data.get("tool_result") or {}
         if not data.get("error") and not (isinstance(response, dict) and (response.get("isError") or response.get("error"))):
             state["check_before_reply"] = False
             receipt("saved")
-    if is_tool(tname, "register_agent"):
+    if is_clyde_tool(tname, "register_agent"):
         mark_registered()
-    if is_tool(tname, "recall", "recall_more"):
+    if is_clyde_tool(tname, "recall", "recall_more"):
         state.pop("debt", None)
         qw = words(" ".join(str(tinput.get(k) or "") for k in ("query", "task")))
         if qw:
@@ -355,14 +380,20 @@ vheaders = {"x-memory-client-version": ver, "User-Agent": f"clyde-hook/{ver}"}
 if failed_file.exists():
     vheaders["x-memory-update-failed"] = "1"
 
-token = os.environ.get("MEMORY_TOKEN") or read_txt(cfg / "token")
+env_token = os.environ.get("MEMORY_TOKEN") or ""
+token = env_token or read_txt(cfg / "token")
 # The Supabase function itself is the same server as memory.heyclyde.me.
 RAW = "https://wlhlncmgjqyidosunugv.supabase.co/functions/v1/memory"
 def server(u):
-    u = u.rstrip("/")
+    u = (u or "").strip().rstrip("/")
     return "https://memory.heyclyde.me" if u == RAW else u
-url = server(os.environ.get("MEMORY_URL") or read_txt(cfg / "url") or "https://memory.heyclyde.me")
 pinned = server(read_txt(cfg / "url"))
+url = server(os.environ.get("MEMORY_URL") or pinned or "https://memory.heyclyde.me")
+# Installed credentials (~/.config/memory/token) are pinned to the configured server origin.
+if not env_token and token:
+    expected = pinned or "https://memory.heyclyde.me"
+    if url != expected:
+        token = ""
 hmode = os.environ.get("MEMORY_HOOKS") or read_txt(cfg / "hooks") or "full"
 
 server_msg = ""
@@ -511,7 +542,7 @@ export const ANTIGRAVITY_HOOKS_JSON = `{
     ]
   },
   "Track Clyde memory calls": {
-    "PostToolUse": [{ "matcher": "^(mcp_+)?(clyde|memory)[_:\\\\.].*", "hooks": [{ "type": "command", "command": "${HOOK_PATH} antigravity PostToolUse", "timeout": 5 }] }]
+    "PostToolUse": [{ "matcher": "^(call_mcp_tool|(mcp_+)?(clyde|memory)[_:\\\\.].*)$", "hooks": [{ "type": "command", "command": "${HOOK_PATH} antigravity PostToolUse", "timeout": 5 }] }]
   },
   "Save decisions and results to Clyde": {
     "Stop": [{ "type": "command", "command": "${HOOK_PATH} antigravity Stop", "timeout": 5 }]
@@ -590,9 +621,14 @@ ${CLYDE_RULE}`;
 export const CLYDE_VERIFY_SH = `python3 - <<'PY'
 import json, os, pathlib, platform, socket, urllib.request
 cfg = pathlib.Path(os.environ.get("CLYDE_CONFIG_DIR") or pathlib.Path.home().joinpath(".config/memory"))
-tok = (os.environ.get("MEMORY_TOKEN") or cfg.joinpath("token").read_text()).strip()
+env_tok = (os.environ.get("MEMORY_TOKEN") or "").strip()
+tok = env_tok or cfg.joinpath("token").read_text().strip()
 host = socket.gethostname().split(".")[0].lower() or "local"
-url = (os.environ.get("MEMORY_URL") or "https://memory.heyclyde.me").rstrip("/") + "/mcp"
+pinned = cfg.joinpath("url").read_text().strip().rstrip("/") if cfg.joinpath("url").exists() else "https://memory.heyclyde.me"
+base = (os.environ.get("MEMORY_URL") or pinned).strip().rstrip("/")
+if not env_tok and base != pinned:
+    raise SystemExit("Refusing to send installed Clyde token to a different MEMORY_URL.")
+url = base + "/mcp"
 sid = None
 def rpc(rid, method, params):
     global sid

@@ -26,8 +26,15 @@
 # checkout's copy carries a placeholder, which counts as dev.
 VERSION=@MEMORY_VERSION@
 dir=$HOME/.config/memory
-url=${MEMORY_URL:-$(cat "$dir/url" 2>/dev/null)}
-token=${MEMORY_TOKEN:-$(cat "$dir/token" 2>/dev/null)}
+pinned=$(cat "$dir/url" 2>/dev/null)
+url=${MEMORY_URL:-$pinned}
+if [ -n "${MEMORY_TOKEN:-}" ]; then
+  token=$MEMORY_TOKEN
+else
+  token=$(cat "$dir/token" 2>/dev/null)
+  # Installed credentials are pinned to the configured server origin; never send ~/.config/memory/token to an untrusted MEMORY_URL.
+  [ -n "$pinned" ] && [ "${url%/}" = "${pinned%/}" ] || exit 0
+fi
 [ -n "$1" ] && [ -n "$url" ] && [ -n "$token" ] || exit 0
 
 # True for YYYYMMDD.N and nothing else.
@@ -108,6 +115,7 @@ failed='x-memory-update-failed:'
 # The answer's status, headers and body each go their own way. -f stays off: it would let a 3xx body through.
 body=$(mktemp 2>/dev/null) || body=/dev/null
 heads=$(mktemp 2>/dev/null) || heads=/dev/null
+trap '[ "$body" = /dev/null ] || rm -f "$body"; [ "$heads" = /dev/null ] || rm -f "$heads"' EXIT
 code=$(curl -sS -m 3 -D "$heads" -o "$body" -w '%{http_code}' -X POST "$url/hooks/$1?agent=${MEMORY_AGENT:-claude}" \
   -H "Authorization: Bearer $token" -H "Content-Type: application/json" \
   -H "x-memory-client-version: $sent" -H "$failed" \

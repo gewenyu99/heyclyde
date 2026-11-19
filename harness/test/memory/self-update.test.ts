@@ -537,9 +537,12 @@ test('self-update reads its server only from ~/.config/memory/url, never from ME
   const evil = await fakeServer(NEW)
   const c = computer(good.url, OLD)
   try {
-    // A project's settings set MEMORY_URL, and the evil server says a newer client is out. The answer didn't come from
-    // the pinned server, so nothing is fetched from either.
+    // A project's settings set MEMORY_URL without MEMORY_TOKEN: installed token is pinned to good.url, so evil gets zero hits.
     await runHook(c, 'Stop', [], c.hook, { MEMORY_URL: evil.url })
+    await new Promise((r) => setTimeout(r, 600))
+    assert.equal(evil.hits.length, 0, 'the evil server never received the installed token')
+    // Even with an explicit MEMORY_TOKEN, the evil server cannot trigger a self-update.
+    await runHook(c, 'Stop', [], c.hook, { MEMORY_URL: evil.url, MEMORY_TOKEN: 'other-token' })
     await new Promise((r) => setTimeout(r, 600))
     assert.equal(evil.hits.filter((h) => h.startsWith('GET /install/')).length, 0, 'the evil server was asked for no files')
     assert.equal(files(good).length, 0, 'and the pinned server was not asked on its say-so')
@@ -1021,7 +1024,12 @@ test('the rerun-the-installer line names the server in ~/.config/memory/url, nev
   const c = computer(good.url, '20250101.1')
   writeFileSync(join(c.dir, 'update-failed'), '')
   try {
-    const ran = await runHook(c, 'SessionStart', [], c.hook, { MEMORY_URL: evil.url })
+    // Without MEMORY_TOKEN, installed credentials are never sent to MEMORY_URL=evil.url.
+    const blocked = await runHook(c, 'SessionStart', [], c.hook, { MEMORY_URL: evil.url })
+    assert.equal(blocked.stdout, '')
+    assert.equal(evil.hits.length, 0)
+    // Even with an explicit MEMORY_TOKEN, the rerun line names good.url from ~/.config/memory/url, never MEMORY_URL.
+    const ran = await runHook(c, 'SessionStart', [], c.hook, { MEMORY_URL: evil.url, MEMORY_TOKEN: 'other-token' })
     assert.match(ran.stdout, new RegExp(`Rerun \`curl -fsSL ${good.url.replace(/[.]/g, '\\.')}/install \\| sh\``))
     assert.ok(!ran.stdout.includes(evil.url), ran.stdout)
   } finally {
@@ -1082,6 +1090,35 @@ test('a curl | sh install trusts nothing in the directory it runs from, only wha
     await fake.close()
     rmSync(home, { recursive: true, force: true })
     rmSync(cwd, { recursive: true, force: true })
+  }
+})
+
+test('a curl | sh install verifies the signed manifest and rejects tampered files or wrong keys', async () => {
+  const fake = await fakeServer(NEW)
+  const home = tempDir('memory-stdin-verify-')
+  mkdirSync(join(home, '.config', 'memory'), { recursive: true })
+  writeFileSync(join(home, '.config', 'memory', 'token'), `${TOKEN}\n`, { mode: 0o600 })
+  writeFileSync(join(home, '.config', 'memory', 'signing-pub.pem'), readFileSync(trustedKey().pub))
+  const runStdin = () => new Promise<number | null>((resolve) => {
+    const env = {
+      PATH: '/usr/bin:/bin', HOME: home, MEMORY_URL: fake.url, MEMORY_DEVICE: 'test-mac', CURL_CA_BUNDLE: localTls().certPath, NO_PROXY: '127.0.0.1', no_proxy: '127.0.0.1',
+    }
+    const child = spawn('sh', [], { env, stdio: ['pipe', 'ignore', 'ignore'] })
+    child.stdin.end(readFileSync(join(CLIENT, 'install.sh')))
+    child.on('close', resolve)
+  })
+  try {
+    fake.tamper['clyde-hook.sh'] = '#!/bin/sh\necho tampered\n'
+    assert.notEqual(await runStdin(), 0, 'tampered clyde-hook.sh is rejected')
+    assert.equal(existsSync(join(home, '.config', 'memory', 'clyde-hook.sh')), false)
+    delete fake.tamper['clyde-hook.sh']
+
+    fake.signWith.manifest = otherKey()
+    assert.notEqual(await runStdin(), 0, 'manifest signed by untrusted key is rejected against installed signing-pub.pem')
+    assert.equal(existsSync(join(home, '.config', 'memory', 'clyde-hook.sh')), false)
+  } finally {
+    await fake.close()
+    rmSync(home, { recursive: true, force: true })
   }
 })
 
