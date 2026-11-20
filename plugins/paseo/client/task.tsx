@@ -26,7 +26,7 @@ const PHASE_GLYPH: Record<Status, string> = {
   skipped: "–",
 };
 
-/** Attempts keep failed criteria, failed checks, worker, and retry evidence visible; passing check logs stay expandable. */
+/** Attempts keep failed criteria, failed checks, worker, and retry evidence visible in a two-column card; passing check logs stay expandable. */
 function AttemptRow({ theme, a, compact = false, alreadyShown = [] }: { theme: PluginTheme; a: AttemptView; compact?: boolean; alreadyShown?: string[] }) {
   const [open, setOpen] = useState(false);
   const [checksOpen, setChecksOpen] = useState(false);
@@ -47,31 +47,56 @@ function AttemptRow({ theme, a, compact = false, alreadyShown = [] }: { theme: P
   const uniqueEvidence = (text?: string) => !!text?.trim() && text !== "No result posted yet." && !alreadyShown.some(shown => shown?.trim() === text.trim());
   const extraChecksCount = otherCriteria.length + passedChecks.length + (a.judgeRung ? 1 : 0);
   return (
-    <View style={{ borderLeftWidth: 2, borderLeftColor: toneHue.ink, paddingLeft: 10, gap: 7, paddingVertical: 5 }}>
+    <View style={{ borderWidth: 1, borderColor: theme.colors.border, borderLeftWidth: 3, borderLeftColor: toneHue.ink, borderRadius: 8, overflow: "hidden", backgroundColor: theme.colors.surface1 }}>
       {compact ? (
-        <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => setOpen(!open)} style={{ minHeight: MIN_HIT_HEIGHT, flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-          <Text style={{ color: a.interrupted ? theme.colors.foregroundMuted : theme.colors.foreground, fontSize: 13, flexShrink: 1 }}>
-            {open ? "▾" : "▸"} Attempt {a.n} · {a.rung || "Worker"} · {duration(a.startedAt, a.endedAt)}
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => setOpen(!open)} style={{ minHeight: MIN_HIT_HEIGHT, flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8, backgroundColor: theme.colors.surface2, paddingHorizontal: 12 }}>
+          <Text style={{ color: a.interrupted ? theme.colors.foregroundMuted : theme.colors.foreground, fontSize: 12, fontWeight: "700", flexShrink: 1 }}>
+            {open ? "▾" : "▸"} ATTEMPT {a.n} · {a.rung || "Worker"} · {duration(a.startedAt, a.endedAt)}
           </Text>
           <Text style={{ color: toneHue.ink, fontSize: 12, fontWeight: "700" }}>{a.outcome}</Text>
         </Pressable>
       ) : (
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
-            Attempt {a.n} · {a.rung || "Worker"} · {duration(a.startedAt, a.endedAt)}
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", backgroundColor: theme.colors.surface2, paddingVertical: 8, paddingHorizontal: 12 }}>
+          <Text style={{ color: theme.colors.foreground, fontSize: 12, fontWeight: "700" }}>
+            ATTEMPT {a.n} · {a.rung || "Worker"} · {duration(a.startedAt, a.endedAt)}
           </Text>
           <Text style={{ color: toneHue.ink, fontSize: 12, fontWeight: "700" }}>{a.outcome}</Text>
         </View>
       )}
       {showEvidence && (
-        <>
-          {uniqueEvidence(a.evidence) && <FormattedBody theme={theme} text={a.evidence} />}
-          {fails.map((c, index) => (
-            <View key={`fail-${index}`} style={{ gap: 3 }}>
-              <Text style={{ color: t.red.ink, fontSize: 13, fontWeight: "600" }}>✕ {c.criterion}</Text>
-              {!!c.evidence?.trim() && <Text selectable style={{ color: theme.colors.foregroundMuted, fontSize: 13, lineHeight: 20 }}>{c.evidence}</Text>}
+        <View style={{ padding: 12, gap: 10 }}>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+            <View style={{ flex: 1, minWidth: 220, gap: 5 }}>
+              <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "700", letterSpacing: 0.5 }}>WORKER EVIDENCE</Text>
+              {uniqueEvidence(a.evidence) ? (
+                <FormattedBody theme={theme} text={a.evidence} />
+              ) : (
+                <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>{a.evidence || "No result posted yet."}</Text>
+              )}
             </View>
-          ))}
+            <View style={{ flex: 1, minWidth: 220, gap: 5, borderLeftWidth: 1, borderLeftColor: theme.colors.border, paddingLeft: 12 }}>
+              <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "700", letterSpacing: 0.5 }}>
+                JUDGE{a.judgeRung ? ` · ${a.judgeRung}` : ""} · PER CRITERION
+              </Text>
+              {a.criteria.length ? (
+                <>
+                  {fails.map((c, index) => (
+                    <View key={`fail-${index}`} style={{ gap: 2 }}>
+                      <Text style={{ color: t.red.ink, fontSize: 13, fontWeight: "600" }}>✕ {c.criterion}</Text>
+                      {!!c.evidence?.trim() && <Text selectable style={{ color: theme.colors.foregroundMuted, fontSize: 12, lineHeight: 18 }}>{c.evidence}</Text>}
+                    </View>
+                  ))}
+                  {otherCriteria.map((c, index) => (
+                    <Text key={`ok-${index}`} style={{ color: c.result === "pass" ? t.green.ink : theme.colors.foregroundMuted, fontSize: 12, lineHeight: 18 }}>
+                      {c.result === "pass" ? "✓" : "○"} {c.criterion}
+                    </Text>
+                  ))}
+                </>
+              ) : (
+                <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>Awaiting verdict.</Text>
+              )}
+            </View>
+          </View>
           {badChecks.map((check, index) => (
             <View key={`bad-check-${index}`} style={{ gap: 3, backgroundColor: theme.colors.surface2, padding: 8, borderRadius: 6 }}>
               <Text selectable style={{ color: theme.colors.statusDanger, fontSize: 12, fontFamily: "Menlo", fontWeight: "600" }}>$ {check.cmd} · exit {check.code}</Text>
@@ -84,15 +109,15 @@ function AttemptRow({ theme, a, compact = false, alreadyShown = [] }: { theme: P
                 <Text style={{ color: theme.colors.accent, fontSize: 13 }}>{checksOpen ? "Hide checks" : `View checks (${passedChecks.length + otherCriteria.length})`}</Text>
               </Pressable>
               {checksOpen && (
-                <View style={{ gap: 6 }}>
+                <View style={{ gap: 6, backgroundColor: theme.colors.surface2, padding: 8, borderRadius: 6 }}>
                   {otherCriteria.map((c, index) => (
-                    <Text key={index} style={{ color: c.result === "pass" ? t.green.ink : theme.colors.foreground, fontSize: 13 }}>
+                    <Text key={index} style={{ color: c.result === "pass" ? t.green.ink : theme.colors.foreground, fontSize: 12 }}>
                       {c.result === "pass" ? "✓" : "○"} {c.criterion}{c.evidence ? ` — ${c.evidence}` : ""}
                     </Text>
                   ))}
                   {passedChecks.map((check, index) => (
                     <View key={index} style={{ gap: 3 }}>
-                      <Text style={{ color: theme.colors.foreground, fontSize: 12, fontFamily: "Menlo" }}>$ {check.cmd} · exit {check.code}</Text>
+                      <Text style={{ color: t.green.ink, fontSize: 12, fontFamily: "Menlo" }}>$ {check.cmd} · exit {check.code}</Text>
                       {!!check.output && <Text selectable style={{ color: theme.colors.foregroundMuted, fontSize: 12, lineHeight: 18, fontFamily: "Menlo" }}>{check.output}</Text>}
                     </View>
                   ))}
@@ -101,7 +126,7 @@ function AttemptRow({ theme, a, compact = false, alreadyShown = [] }: { theme: P
               )}
             </View>
           )}
-        </>
+        </View>
       )}
     </View>
   );

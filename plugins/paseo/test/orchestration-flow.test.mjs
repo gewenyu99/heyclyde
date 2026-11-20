@@ -6,7 +6,7 @@ const require=createRequire(import.meta.url),ts=require('typescript');
 const compiled=ts.transpileModule(readFileSync(new URL('../client/orchestration-flow.tsx',import.meta.url),'utf8'),{compilerOptions:{jsx:ts.JsxEmit.ReactJSX,module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 const module={exports:{}};
 new Function('require','module','exports',compiled)(name=>name==='react-native'?{Pressable:'Pressable',ScrollView:'ScrollView',Text:'Text',View:'View'}:name==='./palette'?{}:require(name),module,module.exports);
-const {orchestrationNodes,flowLayout,flowEdgeKind}=module.exports;
+const {orchestrationNodes,orchestrationBands,bandFlowLayout,flowLayout,flowEdgeKind}=module.exports;
 const piece=(id,phase,status='pending',extra={})=>({id,title:id==='PLAN'?'Plan the work':id==='S1'?'Implement routing':id,status,phases:[{stage:phase,label:phase,status}],...extra});
 const view=(pieces,attempts={})=>({steps:[{name:'Actual work',pieces}],attempts,approve:false});
 test('planning shows the real plan and explicit future approval/build/review, without invented completion',()=>{
@@ -67,4 +67,25 @@ test('nodes surface worker, live action, attempts/sent-back meta, phases, and me
   assert.equal(flowEdgeKind(nodes[1],nodes[2]),'live');
   assert.equal(flowEdgeKind(nodes[2],{id:'ask',title:'Ask',status:'asking',observed:true}),'ask');
   assert.equal(flowEdgeKind(nodes[2],nodes[3]),'order');
+});
+test('multi-band giant flow layout stacks step bands with left label gutters and 8px-grid cells',()=>{
+  const plan=piece('PLAN','plan','passed',{rung:'claude · opus',handoff:true});
+  const s1=piece('S1','code-it-works:s1','passed',{rung:'claude · sonnet'});
+  const s2=piece('S2','code-it-works:s2','running',{rung:'codex · sol',progress:'Writing tests'});
+  const s3=piece('S3','code-it-works:s3','pending');
+  const s4=piece('S4','code-it-works:s4','pending');
+  const review=piece('REVIEW','review','pending');
+  const v=view([plan,s1,s2,s3,s4,review],{plan:[{n:1}]});v.planApproval='passed';
+  const bands=orchestrationBands(v);
+  assert.equal(bands.length,4);
+  assert.equal(bands[0].name,'Plan & approve');
+  assert.equal(bands[1].name,'Build · Slices 1–3');
+  assert.equal(bands[2].name,'Build · Slice 4');
+  assert.equal(bands[3].name,'Verify & review');
+  const layout=bandFlowLayout(bands,800);
+  assert.ok(layout.height > 1000,'multi-band giant graph stacks bands vertically');
+  assert.equal(layout.positions.size,7);
+  assert.ok(layout.positions.get('S1').y > layout.positions.get('PLAN').y);
+  assert.ok(layout.positions.get('S4').y > layout.positions.get('S1').y);
+  assert.ok(layout.positions.get('REVIEW').y > layout.positions.get('S4').y);
 });
