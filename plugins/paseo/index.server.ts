@@ -187,6 +187,7 @@ async function resolveProjectChat(
   targetPath: string | undefined,
   title: string,
   exactRepository = false,
+  createIfMissing = true,
 ): Promise<{ agentId: string; created: boolean } | null> {
   const [{ projects }, { entries: workspaces }] = await Promise.all([
     paseo.projects.list(),
@@ -202,6 +203,7 @@ async function resolveProjectChat(
     .filter((a) => a.workspaceId && workspaceIds.has(a.workspaceId) && isProjectChat(a))
     .sort((a, b) => (b.updatedAt ?? b.createdAt ?? "").localeCompare(a.updatedAt ?? a.createdAt ?? ""));
   if (chats.length > 0) return { agentId: chats[0].id, created: false };
+  if (!createIfMissing) return null;
   const agentId = await createProjectChat(paseo, match.project, matchingWorkspaces, "auto", title, "open-chat-" + randomUUID());
   return { agentId, created: true };
 }
@@ -214,6 +216,22 @@ export default function contribute(server: PluginServerContext) {
   const live = follow(ensureCompanion);
   const cancelUpdate = typeof readJson<{ pid?: number }>("daemon.json")?.pid === "number" ? updateWhenIdle() : undefined;
   const residentControl = residents(server);
+  server.addHook("agent.archive.after", async ({ agent }, { paseo }) => {
+    try {
+      const runs = await call<RawRun[]>("GET", "/runs", undefined, { recover: false });
+      const orphaned = runs.filter(
+        (r) => !r.archivedAt && (r.status === "running" || r.status === "asking") && r.paseoParentId === agent.id && !residentControl.isQuestRun(r.id),
+      );
+      if (!orphaned.length) return;
+      const candidates = (await listAllAgents(paseo)).filter((a) => a.id !== agent.id);
+      for (const run of orphaned) {
+        const destination = await resolveProjectChat(paseo, candidates, run.repo ?? run.cwd, run.title || run.id, true, false);
+        if (!destination) continue;
+        await call("POST", `/runs/${encodeURIComponent(run.id)}/parent`, { paseoParentId: destination.agentId }, { recover: false });
+        await residentControl.openForRun(run, destination.agentId, paseo, true).catch(() => {});
+      }
+    } catch { /* Best-effort reattach; Retry still repairs the parent on demand. */ }
+  });
   type QuestStart = { quest:number;project:string;workspaceId?:string;agent?:string;id?:string };
   const questStarts = readJson<Record<string,QuestStart>>("quest-starts.json") ?? {};
   const startingQuests = new Map<string,Promise<{id:string}>>();

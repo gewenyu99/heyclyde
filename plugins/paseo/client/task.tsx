@@ -525,7 +525,7 @@ export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = 
                     {retrying ? "Retrying…" : view.fullAccess ? "Allow full access for this run and retry" : "Retry"}
                   </Text>
                 </Pressable>
-                {!embeddedSupervisor && !activity?.permissionAgentId && <OpenChatButton theme={theme} kind={view.kind} id={view.id} openAgent={openAgent} onError={setRetryError} />}
+                {(!embeddedSupervisor || /originating Paseo (agent|workspace)/i.test(view.question)) && !activity?.permissionAgentId && <OpenChatButton theme={theme} kind={view.kind} id={view.id} openAgent={openAgent} onError={setRetryError} />}
               </View>
             ) : (
               <View style={{ gap: 8 }}>

@@ -79,7 +79,15 @@ test("clyde.open-chat resolves live origin, reattaches archived runs, falls back
   }));
 
   const rpc = new Map();
-  const teardown = contribute({ handle: (c, fn) => rpc.set(c.name, fn), addHook: () => {} });
+  const hooks = new Map();
+  const teardown = contribute({
+    handle: (c, fn) => rpc.set(c.name, fn),
+    addHook: (name, fn) => {
+      const list = hooks.get(name) ?? [];
+      list.push(fn);
+      hooks.set(name, list);
+    },
+  });
   t.after(() => teardown());
   const openChat = rpc.get("clyde.open-chat");
 
@@ -225,4 +233,27 @@ test("clyde.open-chat resolves live origin, reattaches archived runs, falls back
     openChat({ kind: "thread", id: "t-orphan" }, { paseo }),
     /Could not find or open a chat for this task/,
   );
+
+  // 8. Archiving a run's originating chat automatically reattaches active non-quest runs to another live project chat without spawning a new chat.
+  const createdBeforeArchive = createdAgents.length;
+  runs.set("r-reattach", {
+    id: "r-reattach",
+    title: "Mid-flight run",
+    status: "running",
+    repo: repoDir,
+    paseoParentId: "origin-reattach",
+    asks: [],
+    stages: [],
+    createdAt: "2026-11-19T06:00:00Z",
+    updatedAt: "2026-11-19T06:00:00Z",
+  });
+  agentEntries = [
+    { agent: { id: "origin-reattach", title: "Origin", provider: "claude", workspaceId: "ws-1", cwd: repoDir, updatedAt: "2026-11-19T06:00:00Z", labels: {}, metadata: {} } },
+    { agent: { id: "live-backup", title: "Backup chat", provider: "claude", workspaceId: "ws-1", cwd: repoDir, updatedAt: "2026-11-19T06:05:00Z", labels: {}, metadata: {} } },
+  ];
+  for (const fn of hooks.get("agent.archive.after") ?? []) {
+    await fn({ agent: { id: "origin-reattach" } }, { paseo });
+  }
+  assert.equal(runs.get("r-reattach").paseoParentId, "live-backup");
+  assert.equal(createdAgents.length, createdBeforeArchive);
 });
