@@ -50,7 +50,7 @@ export function Sidecar(props: PluginAgentPanelProps | PluginWorkspacePanelProps
   const listError = runs.data?.error ? formatRpcError(runs.data.error) : runs.error ? formatRpcError(runs.error) : "";
   const detailError = detail.data?.error ? formatRpcError(detail.data.error) : detail.error ? formatRpcError(detail.error) : "";
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: c.surface0 }} contentContainerStyle={{ padding: 14, gap: 16 }}>
+    <View style={{ flex: 1, minHeight: 0, backgroundColor: c.surface0, padding: 14, gap: 16 }}>
       <Lockup theme={theme} width={88} />
       <View accessibilityRole="tablist" style={{ flexDirection: "row", gap: 4, borderBottomWidth: 1, borderColor: c.border }}>
         {(["Quests", "New task", "Runs"] as const).map((v) => {
@@ -80,7 +80,9 @@ export function Sidecar(props: PluginAgentPanelProps | PluginWorkspacePanelProps
       </View>
       {tab === "Quests"
         ? <Quests theme={theme} workspaceId={workspaceId} agent={origin} onStarted={started} />
-        : tab === "New task"
+        : (
+        <ScrollView style={{ flex: 1, minHeight: 0 }} contentContainerStyle={{ gap: 16, paddingBottom: 16 }}>
+        {tab === "New task"
         ? <Composer theme={theme} workspaceId={workspaceId} agentId={origin} onStarted={started} />
         : id
         ? (
@@ -140,6 +142,8 @@ export function Sidecar(props: PluginAgentPanelProps | PluginWorkspacePanelProps
             )}
           </View>
         )}
-    </ScrollView>
+        </ScrollView>
+        )}
+    </View>
   );
 }

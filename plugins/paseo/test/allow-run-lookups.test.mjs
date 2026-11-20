@@ -1,16 +1,70 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { allowRunLookups } from '../server/allow-run-lookups.ts';
 
 const runId='r-a11ce001',threadId='t-worker-1',workerId='worker-1';
-function fixture(t){
-  const home=mkdtempSync(join(tmpdir(),'clyde-run-lookups-')), previous=process.env.CLYDE_HOME;
+const TRUSTED_BASE='https://memory.heyclyde.me';
+const TRUSTED_MCP=TRUSTED_BASE+'/mcp';
+
+function fixture(t, opts = {}){
+  const root=mkdtempSync(join(tmpdir(),'clyde-run-lookups-'));
+  const home=join(root,'workspace');
+  const configDir=join(root,'clyde-config');
+  const claudeDir=join(root,'claude-config');
+  const codexDir=join(root,'codex-config');
+  const geminiDir=join(root,'gemini-config');
+  mkdirSync(home,{recursive:true});
+  mkdirSync(configDir,{recursive:true});
+  mkdirSync(claudeDir,{recursive:true});
+  mkdirSync(codexDir,{recursive:true});
+  mkdirSync(join(geminiDir,'config'),{recursive:true});
+
+  const savedEnv={
+    CLYDE_HOME:process.env.CLYDE_HOME,
+    CLYDE_CONFIG_DIR:process.env.CLYDE_CONFIG_DIR,
+    CLAUDE_CONFIG_DIR:process.env.CLAUDE_CONFIG_DIR,
+    CLAUDE_CONFIG_FILE:process.env.CLAUDE_CONFIG_FILE,
+    CLAUDE_MANAGED_MCP_FILE:process.env.CLAUDE_MANAGED_MCP_FILE,
+    CODEX_HOME:process.env.CODEX_HOME,
+    GEMINI_CONFIG_DIR:process.env.GEMINI_CONFIG_DIR,
+  };
   process.env.CLYDE_HOME=home;
+  process.env.CLYDE_CONFIG_DIR=configDir;
+  process.env.CLAUDE_CONFIG_DIR=claudeDir;
+  process.env.CLAUDE_CONFIG_FILE=join(claudeDir,'.claude.json');
+  process.env.CLAUDE_MANAGED_MCP_FILE=join(claudeDir,'managed-mcp.json');
+  process.env.CODEX_HOME=codexDir;
+  process.env.GEMINI_CONFIG_DIR=geminiDir;
+
   writeFileSync(join(home,'daemon.json'),JSON.stringify({port:11111,token:'fixture'}));
-  t.after(()=>{if(previous===undefined)delete process.env.CLYDE_HOME;else process.env.CLYDE_HOME=previous;rmSync(home,{recursive:true,force:true});});
+  if(opts.trustedUrl !== null){
+    writeFileSync(join(configDir,'url'), opts.trustedUrl ?? TRUSTED_BASE);
+  }
+  if(opts.claudeConfig !== null){
+    writeFileSync(process.env.CLAUDE_CONFIG_FILE, JSON.stringify(opts.claudeConfig ?? {
+      mcpServers:{memory:{type:'http',url:TRUSTED_MCP}},
+    }));
+  }
+  if(opts.codexToml !== null){
+    writeFileSync(join(codexDir,'config.toml'), opts.codexToml ?? `[mcp_servers.memory]\nurl = "${TRUSTED_MCP}"\n`);
+  }
+  if(opts.geminiConfig !== null){
+    writeFileSync(join(geminiDir,'config','mcp_config.json'), JSON.stringify(opts.geminiConfig ?? {
+      mcpServers:{memory:{serverUrl:TRUSTED_MCP}},
+    }));
+  }
+
+  t.after(()=>{
+    for(const [k,v] of Object.entries(savedEnv)){
+      if(v===undefined)delete process.env[k];
+      else process.env[k]=v;
+    }
+    rmSync(root,{recursive:true,force:true});
+  });
+
   const request={id:'permission-1',provider:'claude',kind:'tool',name:'mcp__paseo__clyde_recall',input:{query:'Project context'}};
   const attempt={n:1,threadId,rung:{backend:'claude'},startedAt:'now'};
   const stage={name:'plan',status:'running',attempts:[attempt]};
@@ -33,12 +87,13 @@ function fixture(t){
   })}};
   const invoke=()=>hooks.get('agent.permission.before')({agent:{id:agent.id},request:structuredClone(request)},{paseo});
   const orchestrator=()=>{agent.id='orchestrator-1';agent.labels={'clyde.orchestrator':runId};};
-  return {home,request,attempt,stage,run,thread,agent,state,invoke,orchestrator};
+  return {root,home,configDir,claudeDir,codexDir,geminiDir,request,attempt,stage,run,thread,agent,state,invoke,orchestrator};
 }
 const noGrant=f=>{assert.deepEqual(f.state.responses,[]);assert.equal(f.state.answered,0);};
 
 test('only exact read-only lookup tools get a single-request allow for verified current workers or orchestrators',async t=>{
-  for(const role of ['worker','orchestrator'])for(const name of ['mcp__paseo__clyde_recall','mcp__paseo__clyde_recall_more'])await t.test(role+' '+name,async t=>{
+  const names=['mcp__paseo__clyde_recall','mcp__paseo__clyde_recall_more','mcp__memory__recall','mcp__memory__recall_more','mcp__memory__check_messages'];
+  for(const role of ['worker','orchestrator'])for(const name of names)await t.test(role+' '+name,async t=>{
     const f=fixture(t);if(role==='orchestrator')f.orchestrator();f.request.name=name;
     await f.invoke();
     assert.deepEqual(f.state.responses,[{requestId:'permission-1',response:{behavior:'allow'}}]);
@@ -49,10 +104,79 @@ test('only exact read-only lookup tools get a single-request allow for verified 
   });
 });
 
+test('trusted memory server verification works across claude, codex, and antigravity without mutating settings',async t=>{
+  for(const provider of ['claude','codex','antigravity'])await t.test(provider,async t=>{
+    const f=fixture(t);
+    f.request.provider=provider;f.agent.provider=provider;f.thread.rung.backend=provider;f.attempt.rung.backend=provider;
+    f.request.name='mcp__memory__check_messages';
+    const before=readFileSync(process.env.CLAUDE_CONFIG_FILE,'utf8');
+    await f.invoke();
+    assert.equal(f.state.answered,1);
+    assert.equal(readFileSync(process.env.CLAUDE_CONFIG_FILE,'utf8'),before,'never writes local settings');
+  });
+});
+
+test('untrusted, shadowed, stdio, missing, or malformed memory server configs fail closed for mcp__memory__ reads',async t=>{
+  const cases={
+    'missing clyde url': { opts:{trustedUrl:null} },
+    'untrusted claude url': { opts:{claudeConfig:{mcpServers:{memory:{type:'http',url:'https://evil.example/mcp'}}}} },
+    'stdio claude memory server': { opts:{claudeConfig:{mcpServers:{memory:{type:'stdio',command:'node',args:['evil.js']}}}} },
+    'disabled claude memory server': { opts:{claudeConfig:{mcpServers:{memory:{type:'http',url:TRUSTED_MCP,disabled:true}}}} },
+    'missing claude memory server': { opts:{claudeConfig:{mcpServers:{other:{type:'http',url:TRUSTED_MCP}}}} },
+    'project .mcp.json shadows memory with untrusted url': {
+      mutate:f=>writeFileSync(join(f.home,'.mcp.json'),JSON.stringify({mcpServers:{memory:{type:'http',url:'https://evil.example/mcp'}}})),
+    },
+    'parent dir .mcp.json shadows memory with stdio': {
+      mutate:f=>writeFileSync(join(f.root,'.mcp.json'),JSON.stringify({mcpServers:{memory:{command:'sh',args:['-c','pwn']}}})),
+    },
+    'malformed project .mcp.json fails closed': {
+      mutate:f=>writeFileSync(join(f.home,'.mcp.json'),'{broken json'),
+    },
+    'project-scoped .claude.json shadows memory': {
+      mutate:f=>writeFileSync(process.env.CLAUDE_CONFIG_FILE,JSON.stringify({
+        mcpServers:{memory:{type:'http',url:TRUSTED_MCP}},
+        projects:{[f.home]:{mcpServers:{memory:{type:'http',url:'https://evil.example/mcp'}}}},
+      })),
+    },
+    'request metadata url contradicts trusted server': {
+      mutate:f=>{f.request.metadata={serverUrl:'https://evil.example/mcp'};},
+    },
+    'request detail server contradicts memory': {
+      mutate:f=>{f.request.detail={server:'evil'};},
+    },
+    'untrusted codex toml url': {
+      opts:{codexToml:'[mcp_servers.memory]\nurl = "https://evil.example/mcp"\n'},
+      mutate:f=>{f.request.provider='codex';f.agent.provider='codex';f.thread.rung.backend='codex';},
+    },
+    'codex stdio command': {
+      opts:{codexToml:'[mcp_servers.memory]\ncommand = "evil"\nurl = "https://memory.heyclyde.me/mcp"\n'},
+      mutate:f=>{f.request.provider='codex';f.agent.provider='codex';f.thread.rung.backend='codex';},
+    },
+    'untrusted antigravity url': {
+      opts:{geminiConfig:{mcpServers:{memory:{serverUrl:'https://evil.example/mcp'}}}},
+      mutate:f=>{f.request.provider='antigravity';f.agent.provider='antigravity';f.thread.rung.backend='antigravity';},
+    },
+    'unknown provider fails closed': {
+      mutate:f=>{f.request.provider='custom';f.agent.provider='custom';f.thread.rung.backend='custom';},
+    },
+  };
+  for(const [name,spec] of Object.entries(cases))await t.test(name,async t=>{
+    const f=fixture(t, spec.opts);
+    f.request.name='mcp__memory__recall';
+    spec.mutate?.(f);
+    await f.invoke();
+    noGrant(f);
+  });
+});
+
 test('write tools, shell commands, namespace lookalikes and promoted permission actions remain for explicit review',async t=>{
   const requests=[
     {name:'mcp__paseo__clyde_remember'}, {name:'mcp__paseo__clyde_delegate'}, {name:'Bash'}, {name:'Write'},
-    {name:'mcp__memory__recall'}, {name:'mcp__paseo__clyde_recall_extra'}, {name:'mcp__paseo__CLYDE_RECALL'},
+    {name:'mcp__memory__remember'}, {name:'mcp__memory__feedback'}, {name:'mcp__memory__ack_messages'},
+    {name:'mcp__memory__post_message'}, {name:'mcp__memory__claim_quest'}, {name:'mcp__memory__get_entry'},
+    {name:'mcp__memory__get_blob'}, {name:'mcp__memory__list_quests'}, {name:'mcp__other__recall'},
+    {name:'mcp__memory__recall_extra'}, {name:'mcp__memory__RECALL'},
+    {name:'mcp__paseo__clyde_recall_extra'}, {name:'mcp__paseo__CLYDE_RECALL'},
     {kind:'plan'}, {kind:'question'},
     {actions:[{id:'allow-always',label:'Always allow',behavior:'allow'}]},
     {actions:[{id:'implement-resume',label:'Implement and resume',behavior:'allow',intent:'implement_resume'}]},
@@ -67,6 +191,7 @@ test('write tools, shell commands, namespace lookalikes and promoted permission 
 test('ordinary chats, forged ownership labels, foreign native agents and provider mismatches never auto-grant',async t=>{
   const variants={
     ordinary:f=>{f.agent.labels={};},
+    'ordinary chat memory recall':f=>{f.agent.labels={};f.request.name='mcp__memory__recall';},
     'forged run label':f=>{f.agent.labels['clyde.run']='r-deadbeef';},
     'malformed run label':f=>{f.agent.labels['clyde.run']='../../other';},
     'forged thread label':f=>{f.agent.labels['clyde.thread']='t-other';},

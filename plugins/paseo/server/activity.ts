@@ -51,7 +51,8 @@ type Run = {
   directory?: boolean; repo?: string;
   asks: Ask[];
   auditedHead?: string;
-  stages: { summary?: string }[];
+  pullRequest?: string;
+  stages: { name?: string; status?: string; summary?: string }[];
 };
 const priorityRank = (p: string) => ({ urgent: 0, high: 1, normal: 2, low: 3 } as Record<string, number>)[p] ?? 4;
 const keyFor = (text: string) => createHash("sha256").update(text).digest("hex").slice(0, 24);
@@ -259,6 +260,43 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => (R
     if (!result.success) throw new Error("Clyde did not return a structured quest board.");
     return result.data.quests;
   }
+  async function enrichBoardQuests(quests: BoardQuest[]): Promise<BoardQuest[]> {
+    const runs = await call<Run[]>("GET", "/runs", undefined, { recover: false }).catch(() => []);
+    const runById = new Map(runs.filter((r) => !r.archivedAt).map((r) => [r.id, r]));
+    const questStarts = readJson<Record<string, { quest?: number; id?: string }>>("quest-starts.json") ?? {};
+    const questRun = new Map<number, Run>();
+    for (const [runId, origin] of Object.entries(origins)) {
+      const qid = origin.job?.quest;
+      const run = qid ? runById.get(runId) : undefined;
+      if (qid && run) questRun.set(qid, run);
+    }
+    for (const row of Object.values(questStarts)) {
+      if (typeof row.quest === "number" && row.id && !questRun.has(row.quest)) {
+        const run = runById.get(row.id);
+        if (run) questRun.set(row.quest, run);
+      }
+    }
+    return quests.map((q) => {
+      const state = (q.state || "open").toLowerCase();
+      const linked = questRun.get(q.id);
+      const reviewState = ["review", "needs_review", "in_review"].includes(state);
+      const reviewRun = Boolean(
+        linked &&
+          state !== "done" &&
+          state !== "abandoned" &&
+          (linked.status === "asking" ||
+            linked.stages?.some(
+              (s) => s.name === "review" && (s.status === "running" || s.status === "asking"),
+            ) ||
+            (linked.status === "done" && Boolean(linked.pullRequest))),
+      );
+      return {
+        ...q,
+        ...(linked ? { run_id: linked.id, run_status: linked.status } : {}),
+        ...(reviewState || reviewRun ? { needs_review: true } : {}),
+      };
+    });
+  }
   async function sharedBoard() {
     const all: BoardQuest[] = [];
     let after = 0;
@@ -271,9 +309,10 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => (R
         // An older service still exposes its signed-in MCP board. Never borrow an agent's profile to widen visibility.
         const { card } = await sharedBoardReply({ show: "all", context: "all", limit: 50 });
         const rows = z.object({ quests: z.array(boardQuest.extend({ state: z.string() })) }).parse(card).quests;
+        const enriched = await enrichBoardQuests(rows);
         return {
           legacy: true,
-          quests: rows.sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority) || a.id - b.id),
+          quests: enriched.sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority) || a.id - b.id),
         };
       }
       const page = z.object({ quests: z.array(boardQuest), after: z.number().int().nullable() }).parse(
@@ -284,9 +323,10 @@ export function activity(server: PluginServerContext, rowFor: (id: string) => (R
       if (page.after <= after) throw Error("Clyde returned an invalid board cursor");
       after = page.after;
     }
+    const enriched = await enrichBoardQuests(all);
     return {
       legacy: false,
-      quests: all.sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority) || a.id - b.id),
+      quests: enriched.sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority) || a.id - b.id),
     };
   }
   server.handle(sharedBoardRpc, sharedBoard);

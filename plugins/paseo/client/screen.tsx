@@ -16,10 +16,11 @@ import { SupervisorChat } from "./supervisor-chat";
 import { TaskScreen } from "./task";
 import {Lockup,clydeTheme} from "./brand";
 
-function Panel({ theme, children }: { theme: PluginTheme; children: ReactNode }) {
+function Panel({ theme, children, fill = false }: { theme: PluginTheme; children: ReactNode; fill?: boolean }) {
   return (
     <View
       style={{
+        ...(fill ? { flex: 1, minHeight: 0 } : {}),
         backgroundColor: theme.colors.surface1,
         borderColor: theme.colors.border,
         borderWidth: 1,
@@ -170,8 +171,16 @@ function Board(
               </View>
             </View>
           )
+          : tab === "quests"
+          ? (
+            <View style={{ flex: 1, minHeight: 0 }}>
+              <Panel theme={theme} fill>
+                <Quests theme={theme} workspaceId={workspaceId} onStarted={run=>setPicked("run:"+run)}/>
+              </Panel>
+            </View>
+          )
           : <ScrollView style={{ flex: 1, minHeight: 0 }} contentContainerStyle={{ paddingBottom: 20 }}>
-          {tab === "quests" ? <Panel theme={theme}><Quests theme={theme} workspaceId={workspaceId} onStarted={run=>setPicked("run:"+run)}/></Panel> : tab === "agents"
+          {tab === "agents"
           ? (
             <Panel theme={theme}>
               <Roster theme={theme} workspaceId={workspaceId} openAgent={openAgent} />

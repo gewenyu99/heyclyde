@@ -8,58 +8,162 @@ import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Pressable, TextInput, Text, View } from "react-native";
-import { answerRpc,steerRpc, stopRpc, transcriptRpc, type AttemptView, type TaskView } from "../shared/clyde";
+import { answerRpc, steerRpc, stopRpc, transcriptRpc, type AttemptView, type Status, type TaskView } from "../shared/clyde";
 import { palette } from "./brand.generated";
-import { ago, duration, formatRpcError, MIN_HIT_HEIGHT, STATUS_LABEL, tones } from "./nodes";
+import { ago, duration, formatRpcError, hue, MIN_HIT_HEIGHT, Pill, STATUS_LABEL, tones } from "./nodes";
 import { groupAttempts, parseInline, parseTranscriptBlocks, type TranscriptBlock } from "./transcript-format";
 import { scheme } from "./palette";
 
-/** Attempts keep their evidence visible; verbose check output and past attempts are optional. */
+const QUIET_MS = 10 * 60_000;
+const PHASE_GLYPH: Record<Status, string> = {
+  passed: "✓",
+  done: "✓",
+  failed: "✕",
+  running: "●",
+  "sent-back": "↺",
+  asking: "?",
+  pending: "○",
+  skipped: "–",
+};
+
+/** Attempts keep failed criteria, failed checks, worker, and retry evidence visible; passing check logs stay expandable. */
 function AttemptRow({ theme, a, compact = false, alreadyShown = [] }: { theme: PluginTheme; a: AttemptView; compact?: boolean; alreadyShown?: string[] }) {
   const [open, setOpen] = useState(false);
   const [checksOpen, setChecksOpen] = useState(false);
   const showEvidence = !compact || open;
+  const t = tones(theme);
+  const tone: Status = a.interrupted
+    ? "pending"
+    : /passed|done/i.test(a.outcome)
+    ? "passed"
+    : /sent back|failed/i.test(a.outcome)
+    ? "sent-back"
+    : "running";
+  const toneHue = hue(tone, theme);
+  const fails = a.criteria.filter(c => c.result === "fail");
+  const otherCriteria = a.criteria.filter(c => c.result !== "fail");
+  const badChecks = a.checks.filter(c => c.code !== 0);
+  const passedChecks = a.checks.filter(c => c.code === 0);
   const uniqueEvidence = (text?: string) => !!text?.trim() && text !== "No result posted yet." && !alreadyShown.some(shown => shown?.trim() === text.trim());
-  return <View style={{ gap: 7, paddingVertical: 5 }}>
-    {compact ? <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => setOpen(!open)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
-      <Text style={{ color: a.interrupted ? theme.colors.foregroundMuted : theme.colors.foreground, fontSize: 13 }}>{open ? "▾" : "▸"} Attempt {a.n} · {a.rung || "Worker"} · {a.outcome}</Text>
-    </Pressable> : <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>Attempt {a.n} · {a.rung || "Worker"} · {duration(a.startedAt, a.endedAt)}</Text>}
-    {showEvidence && <>
-      {uniqueEvidence(a.evidence) && <FormattedBody theme={theme} text={a.evidence} />}
-      {a.criteria.filter(c => c.result === "fail").map((c, index) => <View key={index} style={{ gap: 3 }}>
-        <Text style={{ color: theme.colors.statusDanger, fontSize: 13 }}>{c.criterion}</Text>
-        {uniqueEvidence(c.evidence) && <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13, lineHeight: 20 }}>{c.evidence}</Text>}
-      </View>)}
-      {(a.checks.length > 0 || a.criteria.some(c => c.result !== "fail") || a.judgeRung) && <View>
-        <Pressable accessibilityRole="button" accessibilityState={{ expanded: checksOpen }} onPress={() => setChecksOpen(!checksOpen)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
-          <Text style={{ color: theme.colors.accent, fontSize: 13 }}>{checksOpen ? "Hide checks" : "View checks"}</Text>
+  const extraChecksCount = otherCriteria.length + passedChecks.length + (a.judgeRung ? 1 : 0);
+  return (
+    <View style={{ borderLeftWidth: 2, borderLeftColor: toneHue.ink, paddingLeft: 10, gap: 7, paddingVertical: 5 }}>
+      {compact ? (
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => setOpen(!open)} style={{ minHeight: MIN_HIT_HEIGHT, flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <Text style={{ color: a.interrupted ? theme.colors.foregroundMuted : theme.colors.foreground, fontSize: 13, flexShrink: 1 }}>
+            {open ? "▾" : "▸"} Attempt {a.n} · {a.rung || "Worker"} · {duration(a.startedAt, a.endedAt)}
+          </Text>
+          <Text style={{ color: toneHue.ink, fontSize: 12, fontWeight: "700" }}>{a.outcome}</Text>
         </Pressable>
-        {checksOpen && <View style={{ gap: 6 }}>
-          {a.criteria.filter(c => c.result !== "fail").map((c, index) => <Text key={index} style={{ color: theme.colors.foreground, fontSize: 13 }}>{c.result === "pass" ? "✓" : "○"} {c.criterion}{c.evidence ? ` — ${c.evidence}` : ""}</Text>)}
-          {a.checks.map((check, index) => <View key={index} style={{ gap: 3 }}>
-            <Text style={{ color: check.code ? theme.colors.statusDanger : theme.colors.foreground, fontSize: 12, fontFamily: "Menlo" }}>$ {check.cmd} · exit {check.code}</Text>
-            {!!check.output && <Text selectable style={{ color: theme.colors.foregroundMuted, fontSize: 12, lineHeight: 18, fontFamily: "Menlo" }}>{check.output}</Text>}
-          </View>)}
-          {a.judgeRung && <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>Judged by {a.judgeRung}</Text>}
-        </View>}
-      </View>}
-    </>}
-  </View>;
+      ) : (
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
+            Attempt {a.n} · {a.rung || "Worker"} · {duration(a.startedAt, a.endedAt)}
+          </Text>
+          <Text style={{ color: toneHue.ink, fontSize: 12, fontWeight: "700" }}>{a.outcome}</Text>
+        </View>
+      )}
+      {showEvidence && (
+        <>
+          {uniqueEvidence(a.evidence) && <FormattedBody theme={theme} text={a.evidence} />}
+          {fails.map((c, index) => (
+            <View key={`fail-${index}`} style={{ gap: 3 }}>
+              <Text style={{ color: t.red.ink, fontSize: 13, fontWeight: "600" }}>✕ {c.criterion}</Text>
+              {!!c.evidence?.trim() && <Text selectable style={{ color: theme.colors.foregroundMuted, fontSize: 13, lineHeight: 20 }}>{c.evidence}</Text>}
+            </View>
+          ))}
+          {badChecks.map((check, index) => (
+            <View key={`bad-check-${index}`} style={{ gap: 3, backgroundColor: theme.colors.surface2, padding: 8, borderRadius: 6 }}>
+              <Text selectable style={{ color: theme.colors.statusDanger, fontSize: 12, fontFamily: "Menlo", fontWeight: "600" }}>$ {check.cmd} · exit {check.code}</Text>
+              {!!check.output && <Text selectable style={{ color: theme.colors.foregroundMuted, fontSize: 12, lineHeight: 18, fontFamily: "Menlo" }}>{check.output}</Text>}
+            </View>
+          ))}
+          {extraChecksCount > 0 && (
+            <View>
+              <Pressable accessibilityRole="button" accessibilityState={{ expanded: checksOpen }} onPress={() => setChecksOpen(!checksOpen)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
+                <Text style={{ color: theme.colors.accent, fontSize: 13 }}>{checksOpen ? "Hide checks" : `View checks (${passedChecks.length + otherCriteria.length})`}</Text>
+              </Pressable>
+              {checksOpen && (
+                <View style={{ gap: 6 }}>
+                  {otherCriteria.map((c, index) => (
+                    <Text key={index} style={{ color: c.result === "pass" ? t.green.ink : theme.colors.foreground, fontSize: 13 }}>
+                      {c.result === "pass" ? "✓" : "○"} {c.criterion}{c.evidence ? ` — ${c.evidence}` : ""}
+                    </Text>
+                  ))}
+                  {passedChecks.map((check, index) => (
+                    <View key={index} style={{ gap: 3 }}>
+                      <Text style={{ color: theme.colors.foreground, fontSize: 12, fontFamily: "Menlo" }}>$ {check.cmd} · exit {check.code}</Text>
+                      {!!check.output && <Text selectable style={{ color: theme.colors.foregroundMuted, fontSize: 12, lineHeight: 18, fontFamily: "Menlo" }}>{check.output}</Text>}
+                    </View>
+                  ))}
+                  {a.judgeRung && <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>Judged by {a.judgeRung}</Text>}
+                </View>
+              )}
+            </View>
+          )}
+        </>
+      )}
+    </View>
+  );
 }
 
 function StageAttempts({ theme, tries, alreadyShown }: { theme: PluginTheme; tries: AttemptView[]; alreadyShown: string[] }) {
   const [showPast, setShowPast] = useState(false);
   const { past, latest, summary } = groupAttempts(tries);
   if (!latest) return null;
-  return <View>
-    <AttemptRow theme={theme} a={latest} alreadyShown={alreadyShown} />
-    {past.length > 0 && <View>
-      <Pressable accessibilityRole="button" accessibilityState={{ expanded: showPast }} onPress={() => setShowPast(!showPast)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
-        <Text style={{ color: theme.colors.accent, fontSize: 13 }}>{showPast ? "Hide past attempts" : summary}</Text>
-      </Pressable>
-      {showPast && past.map(a => <AttemptRow key={a.n} theme={theme} a={a} compact />)}
-    </View>}
-  </View>;
+  return (
+    <View style={{ gap: 6 }}>
+      <AttemptRow theme={theme} a={latest} alreadyShown={alreadyShown} />
+      {past.length > 0 && (
+        <View>
+          <Pressable accessibilityRole="button" accessibilityState={{ expanded: showPast }} onPress={() => setShowPast(!showPast)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
+            <Text style={{ color: theme.colors.accent, fontSize: 13 }}>{showPast ? "Hide past attempts" : summary}</Text>
+          </Pressable>
+          {showPast && past.map(a => <AttemptRow key={a.n} theme={theme} a={a} compact />)}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function RunSummary({ theme, view }: { theme: PluginTheme; view: TaskView }) {
+  const [showRouting, setShowRouting] = useState(false);
+  const quiet = view.status === "running" && view.lastActivity && Date.now() - Date.parse(view.lastActivity) > QUIET_MS;
+  const bits = [`Started ${timeAgo(view.startedAt)}`];
+  if (view.total > 0) bits.push(`${view.passed} of ${view.total} pieces passed`);
+  if (view.background > 0) bits.push(`${view.background} agent${view.background === 1 ? "" : "s"} working`);
+  if (view.branch) bits.push(view.branch);
+  const t = tones(theme);
+  return (
+    <View style={{ gap: 4 }}>
+      <Text selectable style={{ color: theme.colors.foregroundMuted, fontSize: 12, lineHeight: 18 }}>
+        {bits.join("  ·  ")}
+      </Text>
+      {view.lastActivity ? (
+        <Text style={{ color: quiet ? t.amber.ink : theme.colors.foregroundMuted, fontSize: 12, fontWeight: quiet ? "700" : "400" }}>
+          {quiet ? `Quiet for ${ago(view.lastActivity)}. It may be stuck.` : `Last activity ${timeAgo(view.lastActivity)}`}
+        </Text>
+      ) : null}
+      {!!view.routing?.length && (
+        <View style={{ gap: 4 }}>
+          <Pressable accessibilityRole="button" accessibilityState={{ expanded: showRouting }} onPress={() => setShowRouting(!showRouting)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center", alignSelf: "flex-start" }}>
+            <Text style={{ color: theme.colors.accent, fontSize: 12, fontWeight: "600" }}>
+              {showRouting ? "Hide worker routing ▴" : `Worker routing (${view.routing.length}) ▾`}
+            </Text>
+          </Pressable>
+          {showRouting && (
+            <View style={{ gap: 3, backgroundColor: theme.colors.surface2, padding: 8, borderRadius: 6 }}>
+              {view.routing.map(line => (
+                <Text key={line} selectable style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontFamily: "Menlo", lineHeight: 18 }}>
+                  {line}
+                </Text>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
+    </View>
+  );
 }
 
 function InlineText({ theme, text, baseStyle }: { theme: PluginTheme; text: string; baseStyle: { color: string; fontSize: number; lineHeight: number; fontWeight?: "400" | "600" | "700" } }) {
@@ -344,12 +448,17 @@ export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = 
   const activity = view.runActivity;
   const [pendingFor, setPendingFor] = useState<string | null>();
   const waiting = !!pendingFor;
+  const selectedChecks = selected ? selected.piece.doneWhen.filter(item => !view.completionCriteria?.includes(item)) : [];
   return (
     <View style={{ gap: 14 }}>
       {!embeddedSupervisor && <Pressable accessibilityRole="button" onPress={back} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
         <Text style={{ color: theme.colors.accent, fontSize: 13 }}>‹ Back</Text>
       </Pressable>}
-      <Text accessibilityRole="header" style={{ color: theme.colors.foreground, fontSize: 20, fontWeight: "700" }}>{view.name}</Text>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+        <Text accessibilityRole="header" style={{ color: theme.colors.foreground, fontSize: 20, fontWeight: "700", flexShrink: 1 }}>{view.name}</Text>
+        <Pill theme={theme} status={view.status} />
+      </View>
+      <RunSummary theme={theme} view={view} />
       <OrchestrationFlow theme={theme} view={view} selectedStage={selected?.stage} onSelect={stage => { setPicked(stage); setShowTranscript(false); }} />
       <View accessibilityLiveRegion="polite" style={{ gap: 8 }}>
         <Text style={{ color: theme.colors.foreground, fontSize: 15, lineHeight: 22, fontWeight: "600" }}>{waiting ? "Worker needs your permission" : pendingFor === null && activity?.permissionAgentId ? "Worker is working on this task" : activity?.headline || view.summary || STATUS_LABEL[view.status]}</Text>
@@ -357,9 +466,9 @@ export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = 
           <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "600" }}>Latest finding</Text>
           <FormattedBody theme={theme} text={activity.latestResult} />
         </View>}
-        {activity?.retryReason && <View style={{ gap: 5 }}>
-          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "600" }}>Why it was sent back</Text>
-          <Text style={{ color: theme.colors.foreground, fontSize: 13, lineHeight: 20 }}>{activity.retryReason}</Text>
+        {activity?.retryReason && <View style={{ gap: 5, borderLeftWidth: 2, borderLeftColor: t.amber.ink, paddingLeft: 10 }}>
+          <Text style={{ color: t.amber.ink, fontSize: 12, fontWeight: "700" }}>Why it was sent back</Text>
+          <Text selectable style={{ color: theme.colors.foreground, fontSize: 13, lineHeight: 20 }}>{activity.retryReason}</Text>
         </View>}
       </View>
       {view.kind === "run" && ["running", "asking", "sent-back"].includes(view.status) && <WorkerPermissions key={view.id} theme={theme} runId={view.id} openAgent={openAgent} onPending={setPendingFor} expected={!!activity?.permissionAgentId} />}
@@ -489,24 +598,71 @@ export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = 
             {view.diff.commits} commits · {view.diff.files} changed files · +{view.diff.insertions} −{view.diff.deletions}
           </Text>}
         <RunEvidence view={view} theme={theme} />
-        {selected && <View style={{ gap: 8 }}>
-          {selected.piece.phases.length > 1 && <View accessibilityRole="tablist" style={{ flexDirection:"row",flexWrap:"wrap",gap:8 }}>
-            {selected.piece.phases.map(phase=><Pressable key={phase.stage} accessibilityRole="tab" accessibilityState={{ selected:phase.stage===selected.stage }} onPress={()=>{setPicked(phase.stage);setShowTranscript(false);}} style={{minHeight:MIN_HIT_HEIGHT,justifyContent:"center",paddingHorizontal:10,borderRadius:6,backgroundColor:phase.stage===selected.stage?theme.colors.surface2:"transparent"}}>
-              <Text style={{color:phase.stage===selected.stage?theme.colors.foreground:theme.colors.foregroundMuted,fontSize:13,fontWeight:"600"}}>{phase.label}</Text>
-            </Pressable>)}
-          </View>}
-              {selected.piece.doneWhen.filter(item => !view.completionCriteria?.includes(item)).map((item, i) =>
-                <Text key={i} selectable style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>{item}</Text>
+        {selected && <View style={{ gap: 10 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 8, flexWrap: "wrap" }}>
+            <Text style={{ color: theme.colors.foreground, fontSize: 15, fontWeight: "700", flexShrink: 1 }}>
+              {selected.piece.id} · {selected.piece.title}
+            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              {selected.piece.handoff && (
+                <View style={{ backgroundColor: t.green.soft, borderRadius: 5, paddingVertical: 4, paddingHorizontal: 8 }}>
+                  <Text style={{ color: t.green.ink, fontSize: 12, fontWeight: "700" }}>Handed off via memory</Text>
+                </View>
               )}
-              <StageAttempts key={selected.stage} theme={theme} tries={tries} alreadyShown={[activity?.latestResult || "", activity?.retryReason || ""]} />
-              {!tries.length && selected.piece.rung && <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>{selected.piece.rung}</Text>}
-              {!tries.length && selected.piece.progress && <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>{selected.piece.progress}</Text>}
-              {lastThread && <View>
-                <Pressable accessibilityRole="button" accessibilityState={{ expanded: showTranscript }} onPress={() => setShowTranscript(!showTranscript)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
-                  <Text style={{ color: theme.colors.accent, fontSize: 13 }}>{showTranscript ? "Hide agent transcript" : "View agent transcript"}</Text>
-                </Pressable>
-                {showTranscript && <Transcript key={selected.stage} theme={theme} threadId={lastThread} tries={tries} />}
-              </View>}
+              <Pill
+                theme={theme}
+                status={selected.piece.status}
+                label={
+                  selected.piece.sentBack
+                    ? selected.piece.status === "sent-back"
+                      ? `SENT BACK · ${selected.piece.sentBack}×`
+                      : `${STATUS_LABEL[selected.piece.status].toUpperCase()} · SENT BACK ${selected.piece.sentBack}`
+                    : STATUS_LABEL[selected.piece.status].toUpperCase()
+                }
+              />
+            </View>
+          </View>
+          {!!selected.piece.rung && (
+            <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
+              Worker · {selected.piece.rung}
+            </Text>
+          )}
+          {!!selected.piece.progress && (
+            <Text style={{ color: t.blue.ink, fontSize: 13, lineHeight: 19 }}>
+              Now: {selected.piece.progress}
+            </Text>
+          )}
+          {selected.piece.phases.length > 1 && <View accessibilityRole="tablist" style={{ flexDirection:"row",flexWrap:"wrap",gap:8 }}>
+            {selected.piece.phases.map(phase=>{
+              const phaseTries = view.attempts[phase.stage] ?? [];
+              const first = phaseTries[0], last = phaseTries[phaseTries.length - 1];
+              const active = phase.stage === selected.stage;
+              return <Pressable key={phase.stage} accessibilityRole="tab" accessibilityState={{ selected:active }} onPress={()=>{setPicked(phase.stage);setShowTranscript(false);}} style={{minHeight:MIN_HIT_HEIGHT,justifyContent:"center",paddingHorizontal:10,borderRadius:6,borderWidth:1,borderColor:active?theme.colors.accent:theme.colors.border,backgroundColor:active?theme.colors.surface2:"transparent"}}>
+                <Text style={{color:active?theme.colors.foreground:theme.colors.foregroundMuted,fontSize:13,fontWeight:"600"}}>
+                  <Text style={{color:hue(phase.status,theme).ink}}>{PHASE_GLYPH[phase.status]} </Text>
+                  {phase.label}
+                  {phaseTries.length ? ` · ${duration(first.startedAt, phase.status === "passed" ? last.endedAt : undefined)}` : ""}
+                </Text>
+              </Pressable>;
+            })}
+          </View>}
+          {selectedChecks.length > 0 && (
+            <View style={{ gap: 4 }}>
+              <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "700", letterSpacing: 0.4 }}>DONE WHEN THESE PASS</Text>
+              {selectedChecks.map((item, i) => (
+                <Text key={i} selectable style={{ fontFamily: "Menlo", color: theme.colors.foreground, fontSize: 12, lineHeight: 18 }}>$ {item}</Text>
+              ))}
+            </View>
+          )}
+          <StageAttempts key={selected.stage} theme={theme} tries={tries} alreadyShown={[activity?.latestResult || ""]} />
+          {!tries.length && selected.piece.rung && <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>{selected.piece.rung}</Text>}
+          {!tries.length && selected.piece.progress && <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>{selected.piece.progress}</Text>}
+          {lastThread && <View>
+            <Pressable accessibilityRole="button" accessibilityState={{ expanded: showTranscript }} onPress={() => setShowTranscript(!showTranscript)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
+              <Text style={{ color: theme.colors.accent, fontSize: 13 }}>{showTranscript ? "Hide agent transcript" : "View agent transcript"}</Text>
+            </Pressable>
+            {showTranscript && <Transcript key={selected.stage} theme={theme} threadId={lastThread} tries={tries} />}
+          </View>}
         </View>}
         {view.kind === "run" && view.status === "running" && <Steering id={view.id} theme={theme} />}
         <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 12 }}>

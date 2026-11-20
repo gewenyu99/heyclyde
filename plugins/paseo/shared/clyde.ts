@@ -185,7 +185,7 @@ export const activitySchema = z.discriminatedUnion("kind",[
 export type Activity = z.infer<typeof activitySchema>;
 export const feedbackRpc = defineRpc({name:"clyde.feedback",input:z.object({agent:z.string(),retrieval:z.string(),verdict:z.enum(["helpful","nothing_useful"]),receipt:z.string().optional()}),output:z.object({ok:z.boolean(),pendingSync:z.boolean()})});
 export const respondRpc = defineRpc({name:"clyde.respond",input:z.object({agent:z.string(),run:z.string(),key:z.string(),text:z.string().trim().min(1)}),output:z.object({ok:z.boolean()})});
-export const boardQuest = z.object({id:z.number(),title:z.string(),brief:z.string(),done_when:z.string(),priority:z.string(),state:z.string().optional(),claimed_by:z.string().nullish(),project:z.string().nullish(),assignee:z.string().optional(),tags:z.array(z.string()).optional()});
+export const boardQuest = z.object({id:z.number(),title:z.string(),brief:z.string(),done_when:z.string(),priority:z.string(),state:z.string().optional(),claimed_by:z.string().nullish(),project:z.string().nullish(),assignee:z.string().optional(),tags:z.array(z.string()).optional(),run_id:z.string().optional(),run_status:z.string().optional(),needs_review:z.boolean().optional()});
 /** The quest service also accepts historical project names without an owner. */
 export function questProjectMatches(slug: string, project?: string | null): boolean {
   if (!project) return true;

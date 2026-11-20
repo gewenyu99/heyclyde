@@ -6,8 +6,8 @@ const require=createRequire(import.meta.url),ts=require('typescript');
 const compiled=ts.transpileModule(readFileSync(new URL('../client/orchestration-flow.tsx',import.meta.url),'utf8'),{compilerOptions:{jsx:ts.JsxEmit.ReactJSX,module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 const module={exports:{}};
 new Function('require','module','exports',compiled)(name=>name==='react-native'?{Pressable:'Pressable',ScrollView:'ScrollView',Text:'Text',View:'View'}:name==='./palette'?{}:require(name),module,module.exports);
-const {orchestrationNodes,flowLayout}=module.exports;
-const piece=(id,phase,status='pending')=>({id,title:id==='PLAN'?'Plan the work':id==='S1'?'Implement routing':id,status,phases:[{stage:phase,label:phase,status}]});
+const {orchestrationNodes,flowLayout,flowEdgeKind}=module.exports;
+const piece=(id,phase,status='pending',extra={})=>({id,title:id==='PLAN'?'Plan the work':id==='S1'?'Implement routing':id,status,phases:[{stage:phase,label:phase,status}],...extra});
 const view=(pieces,attempts={})=>({steps:[{name:'Actual work',pieces}],attempts,approve:false});
 test('planning shows the real plan and explicit future approval/build/review, without invented completion',()=>{
   const nodes=orchestrationNodes(view([piece('PLAN','plan','running')],{plan:[{n:1}]}));
@@ -43,4 +43,28 @@ test('small desktop holds four lifecycle nodes in one row, and single tasks stay
 test('approval gate shows an explicitly approved decision as Passed',()=>{
   const v=view([piece('PLAN','plan','passed')]);v.planApproval='passed';
   const gate=orchestrationNodes(v)[1];assert.equal(gate.status,'passed');assert.equal(gate.observed,true);assert.equal(gate.note,'Plan approved');
+});
+test('nodes surface worker, live action, attempts/sent-back meta, phases, and memory handoff edges',()=>{
+  const plan=piece('PLAN','plan','passed',{rung:'claude · sonnet',attempts:2,sentBack:1,handoff:true,startedAt:'2026-11-19T10:00:00Z',endedAt:'2026-11-19T10:04:00Z'});
+  const slice=piece('S1','code-it-works:s1','running',{
+    rung:'codex · sol',progress:'Running unit tests',attempts:1,sentBack:0,handoff:false,
+    phases:[
+      {stage:'code-it-works:s1',label:'works',status:'passed'},
+      {stage:'code-it-good:s1',label:'good',status:'running'},
+      {stage:'code-it-clean:s1',label:'clean',status:'pending'},
+    ],
+  });
+  const v=view([plan,slice],{plan:[{n:1},{n:2}],'code-it-good:s1':[{n:1}]});v.planApproval='passed';
+  const nodes=orchestrationNodes(v);
+  assert.equal(nodes[0].worker,'claude · sonnet');
+  assert.equal(nodes[0].handoff,true);
+  assert.equal(nodes[0].sentBack,1);
+  assert.match(nodes[0].meta,/2 attempts · sent back 1 · 4 min/);
+  assert.equal(nodes[2].worker,'codex · sol');
+  assert.equal(nodes[2].action,'Running unit tests');
+  assert.equal(nodes[2].phases.length,3);
+  assert.equal(flowEdgeKind(nodes[0],nodes[1]),'memory');
+  assert.equal(flowEdgeKind(nodes[1],nodes[2]),'live');
+  assert.equal(flowEdgeKind(nodes[2],{id:'ask',title:'Ask',status:'asking',observed:true}),'ask');
+  assert.equal(flowEdgeKind(nodes[2],nodes[3]),'order');
 });
