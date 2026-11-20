@@ -213,8 +213,12 @@ test("client TSX components obey typography floor, accessible controls, dedicate
   assert.match(task, /showPlan && <FormattedBody/);
   assert.match(task, /const activity = view.runActivity/);
   assert.match(task, /activity\?\.headline \|\| view.summary/);
-  assert.match(task, /Latest finding/);
+  assert.match(task, /export function TaskInspector/);
+  assert.match(task, /Show prompt ▾/);
   assert.match(task, /Why it was sent back/);
+  assert.match(screen, /<TaskInspector/);
+  assert.match(screen, />Details</);
+  assert.match(screen, /<Steering id=\{id\} theme=\{theme\} compact/);
   assert.doesNotMatch(task, /FlowDiagram|PhaseBar|PieceDetail|function Meta|function Legend|\[details, setDetails\]/);
   const flow = fs.readFileSync(path.join(clientDir, "orchestration-flow.tsx"), "utf8");
   assert.match(task, /<OrchestrationFlow/);

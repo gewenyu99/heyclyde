@@ -353,7 +353,7 @@ export function OrchestrationFlow({ theme, view, selectedStage, onSelect, onOpen
           {countWords(bands.length, "step", true)}, {countWords(flat.length, "piece")}
         </Text>
         <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>
-          Click any active piece to open its agent as a Paseo chat. Read left to right within each step band.
+          Click a piece to inspect on the right. Chat ↗ opens its agent in native Paseo.
         </Text>
       </View>
 
@@ -467,7 +467,17 @@ export function OrchestrationFlow({ theme, view, selectedStage, onSelect, onOpen
                       <Text numberOfLines={1} style={{ color: t.green.ink, fontSize: 12, fontWeight: "700" }}>↳ mem</Text>
                     )}
                     {canOpenAgent && (
-                      <Text numberOfLines={1} style={{ color: c.accent, fontSize: 12, fontWeight: "700" }}>Chat ↗</Text>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open ${node.title} agent in Paseo`}
+                        onPress={(e) => {
+                          (e as { stopPropagation?: () => void })?.stopPropagation?.();
+                          onOpenAgent!(node.agentId!);
+                        }}
+                        style={{ paddingHorizontal: 4, paddingVertical: 2 }}
+                      >
+                        <Text numberOfLines={1} style={{ color: c.accent, fontSize: 12, fontWeight: "700" }}>Chat ↗</Text>
+                      </Pressable>
                     )}
                   </View>
                 </View>
@@ -475,7 +485,7 @@ export function OrchestrationFlow({ theme, view, selectedStage, onSelect, onOpen
             );
             const handlePress = () => {
               if (node.stage) onSelect(node.stage);
-              if (node.agentId && onOpenAgent) onOpenAgent(node.agentId);
+              else if (node.agentId && onOpenAgent) onOpenAgent(node.agentId);
             };
             return node.stage || canOpenAgent ? (
               <Pressable key={node.id} accessibilityRole="button" accessibilityLabel={a11yLabel} accessibilityState={{ selected }} onPress={handlePress} style={cardStyle}>

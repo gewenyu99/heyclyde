@@ -11,9 +11,10 @@ import { useBoardState, type ComposerDraft } from "./board-state";
 import { Roster } from "./roster";
 import { HomeView } from "./home";
 import { useLive } from "./nodes";
-import { formatRpcError, MIN_HIT_HEIGHT } from "./palette";
+import { formatRpcError, MIN_HIT_HEIGHT, tones } from "./palette";
 import { AttachedChat } from "./attached-chat";
-import { TaskScreen } from "./task";
+import { resolveSelectedStage, Steering, TaskInspector, TaskScreen } from "./task";
+import { WorkerPermissions } from "./worker-permissions";
 import {Lockup,clydeTheme} from "./brand";
 
 function Panel({ theme, children, fill = false }: { theme: PluginTheme; children: ReactNode; fill?: boolean }) {
@@ -47,9 +48,10 @@ function Board(
   const {picked,newTask,mobilePane,tab}=persisted.value;
   const [width,setWidth]=useState(0);
   const [pendingPermissionFor,setPendingPermissionFor]=useState<string|null|undefined>(undefined);
-  const [chatMode,setChatMode]=useState<"attached"|"wrangler">("attached");
+  const [chatMode,setChatMode]=useState<"details"|"attached"|"wrangler">("details");
   const [attachedTarget,setAttachedTarget]=useState<"worker"|"parent">("worker");
-  function setPicked(picked:string){setPendingPermissionFor(undefined);setChatMode("attached");setAttachedTarget("worker");persisted.set({picked,mobilePane:"task"});}
+  const [selectedStage,setSelectedStage]=useState<string|undefined>(undefined);
+  function setPicked(picked:string){setPendingPermissionFor(undefined);setChatMode("details");setAttachedTarget("worker");setSelectedStage(undefined);persisted.set({picked,mobilePane:"task"});}
   const setNewTask=(newTask:boolean)=>persisted.set({newTask});
   const setMobilePane=(mobilePane:"task"|"chat")=>persisted.set({mobilePane});
   const setTab=(tab:"board"|"agents"|"quests")=>persisted.set({tab});
@@ -73,7 +75,7 @@ function Board(
   const wranglerQuery = useQuery({
     queryKey: ["clyde", "wrangler", id],
     queryFn: () => openWrangler({ runId: id }),
-    enabled: persisted.ready && kind === "run" && !!id && (chatMode === "wrangler" || (!task.data?.data?.agentId && !task.data?.data?.parentAgentId)),
+    enabled: persisted.ready && kind === "run" && !!id && chatMode === "wrangler",
     staleTime: 60_000,
     retry: false,
   });
@@ -163,11 +165,24 @@ function Board(
               <View style={{ flex: 1, minHeight: 0, flexDirection: wide ? "row" : "column", gap: 12 }}>
               <ScrollView key={picked} style={{ display: !wide && kind === "run" && mobilePane === "chat" ? "none" : "flex", flex: kind === "run" ? (wide ? 3 : 1) : 1, minHeight: 0 }} contentContainerStyle={{ paddingBottom: 16 }}>
                 <Panel theme={theme}>
-                  {(kind === "run" || !task.data?.data) && <Pressable accessibilityRole="button" onPress={() => setPicked("")} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
+                  {!task.data?.data && <Pressable accessibilityRole="button" onPress={() => setPicked("")} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
                     <Text style={{ color: c.accent, fontSize: 14, fontWeight: "600" }}>‹ Back to board</Text>
                   </Pressable>}
                   {task.data?.data ? (
-                    <TaskScreen key={picked} theme={theme} view={task.data.data} back={() => setPicked("")} openAgent={openAgent} embeddedSupervisor={kind === "run"} externalPendingFor={pendingPermissionFor} />
+                    <TaskScreen
+                      key={picked}
+                      theme={theme}
+                      view={task.data.data}
+                      back={() => setPicked("")}
+                      openAgent={openAgent}
+                      embeddedSupervisor={kind === "run"}
+                      externalPendingFor={pendingPermissionFor}
+                      selectedStage={selectedStage}
+                      onSelectStage={(stage) => {
+                        setSelectedStage(stage);
+                        if (!wide) setMobilePane("chat");
+                      }}
+                    />
                   ) : (
                     <Text accessibilityRole={task.error || task.data?.error ? "alert" : undefined} style={{ color: task.error || task.data?.error ? c.statusDanger : c.foregroundMuted, fontSize: 13 }}>
                       {task.error ? formatRpcError(task.error) : task.data?.error ? formatRpcError(task.data.error) : "Opening task…"}
@@ -177,38 +192,56 @@ function Board(
               </ScrollView>
               {kind === "run" && (() => {
                 const view = task.data?.data;
-                const workerId = view?.agentId;
+                const t = tones(theme);
+                const selected = view ? resolveSelectedStage(view, selectedStage) : undefined;
+                const selectedNodeAgentId = selected
+                  ? (selected.piece.agentId ?? selected.piece.phases.flatMap((phase) => view?.attempts[phase.stage] ?? []).reverse().find((a) => a.agentId)?.agentId)
+                  : undefined;
+                const workerId = selectedNodeAgentId || view?.agentId;
                 const parentId = view?.parentAgentId;
                 const activeAttachedId = attachedTarget === "parent" ? (parentId || workerId) : (workerId || parentId);
-                const showAttached = chatMode === "attached" && !!activeAttachedId;
+                const activeTab = chatMode === "attached" && !activeAttachedId ? "details" : chatMode;
                 const activeLabel = activeAttachedId === parentId && parentId !== workerId ? "Orchestrator" : "Worker";
                 const showPerms = !!view && ["running", "asking", "sent-back"].includes(view.status);
                 const expectedPerm = !!view?.runActivity?.permissionAgentId;
                 const wranglerAgentId = wranglerQuery.data?.agentId;
                 return (
-                  <View style={{ display: !wide && mobilePane === "task" ? "none" : "flex", flex: wide ? 2 : 1, minWidth: wide ? 320 : 0, minHeight: 0, borderWidth: 1, borderColor: c.border, borderRadius: 12, overflow: "hidden", backgroundColor: c.surface1 }}>
-                    <View accessibilityRole="tablist" style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6, flexWrap: "wrap", paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: c.border, backgroundColor: c.surface2 }}>
-                      <View style={{ flexDirection: "row", gap: 4 }}>
+                  <View style={{ display: !wide && mobilePane === "task" ? "none" : "flex", flex: wide ? 2 : 1, minWidth: wide ? 340 : 0, minHeight: 0, borderWidth: 1, borderColor: c.border, borderRadius: 12, overflow: "hidden", backgroundColor: c.surface1 }}>
+                    <View accessibilityRole="tablist" style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6, flexWrap: "wrap", paddingHorizontal: 10, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: c.border, backgroundColor: c.surface2 }}>
+                      <View style={{ flexDirection: "row", gap: 4, flexWrap: "wrap" }}>
+                        <Pressable
+                          accessibilityRole="tab"
+                          accessibilityState={{ selected: activeTab === "details" }}
+                          onPress={() => setChatMode("details")}
+                          style={{ minHeight: MIN_HIT_HEIGHT, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, borderRadius: 6, backgroundColor: activeTab === "details" ? c.surface1 : "transparent" }}
+                        >
+                          <Text style={{ color: activeTab === "details" ? c.foreground : c.foregroundMuted, fontSize: 13, fontWeight: "700" }}>Details</Text>
+                          {!!selected?.piece.id && (
+                            <View style={{ backgroundColor: t.blue.soft, borderRadius: 4, paddingVertical: 2, paddingHorizontal: 6 }}>
+                              <Text style={{ color: t.blue.ink, fontSize: 12, fontWeight: "700" }}>{selected.piece.id}</Text>
+                            </View>
+                          )}
+                        </Pressable>
                         {!!activeAttachedId && (
                           <Pressable
                             accessibilityRole="tab"
-                            accessibilityState={{ selected: showAttached }}
+                            accessibilityState={{ selected: activeTab === "attached" }}
                             onPress={() => setChatMode("attached")}
-                            style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingHorizontal: 10, borderRadius: 6, backgroundColor: showAttached ? c.surface1 : "transparent" }}
+                            style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingHorizontal: 10, borderRadius: 6, backgroundColor: activeTab === "attached" ? c.surface1 : "transparent" }}
                           >
-                            <Text style={{ color: showAttached ? c.foreground : c.foregroundMuted, fontSize: 13, fontWeight: "700" }}>Paseo chat</Text>
+                            <Text style={{ color: activeTab === "attached" ? c.foreground : c.foregroundMuted, fontSize: 13, fontWeight: "700" }}>Paseo chat</Text>
                           </Pressable>
                         )}
                         <Pressable
                           accessibilityRole="tab"
-                          accessibilityState={{ selected: !showAttached }}
+                          accessibilityState={{ selected: activeTab === "wrangler" }}
                           onPress={() => setChatMode("wrangler")}
-                          style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingHorizontal: 10, borderRadius: 6, backgroundColor: !showAttached ? c.surface1 : "transparent" }}
+                          style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingHorizontal: 10, borderRadius: 6, backgroundColor: activeTab === "wrangler" ? c.surface1 : "transparent" }}
                         >
-                          <Text style={{ color: !showAttached ? c.foreground : c.foregroundMuted, fontSize: 13, fontWeight: "700" }}>Wrangler</Text>
+                          <Text style={{ color: activeTab === "wrangler" ? c.foreground : c.foregroundMuted, fontSize: 13, fontWeight: "700" }}>Wrangler</Text>
                         </Pressable>
                       </View>
-                      {showAttached && workerId && parentId && workerId !== parentId && (
+                      {activeTab === "attached" && workerId && parentId && workerId !== parentId ? (
                         <View style={{ flexDirection: "row", gap: 4 }}>
                           {(["worker", "parent"] as const).map(targetKey => {
                             const sel = (targetKey === "parent" ? parentId : workerId) === activeAttachedId;
@@ -227,9 +260,43 @@ function Board(
                             );
                           })}
                         </View>
-                      )}
+                      ) : activeTab === "details" && activeAttachedId && openAgent ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          onPress={() => openAgent(activeAttachedId)}
+                          style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingHorizontal: 6 }}
+                        >
+                          <Text style={{ color: c.accent, fontSize: 12, fontWeight: "600" }}>Open in Paseo ↗</Text>
+                        </Pressable>
+                      ) : null}
                     </View>
-                    {showAttached ? (
+                    {activeTab === "details" ? (
+                      <View style={{ flex: 1, minHeight: 0 }}>
+                        {showPerms && (
+                          <View style={{ paddingHorizontal: 12, paddingTop: 10 }}>
+                            <WorkerPermissions key={id} theme={theme} runId={id} openAgent={openAgent} onPending={setPendingPermissionFor} expected={expectedPerm} variant="chat" />
+                          </View>
+                        )}
+                        <ScrollView style={{ flex: 1, minHeight: 0 }} contentContainerStyle={{ padding: 14, paddingBottom: 18 }}>
+                          {view ? (
+                            <TaskInspector
+                              theme={theme}
+                              view={view}
+                              selectedStage={selected?.stage}
+                              onSelectStage={setSelectedStage}
+                              stacked
+                            />
+                          ) : (
+                            <Text style={{ color: c.foregroundMuted, fontSize: 13 }}>Loading piece details…</Text>
+                          )}
+                        </ScrollView>
+                        {view?.status === "running" && (
+                          <View style={{ paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface2 }}>
+                            <Steering id={id} theme={theme} compact />
+                          </View>
+                        )}
+                      </View>
+                    ) : activeTab === "attached" ? (
                       <View style={{ flex: 1, minHeight: 0, padding: 12 }}>
                         <AttachedChat
                           key={activeAttachedId}

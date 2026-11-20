@@ -26,8 +26,8 @@ const PHASE_GLYPH: Record<Status, string> = {
   skipped: "–",
 };
 
-/** Attempts keep failed criteria, failed checks, worker, and retry evidence visible in a two-column card; passing check logs stay expandable. */
-function AttemptRow({ theme, a, compact = false, alreadyShown = [] }: { theme: PluginTheme; a: AttemptView; compact?: boolean; alreadyShown?: string[] }) {
+/** Attempts keep failed criteria, failed checks, worker, and retry evidence visible; stacked mode places Judge above Worker Evidence for the right inspector. */
+function AttemptRow({ theme, a, compact = false, stacked = false, alreadyShown = [] }: { theme: PluginTheme; a: AttemptView; compact?: boolean; stacked?: boolean; alreadyShown?: string[] }) {
   const [open, setOpen] = useState(false);
   const [checksOpen, setChecksOpen] = useState(false);
   const showEvidence = !compact || open;
@@ -46,6 +46,88 @@ function AttemptRow({ theme, a, compact = false, alreadyShown = [] }: { theme: P
   const passedChecks = a.checks.filter(c => c.code === 0);
   const uniqueEvidence = (text?: string) => !!text?.trim() && text !== "No result posted yet." && !alreadyShown.some(shown => shown?.trim() === text.trim());
   const extraChecksCount = otherCriteria.length + passedChecks.length + (a.judgeRung ? 1 : 0);
+  const judgeBlock = (
+    <View style={stacked ? { backgroundColor: theme.colors.surface0, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 8, overflow: "hidden" } : { flex: 1, minWidth: 220, gap: 5, borderLeftWidth: 1, borderLeftColor: theme.colors.border, paddingLeft: 12 }}>
+      <View style={stacked ? { backgroundColor: theme.colors.surface2, paddingVertical: 7, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: theme.colors.border, flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 6 } : undefined}>
+        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "700", letterSpacing: 0.4 }}>
+          JUDGE{a.judgeRung ? ` · ${a.judgeRung}` : ""} · PER CRITERION
+        </Text>
+      </View>
+      <View style={stacked ? { padding: 10, gap: 6 } : { gap: 5 }}>
+        {a.criteria.length ? (
+          <>
+            {fails.map((c, index) => (
+              <View key={`fail-${index}`} style={{ gap: 2 }}>
+                <Text style={{ color: t.red.ink, fontSize: 13, fontWeight: "600" }}>✕ {c.criterion}</Text>
+                {!!c.evidence?.trim() && <Text selectable style={{ color: theme.colors.foregroundMuted, fontSize: 12, lineHeight: 18 }}>{c.evidence}</Text>}
+              </View>
+            ))}
+            {otherCriteria.map((c, index) => (
+              <Text key={`ok-${index}`} style={{ color: c.result === "pass" ? t.green.ink : theme.colors.foregroundMuted, fontSize: 12, lineHeight: 18 }}>
+                {c.result === "pass" ? "✓" : "○"} {c.criterion}
+              </Text>
+            ))}
+          </>
+        ) : (
+          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>Awaiting verdict.</Text>
+        )}
+      </View>
+    </View>
+  );
+  const workerBlock = (
+    <View style={stacked ? { backgroundColor: theme.colors.surface0, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 8, overflow: "hidden" } : { flex: 1, minWidth: 220, gap: 5 }}>
+      <View style={stacked ? { backgroundColor: theme.colors.surface2, paddingVertical: 7, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: theme.colors.border, flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 6 } : undefined}>
+        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "700", letterSpacing: 0.4 }}>
+          WORKER EVIDENCE{stacked ? ` · ATTEMPT ${a.n}` : ""}
+        </Text>
+        {stacked ? <Text style={{ color: toneHue.ink, fontSize: 12, fontWeight: "700" }}>{a.outcome}</Text> : null}
+      </View>
+      <View style={stacked ? { padding: 10, gap: 6 } : { gap: 5 }}>
+        {uniqueEvidence(a.evidence) ? (
+          <FormattedBody theme={theme} text={a.evidence} />
+        ) : (
+          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>{a.evidence || "No result posted yet."}</Text>
+        )}
+      </View>
+    </View>
+  );
+  if (stacked && !compact) {
+    return (
+      <View style={{ gap: 10 }}>
+        {judgeBlock}
+        {workerBlock}
+        {badChecks.map((check, index) => (
+          <View key={`bad-check-${index}`} style={{ gap: 3, backgroundColor: theme.colors.surface2, padding: 8, borderRadius: 6 }}>
+            <Text selectable style={{ color: theme.colors.statusDanger, fontSize: 12, fontFamily: "Menlo", fontWeight: "600" }}>$ {check.cmd} · exit {check.code}</Text>
+            {!!check.output && <Text selectable style={{ color: theme.colors.foregroundMuted, fontSize: 12, lineHeight: 18, fontFamily: "Menlo" }}>{check.output}</Text>}
+          </View>
+        ))}
+        {extraChecksCount > 0 && (
+          <View>
+            <Pressable accessibilityRole="button" accessibilityState={{ expanded: checksOpen }} onPress={() => setChecksOpen(!checksOpen)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
+              <Text style={{ color: theme.colors.accent, fontSize: 13, fontWeight: "600" }}>{checksOpen ? "Hide checks ▴" : `View checks (${passedChecks.length + otherCriteria.length}) ▸`}</Text>
+            </Pressable>
+            {checksOpen && (
+              <View style={{ gap: 6, backgroundColor: theme.colors.surface2, padding: 8, borderRadius: 6 }}>
+                {otherCriteria.map((c, index) => (
+                  <Text key={index} style={{ color: c.result === "pass" ? t.green.ink : theme.colors.foreground, fontSize: 12 }}>
+                    {c.result === "pass" ? "✓" : "○"} {c.criterion}{c.evidence ? ` — ${c.evidence}` : ""}
+                  </Text>
+                ))}
+                {passedChecks.map((check, index) => (
+                  <View key={index} style={{ gap: 3 }}>
+                    <Text style={{ color: t.green.ink, fontSize: 12, fontFamily: "Menlo" }}>$ {check.cmd} · exit {check.code}</Text>
+                    {!!check.output && <Text selectable style={{ color: theme.colors.foregroundMuted, fontSize: 12, lineHeight: 18, fontFamily: "Menlo" }}>{check.output}</Text>}
+                  </View>
+                ))}
+                {a.judgeRung && <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>Judged by {a.judgeRung}</Text>}
+              </View>
+            )}
+          </View>
+        )}
+      </View>
+    );
+  }
   return (
     <View style={{ borderWidth: 1, borderColor: theme.colors.border, borderLeftWidth: 3, borderLeftColor: toneHue.ink, borderRadius: 8, overflow: "hidden", backgroundColor: theme.colors.surface1 }}>
       {compact ? (
@@ -66,36 +148,8 @@ function AttemptRow({ theme, a, compact = false, alreadyShown = [] }: { theme: P
       {showEvidence && (
         <View style={{ padding: 12, gap: 10 }}>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
-            <View style={{ flex: 1, minWidth: 220, gap: 5 }}>
-              <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "700", letterSpacing: 0.5 }}>WORKER EVIDENCE</Text>
-              {uniqueEvidence(a.evidence) ? (
-                <FormattedBody theme={theme} text={a.evidence} />
-              ) : (
-                <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>{a.evidence || "No result posted yet."}</Text>
-              )}
-            </View>
-            <View style={{ flex: 1, minWidth: 220, gap: 5, borderLeftWidth: 1, borderLeftColor: theme.colors.border, paddingLeft: 12 }}>
-              <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "700", letterSpacing: 0.5 }}>
-                JUDGE{a.judgeRung ? ` · ${a.judgeRung}` : ""} · PER CRITERION
-              </Text>
-              {a.criteria.length ? (
-                <>
-                  {fails.map((c, index) => (
-                    <View key={`fail-${index}`} style={{ gap: 2 }}>
-                      <Text style={{ color: t.red.ink, fontSize: 13, fontWeight: "600" }}>✕ {c.criterion}</Text>
-                      {!!c.evidence?.trim() && <Text selectable style={{ color: theme.colors.foregroundMuted, fontSize: 12, lineHeight: 18 }}>{c.evidence}</Text>}
-                    </View>
-                  ))}
-                  {otherCriteria.map((c, index) => (
-                    <Text key={`ok-${index}`} style={{ color: c.result === "pass" ? t.green.ink : theme.colors.foregroundMuted, fontSize: 12, lineHeight: 18 }}>
-                      {c.result === "pass" ? "✓" : "○"} {c.criterion}
-                    </Text>
-                  ))}
-                </>
-              ) : (
-                <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>Awaiting verdict.</Text>
-              )}
-            </View>
+            {workerBlock}
+            {judgeBlock}
           </View>
           {badChecks.map((check, index) => (
             <View key={`bad-check-${index}`} style={{ gap: 3, backgroundColor: theme.colors.surface2, padding: 8, borderRadius: 6 }}>
@@ -132,14 +186,49 @@ function AttemptRow({ theme, a, compact = false, alreadyShown = [] }: { theme: P
   );
 }
 
-function StageAttempts({ theme, tries, alreadyShown }: { theme: PluginTheme; tries: AttemptView[]; alreadyShown: string[] }) {
+function StageAttempts({ theme, tries, stacked = false, alreadyShown = [] }: { theme: PluginTheme; tries: AttemptView[]; stacked?: boolean; alreadyShown?: string[] }) {
   const [showPast, setShowPast] = useState(false);
+  const [selectedAttempt, setSelectedAttempt] = useState<number | undefined>();
   const { past, latest, summary } = groupAttempts(tries);
   if (!latest) return null;
+  const active = stacked && selectedAttempt !== undefined
+    ? (tries.find(a => a.n === selectedAttempt) ?? latest)
+    : latest;
+  const t = tones(theme);
+  const edge = palette[scheme(theme)].edge;
   return (
-    <View style={{ gap: 6 }}>
-      <AttemptRow theme={theme} a={latest} alreadyShown={alreadyShown} />
-      {past.length > 0 && (
+    <View style={{ gap: 8 }}>
+      {stacked && tries.length > 0 && (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+          {[...tries].reverse().map(a => {
+            const isSel = a.n === active.n;
+            const dur = duration(a.startedAt, a.endedAt);
+            return (
+              <Pressable
+                key={a.n}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSel }}
+                onPress={() => setSelectedAttempt(a.n)}
+                style={{
+                  minHeight: MIN_HIT_HEIGHT,
+                  justifyContent: "center",
+                  paddingHorizontal: 10,
+                  borderRadius: 6,
+                  borderWidth: 1,
+                  borderColor: isSel ? theme.colors.accent : edge,
+                  backgroundColor: isSel ? t.blue.soft : "transparent",
+                }}
+              >
+                <Text style={{ color: isSel ? t.blue.ink : theme.colors.foregroundMuted, fontSize: 12, fontWeight: isSel ? "700" : "600" }}>
+                  #{a.n} · {a.outcome}{a.n === latest.n && dur ? ` · ${dur}` : ""}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+      <AttemptRow theme={theme} a={active} stacked={stacked} alreadyShown={alreadyShown} />
+      {!stacked && past.length > 0 && (
         <View>
           <Pressable accessibilityRole="button" accessibilityState={{ expanded: showPast }} onPress={() => setShowPast(!showPast)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
             <Text style={{ color: theme.colors.accent, fontSize: 13 }}>{showPast ? "Hide past attempts" : summary}</Text>
@@ -377,15 +466,65 @@ function Transcript({ theme, threadId, tries = [] }: { theme: PluginTheme; threa
   );
 }
 
-function Steering({id,theme}:{id:string;theme:PluginTheme}) {
+export function Steering({ id, theme, compact = false }: { id: string; theme: PluginTheme; compact?: boolean }) {
   const send=useRpc(steerRpc);
   const [note,setNote]=useState("");
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
   async function submit() {
+    if (!note.trim() || busy) return;
     setBusy(true);
     try { await send({id,text:note}); setNote(""); setError(""); }
     catch(e) { setError(formatRpcError(e)); } finally { setBusy(false); }
+  }
+  if (compact) {
+    const disabled = busy || !note.trim();
+    return (
+      <View style={{ gap: 4 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <TextInput
+            accessibilityLabel="Steer this run"
+            placeholder="Steer this run or message the active worker…"
+            placeholderTextColor={theme.colors.foregroundMuted}
+            onSubmitEditing={() => void submit()}
+            style={{
+              flex: 1,
+              color: theme.colors.foreground,
+              backgroundColor: theme.colors.surface1,
+              borderWidth: 1,
+              borderColor: palette[scheme(theme)].edge,
+              borderRadius: 7,
+              paddingHorizontal: 10,
+              paddingVertical: 8,
+              minHeight: MIN_HIT_HEIGHT,
+              fontSize: 13,
+            }}
+            value={note}
+            onChangeText={setNote}
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ disabled }}
+            disabled={disabled}
+            onPress={() => void submit()}
+            style={{
+              minHeight: MIN_HIT_HEIGHT,
+              justifyContent: "center",
+              paddingHorizontal: 14,
+              borderRadius: 7,
+              backgroundColor: disabled ? theme.colors.surface1 : theme.colors.accent,
+              borderWidth: disabled ? 1 : 0,
+              borderColor: palette[scheme(theme)].edge,
+            }}
+          >
+            <Text style={{ color: disabled ? theme.colors.foregroundMuted : theme.colors.accentForeground, fontSize: 13, fontWeight: "700" }}>
+              {busy ? "Sending…" : "Steer"}
+            </Text>
+          </Pressable>
+        </View>
+        {!!error && <Text accessibilityRole="alert" style={{ color: theme.colors.statusDanger, fontSize: 12 }}>{error}</Text>}
+      </View>
+    );
   }
   return <View style={{marginTop:10,gap:6}}>
     <TextInput
@@ -452,179 +591,44 @@ function StopButton({ theme, view }: { theme: PluginTheme; view: TaskView }) {
   );
 }
 
-export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = false, externalPendingFor }: { theme: PluginTheme; view: TaskView; back: () => void; openAgent?: (id: string) => void; embeddedSupervisor?: boolean; externalPendingFor?: string | null }) {
-  const answer=useRpc(answerRpc), cache=useQueryClient();
-  const [reply,setReply]=useState(""),[retryError,setRetryError]=useState(""),[retrying,setRetrying]=useState(false);
-  const t = tones(theme);
-  const edge = palette[scheme(theme)].edge;
-  async function sendAnswer(text: string, allowFullAccess?: boolean){
-    setRetrying(true);
-    try{const r=await answer({kind:view.kind,id:view.id,text,askKey:view.askKey,...(allowFullAccess?{allowAntigravityFullAccess:true}:{})});if(!r.ok)throw Error(r.error);setReply("");setRetryError("");await cache.invalidateQueries({queryKey:["clyde"]});}
-    catch(e){setRetryError(formatRpcError(e));}finally{setRetrying(false);}
-  }
-  const [picked, setPicked] = useState<string | undefined>();
-  const [showTranscript, setShowTranscript] = useState(false);
-  const [showPlan, setShowPlan] = useState(false);
+export function resolveSelectedStage(view: TaskView, picked?: string) {
   const pieces = view.steps.flatMap(step => step.pieces);
   const stages = pieces.flatMap(piece => piece.phases.map(phase => ({ ...phase, piece })));
-  const selected = stages.find(stage => stage.stage === picked) || stages.find(stage => ["running", "asking", "sent-back", "failed"].includes(stage.status)) || stages.find(stage => stage.piece.id === view.selected) || stages[0];
+  return (
+    stages.find(stage => stage.stage === picked) ||
+    stages.find(stage => ["running", "asking", "sent-back", "failed"].includes(stage.status)) ||
+    stages.find(stage => stage.piece.id === view.selected) ||
+    stages[0]
+  );
+}
+
+/** Contextual inspector for the selected graph piece (rendered in the right pane Details tab, or inline on standalone threads). */
+export function TaskInspector({ theme, view, selectedStage, onSelectStage, stacked = true }: {
+  theme: PluginTheme;
+  view: TaskView;
+  selectedStage?: string;
+  onSelectStage?: (stage: string) => void;
+  stacked?: boolean;
+}) {
+  const [localPicked, setLocalPicked] = useState<string | undefined>();
+  const [showTranscript, setShowTranscript] = useState(false);
+  const [showPlan, setShowPlan] = useState(false);
+  const t = tones(theme);
+  const picked = selectedStage ?? localPicked;
+  const setPicked = (stage: string) => {
+    setLocalPicked(stage);
+    setShowTranscript(false);
+    onSelectStage?.(stage);
+  };
+  const selected = resolveSelectedStage(view, picked);
   const tries = selected ? view.attempts[selected.stage] || [] : [];
   const lastThread = tries[tries.length - 1]?.threadId;
   const activity = view.runActivity;
-  const [pendingFor, setPendingFor] = useState<string | null>();
-  const effectivePendingFor = embeddedSupervisor ? externalPendingFor : pendingFor;
-  const waiting = !!effectivePendingFor;
   const selectedChecks = selected ? selected.piece.doneWhen.filter(item => !view.completionCriteria?.includes(item)) : [];
   return (
-    <View style={{ gap: 14 }}>
-      {!embeddedSupervisor && <Pressable accessibilityRole="button" onPress={back} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
-        <Text style={{ color: theme.colors.accent, fontSize: 13 }}>‹ Back</Text>
-      </Pressable>}
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-        <Text accessibilityRole="header" style={{ color: theme.colors.foreground, fontSize: 20, fontWeight: "700", flexShrink: 1 }}>{view.name}</Text>
-        <Pill theme={theme} status={view.status} />
-      </View>
-      <RunSummary theme={theme} view={view} />
-      <OrchestrationFlow theme={theme} view={view} selectedStage={selected?.stage} onSelect={stage => { setPicked(stage); setShowTranscript(false); }} onOpenAgent={openAgent} />
-      <View accessibilityLiveRegion="polite" style={{ gap: 8 }}>
-        <Text style={{ color: theme.colors.foreground, fontSize: 15, lineHeight: 22, fontWeight: "600" }}>{waiting ? "Worker needs your permission" : effectivePendingFor === null && activity?.permissionAgentId ? "Worker is working on this task" : activity?.headline || view.summary || STATUS_LABEL[view.status]}</Text>
-        {activity?.latestResult && <View style={{ gap: 5 }}>
-          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "600" }}>Latest finding</Text>
-          <FormattedBody theme={theme} text={activity.latestResult} />
-        </View>}
-        {activity?.retryReason && <View style={{ gap: 5, borderLeftWidth: 2, borderLeftColor: t.amber.ink, paddingLeft: 10 }}>
-          <Text style={{ color: t.amber.ink, fontSize: 12, fontWeight: "700" }}>Why it was sent back</Text>
-          <Text selectable style={{ color: theme.colors.foreground, fontSize: 13, lineHeight: 20 }}>{activity.retryReason}</Text>
-        </View>}
-      </View>
-      {!embeddedSupervisor && view.kind === "run" && ["running", "asking", "sent-back"].includes(view.status) && <WorkerPermissions key={view.id} theme={theme} runId={view.id} openAgent={openAgent} onPending={setPendingFor} expected={!!activity?.permissionAgentId} />}
-        {view.question ? (
-          <View style={{ borderLeftWidth: 2, borderLeftColor: t.amber.ink, paddingLeft: 12, marginTop: 12, gap: 8 }}>
-            <Text style={{ color: theme.colors.foreground, fontWeight: "500", fontSize: 14 }}>{view.question}</Text>
-            {view.retryable ? (
-              <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                {view.commitReview && view.agentId && openAgent && <Pressable accessibilityRole="button" onPress={() => openAgent(view.agentId!)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
-                  <Text style={{ color: theme.colors.accent, fontSize: 13, fontWeight: "600" }}>Review worktree changes in Paseo</Text>
-                </Pressable>}
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ disabled: retrying }}
-                  disabled={retrying}
-                  onPress={()=>void sendAnswer("retry",view.fullAccess)}
-                  style={{
-                    backgroundColor: retrying ? theme.colors.surface2 : theme.colors.accent,
-                    borderWidth: retrying ? 1 : 0,
-                    borderColor: edge,
-                    borderRadius: 6,
-                    paddingHorizontal: 14,
-                    minHeight: MIN_HIT_HEIGHT,
-                    justifyContent: "center",
-                  }}
-                >
-                  <Text style={{color: retrying ? theme.colors.foregroundMuted : theme.colors.accentForeground, fontWeight:"700",fontSize:13}}>
-                    {retrying ? "Retrying…" : view.fullAccess ? "Allow full access for this run and retry" : "Retry"}
-                  </Text>
-                </Pressable>
-                {(!embeddedSupervisor || /originating Paseo (agent|workspace)/i.test(view.question)) && !activity?.permissionAgentId && <OpenChatButton theme={theme} kind={view.kind} id={view.id} openAgent={openAgent} onError={setRetryError} />}
-              </View>
-            ) : (
-              <View style={{ gap: 8 }}>
-                <TextInput
-                  accessibilityLabel={view.approve ? "Request a change" : "Reply to question"}
-                  placeholder={view.approve ? "Request a change…" : "Reply…"}
-                  placeholderTextColor={theme.colors.foregroundMuted}
-                  value={reply}
-                  onChangeText={setReply}
-                  onSubmitEditing={() => { if (reply.trim() && !retrying) void sendAnswer(reply.trim()); }}
-                  style={{
-                    color: theme.colors.foreground,
-                    backgroundColor: theme.colors.surface1,
-                    borderWidth: 1,
-                    borderColor: edge,
-                    borderRadius: 6,
-                    paddingHorizontal: 10,
-                    paddingVertical: 8,
-                    minHeight: MIN_HIT_HEIGHT,
-                    fontSize: 14,
-                  }}
-                />
-                <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                  {view.approve && (() => {
-                    const approveDisabled = retrying || !!reply.trim();
-                    return (
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityState={{ disabled: approveDisabled }}
-                        disabled={approveDisabled}
-                        onPress={() => void sendAnswer("yes")}
-                        style={{
-                          backgroundColor: approveDisabled ? theme.colors.surface2 : theme.colors.accent,
-                          borderWidth: approveDisabled ? 1 : 0,
-                          borderColor: edge,
-                          borderRadius: 6,
-                          paddingHorizontal: 14,
-                          minHeight: MIN_HIT_HEIGHT,
-                          justifyContent: "center",
-                        }}
-                      >
-                        <Text style={{ color: approveDisabled ? theme.colors.foregroundMuted : theme.colors.accentForeground, fontWeight: "700", fontSize: 13 }}>Approve plan</Text>
-                      </Pressable>
-                    );
-                  })()}
-                  {(() => {
-                    const replyDisabled = retrying || !reply.trim();
-                    const primary = !view.approve;
-                    return (
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityState={{ disabled: replyDisabled }}
-                        disabled={replyDisabled}
-                        onPress={() => void sendAnswer(reply.trim())}
-                        style={{
-                          backgroundColor: primary && !replyDisabled ? theme.colors.accent : theme.colors.surface2,
-                          borderWidth: primary && !replyDisabled ? 0 : 1,
-                          borderColor: edge,
-                          borderRadius: 6,
-                          paddingHorizontal: 14,
-                          minHeight: MIN_HIT_HEIGHT,
-                          justifyContent: "center",
-                        }}
-                      >
-                        <Text style={{ color: replyDisabled ? theme.colors.foregroundMuted : primary ? theme.colors.accentForeground : theme.colors.foreground, fontWeight: "600", fontSize: 13 }}>
-                          {retrying ? "Sending…" : view.approve ? "Request changes" : "Send reply"}
-                        </Text>
-                      </Pressable>
-                    );
-                  })()}
-                  {!embeddedSupervisor && !activity?.permissionAgentId && <OpenChatButton theme={theme} kind={view.kind} id={view.id} openAgent={openAgent} onError={setRetryError} />}
-                </View>
-              </View>
-            )}
-            {!!retryError && <Text accessibilityRole="alert" style={{color:theme.colors.statusDanger, fontSize:13}}>{retryError}</Text>}
-          </View>
-        ) : null}
-        {!embeddedSupervisor && !activity?.permissionAgentId && !view.question && view.status === "failed" && openAgent ? (
-          <View style={{ marginTop: 12, gap: 8 }}>
-            <OpenChatButton theme={theme} kind={view.kind} id={view.id} openAgent={openAgent} onError={setRetryError} />
-            {!!retryError && <Text accessibilityRole="alert" style={{ color: theme.colors.statusDanger, fontSize: 13 }}>{retryError}</Text>}
-          </View>
-        ) : null}
-
-      {view.savedPlanIntent && <View>
-        <Pressable accessibilityRole="button" accessibilityState={{ expanded: showPlan }} onPress={() => setShowPlan(!showPlan)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
-          <Text style={{ color: theme.colors.accent, fontSize: 13, fontWeight: "600" }}>{showPlan ? "Hide saved plan" : "View saved plan"}</Text>
-        </Pressable>
-        {showPlan && <FormattedBody theme={theme} text={view.savedPlanIntent} />}
-      </View>}
-      <View style={{ borderTopWidth: 1, borderTopColor: theme.colors.border, paddingTop: 14, gap: 12 }}>
-        {view.goal && view.goal !== view.name && !view.savedPlanIntent?.startsWith(view.goal.replace(/…$/, "")) &&
-          <Text selectable style={{ color: theme.colors.foreground, fontSize: 14, lineHeight: 20 }}>{view.goal}</Text>}
-        {view.diff && (view.diff.commits > 0 || view.diff.files > 0) &&
-          <Text selectable style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>
-            {view.diff.commits} commits · {view.diff.files} changed files · +{view.diff.insertions} −{view.diff.deletions}
-          </Text>}
-        <RunEvidence view={view} theme={theme} />
-        {selected && <View style={{ gap: 10 }}>
+    <View style={{ gap: 12 }}>
+      {selected ? (
+        <View style={{ gap: 10 }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 8, flexWrap: "wrap" }}>
             <Text style={{ color: theme.colors.foreground, fontSize: 15, fontWeight: "700", flexShrink: 1 }}>
               {selected.piece.id} · {selected.piece.title}
@@ -648,24 +652,34 @@ export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = 
               />
             </View>
           </View>
-          {!!selected.piece.rung && (
-            <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
-              Worker · {selected.piece.rung}
-            </Text>
+          {(selected.piece.rung || selected.piece.progress) && (
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+              {!!selected.piece.rung && (
+                <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontFamily: "Menlo" }}>
+                  Worker · {selected.piece.rung}
+                </Text>
+              )}
+              {!!selected.piece.progress && (
+                <Text style={{ color: t.blue.ink, fontSize: 12, fontWeight: "600" }}>
+                  Now: {selected.piece.progress}
+                </Text>
+              )}
+            </View>
           )}
-          {!!selected.piece.progress && (
-            <Text style={{ color: t.blue.ink, fontSize: 13, lineHeight: 19 }}>
-              Now: {selected.piece.progress}
-            </Text>
+          {activity?.retryReason && (
+            <View style={{ gap: 4, backgroundColor: t.amber.soft, borderWidth: 1, borderColor: theme.colors.border, borderLeftWidth: 3, borderLeftColor: t.amber.ink, borderRadius: 7, padding: 10 }}>
+              <Text style={{ color: t.amber.ink, fontSize: 12, fontWeight: "700" }}>Why it was sent back</Text>
+              <Text selectable style={{ color: theme.colors.foreground, fontSize: 13, lineHeight: 19 }}>{activity.retryReason}</Text>
+            </View>
           )}
-          {selected.piece.phases.length > 1 && <View accessibilityRole="tablist" style={{ flexDirection:"row",flexWrap:"wrap",gap:8 }}>
-            {selected.piece.phases.map(phase=>{
+          {selected.piece.phases.length > 1 && <View accessibilityRole="tablist" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {selected.piece.phases.map(phase => {
               const phaseTries = view.attempts[phase.stage] ?? [];
               const first = phaseTries[0], last = phaseTries[phaseTries.length - 1];
               const active = phase.stage === selected.stage;
-              return <Pressable key={phase.stage} accessibilityRole="tab" accessibilityState={{ selected:active }} onPress={()=>{setPicked(phase.stage);setShowTranscript(false);}} style={{minHeight:MIN_HIT_HEIGHT,justifyContent:"center",paddingHorizontal:10,borderRadius:6,borderWidth:1,borderColor:active?theme.colors.accent:theme.colors.border,backgroundColor:active?theme.colors.surface2:"transparent"}}>
-                <Text style={{color:active?theme.colors.foreground:theme.colors.foregroundMuted,fontSize:13,fontWeight:"600"}}>
-                  <Text style={{color:hue(phase.status,theme).ink}}>{PHASE_GLYPH[phase.status]} </Text>
+              return <Pressable key={phase.stage} accessibilityRole="tab" accessibilityState={{ selected: active }} onPress={() => setPicked(phase.stage)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: active ? theme.colors.accent : theme.colors.border, backgroundColor: active ? theme.colors.surface2 : "transparent" }}>
+                <Text style={{ color: active ? theme.colors.foreground : theme.colors.foregroundMuted, fontSize: 13, fontWeight: "600" }}>
+                  <Text style={{ color: hue(phase.status, theme).ink }}>{PHASE_GLYPH[phase.status]} </Text>
                   {phase.label}
                   {phaseTries.length ? ` · ${duration(first.startedAt, phase.status === "passed" ? last.endedAt : undefined)}` : ""}
                 </Text>
@@ -680,22 +694,265 @@ export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = 
               ))}
             </View>
           )}
-          <StageAttempts key={selected.stage} theme={theme} tries={tries} alreadyShown={[activity?.latestResult || ""]} />
+          <StageAttempts key={selected.stage} theme={theme} tries={tries} stacked={stacked} />
           {!tries.length && selected.piece.rung && <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>{selected.piece.rung}</Text>}
           {!tries.length && selected.piece.progress && <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>{selected.piece.progress}</Text>}
-          {lastThread && <View>
-            <Pressable accessibilityRole="button" accessibilityState={{ expanded: showTranscript }} onPress={() => setShowTranscript(!showTranscript)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
-              <Text style={{ color: theme.colors.accent, fontSize: 13 }}>{showTranscript ? "Hide agent transcript" : "View agent transcript"}</Text>
+          {lastThread && (
+            <View>
+              <Pressable accessibilityRole="button" accessibilityState={{ expanded: showTranscript }} onPress={() => setShowTranscript(!showTranscript)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
+                <Text style={{ color: theme.colors.accent, fontSize: 13, fontWeight: "600" }}>{showTranscript ? "Hide agent transcript ▴" : "View agent transcript ▸"}</Text>
+              </Pressable>
+              {showTranscript && <Transcript key={selected.stage} theme={theme} threadId={lastThread} tries={tries} />}
+            </View>
+          )}
+        </View>
+      ) : (
+        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>Select a piece in the flow graph to inspect its evidence and judge verdict.</Text>
+      )}
+      {view.savedPlanIntent && (
+        <View style={{ borderTopWidth: 1, borderTopColor: theme.colors.border, paddingTop: 8 }}>
+          <Pressable accessibilityRole="button" accessibilityState={{ expanded: showPlan }} onPress={() => setShowPlan(!showPlan)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
+            <Text style={{ color: theme.colors.accent, fontSize: 13, fontWeight: "600" }}>{showPlan ? "Hide saved plan ▴" : "View saved plan ▸"}</Text>
+          </Pressable>
+          {showPlan && <FormattedBody theme={theme} text={view.savedPlanIntent} />}
+        </View>
+      )}
+      {view.diff && (view.diff.commits > 0 || view.diff.files > 0) && (
+        <Text selectable style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
+          {view.diff.commits} commits · {view.diff.files} changed files · +{view.diff.insertions} −{view.diff.deletions}
+        </Text>
+      )}
+      <RunEvidence view={view} theme={theme} />
+    </View>
+  );
+}
+
+export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = false, externalPendingFor, selectedStage, onSelectStage }: {
+  theme: PluginTheme;
+  view: TaskView;
+  back: () => void;
+  openAgent?: (id: string) => void;
+  embeddedSupervisor?: boolean;
+  externalPendingFor?: string | null;
+  selectedStage?: string;
+  onSelectStage?: (stage: string) => void;
+}) {
+  const answer=useRpc(answerRpc), cache=useQueryClient();
+  const [reply,setReply]=useState(""),[retryError,setRetryError]=useState(""),[retrying,setRetrying]=useState(false);
+  const [localPicked, setLocalPicked] = useState<string | undefined>();
+  const [showPrompt, setShowPrompt] = useState(false);
+  const t = tones(theme);
+  const edge = palette[scheme(theme)].edge;
+  async function sendAnswer(text: string, allowFullAccess?: boolean){
+    setRetrying(true);
+    try{const r=await answer({kind:view.kind,id:view.id,text,askKey:view.askKey,...(allowFullAccess?{allowAntigravityFullAccess:true}:{})});if(!r.ok)throw Error(r.error);setReply("");setRetryError("");await cache.invalidateQueries({queryKey:["clyde"]});}
+    catch(e){setRetryError(formatRpcError(e));}finally{setRetrying(false);}
+  }
+  const picked = selectedStage ?? localPicked;
+  const setPicked = (stage: string) => {
+    setLocalPicked(stage);
+    onSelectStage?.(stage);
+  };
+  const selected = resolveSelectedStage(view, picked);
+  const activity = view.runActivity;
+  const [pendingFor, setPendingFor] = useState<string | null>();
+  const effectivePendingFor = embeddedSupervisor ? externalPendingFor : pendingFor;
+  const waiting = !!effectivePendingFor;
+  const hasFullPrompt = Boolean(view.goal && view.goal !== view.name && !view.savedPlanIntent?.startsWith(view.goal.replace(/…$/, "")));
+  const headline = waiting ? "Worker needs your permission" : effectivePendingFor === null && activity?.permissionAgentId ? "Worker is working on this task" : activity?.headline || view.summary || STATUS_LABEL[view.status];
+  const stripTone = waiting || view.status === "asking" ? t.amber : view.status === "failed" ? t.red : view.status === "done" || view.status === "passed" ? t.green : t.blue;
+  return (
+    <View style={{ gap: 12 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+        <Pressable accessibilityRole="button" onPress={back} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
+          <Text style={{ color: theme.colors.accent, fontSize: 13, fontWeight: "600" }}>‹ {embeddedSupervisor ? "Back to board" : "Back"}</Text>
+        </Pressable>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {hasFullPrompt && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ expanded: showPrompt }}
+              onPress={() => setShowPrompt(!showPrompt)}
+              style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: edge }}
+            >
+              <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "600" }}>
+                {showPrompt ? "Hide prompt ▴" : "Show prompt ▾"}
+              </Text>
             </Pressable>
-            {showTranscript && <Transcript key={selected.stage} theme={theme} threadId={lastThread} tries={tries} />}
-          </View>}
-        </View>}
-        {view.kind === "run" && view.status === "running" && <Steering id={view.id} theme={theme} />}
-        <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
+          )}
           {(view.status === "running" || view.status === "asking") && <StopButton theme={theme} view={view} />}
           <RemoveTask theme={theme} kind={view.kind} id={view.id} name={view.name} active={["running", "asking", "sent-back"].includes(view.status)} onRemoved={back} />
         </View>
       </View>
+
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+        <Text accessibilityRole="header" style={{ color: theme.colors.foreground, fontSize: 20, fontWeight: "700", flexShrink: 1 }}>{view.name}</Text>
+        <Pill theme={theme} status={view.status} />
+      </View>
+      <RunSummary theme={theme} view={view} />
+      {showPrompt && hasFullPrompt && (
+        <View style={{ backgroundColor: theme.colors.surface2, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 8, padding: 10 }}>
+          <Text selectable style={{ color: theme.colors.foreground, fontSize: 13, lineHeight: 20 }}>{view.goal}</Text>
+        </View>
+      )}
+
+      {/* Compact live status strip above the DAG */}
+      <View
+        accessibilityLiveRegion="polite"
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 8,
+          backgroundColor: theme.colors.surface2,
+          borderWidth: 1,
+          borderColor: theme.colors.border,
+          borderLeftWidth: 3,
+          borderLeftColor: stripTone.ink,
+          borderRadius: 8,
+          paddingVertical: 9,
+          paddingHorizontal: 12,
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 1 }}>
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: stripTone.ink }} />
+          <Text style={{ color: theme.colors.foreground, fontSize: 13, lineHeight: 19, fontWeight: "600", flexShrink: 1 }}>
+            {headline}
+          </Text>
+        </View>
+        {!!selected?.piece.sentBack && (
+          <View style={{ backgroundColor: t.amber.soft, borderRadius: 999, paddingVertical: 3, paddingHorizontal: 9 }}>
+            <Text style={{ color: t.amber.ink, fontSize: 12, fontWeight: "700" }}>Sent back {selected.piece.sentBack}×</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Actionable questions / approvals sit directly above the DAG */}
+      {view.question ? (
+        <View style={{ borderLeftWidth: 3, borderLeftColor: t.amber.ink, backgroundColor: theme.colors.surface2, borderRadius: 8, padding: 12, gap: 8 }}>
+          <Text style={{ color: theme.colors.foreground, fontWeight: "600", fontSize: 14, lineHeight: 20 }}>{view.question}</Text>
+          {view.retryable ? (
+            <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              {view.commitReview && view.agentId && openAgent && <Pressable accessibilityRole="button" onPress={() => openAgent(view.agentId!)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center" }}>
+                <Text style={{ color: theme.colors.accent, fontSize: 13, fontWeight: "600" }}>Review worktree changes in Paseo</Text>
+              </Pressable>}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ disabled: retrying }}
+                disabled={retrying}
+                onPress={()=>void sendAnswer("retry",view.fullAccess)}
+                style={{
+                  backgroundColor: retrying ? theme.colors.surface2 : theme.colors.accent,
+                  borderWidth: retrying ? 1 : 0,
+                  borderColor: edge,
+                  borderRadius: 6,
+                  paddingHorizontal: 14,
+                  minHeight: MIN_HIT_HEIGHT,
+                  justifyContent: "center",
+                }}
+              >
+                <Text style={{color: retrying ? theme.colors.foregroundMuted : theme.colors.accentForeground, fontWeight:"700",fontSize:13}}>
+                  {retrying ? "Retrying…" : view.fullAccess ? "Allow full access for this run and retry" : "Retry"}
+                </Text>
+              </Pressable>
+              {(!embeddedSupervisor || /originating Paseo (agent|workspace)/i.test(view.question)) && !activity?.permissionAgentId && <OpenChatButton theme={theme} kind={view.kind} id={view.id} openAgent={openAgent} onError={setRetryError} />}
+            </View>
+          ) : (
+            <View style={{ gap: 8 }}>
+              <TextInput
+                accessibilityLabel={view.approve ? "Request a change" : "Reply to question"}
+                placeholder={view.approve ? "Request a change…" : "Reply…"}
+                placeholderTextColor={theme.colors.foregroundMuted}
+                value={reply}
+                onChangeText={setReply}
+                onSubmitEditing={() => { if (reply.trim() && !retrying) void sendAnswer(reply.trim()); }}
+                style={{
+                  color: theme.colors.foreground,
+                  backgroundColor: theme.colors.surface1,
+                  borderWidth: 1,
+                  borderColor: edge,
+                  borderRadius: 6,
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
+                  minHeight: MIN_HIT_HEIGHT,
+                  fontSize: 14,
+                }}
+              />
+              <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                {view.approve && (() => {
+                  const approveDisabled = retrying || !!reply.trim();
+                  return (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{ disabled: approveDisabled }}
+                      disabled={approveDisabled}
+                      onPress={() => void sendAnswer("yes")}
+                      style={{
+                        backgroundColor: approveDisabled ? theme.colors.surface2 : theme.colors.accent,
+                        borderWidth: approveDisabled ? 1 : 0,
+                        borderColor: edge,
+                        borderRadius: 6,
+                        paddingHorizontal: 14,
+                        minHeight: MIN_HIT_HEIGHT,
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Text style={{ color: approveDisabled ? theme.colors.foregroundMuted : theme.colors.accentForeground, fontWeight: "700", fontSize: 13 }}>Approve plan</Text>
+                    </Pressable>
+                  );
+                })()}
+                {(() => {
+                  const replyDisabled = retrying || !reply.trim();
+                  const primary = !view.approve;
+                  return (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{ disabled: replyDisabled }}
+                      disabled={replyDisabled}
+                      onPress={() => void sendAnswer(reply.trim())}
+                      style={{
+                        backgroundColor: primary && !replyDisabled ? theme.colors.accent : theme.colors.surface2,
+                        borderWidth: primary && !replyDisabled ? 0 : 1,
+                        borderColor: edge,
+                        borderRadius: 6,
+                        paddingHorizontal: 14,
+                        minHeight: MIN_HIT_HEIGHT,
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Text style={{ color: replyDisabled ? theme.colors.foregroundMuted : primary ? theme.colors.accentForeground : theme.colors.foreground, fontWeight: "600", fontSize: 13 }}>
+                        {retrying ? "Sending…" : view.approve ? "Request changes" : "Send reply"}
+                      </Text>
+                    </Pressable>
+                  );
+                })()}
+                {!embeddedSupervisor && !activity?.permissionAgentId && <OpenChatButton theme={theme} kind={view.kind} id={view.id} openAgent={openAgent} onError={setRetryError} />}
+              </View>
+            </View>
+          )}
+          {!!retryError && <Text accessibilityRole="alert" style={{color:theme.colors.statusDanger, fontSize:13}}>{retryError}</Text>}
+        </View>
+      ) : null}
+      {!embeddedSupervisor && !activity?.permissionAgentId && !view.question && view.status === "failed" && openAgent ? (
+        <View style={{ gap: 8 }}>
+          <OpenChatButton theme={theme} kind={view.kind} id={view.id} openAgent={openAgent} onError={setRetryError} />
+          {!!retryError && <Text accessibilityRole="alert" style={{ color: theme.colors.statusDanger, fontSize: 13 }}>{retryError}</Text>}
+        </View>
+      ) : null}
+
+      <OrchestrationFlow theme={theme} view={view} selectedStage={selected?.stage} onSelect={stage => setPicked(stage)} onOpenAgent={openAgent} />
+
+      {/* Non-embedded standalone threads keep inspector + permissions + steering inline */}
+      {!embeddedSupervisor && view.kind === "run" && ["running", "asking", "sent-back"].includes(view.status) && (
+        <WorkerPermissions key={view.id} theme={theme} runId={view.id} openAgent={openAgent} onPending={setPendingFor} expected={!!activity?.permissionAgentId} />
+      )}
+      {!embeddedSupervisor && (
+        <View style={{ borderTopWidth: 1, borderTopColor: theme.colors.border, paddingTop: 14, gap: 12 }}>
+          <TaskInspector theme={theme} view={view} selectedStage={selected?.stage} onSelectStage={setPicked} stacked={false} />
+          {view.kind === "run" && view.status === "running" && <Steering id={view.id} theme={theme} />}
+        </View>
+      )}
     </View>
   );
 }
