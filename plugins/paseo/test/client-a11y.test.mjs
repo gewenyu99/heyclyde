@@ -189,7 +189,8 @@ test("client TSX components obey typography floor, accessible controls, dedicate
   assert.match(screen, /<Composer board theme=/);
   assert.match(sidecar, /<Composer theme=\{theme\} workspaceId=\{workspaceId\} agentId=\{origin\}/);
   assert.match(home, /Open task/);
-  assert.match(screen, /<SupervisorChat key=\{id\} theme=\{theme\} runId=\{id\}/);
+  assert.match(screen, /wranglerRpc/);
+  assert.match(screen, /Wrangler/);
   assert.match(screen, /showPermissions=/);
   assert.match(screen, /onPendingPermission=\{setPendingPermissionFor\}/);
   const supervisorChat = fs.readFileSync(path.join(clientDir, "supervisor-chat.tsx"), "utf8");
@@ -197,6 +198,8 @@ test("client TSX components obey typography floor, accessible controls, dedicate
   assert.match(supervisorChat, /<WorkerPermissions[\s\S]*variant="chat"/);
   assert.match(attachedChat, /usePaseo/);
   assert.match(attachedChat, /Open full Paseo chat/);
+  assert.match(attachedChat, /mergeStreamText/);
+  assert.match(attachedChat, /ActivityGroup/);
   assert.match(attachedChat, /<WorkerPermissions[\s\S]*variant="chat"/);
   assert.match(screen, /<AttachedChat/);
   assert.match(quests, /distributeMasonry/);
@@ -259,7 +262,6 @@ test("client TSX components obey typography floor, accessible controls, dedicate
   assert.match(boardState, /useSettings\(definition\)/);
   assert.match(screen, /useBoardState\(selectionKey/);
   assert.match(screen, /draftState=\{persisted.value.composer\}/);
-  assert.match(screen, /supervisorDrafts\[id\]/);
   assert.doesNotMatch(boardState, /localStorage/);
   assert.match(screen, /display: !wide && mobilePane === "task" \? "none" : "flex"/);
   assert.match(screen, /\(!workToReview \|\| newTask\) && <Panel/);

@@ -25,6 +25,12 @@ const BARE_CLYDE_TOOLS = new Set([
   "clyde_suggest_role",
   "clyde_delegate",
   "clyde_prefer_model",
+  "clyde_run_snapshot",
+  "clyde_steer_run",
+  "clyde_message_agent",
+  "clyde_answer_run",
+  "clyde_edit_plan",
+  "clyde_stop_run",
 ]);
 
 function isPaseoClydeTool(name: string): boolean {
@@ -337,10 +343,13 @@ function trustedMemoryServer(provider: string, cwds: (string | null | undefined)
 async function ownsRun(native: Agent | null | undefined, agentId: string, provider: string): Promise<{ run: RawRun; role: "worker" | "orchestrator" } | null> {
   if (!native || native.id !== agentId || native.archivedAt || native.provider !== provider) return null;
   const labels = native.labels ?? {};
-  const runId = labels["clyde.run"] ?? labels["clyde.orchestrator"];
+  const runId = labels["clyde.run"] ?? labels["clyde.orchestrator"] ?? labels["clyde.wrangler"];
   if (typeof runId !== "string" || !/^r-[\da-f-]+$/i.test(runId)) return null;
   const run = await call<RawRun>("GET", "/runs/" + encodeURIComponent(runId), undefined, { recover: false });
   if (!run || run.id !== runId || run.archivedAt || run.endedAt || !["running", "asking"].includes(run.status)) return null;
+  if (labels["clyde.wrangler"] === run.id && samePath(native.cwd, run.cwd)) {
+    return { run, role: "worker" };
+  }
   if (labels["clyde.thread"]) {
     if (run.status !== "running" || labels["clyde.run"] !== run.id) return null;
     const stage = run.stages.findLast(stage => stage.status === "running");

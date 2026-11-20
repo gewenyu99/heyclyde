@@ -219,3 +219,10 @@ export const openChatRpc = defineRpc({
   input: z.object({ kind: z.enum(["run", "thread"]), id: z.string().min(1) }),
   output: z.object({ agentId: z.string().min(1), created: z.boolean().optional() }),
 });
+
+/** Opens (or creates) a cheap Hydrogen/Sonnet sidekick agent for a run that can see the main chat + full DAG and wrangle agents. */
+export const wranglerRpc = defineRpc({
+  name: "clyde.wrangler",
+  input: z.object({ runId: z.string().min(1) }),
+  output: z.object({ agentId: z.string().min(1), model: z.string().optional(), created: z.boolean().optional() }),
+});

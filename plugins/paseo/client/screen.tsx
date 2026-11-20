@@ -4,7 +4,7 @@ import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { homeRpc, taskRpc } from "../shared/clyde";
+import { homeRpc, taskRpc, wranglerRpc } from "../shared/clyde";
 import {Quests} from "./quests";
 import { Composer } from "./composer";
 import { useBoardState, type ComposerDraft } from "./board-state";
@@ -13,7 +13,6 @@ import { HomeView } from "./home";
 import { useLive } from "./nodes";
 import { formatRpcError, MIN_HIT_HEIGHT } from "./palette";
 import { AttachedChat } from "./attached-chat";
-import { SupervisorChat } from "./supervisor-chat";
 import { TaskScreen } from "./task";
 import {Lockup,clydeTheme} from "./brand";
 
@@ -43,12 +42,12 @@ function Board(
   const theme=clydeTheme(hostTheme);
   useLive();
   const openAgent=navigation ? (agentId:string)=>navigation.openAgent({agentId}):undefined;
-  const readHome = useRpc(homeRpc), readTask = useRpc(taskRpc);
+  const readHome = useRpc(homeRpc), readTask = useRpc(taskRpc), openWrangler = useRpc(wranglerRpc);
   const persisted=useBoardState(selectionKey,!workspaceId,panelTab,initialTask);
   const {picked,newTask,mobilePane,tab}=persisted.value;
   const [width,setWidth]=useState(0);
   const [pendingPermissionFor,setPendingPermissionFor]=useState<string|null|undefined>(undefined);
-  const [chatMode,setChatMode]=useState<"attached"|"supervisor">("attached");
+  const [chatMode,setChatMode]=useState<"attached"|"wrangler">("attached");
   const [attachedTarget,setAttachedTarget]=useState<"worker"|"parent">("worker");
   function setPicked(picked:string){setPendingPermissionFor(undefined);setChatMode("attached");setAttachedTarget("worker");persisted.set({picked,mobilePane:"task"});}
   const setNewTask=(newTask:boolean)=>persisted.set({newTask});
@@ -70,6 +69,13 @@ function Board(
     queryFn: () => readTask({ kind: kind as "run" | "thread", id }),
     enabled: persisted.ready && selectedTask,
     refetchInterval: 5000,
+  });
+  const wranglerQuery = useQuery({
+    queryKey: ["clyde", "wrangler", id],
+    queryFn: () => openWrangler({ runId: id }),
+    enabled: persisted.ready && kind === "run" && !!id && (chatMode === "wrangler" || (!task.data?.data?.agentId && !task.data?.data?.parentAgentId)),
+    staleTime: 60_000,
+    retry: false,
   });
   const data = home.data?.data;
   const rawError = home.data?.error || (home.error ? formatRpcError(home.error) : "");
@@ -178,6 +184,7 @@ function Board(
                 const activeLabel = activeAttachedId === parentId && parentId !== workerId ? "Orchestrator" : "Worker";
                 const showPerms = !!view && ["running", "asking", "sent-back"].includes(view.status);
                 const expectedPerm = !!view?.runActivity?.permissionAgentId;
+                const wranglerAgentId = wranglerQuery.data?.agentId;
                 return (
                   <View style={{ display: !wide && mobilePane === "task" ? "none" : "flex", flex: wide ? 2 : 1, minWidth: wide ? 320 : 0, minHeight: 0, borderWidth: 1, borderColor: c.border, borderRadius: 12, overflow: "hidden", backgroundColor: c.surface1 }}>
                     <View accessibilityRole="tablist" style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6, flexWrap: "wrap", paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: c.border, backgroundColor: c.surface2 }}>
@@ -195,10 +202,10 @@ function Board(
                         <Pressable
                           accessibilityRole="tab"
                           accessibilityState={{ selected: !showAttached }}
-                          onPress={() => setChatMode("supervisor")}
+                          onPress={() => setChatMode("wrangler")}
                           style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingHorizontal: 10, borderRadius: 6, backgroundColor: !showAttached ? c.surface1 : "transparent" }}
                         >
-                          <Text style={{ color: !showAttached ? c.foreground : c.foregroundMuted, fontSize: 13, fontWeight: "600" }}>Ask Clyde</Text>
+                          <Text style={{ color: !showAttached ? c.foreground : c.foregroundMuted, fontSize: 13, fontWeight: "700" }}>Wrangler</Text>
                         </Pressable>
                       </View>
                       {showAttached && workerId && parentId && workerId !== parentId && (
@@ -236,8 +243,33 @@ function Board(
                           onPendingPermission={setPendingPermissionFor}
                         />
                       </View>
+                    ) : wranglerAgentId ? (
+                      <View style={{ flex: 1, minHeight: 0, padding: 12 }}>
+                        <AttachedChat
+                          key={wranglerAgentId}
+                          theme={theme}
+                          runId={id}
+                          agentId={wranglerAgentId}
+                          agentLabel="Wrangler"
+                          placeholder="Ask Wrangler to inspect the DAG or steer/message other agents…"
+                          emptyHint="Wrangler sees the full DAG and main chat. Ask it to check status, adjust the plan, or steer/message another agent."
+                          openAgent={openAgent}
+                          showPermissions={showPerms}
+                          expectedPermission={expectedPerm}
+                          onPendingPermission={setPendingPermissionFor}
+                        />
+                      </View>
                     ) : (
-                      <SupervisorChat key={id} theme={theme} runId={id} draft={persisted.value.supervisorDrafts[id] ?? ""} onDraftChange={text=>persisted.set(previous=>({...previous,supervisorDrafts:{...previous.supervisorDrafts,[id]:text}}))} openAgent={openAgent} showPermissions={showPerms} expectedPermission={expectedPerm} onPendingPermission={setPendingPermissionFor} />
+                      <View style={{ flex: 1, minHeight: 0, padding: 14, gap: 8 }}>
+                        <Text accessibilityRole={wranglerQuery.error ? "alert" : undefined} style={{ color: wranglerQuery.error ? c.statusDanger : c.foregroundMuted, fontSize: 13 }}>
+                          {wranglerQuery.error ? formatRpcError(wranglerQuery.error) : "Starting Wrangler sidekick…"}
+                        </Text>
+                        {wranglerQuery.error && (
+                          <Pressable accessibilityRole="button" onPress={() => void wranglerQuery.refetch()} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center", alignSelf: "flex-start" }}>
+                            <Text style={{ color: c.accent, fontSize: 13, fontWeight: "600" }}>Retry</Text>
+                          </Pressable>
+                        )}
+                      </View>
                     )}
                   </View>
                 );

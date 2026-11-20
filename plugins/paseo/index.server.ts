@@ -4,6 +4,7 @@ import { currentActivity, workspaceActivity } from "./server/current-activity.ts
 import { suggestProject } from "./server/project-selection.ts";
 import { workerPermissions } from "./server/worker-permissions.ts";
 import { allowRunLookups } from "./server/allow-run-lookups.ts";
+import { wrangler } from "./server/wrangler.ts";
 import { isProjectChat, listAllAgents, projectSlug, residents } from "./server/residents.ts";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -209,6 +210,7 @@ export default function contribute(server: PluginServerContext) {
   workerPermissions(server);
   suggestProject(server);
   allowRunLookups(server);
+  wrangler(server);
   const live = follow(ensureCompanion);
   const cancelUpdate = typeof readJson<{ pid?: number }>("daemon.json")?.pid === "number" ? updateWhenIdle() : undefined;
   const residentControl = residents(server);
