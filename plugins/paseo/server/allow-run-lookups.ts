@@ -11,12 +11,28 @@ type PermissionResponse = Parameters<ReturnType<PluginHandlerContext["paseo"]["a
 
 const ALLOWED_HTTP_TYPES = new Set(["http", "sse", "streamable-http", "streamablehttp"]);
 
+const BARE_CLYDE_TOOLS = new Set([
+  "clyde_recall",
+  "clyde_recall_more",
+  "clyde_remember",
+  "clyde_feedback",
+  "clyde_check_messages",
+  "clyde_ack_messages",
+  "clyde_get_entry",
+  "clyde_get_blob",
+  "clyde_list_quests",
+  "clyde_post_quest",
+  "clyde_suggest_role",
+  "clyde_delegate",
+  "clyde_prefer_model",
+]);
+
 function isPaseoClydeTool(name: string): boolean {
-  return /^mcp__paseo__clyde_[a-z0-9_]+$/.test(name);
+  return /^(?:mcp[_:./]+)?paseo[_:./]+clyde_[a-z0-9_]+$/.test(name) || BARE_CLYDE_TOOLS.has(name);
 }
 
 function isMemoryTool(name: string): boolean {
-  return /^mcp__memory__[a-z0-9_]+$/.test(name);
+  return /^(?:mcp[_:./]+)?memory[_:./]+[a-z0-9_]+$/.test(name);
 }
 
 function isAutoApprovableTool(request: Request, role: "worker" | "orchestrator"): boolean {

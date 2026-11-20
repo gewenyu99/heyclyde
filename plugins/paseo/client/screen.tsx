@@ -12,6 +12,7 @@ import { Roster } from "./roster";
 import { HomeView } from "./home";
 import { useLive } from "./nodes";
 import { formatRpcError, MIN_HIT_HEIGHT } from "./palette";
+import { AttachedChat } from "./attached-chat";
 import { SupervisorChat } from "./supervisor-chat";
 import { TaskScreen } from "./task";
 import {Lockup,clydeTheme} from "./brand";
@@ -47,7 +48,9 @@ function Board(
   const {picked,newTask,mobilePane,tab}=persisted.value;
   const [width,setWidth]=useState(0);
   const [pendingPermissionFor,setPendingPermissionFor]=useState<string|null|undefined>(undefined);
-  function setPicked(picked:string){setPendingPermissionFor(undefined);persisted.set({picked,mobilePane:"task"});}
+  const [chatMode,setChatMode]=useState<"attached"|"supervisor">("attached");
+  const [attachedTarget,setAttachedTarget]=useState<"worker"|"parent">("worker");
+  function setPicked(picked:string){setPendingPermissionFor(undefined);setChatMode("attached");setAttachedTarget("worker");persisted.set({picked,mobilePane:"task"});}
   const setNewTask=(newTask:boolean)=>persisted.set({newTask});
   const setMobilePane=(mobilePane:"task"|"chat")=>persisted.set({mobilePane});
   const setTab=(tab:"board"|"agents"|"quests")=>persisted.set({tab});
@@ -166,9 +169,79 @@ function Board(
                   )}
                 </Panel>
               </ScrollView>
-              {kind === "run" && <View style={{ display: !wide && mobilePane === "task" ? "none" : "flex", flex: wide ? 2 : 1, minWidth: wide ? 320 : 0, minHeight: 0, borderWidth: 1, borderColor: c.border, borderRadius: 12, overflow: "hidden", backgroundColor: c.surface1 }}>
-                <SupervisorChat key={id} theme={theme} runId={id} draft={persisted.value.supervisorDrafts[id] ?? ""} onDraftChange={text=>persisted.set(previous=>({...previous,supervisorDrafts:{...previous.supervisorDrafts,[id]:text}}))} openAgent={openAgent} showPermissions={!!task.data?.data && ["running", "asking", "sent-back"].includes(task.data.data.status)} expectedPermission={!!task.data?.data?.runActivity?.permissionAgentId} onPendingPermission={setPendingPermissionFor} />
-              </View>}
+              {kind === "run" && (() => {
+                const view = task.data?.data;
+                const workerId = view?.agentId;
+                const parentId = view?.parentAgentId;
+                const activeAttachedId = attachedTarget === "parent" ? (parentId || workerId) : (workerId || parentId);
+                const showAttached = chatMode === "attached" && !!activeAttachedId;
+                const activeLabel = activeAttachedId === parentId && parentId !== workerId ? "Orchestrator" : "Worker";
+                const showPerms = !!view && ["running", "asking", "sent-back"].includes(view.status);
+                const expectedPerm = !!view?.runActivity?.permissionAgentId;
+                return (
+                  <View style={{ display: !wide && mobilePane === "task" ? "none" : "flex", flex: wide ? 2 : 1, minWidth: wide ? 320 : 0, minHeight: 0, borderWidth: 1, borderColor: c.border, borderRadius: 12, overflow: "hidden", backgroundColor: c.surface1 }}>
+                    <View accessibilityRole="tablist" style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6, flexWrap: "wrap", paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: c.border, backgroundColor: c.surface2 }}>
+                      <View style={{ flexDirection: "row", gap: 4 }}>
+                        {!!activeAttachedId && (
+                          <Pressable
+                            accessibilityRole="tab"
+                            accessibilityState={{ selected: showAttached }}
+                            onPress={() => setChatMode("attached")}
+                            style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingHorizontal: 10, borderRadius: 6, backgroundColor: showAttached ? c.surface1 : "transparent" }}
+                          >
+                            <Text style={{ color: showAttached ? c.foreground : c.foregroundMuted, fontSize: 13, fontWeight: "700" }}>Paseo chat</Text>
+                          </Pressable>
+                        )}
+                        <Pressable
+                          accessibilityRole="tab"
+                          accessibilityState={{ selected: !showAttached }}
+                          onPress={() => setChatMode("supervisor")}
+                          style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingHorizontal: 10, borderRadius: 6, backgroundColor: !showAttached ? c.surface1 : "transparent" }}
+                        >
+                          <Text style={{ color: !showAttached ? c.foreground : c.foregroundMuted, fontSize: 13, fontWeight: "600" }}>Ask Clyde</Text>
+                        </Pressable>
+                      </View>
+                      {showAttached && workerId && parentId && workerId !== parentId && (
+                        <View style={{ flexDirection: "row", gap: 4 }}>
+                          {(["worker", "parent"] as const).map(targetKey => {
+                            const sel = (targetKey === "parent" ? parentId : workerId) === activeAttachedId;
+                            return (
+                              <Pressable
+                                key={targetKey}
+                                accessibilityRole="button"
+                                accessibilityState={{ selected: sel }}
+                                onPress={() => setAttachedTarget(targetKey)}
+                                style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingHorizontal: 8, borderRadius: 5, borderWidth: 1, borderColor: sel ? c.accent : c.border, backgroundColor: sel ? c.surface1 : "transparent" }}
+                              >
+                                <Text style={{ color: sel ? c.accent : c.foregroundMuted, fontSize: 12, fontWeight: "600" }}>
+                                  {targetKey === "worker" ? "Worker" : "Lead"}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      )}
+                    </View>
+                    {showAttached ? (
+                      <View style={{ flex: 1, minHeight: 0, padding: 12 }}>
+                        <AttachedChat
+                          key={activeAttachedId}
+                          theme={theme}
+                          runId={id}
+                          agentId={activeAttachedId!}
+                          agentLabel={activeLabel}
+                          openAgent={openAgent}
+                          showPermissions={showPerms}
+                          expectedPermission={expectedPerm}
+                          onPendingPermission={setPendingPermissionFor}
+                        />
+                      </View>
+                    ) : (
+                      <SupervisorChat key={id} theme={theme} runId={id} draft={persisted.value.supervisorDrafts[id] ?? ""} onDraftChange={text=>persisted.set(previous=>({...previous,supervisorDrafts:{...previous.supervisorDrafts,[id]:text}}))} openAgent={openAgent} showPermissions={showPerms} expectedPermission={expectedPerm} onPendingPermission={setPendingPermissionFor} />
+                    )}
+                  </View>
+                );
+              })()}
               </View>
             </View>
           )

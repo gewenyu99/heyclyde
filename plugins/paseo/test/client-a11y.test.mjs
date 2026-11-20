@@ -193,7 +193,14 @@ test("client TSX components obey typography floor, accessible controls, dedicate
   assert.match(screen, /showPermissions=/);
   assert.match(screen, /onPendingPermission=\{setPendingPermissionFor\}/);
   const supervisorChat = fs.readFileSync(path.join(clientDir, "supervisor-chat.tsx"), "utf8");
+  const attachedChat = fs.readFileSync(path.join(clientDir, "attached-chat.tsx"), "utf8");
   assert.match(supervisorChat, /<WorkerPermissions[\s\S]*variant="chat"/);
+  assert.match(attachedChat, /usePaseo/);
+  assert.match(attachedChat, /Open full Paseo chat/);
+  assert.match(attachedChat, /<WorkerPermissions[\s\S]*variant="chat"/);
+  assert.match(screen, /<AttachedChat/);
+  assert.match(quests, /distributeMasonry/);
+  assert.match(quests, /Accept quest →/);
   assert.match(task, /<OrchestrationFlow[\s\S]*onOpenAgent=\{openAgent\}/);
   assert.match(task, /!embeddedSupervisor && view\.kind === "run"[\s\S]*<WorkerPermissions key=\{view\.id\}/);
   assert.match(screen, /flexDirection: wide \? "row" : "column"/);

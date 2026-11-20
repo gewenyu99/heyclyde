@@ -94,7 +94,9 @@ const noGrant=f=>{assert.deepEqual(f.state.responses,[]);assert.equal(f.state.an
 test('every live Paseo agent always gets permission for Paseo built-in Clyde tools and trusted memory MCP tools',async t=>{
   const names=[
     'mcp__paseo__clyde_recall','mcp__paseo__clyde_recall_more','mcp__paseo__clyde_remember','mcp__paseo__clyde_get_entry','mcp__paseo__clyde_get_blob','mcp__paseo__clyde_post_quest','mcp__paseo__clyde_list_quests','mcp__paseo__clyde_delegate',
+    'clyde_recall','paseo:clyde_get_entry',
     'mcp__memory__recall','mcp__memory__recall_more','mcp__memory__check_messages','mcp__memory__get_entry','mcp__memory__get_blob','mcp__memory__remember','mcp__memory__feedback','mcp__memory__list_quests','mcp__memory__post_quest',
+    'mcp_memory_recall','memory:get_entry',
   ];
   for(const role of ['ordinary','worker','orchestrator'])for(const name of names)await t.test(role+' '+name,async t=>{
     const f=fixture(t);

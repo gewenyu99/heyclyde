@@ -414,6 +414,7 @@ export function task(r: RawRun, threads: RawThread[], agents: Record<string, str
     passed: all.filter((p) => p.status === "passed").length, total: all.length,
     background: threads.filter((t) => !t.archivedAt && ids.has(t.id) && (t.status === "running" || t.status === "queued")).length,
     agentId: runAgentId(r, threads, agents),
+    parentAgentId: r.paseoParentId,
   };
 }
 

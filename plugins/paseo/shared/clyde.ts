@@ -59,7 +59,7 @@ export type TaskView = {
   runActivity?: { headline: string; latestResult?: string; retryReason?: string; permissionAgentId?: string };
   savedPlanIntent?: string; goal: string; lastActivity?: string; diff?: Diff;
   steps: Step[]; attempts: Record<string, AttemptView[]>; selected?: string;
-  passed: number; total: number; background: number; agentId?: string;
+  passed: number; total: number; background: number; agentId?: string; parentAgentId?: string;
 };
 
 export type Diff = { commits: number; files: number; insertions: number; deletions: number };
