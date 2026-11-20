@@ -571,6 +571,7 @@ test("launchRpc picks the newest chat by default, honors explicit agentId, and a
   }, { paseo });
   assert.equal(createdAgents.at(-1).via, "workspace");
   assert.equal(createdAgents.at(-1).config.provider, "claude/claude-sonnet-4-5");
+  assert.equal(createdAgents.at(-1).config.modeId, "bypassPermissions");
   assert.equal(posted.at(-1).paseoParentId, "ws-created-1");
   createdAgents.length = 0;
 
@@ -587,6 +588,7 @@ test("launchRpc picks the newest chat by default, honors explicit agentId, and a
   assert.equal(createdAgents.length, 1);
   assert.equal(createdAgents[0].via, "workspace");
   assert.equal(createdAgents[0].config.provider, "antigravity/gemini-pro");
+  assert.equal(createdAgents[0].config.modeId, "full-access");
   assert.equal(createdAgents[0].title, "Review Clyde UI");
   assert.equal(posted.at(-1).paseoParentId, "ws-created-1");
 

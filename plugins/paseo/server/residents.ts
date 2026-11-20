@@ -71,13 +71,19 @@ type ChatInfo = {
   labels?: Readonly<{ [key: string]: string }>;
 };
 
+function isTransientHelper(agent: ChatInfo) {
+  return Boolean(
+    agent.internal ||
+    agent.metadata?.["clyde.transient"] === true ||
+    (agent.internal === undefined && agent.title === "Branch name generator"),
+  );
+}
+
 export function isProjectChat(agent: ChatInfo) {
   const labels = agent.labels;
-  return !!agent.cwd && !agent.archivedAt && !agent.internal && !agent.background && !agent.parentAgentId &&
+  return !!agent.cwd && !agent.archivedAt && !isTransientHelper(agent) && !agent.background && !agent.parentAgentId &&
     !labels?.["paseo.parent-agent-id"] && !labels?.["clyde.run"] && !labels?.["clyde.thread"] &&
-    !labels?.["clyde-run"] && !labels?.["clyde-thread"] && agent.metadata?.["clyde.internal"] !== true &&
-    // Lifecycle hooks omit the internal flag on Paseo's temporary branch helper.
-    !(agent.internal === undefined && agent.title === "Branch name generator");
+    !labels?.["clyde-run"] && !labels?.["clyde-thread"] && agent.metadata?.["clyde.internal"] !== true;
 }
 
 function isResidentChat(agent: ChatInfo) {
@@ -176,6 +182,7 @@ export function residents(server: PluginServerContext) {
     "ack_messages",
     "get_entry",
     "get_blob",
+    "list_quests",
     "post_quest",
   ].map((operation) =>
     defineAgentTool({
@@ -186,6 +193,7 @@ export function residents(server: PluginServerContext) {
         recall_more: "Read more results with retrieval_id.",
         remember: "Save a verified decision or result before replying. Requires pattern, title, body and evidence.",
         feedback: "Give feedback with retrieval_id and entries or nothing_useful.",
+        list_quests: "List quests on the shared quest board.",
         post_quest:
           "Post multi-step work with title, brief, done_when, tags, and priority (urgent, high, normal, low).",
         get_entry: "Read the note named by id.",
@@ -195,9 +203,20 @@ export function residents(server: PluginServerContext) {
       } as { [name: string]: string })[operation],
       input: z.record(z.string(), z.unknown()),
       async execute(args, { agent,paseo }) {
-        const row = discover(agent.id, agent.cwd, agent.provider);
-        const {text,card}=await agentReply(asAgent(row),operation,args);
-        await chat.memory(row.id,operation,card,paseo,args,text);
+        const info = agent as typeof agent & ChatInfo;
+        const projectChat = isProjectChat(info);
+        const role = info.labels?.["clyde.thread"] ? "Clyde worker" : "Background agent";
+        const identity = projectChat
+          ? asAgent(discover(agent.id, agent.cwd, agent.provider))
+          : {
+              id: agent.id,
+              project: projectSlug(agent.cwd),
+              role,
+              provider: agent.provider,
+              context: inferContext({ cwd: agent.cwd, role }),
+            };
+        const {text,card}=await agentReply(identity,operation,args);
+        if (projectChat) await chat.memory(agent.id,operation,card,paseo,args,text);
         if (operation === "post_quest") { for (const candidate of Object.values(rows)) void advance(candidate); }
         return { text };
       },
@@ -285,14 +304,23 @@ export function residents(server: PluginServerContext) {
   });
   server.addHook("agent.open.before", async ({ request }, context) => {
     api = context.paseo;
-    if (!isProjectChat(request) || request.purpose === "history") return;
-    const row = discover(request.agentId, request.cwd, request.provider);
-    // Prewarm the agent's memory session. A failed recall is reported in the chat when a turn needs it.
-    void agentCall(asAgent(row), "check_messages", {}).catch(() => {});
+    if (!request.cwd || request.purpose === "history" || isTransientHelper(request)) return;
+    if (isProjectChat(request)) {
+      const row = discover(request.agentId, request.cwd, request.provider);
+      // Prewarm the agent's memory session. A failed recall is reported in the chat when a turn needs it.
+      void agentCall(asAgent(row), "check_messages", {}).catch(() => {});
+      return {
+        ...request,
+        tools: [...request.tools, ...memory, suggest, delegate, preference],
+        env: { ...request.env, CLYDE_PASEO_AGENT: row.id },
+      };
+    }
+    // Orchestration workers, subagents, and background agents still get Paseo's built-in Clyde memory tools
+    // without being added to the interactive resident roster.
     return {
       ...request,
-      tools: [...request.tools, ...memory, suggest, delegate, preference],
-      env: { ...request.env, CLYDE_PASEO_AGENT: row.id },
+      tools: [...request.tools, ...memory],
+      env: { ...request.env, CLYDE_PASEO_AGENT: request.agentId },
     };
   });
   server.addHook(
@@ -305,8 +333,9 @@ export function residents(server: PluginServerContext) {
       };
       const reqEnv = (request as { env?: Readonly<{ [key: string]: string | undefined }> }).env;
       const labels = config.labels;
+      const transient = Boolean(config.internal || config.title === "Branch name generator");
       const skip = Boolean(
-        config.internal ||
+        transient ||
         config.background ||
         config.parentAgentId ||
         request.metadata?.["clyde.internal"] === true ||
@@ -316,10 +345,9 @@ export function residents(server: PluginServerContext) {
         labels?.["clyde.run"] ||
         labels?.["clyde-run"] ||
         labels?.["clyde.thread"] ||
-        labels?.["clyde-thread"] ||
-        config.title === "Branch name generator"
+        labels?.["clyde-thread"]
       );
-      if (skip) return { ...request, metadata: { ...request.metadata, "clyde.internal": true } };
+      if (skip) return { ...request, metadata: { ...request.metadata, "clyde.internal": true, ...(transient ? { "clyde.transient": true } : {}) } };
       return {
         ...request,
         config: { ...request.config, systemPrompt: [request.config.systemPrompt, rules].filter(Boolean).join("\n") },

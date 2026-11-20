@@ -55,8 +55,8 @@ function PermissionRequest({ theme, request, runId, agentId, openAgent, onAnswer
   </View>;
 }
 
-export function WorkerPermissions({ theme, runId, openAgent, onPending, expected = false }: {
-  theme: PluginTheme; runId: string; openAgent?: (id: string) => void; onPending: (id: string | null | undefined) => void; expected?: boolean;
+export function WorkerPermissions({ theme, runId, openAgent, onPending, expected = false, variant = "inline" }: {
+  theme: PluginTheme; runId: string; openAgent?: (id: string) => void; onPending: (id: string | null | undefined) => void; expected?: boolean; variant?: "inline" | "chat";
 }) {
   const read = useRpc(workerPermissionsRpc), cache = useQueryClient();
   const [answered, setAnswered] = useState(false);
@@ -73,7 +73,18 @@ export function WorkerPermissions({ theme, runId, openAgent, onPending, expected
     void cache.invalidateQueries({ queryKey: ["clyde"] });
   }
   if (!error && !query.data?.requests.length && !answered && (!query.isPending || !expected)) return null;
-  return <View style={{ gap: 12, paddingVertical: 6 }}>
+  const chatPopup = variant === "chat";
+  return <View style={chatPopup ? {
+    gap: 10,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderLeftWidth: 4,
+    borderColor: theme.colors.border,
+    borderLeftColor: theme.colors.accent,
+    backgroundColor: theme.colors.surface2,
+  } : { gap: 12, paddingVertical: 6 }}>
+    {chatPopup && <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "700", letterSpacing: 0.6 }}>PERMISSION POPUP</Text>}
     {query.isPending && expected && <Text accessibilityLiveRegion="polite" style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>Loading permission request…</Text>}
     {!!error && <View style={{ gap: 4 }}>
       <Text accessibilityRole="alert" style={{ color: theme.colors.statusDanger, fontSize: 13, lineHeight: 20 }}>{error}</Text>

@@ -452,7 +452,7 @@ function StopButton({ theme, view }: { theme: PluginTheme; view: TaskView }) {
   );
 }
 
-export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = false }: { theme: PluginTheme; view: TaskView; back: () => void; openAgent?: (id: string) => void; embeddedSupervisor?: boolean }) {
+export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = false, externalPendingFor }: { theme: PluginTheme; view: TaskView; back: () => void; openAgent?: (id: string) => void; embeddedSupervisor?: boolean; externalPendingFor?: string | null }) {
   const answer=useRpc(answerRpc), cache=useQueryClient();
   const [reply,setReply]=useState(""),[retryError,setRetryError]=useState(""),[retrying,setRetrying]=useState(false);
   const t = tones(theme);
@@ -472,7 +472,8 @@ export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = 
   const lastThread = tries[tries.length - 1]?.threadId;
   const activity = view.runActivity;
   const [pendingFor, setPendingFor] = useState<string | null>();
-  const waiting = !!pendingFor;
+  const effectivePendingFor = embeddedSupervisor ? externalPendingFor : pendingFor;
+  const waiting = !!effectivePendingFor;
   const selectedChecks = selected ? selected.piece.doneWhen.filter(item => !view.completionCriteria?.includes(item)) : [];
   return (
     <View style={{ gap: 14 }}>
@@ -484,9 +485,9 @@ export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = 
         <Pill theme={theme} status={view.status} />
       </View>
       <RunSummary theme={theme} view={view} />
-      <OrchestrationFlow theme={theme} view={view} selectedStage={selected?.stage} onSelect={stage => { setPicked(stage); setShowTranscript(false); }} />
+      <OrchestrationFlow theme={theme} view={view} selectedStage={selected?.stage} onSelect={stage => { setPicked(stage); setShowTranscript(false); }} onOpenAgent={openAgent} />
       <View accessibilityLiveRegion="polite" style={{ gap: 8 }}>
-        <Text style={{ color: theme.colors.foreground, fontSize: 15, lineHeight: 22, fontWeight: "600" }}>{waiting ? "Worker needs your permission" : pendingFor === null && activity?.permissionAgentId ? "Worker is working on this task" : activity?.headline || view.summary || STATUS_LABEL[view.status]}</Text>
+        <Text style={{ color: theme.colors.foreground, fontSize: 15, lineHeight: 22, fontWeight: "600" }}>{waiting ? "Worker needs your permission" : effectivePendingFor === null && activity?.permissionAgentId ? "Worker is working on this task" : activity?.headline || view.summary || STATUS_LABEL[view.status]}</Text>
         {activity?.latestResult && <View style={{ gap: 5 }}>
           <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "600" }}>Latest finding</Text>
           <FormattedBody theme={theme} text={activity.latestResult} />
@@ -496,7 +497,7 @@ export function TaskScreen({ theme, view, back, openAgent, embeddedSupervisor = 
           <Text selectable style={{ color: theme.colors.foreground, fontSize: 13, lineHeight: 20 }}>{activity.retryReason}</Text>
         </View>}
       </View>
-      {view.kind === "run" && ["running", "asking", "sent-back"].includes(view.status) && <WorkerPermissions key={view.id} theme={theme} runId={view.id} openAgent={openAgent} onPending={setPendingFor} expected={!!activity?.permissionAgentId} />}
+      {!embeddedSupervisor && view.kind === "run" && ["running", "asking", "sent-back"].includes(view.status) && <WorkerPermissions key={view.id} theme={theme} runId={view.id} openAgent={openAgent} onPending={setPendingFor} expected={!!activity?.permissionAgentId} />}
         {view.question ? (
           <View style={{ borderLeftWidth: 2, borderLeftColor: t.amber.ink, paddingLeft: 12, marginTop: 12, gap: 8 }}>
             <Text style={{ color: theme.colors.foreground, fontWeight: "500", fontSize: 14 }}>{view.question}</Text>

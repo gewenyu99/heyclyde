@@ -33,7 +33,7 @@ test('native workers use the parent project and reuse their private task workspa
     const put=x=>appendFileSync(process.env.WORKER_LOG,JSON.stringify(x)+'\\n')
     const saved=process.env.WORKER_LOG+'.workspace'
     let listener
-    const snapshot={provider:'antigravity',labels:{'clyde.run':'r-original','clyde.thread':process.env.WORKER_THREAD},status:'idle',activeTurn:null,pendingPermissions:[]}
+    const snapshot={provider:process.env.WORKER_PROVIDER||'antigravity',labels:{'clyde.run':'r-original','clyde.thread':process.env.WORKER_THREAD},status:'idle',activeTurn:null,pendingPermissions:[]}
     const rows=[]
     const emit=event=>listener?.({agentId:'child',event})
     const child={id:'child',cwd:process.env.CHILD_DIR,current:()=>snapshot,refresh:async()=>{},
@@ -46,7 +46,7 @@ test('native workers use the parent project and reuse their private task workspa
       }
     }
     export const createPaseoApi=()=>({
-      agents:{ref:id=>id==='parent'?{refresh:async()=>{},current:()=>({provider:'codex',currentModeId:'auto-review',workspaceId:'origin'})}:child},
+      agents:{ref:id=>id==='parent'?{refresh:async()=>{},current:()=>({provider:process.env.PARENT_PROVIDER||'codex',currentModeId:process.env.PARENT_MODE||'default',workspaceId:'origin'})}:child},
       workspaces:{
         ref:id=>{
           if(id==='origin')return handle({id,directory:process.env.ORIGIN_DIR,projectId:'project'})
@@ -78,13 +78,13 @@ test('native workers use the parent project and reuse their private task workspa
     prompt: 'hello',
     timeoutMs: 200,
   }
-  const run = (allow: boolean, cwd: string, overrides: Partial<typeof input> = {}) => {
+  const run = (allow: boolean, cwd: string, overrides: Partial<typeof input> = {}, extraEnv: Record<string, string> = {}) => {
     writeFileSync(log, '')
     try {
       const out = execFileSync(process.execPath, [new URL('../src/paseo-worker.mjs', import.meta.url).pathname, dist], {
         input: JSON.stringify({ ...input, ...overrides, allowFullAccess: allow }),
         encoding: 'utf8',
-        env: { ...process.env, ORIGIN_DIR: base, CHILD_DIR: cwd, WORKER_LOG: log, WORKER_THREAD: overrides.thread ?? input.thread },
+        env: { ...process.env, ORIGIN_DIR: base, CHILD_DIR: cwd, WORKER_LOG: log, WORKER_THREAD: overrides.thread ?? input.thread, WORKER_PROVIDER: overrides.backend ?? input.backend, ...extraEnv },
       })
       return JSON.parse(out.trim().split('\n').at(-1)!)
     } catch (e) {
@@ -92,9 +92,7 @@ test('native workers use the parent project and reuse their private task workspa
     }
   }
   const events = () => readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))
-  assert.match(run(false, checkout).error, /Permission required/)
-  assert.deepEqual(events(), [])
-  assert.match(run(true, base).error, /placement/)
+  assert.match(run(false, base).error, /placement/)
   const [{ create }, agent] = events()
   assert.deepEqual(create.source, { kind: 'directory', path: realpathSync(checkout), projectId: 'project' })
   assert.equal(create.background, true)
@@ -109,7 +107,7 @@ test('native workers use the parent project and reuse their private task workspa
   assert.equal(agent.child.config.modeId, 'full-access')
   assert.equal(agent.child.config.provider, 'antigravity/gemini-4-neon-high')
   assert.equal(agent.child.prompt, undefined)
-  assert.equal(run(true, checkout, { thread: 'second-stage' }).text, 'finished')
+  assert.equal(run(false, checkout, { thread: 'second-stage' }).text, 'finished')
   const second = events()
   assert.equal(second.length, 2)
   assert.equal(second[0].workspace, create.workspaceId)
@@ -119,6 +117,12 @@ test('native workers use the parent project and reuse their private task workspa
   assert.deepEqual(events(), ['sent'])
   assert.equal(run(true, base, { cwd: base }).text, 'finished')
   assert.equal(events()[0].workspace, 'origin')
+  // Claude workers get bypassPermissions even when the parent chat is in default (Always Ask) mode.
+  assert.equal(run(false, checkout, { backend: 'claude', model: 'claude-sonnet-5-5', thread: 'claude-stage' }, { PARENT_PROVIDER: 'claude', PARENT_MODE: 'default' }).text, 'finished')
+  assert.equal(events()[0].child.config.modeId, 'bypassPermissions')
+  // Codex workers get full-access even when the parent chat is in auto-review.
+  assert.equal(run(false, checkout, { backend: 'codex', model: 'gpt-6-luna', thread: 'codex-stage' }, { PARENT_PROVIDER: 'codex', PARENT_MODE: 'auto-review' }).text, 'finished')
+  assert.equal(events()[0].child.config.modeId, 'full-access')
 })
 
 test('starting a native task cuts the isolated branch without opening a visible mirror', async () => {

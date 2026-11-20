@@ -190,6 +190,12 @@ test("client TSX components obey typography floor, accessible controls, dedicate
   assert.match(sidecar, /<Composer theme=\{theme\} workspaceId=\{workspaceId\} agentId=\{origin\}/);
   assert.match(home, /Open task/);
   assert.match(screen, /<SupervisorChat key=\{id\} theme=\{theme\} runId=\{id\}/);
+  assert.match(screen, /showPermissions=/);
+  assert.match(screen, /onPendingPermission=\{setPendingPermissionFor\}/);
+  const supervisorChat = fs.readFileSync(path.join(clientDir, "supervisor-chat.tsx"), "utf8");
+  assert.match(supervisorChat, /<WorkerPermissions[\s\S]*variant="chat"/);
+  assert.match(task, /<OrchestrationFlow[\s\S]*onOpenAgent=\{openAgent\}/);
+  assert.match(task, /!embeddedSupervisor && view\.kind === "run"[\s\S]*<WorkerPermissions key=\{view\.id\}/);
   assert.match(screen, /flexDirection: wide \? "row" : "column"/);
   assert.match(screen, /initialTask=\{props.params.task\}/);
   assert.match(task, /view\.savedPlanIntent/);

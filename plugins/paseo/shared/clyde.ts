@@ -37,6 +37,7 @@ export type Piece = {
   rung?: string; progress?: string; startedAt?: string; endedAt?: string;
   // The piece wrote its verdict to memory, which is how the next piece gets it.
   handoff: boolean;
+  agentId?: string;
 };
 
 export type Step = { name: string; pieces: Piece[] };
@@ -46,6 +47,7 @@ export type Criterion = { criterion: string; result: "pass" | "fail" | "pending"
 export type AttemptView = {
   n: number; rung?: string; startedAt: string; endedAt?: string; outcome: string; threadId: string; interrupted: boolean;
   evidence: string; criteria: Criterion[]; checks: { cmd: string; code: number; output: string }[]; judgeRung?: string;
+  agentId?: string;
 };
 
 export type TaskView = {

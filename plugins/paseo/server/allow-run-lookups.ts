@@ -7,21 +7,37 @@ import type { RawRun, RawThread } from "./shape.ts";
 
 type Agent = NonNullable<ReturnType<ReturnType<PluginHandlerContext["paseo"]["agents"]["ref"]>["current"]>>;
 type Request = Agent["pendingPermissions"][number];
+type PermissionResponse = Parameters<ReturnType<PluginHandlerContext["paseo"]["agents"]["ref"]>["respondToPermission"]>[0]["response"];
 
-// Read-only tools injected by this plugin into Paseo's own MCP server.
-const paseoLookups = new Set(["mcp__paseo__clyde_recall", "mcp__paseo__clyde_recall_more"]);
-// Read-only Clyde memory tools exposed through the user's configured `memory` MCP server.
-const memoryLookups = new Set([
-  "mcp__memory__recall",
-  "mcp__memory__recall_more",
-  "mcp__memory__check_messages",
-]);
 const ALLOWED_HTTP_TYPES = new Set(["http", "sse", "streamable-http", "streamablehttp"]);
 
-function lookup(request: Request): boolean {
-  return request.kind === "tool" &&
-    (paseoLookups.has(request.name) || memoryLookups.has(request.name)) &&
-    (request.actions === undefined || (Array.isArray(request.actions) && request.actions.length === 0));
+function isPaseoClydeTool(name: string): boolean {
+  return /^mcp__paseo__clyde_[a-z0-9_]+$/.test(name);
+}
+
+function isMemoryTool(name: string): boolean {
+  return /^mcp__memory__[a-z0-9_]+$/.test(name);
+}
+
+function isAutoApprovableTool(request: Request, role: "worker" | "orchestrator"): boolean {
+  if (request.kind !== "tool") return false;
+  if (request.actions !== undefined && !Array.isArray(request.actions)) return false;
+  if (role === "worker") return true;
+  return isPaseoClydeTool(request.name) || isMemoryTool(request.name);
+}
+
+function allowResponseFor(request: Request): PermissionResponse | null {
+  if (request.actions !== undefined) {
+    if (!Array.isArray(request.actions)) return null;
+    if (request.actions.length > 0) {
+      const allowAction = request.actions.find(
+        (a) => a && typeof a.id === "string" && a.id && a.behavior === "allow",
+      );
+      if (!allowAction) return null;
+      return { behavior: "allow", selectedActionId: allowAction.id };
+    }
+  }
+  return { behavior: "allow" };
 }
 
 function canonicalPath(value: string): string {
@@ -302,7 +318,7 @@ function trustedMemoryServer(provider: string, cwds: (string | null | undefined)
   return uniqueCwds.every((cwd) => verifyTrustedMemoryForCwd(provider, cwd, trustedUrl));
 }
 
-async function ownsRun(native: Agent | null | undefined, agentId: string, provider: string): Promise<RawRun | null> {
+async function ownsRun(native: Agent | null | undefined, agentId: string, provider: string): Promise<{ run: RawRun; role: "worker" | "orchestrator" } | null> {
   if (!native || native.id !== agentId || native.archivedAt || native.provider !== provider) return null;
   const labels = native.labels ?? {};
   const runId = labels["clyde.run"] ?? labels["clyde.orchestrator"];
@@ -316,30 +332,48 @@ async function ownsRun(native: Agent | null | undefined, agentId: string, provid
     if (!stage || stage.endedAt || !attempt || attempt.endedAt || attempt.result || attempt.verdict || attempt.ok === false || attempt.judgeId || attempt.threadId !== labels["clyde.thread"]) return null;
     const thread = await call<RawThread>("GET", "/threads/" + encodeURIComponent(attempt.threadId), undefined, { recover: false });
     const ok = !!thread && thread.id === attempt.threadId && thread.status === "running" && !thread.archivedAt && !thread.readOnly && thread.runId === run.id && thread.stage === stage.name && thread.rung.backend === provider && thread.paseoAgentId === agentId && samePath(thread.cwd, run.cwd) && samePath(native.cwd, thread.cwd);
-    return ok ? run : null;
+    return ok ? { run, role: "worker" } : null;
   }
-  return labels["clyde.orchestrator"] === run.id && run.paseoParentId === agentId ? run : null;
+  return labels["clyde.orchestrator"] === run.id && run.paseoParentId === agentId ? { run, role: "orchestrator" } : null;
 }
 
 export function allowRunLookups(server: PluginServerContext) {
   server.addHook("agent.permission.before", async ({ agent, request }, { paseo }) => {
-    if (!lookup(request)) return;
+    if (request.kind !== "tool") return;
+    if (request.actions !== undefined && !Array.isArray(request.actions)) return;
+    if (!allowResponseFor(request)) return;
+    const clydeTool = isPaseoClydeTool(request.name);
+    const memoryTool = isMemoryTool(request.name);
     try {
       const handle = paseo.agents.ref(agent.id);
       await handle.refresh();
       const firstNative = handle.current();
-      const firstRun = await ownsRun(firstNative, agent.id, request.provider);
-      if (!firstRun) return;
-      if (memoryLookups.has(request.name) && !trustedMemoryServer(request.provider, [firstNative?.cwd, firstRun.cwd], request)) return;
-      // Native requests and the active attempt can both change while ownership is checked.
+      if (!firstNative || firstNative.id !== agent.id || firstNative.archivedAt || firstNative.provider !== request.provider) return;
+      if (clydeTool) {
+        // Every live Paseo agent always has permission for Paseo's built-in Clyde tools.
+      } else if (memoryTool) {
+        if (!trustedMemoryServer(request.provider, [firstNative.cwd], request)) return;
+      } else {
+        const firstOwned = await ownsRun(firstNative, agent.id, request.provider);
+        if (!firstOwned || firstOwned.role !== "worker") return;
+      }
+      // Native requests and worker ownership can change while verifying.
       await handle.refresh();
       const current = handle.current();
-      const currentRun = await ownsRun(current, agent.id, request.provider);
-      if (!currentRun) return;
-      const pending = current?.pendingPermissions?.filter(p => p.id === request.id) ?? [];
-      if (pending.length !== 1 || !lookup(pending[0]) || pending[0].name !== request.name || pending[0].provider !== request.provider) return;
-      if (memoryLookups.has(pending[0].name) && !trustedMemoryServer(pending[0].provider, [current?.cwd, currentRun.cwd], pending[0])) return;
-      await handle.respondToPermission({ requestId: pending[0].id, response: { behavior: "allow" } });
+      if (!current || current.id !== agent.id || current.archivedAt || current.provider !== request.provider) return;
+      const pending = current.pendingPermissions?.filter(p => p.id === request.id) ?? [];
+      if (pending.length !== 1 || pending[0].kind !== "tool" || pending[0].name !== request.name || pending[0].provider !== request.provider) return;
+      if (clydeTool) {
+        // Verified exact live agent and built-in Clyde tool.
+      } else if (memoryTool) {
+        if (!trustedMemoryServer(pending[0].provider, [current.cwd], pending[0])) return;
+      } else {
+        const currentOwned = await ownsRun(current, agent.id, request.provider);
+        if (!currentOwned || currentOwned.role !== "worker") return;
+      }
+      const response = allowResponseFor(pending[0]);
+      if (!response) return;
+      await handle.respondToPermission({ requestId: pending[0].id, response });
     } catch {
       // Unavailable ownership or response services leave the native request pending for explicit review.
     }

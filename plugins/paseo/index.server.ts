@@ -82,6 +82,13 @@ async function pickProvider(paseo: PaseoApi, cwd: string, worker: WorkerModel): 
   return undefined;
 }
 
+function fullAccessMode(provider: string): string | undefined {
+  const backend = provider.split("/")[0];
+  if (backend === "claude") return "bypassPermissions";
+  if (backend === "codex" || backend === "antigravity") return "full-access";
+  return undefined;
+}
+
 /** Open a chat in the selected project when launchRpc starts without an existing chat. */
 async function createProjectChat(
   paseo: PaseoApi,
@@ -96,14 +103,28 @@ async function createProjectChat(
   const chatCwd = ws?.workspaceDirectory || selected.projectRootPath;
   const provider = selectedProvider ?? await pickProvider(paseo, chatCwd, worker);
   if (!provider) throw new Error(LAUNCH_CHAT_ERROR);
+  const modeId = fullAccessMode(provider);
   const firstLine = prompt.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? "";
   const title = (firstLine || selected.projectDisplayName).slice(0, 72);
   const idempotencyKey = "clyde-launch-" + requestId;
   const labels = { "clyde.orchestrator": "r-" + requestId.replace(/^quest-/, "") };
+  const createWith = (mode?: string) => {
+    const config = { provider, ...(mode ? { modeId: mode } : {}) };
+    return ws && paseo.workspaces?.ref
+      ? paseo.workspaces.ref(ws.id).agents.create({ idempotencyKey, title, labels, config })
+      : paseo.agents?.create?.({ cwd: chatCwd, idempotencyKey, title, labels, config });
+  };
   try {
-    const handle = ws && paseo.workspaces?.ref
-      ? await paseo.workspaces.ref(ws.id).agents.create({ idempotencyKey, title, labels, config: { provider } })
-      : await paseo.agents?.create?.({ cwd: chatCwd, idempotencyKey, title, labels, config: { provider } });
+    let handle;
+    try {
+      handle = await createWith(modeId);
+    } catch (modeErr) {
+      if (modeId && /mode/i.test(String(modeErr))) {
+        handle = await createWith(provider.startsWith("claude") ? "auto" : undefined);
+      } else {
+        throw modeErr;
+      }
+    }
     if (!handle?.id) throw new Error(LAUNCH_CHAT_ERROR);
     return handle.id;
   } catch (err) {

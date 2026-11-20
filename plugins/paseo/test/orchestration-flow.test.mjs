@@ -89,3 +89,11 @@ test('multi-band giant flow layout stacks step bands with left label gutters and
   assert.ok(layout.positions.get('S4').y > layout.positions.get('S1').y);
   assert.ok(layout.positions.get('REVIEW').y > layout.positions.get('S4').y);
 });
+test('graph nodes carry worker agentId from piece or attempts so clicking opens the Paseo chat',()=>{
+  const plan=piece('PLAN','plan','running',{agentId:'paseo-plan-1'});
+  const s1=piece('S1','code-it-works:s1','running');
+  const v=view([plan,s1],{plan:[{n:1}],'code-it-works:s1':[{n:1,agentId:'paseo-slice-1'}]});
+  const nodes=orchestrationNodes(v);
+  assert.equal(nodes[0].agentId,'paseo-plan-1');
+  assert.equal(nodes[2].agentId,'paseo-slice-1');
+});

@@ -91,16 +91,35 @@ function fixture(t, opts = {}){
 }
 const noGrant=f=>{assert.deepEqual(f.state.responses,[]);assert.equal(f.state.answered,0);};
 
-test('only exact read-only lookup tools get a single-request allow for verified current workers or orchestrators',async t=>{
-  const names=['mcp__paseo__clyde_recall','mcp__paseo__clyde_recall_more','mcp__memory__recall','mcp__memory__recall_more','mcp__memory__check_messages'];
-  for(const role of ['worker','orchestrator'])for(const name of names)await t.test(role+' '+name,async t=>{
-    const f=fixture(t);if(role==='orchestrator')f.orchestrator();f.request.name=name;
+test('every live Paseo agent always gets permission for Paseo built-in Clyde tools and trusted memory MCP tools',async t=>{
+  const names=[
+    'mcp__paseo__clyde_recall','mcp__paseo__clyde_recall_more','mcp__paseo__clyde_remember','mcp__paseo__clyde_get_entry','mcp__paseo__clyde_get_blob','mcp__paseo__clyde_post_quest','mcp__paseo__clyde_list_quests','mcp__paseo__clyde_delegate',
+    'mcp__memory__recall','mcp__memory__recall_more','mcp__memory__check_messages','mcp__memory__get_entry','mcp__memory__get_blob','mcp__memory__remember','mcp__memory__feedback','mcp__memory__list_quests','mcp__memory__post_quest',
+  ];
+  for(const role of ['ordinary','worker','orchestrator'])for(const name of names)await t.test(role+' '+name,async t=>{
+    const f=fixture(t);
+    if(role==='orchestrator')f.orchestrator();
+    if(role==='ordinary')f.agent.labels={};
+    f.request.name=name;
     await f.invoke();
     assert.deepEqual(f.state.responses,[{requestId:'permission-1',response:{behavior:'allow'}}]);
     assert.equal(f.state.answered,1);
     assert.deepEqual(f.agent.pendingPermissions,[]);
-    assert.ok(f.state.reads.every(r=>r.method==='GET'),'policy never mutates run or thread records');
     assert.equal(f.state.refreshes,2,'native request is refreshed before granting');
+  });
+});
+
+test('verified active Clyde workers auto-approve all tool calls including Bash, Write, and offered allow actions',async t=>{
+  for(const values of [
+    {name:'Bash',input:{command:'npm test'}},
+    {name:'Write',input:{path:'a.ts'}},
+    {name:'Bash',actions:[{id:'allow-always',label:'Always allow',behavior:'allow'}]},
+  ])await t.test(JSON.stringify(values),async t=>{
+    const f=fixture(t);Object.assign(f.request,values);
+    await f.invoke();
+    assert.equal(f.state.answered,1);
+    assert.equal(f.state.responses[0].response.behavior,'allow');
+    if(values.actions)assert.equal(f.state.responses[0].response.selectedActionId,'allow-always');
   });
 });
 
@@ -116,7 +135,7 @@ test('trusted memory server verification works across claude, codex, and antigra
   });
 });
 
-test('untrusted, shadowed, stdio, missing, or malformed memory server configs fail closed for mcp__memory__ reads',async t=>{
+test('untrusted, shadowed, stdio, missing, or malformed memory server configs fail closed for mcp__memory__ tools',async t=>{
   const cases={
     'missing clyde url': { opts:{trustedUrl:null} },
     'untrusted claude url': { opts:{claudeConfig:{mcpServers:{memory:{type:'http',url:'https://evil.example/mcp'}}}} },
@@ -169,17 +188,10 @@ test('untrusted, shadowed, stdio, missing, or malformed memory server configs fa
   });
 });
 
-test('write tools, shell commands, namespace lookalikes and promoted permission actions remain for explicit review',async t=>{
+test('non-tool prompts, deny-only actions, and malformed action payloads remain for explicit review',async t=>{
   const requests=[
-    {name:'mcp__paseo__clyde_remember'}, {name:'mcp__paseo__clyde_delegate'}, {name:'Bash'}, {name:'Write'},
-    {name:'mcp__memory__remember'}, {name:'mcp__memory__feedback'}, {name:'mcp__memory__ack_messages'},
-    {name:'mcp__memory__post_message'}, {name:'mcp__memory__claim_quest'}, {name:'mcp__memory__get_entry'},
-    {name:'mcp__memory__get_blob'}, {name:'mcp__memory__list_quests'}, {name:'mcp__other__recall'},
-    {name:'mcp__memory__recall_extra'}, {name:'mcp__memory__RECALL'},
-    {name:'mcp__paseo__clyde_recall_extra'}, {name:'mcp__paseo__CLYDE_RECALL'},
     {kind:'plan'}, {kind:'question'},
-    {actions:[{id:'allow-always',label:'Always allow',behavior:'allow'}]},
-    {actions:[{id:'implement-resume',label:'Implement and resume',behavior:'allow',intent:'implement_resume'}]},
+    {actions:[{id:'deny-only',label:'Deny',behavior:'deny'}]},
     {actions:{length:0}},
   ];
   for(const values of requests)await t.test(JSON.stringify(values),async t=>{
@@ -188,10 +200,10 @@ test('write tools, shell commands, namespace lookalikes and promoted permission 
   });
 });
 
-test('ordinary chats, forged ownership labels, foreign native agents and provider mismatches never auto-grant',async t=>{
+test('ordinary chats, orchestrators, forged ownership labels, foreign native agents and provider mismatches never auto-grant non-Clyde tools',async t=>{
   const variants={
-    ordinary:f=>{f.agent.labels={};},
-    'ordinary chat memory recall':f=>{f.agent.labels={};f.request.name='mcp__memory__recall';},
+    'ordinary chat Bash':f=>{f.agent.labels={};},
+    'orchestrator Bash':f=>{f.orchestrator();},
     'forged run label':f=>{f.agent.labels['clyde.run']='r-deadbeef';},
     'malformed run label':f=>{f.agent.labels['clyde.run']='../../other';},
     'forged thread label':f=>{f.agent.labels['clyde.thread']='t-other';},
@@ -208,10 +220,12 @@ test('ordinary chats, forged ownership labels, foreign native agents and provide
     'ordinary parent is not labelled orchestrator':f=>{f.agent.labels={};f.run.paseoParentId=f.agent.id;},
     'forged orchestrator label':f=>{f.orchestrator();f.run.paseoParentId='another-parent';},
   };
-  for(const [name,mutate]of Object.entries(variants))await t.test(name,async t=>{const f=fixture(t);mutate(f);await f.invoke();noGrant(f);});
+  for(const [name,mutate]of Object.entries(variants))await t.test(name,async t=>{
+    const f=fixture(t);f.request.name='Bash';mutate(f);await f.invoke();noGrant(f);
+  });
 });
 
-test('archived, completed, superseded, reviewed and failed workers cannot use the live-worker policy',async t=>{
+test('archived, completed, superseded, reviewed and failed workers cannot auto-approve non-Clyde tools',async t=>{
   const variants={
     'archived native worker':f=>{f.agent.archivedAt='now';},
     'archived run':f=>{f.run.archivedAt='now';},
@@ -234,21 +248,18 @@ test('archived, completed, superseded, reviewed and failed workers cannot use th
     'archived worker':f=>{f.thread.archivedAt='now';},
     'read-only reviewer':f=>{f.thread.readOnly=true;},
   };
-  for(const [name,mutate]of Object.entries(variants))await t.test(name,async t=>{const f=fixture(t);mutate(f);await f.invoke();noGrant(f);});
+  for(const [name,mutate]of Object.entries(variants))await t.test(name,async t=>{
+    const f=fixture(t);f.request.name='Bash';mutate(f);await f.invoke();noGrant(f);
+  });
 });
 
-test('orchestrators can read paused runs but not terminal, archived or unbound runs',async t=>{
-  await t.test('paused run',async t=>{const f=fixture(t);f.orchestrator();f.run.status='asking';await f.invoke();assert.equal(f.state.answered,1);});
-  for(const status of ['done','failed','stopped'])await t.test(status,async t=>{const f=fixture(t);f.orchestrator();f.run.status=status;await f.invoke();noGrant(f);});
-});
-
-test('the final refresh rejects resolved, replaced, promoted and ambiguous pending requests',async t=>{
+test('the final refresh rejects resolved, replaced, deny-only and ambiguous pending requests',async t=>{
   const variants={
     resolved:f=>{f.agent.pendingPermissions=[];},
     replaced:f=>{f.agent.pendingPermissions=[{...f.request,id:'new-request'}];},
-    'same id changed tool':f=>{f.agent.pendingPermissions=[{...f.request,name:'Bash'}];},
+    'same id changed tool':f=>{f.agent.pendingPermissions=[{...f.request,name:'Write'}];},
     'same id changed provider':f=>{f.agent.pendingPermissions=[{...f.request,provider:'codex'}];},
-    'same id promoted action':f=>{f.agent.pendingPermissions=[{...f.request,actions:[{id:'always',behavior:'allow',label:'Always allow'}]}];},
+    'same id deny-only action':f=>{f.agent.pendingPermissions=[{...f.request,actions:[{id:'deny',behavior:'deny',label:'Deny'}]}];},
     'same id changed kind':f=>{f.agent.pendingPermissions=[{...f.request,kind:'plan'}];},
     'duplicate request ids':f=>{f.agent.pendingPermissions=[f.request,{...f.request}];},
     'agent disappeared':f=>{f.state.native=null;},
@@ -258,13 +269,14 @@ test('the final refresh rejects resolved, replaced, promoted and ambiguous pendi
     'worker finished':f=>{f.attempt.endedAt='now';},
   };
   for(const [name,mutate]of Object.entries(variants))await t.test(name,async t=>{
-    const f=fixture(t);f.state.refresh=async n=>{if(n===2)mutate(f);};await f.invoke();noGrant(f);
+    const f=fixture(t);f.request.name='Bash';f.state.refresh=async n=>{if(n===2)mutate(f);};await f.invoke();noGrant(f);
   });
 });
 
-test('lookup failures and native refresh failures leave the permission pending without a fallback grant',async t=>{
+test('lookup failures and native refresh failures leave non-Clyde permissions pending without a fallback grant',async t=>{
   for(const failure of ['run service','thread service','native refresh','offline daemon'])await t.test(failure,async t=>{
     const f=fixture(t);
+    f.request.name='Bash';
     if(failure==='offline daemon')f.state.read=async()=>{throw Error('fetch failed');};
     else if(failure==='native refresh')f.state.refresh=async()=>{throw Error('native lookup unavailable');};
     else {const read=f.state.read;f.state.read=async path=>{if(path.startsWith(failure==='run service'?'/runs/':'/threads/'))throw Error('lookup service unavailable');return read(path);};}

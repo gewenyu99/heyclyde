@@ -46,7 +46,8 @@ function Board(
   const persisted=useBoardState(selectionKey,!workspaceId,panelTab,initialTask);
   const {picked,newTask,mobilePane,tab}=persisted.value;
   const [width,setWidth]=useState(0);
-  function setPicked(picked:string){persisted.set({picked,mobilePane:"task"});}
+  const [pendingPermissionFor,setPendingPermissionFor]=useState<string|null|undefined>(undefined);
+  function setPicked(picked:string){setPendingPermissionFor(undefined);persisted.set({picked,mobilePane:"task"});}
   const setNewTask=(newTask:boolean)=>persisted.set({newTask});
   const setMobilePane=(mobilePane:"task"|"chat")=>persisted.set({mobilePane});
   const setTab=(tab:"board"|"agents"|"quests")=>persisted.set({tab});
@@ -147,7 +148,7 @@ function Board(
             <View style={{ flex: 1, minHeight: 0, gap: 10 }}>
               {!wide && kind === "run" && <View accessibilityRole="tablist" style={{ flexDirection: "row", gap: 8 }}>
                 {(["task", "chat"] as const).map(pane => <Pressable key={pane} accessibilityRole="tab" accessibilityState={{ selected: mobilePane === pane }} onPress={() => setMobilePane(pane)} style={{ minHeight: MIN_HIT_HEIGHT, justifyContent: "center", paddingHorizontal: 14, backgroundColor: mobilePane === pane ? c.surface1 : "transparent", borderRadius: 6 }}>
-                  <Text style={{ color: mobilePane === pane ? c.foreground : c.foregroundMuted, fontSize: 14, fontWeight: "600" }}>{pane === "task" ? "Task" : "Chat"}</Text>
+                  <Text style={{ color: mobilePane === pane ? c.foreground : c.foregroundMuted, fontSize: 14, fontWeight: "600" }}>{pane === "task" ? "Task" : pendingPermissionFor ? "Chat · Permission" : "Chat"}</Text>
                 </Pressable>)}
               </View>}
               <View style={{ flex: 1, minHeight: 0, flexDirection: wide ? "row" : "column", gap: 12 }}>
@@ -157,7 +158,7 @@ function Board(
                     <Text style={{ color: c.accent, fontSize: 14, fontWeight: "600" }}>‹ Back to board</Text>
                   </Pressable>}
                   {task.data?.data ? (
-                    <TaskScreen key={picked} theme={theme} view={task.data.data} back={() => setPicked("")} openAgent={openAgent} embeddedSupervisor={kind === "run"} />
+                    <TaskScreen key={picked} theme={theme} view={task.data.data} back={() => setPicked("")} openAgent={openAgent} embeddedSupervisor={kind === "run"} externalPendingFor={pendingPermissionFor} />
                   ) : (
                     <Text accessibilityRole={task.error || task.data?.error ? "alert" : undefined} style={{ color: task.error || task.data?.error ? c.statusDanger : c.foregroundMuted, fontSize: 13 }}>
                       {task.error ? formatRpcError(task.error) : task.data?.error ? formatRpcError(task.data.error) : "Opening task…"}
@@ -166,7 +167,7 @@ function Board(
                 </Panel>
               </ScrollView>
               {kind === "run" && <View style={{ display: !wide && mobilePane === "task" ? "none" : "flex", flex: wide ? 2 : 1, minWidth: wide ? 320 : 0, minHeight: 0, borderWidth: 1, borderColor: c.border, borderRadius: 12, overflow: "hidden", backgroundColor: c.surface1 }}>
-                <SupervisorChat key={id} theme={theme} runId={id} draft={persisted.value.supervisorDrafts[id] ?? ""} onDraftChange={text=>persisted.set(previous=>({...previous,supervisorDrafts:{...previous.supervisorDrafts,[id]:text}}))} />
+                <SupervisorChat key={id} theme={theme} runId={id} draft={persisted.value.supervisorDrafts[id] ?? ""} onDraftChange={text=>persisted.set(previous=>({...previous,supervisorDrafts:{...previous.supervisorDrafts,[id]:text}}))} openAgent={openAgent} showPermissions={!!task.data?.data && ["running", "asking", "sent-back"].includes(task.data.data.status)} expectedPermission={!!task.data?.data?.runActivity?.permissionAgentId} onPendingPermission={setPendingPermissionFor} />
               </View>}
               </View>
             </View>

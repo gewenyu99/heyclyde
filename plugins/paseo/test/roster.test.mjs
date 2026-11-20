@@ -83,7 +83,12 @@ test("the roster lists current project chats and migrates only generated respons
     request: { tools: [], env: {}, ...agent, agentId: agent.id, purpose: "interactive" },
   }, { paseo });
   assert.equal(await openChat(chat("another-helper", { metadata: create.metadata })), undefined);
-  assert.equal(await openChat(chat("background", { background: true })), undefined);
+  const bg = await openChat(chat("background", { background: true, labels: { "clyde.run": "r-test", "clyde.thread": "t-1" } }));
+  assert.ok(bg.tools.some(t => t.name === "clyde_recall"), "background workers receive Paseo built-in Clyde memory tools");
+  assert.ok(bg.tools.some(t => t.name === "clyde_get_entry"));
+  assert.ok(bg.tools.some(t => t.name === "clyde_list_quests"));
+  assert.equal(bg.tools.some(t => t.name === "clyde_delegate"), false, "background workers do not receive interactive delegate tool");
+  assert.equal(JSON.parse(readFileSync(file, "utf8"))["background"], undefined, "background workers are not added to resident roster");
   const pointMan = chat("point-man", { labels: { clyde: "point-man" } });
   const lead = await openChat(pointMan);
   assert.ok(lead.tools.some(t => t.name === "clyde_recall"));

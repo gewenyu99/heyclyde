@@ -91,7 +91,7 @@ function rollUp(phases: Phase[]): Status {
   return "pending";
 }
 
-function makePiece(id: string, title: string, phases: { stage: string; label: string; record?: RawStage }[], doneWhen: string[], threads: Map<string, RawThread>): Piece {
+function makePiece(id: string, title: string, phases: { stage: string; label: string; record?: RawStage }[], doneWhen: string[], threads: Map<string, RawThread>, agents: Record<string, string> = {}): Piece {
   const ran = phases.flatMap((p) => (p.record ? [p.record] : []));
   const attempts = ran.flatMap((s) => s.attempts);
   const live = ran.find((s) => s.status === "running" || s.status === "asking");
@@ -101,6 +101,8 @@ function makePiece(id: string, title: string, phases: { stage: string; label: st
   const status = rollUp(ps);
   const checks = doneWhen.length ? doneWhen : [...attempts].reverse().find((a) => a.checks?.length)?.checks?.map((c) => c.cmd) ?? [];
   const progress = live && last ? threads.get(last.threadId)?.progress : undefined;
+  const agentId = (last ? threads.get(last.threadId)?.paseoAgentId ?? agents[last.threadId] : undefined)
+    ?? [...attempts].reverse().map((a) => threads.get(a.threadId)?.paseoAgentId ?? agents[a.threadId]).find(Boolean);
   return {
     id, title, status, phases: ps, doneWhen: checks,
     attempts: attempts.filter((a) => !interrupted(a)).length, sentBack: attempts.filter(failed).length, interrupted: attempts.filter(interrupted).length,
@@ -108,6 +110,7 @@ function makePiece(id: string, title: string, phases: { stage: string; label: st
     rung: rung(last?.rung), progress: progress && progress !== "SessionEnd" && !/^Permission (requested|resolved) in Paseo worker /i.test(progress) ? progress : undefined,
     startedAt: ran[0]?.startedAt, endedAt: status === "passed" ? ran[ran.length - 1]?.endedAt : undefined,
     handoff: ran.some((s) => !!s.entry),
+    ...(agentId ? { agentId } : {}),
   };
 }
 
@@ -121,7 +124,7 @@ function chunk<T>(xs: T[], n: number): T[][] {
  * Rows in hand-off order: the plan, the slices four to a row, the review. Without a plan yet, every stage is its own piece,
  * named for what it does. A task flow is one piece titled with the task.
  */
-export function steps(r: RawRun, threads: RawThread[] = []): Step[] {
+export function steps(r: RawRun, threads: RawThread[] = [], agents: Record<string, string> = {}): Step[] {
   const byThread = new Map(threads.map((t) => [t.id, t]));
   const byName = new Map(r.stages.map((s) => [s.name, s]));
   const used = new Set<string>();
@@ -131,7 +134,7 @@ export function steps(r: RawRun, threads: RawThread[] = []): Step[] {
   const plans = r.stages.filter((s) => /^plan(-\d+)?$/.test(s.name));
   if (plans.length) {
     out.push({ name: "Plan", pieces: [makePiece("PLAN", "Plan the work and get it approved",
-      plans.map((s, i) => ({ stage: s.name, label: plans.length > 1 ? `round ${i + 1}` : "plan", record: take(s.name) })), [], byThread)] });
+      plans.map((s, i) => ({ stage: s.name, label: plans.length > 1 ? `round ${i + 1}` : "plan", record: take(s.name) })), [], byThread, agents)] });
   }
 
   const slices = r.plan?.slices ?? [];
@@ -141,7 +144,7 @@ export function steps(r: RawRun, threads: RawThread[] = []): Step[] {
       const phases = own.length && own.every((s) => !CODE_STAGES.includes(s.name.split(":")[0]))
         ? own.map((s) => ({ stage: s.name, label: "build", record: take(s.name) }))
         : CODE_STAGES.map((skill) => ({ stage: `${skill}:${slice.id}`, label: PHASE_LABEL[skill], record: take(`${skill}:${slice.id}`) }));
-      return makePiece(`S${i + 1}`, slice.title || slice.id, phases, slice.acceptance ?? [], byThread);
+      return makePiece(`S${i + 1}`, slice.title || slice.id, phases, slice.acceptance ?? [], byThread, agents);
     });
     chunk(pieces, ROW).forEach((row, i) => {
       const from = i * ROW + 1;
@@ -154,13 +157,13 @@ export function steps(r: RawRun, threads: RawThread[] = []): Step[] {
     used.add(s.name);
     const title = s.name === "task" ? r.title : s.name === "review" ? "Review the whole branch" : s.name;
     const name = s.name === "task" ? "Task" : s.name === "review" ? "Review" : "Other";
-    const p = makePiece(s.name === "task" ? "TASK" : s.name.toUpperCase().slice(0, 8), title, [{ stage: s.name, label: s.name === "task" ? "build" : s.name, record: s }], [], byThread);
+    const p = makePiece(s.name === "task" ? "TASK" : s.name.toUpperCase().slice(0, 8), title, [{ stage: s.name, label: s.name === "task" ? "build" : s.name, record: s }], [], byThread, agents);
     const last = out[out.length - 1];
     if (last && last.name === name) last.pieces.push(p);
     else out.push({ name, pieces: [p] });
   }
   if (r.flow === "ship" && slices.length && !byName.has("review")) {
-    out.push({ name: "Review", pieces: [makePiece("REVIEW", "Review the whole branch", [{ stage: "review", label: "review" }], [], byThread)] });
+    out.push({ name: "Review", pieces: [makePiece("REVIEW", "Review the whole branch", [{ stage: "review", label: "review" }], [], byThread, agents)] });
   }
   return out;
 }
@@ -359,7 +362,7 @@ export function home(threads: RawThread[], runs: RawRun[], agents: Record<string
   };
 }
 
-function attemptView(a: RawAttempt): AttemptView {
+function attemptView(a: RawAttempt, threads?: Map<string, RawThread>, agents: Record<string, string> = {}): AttemptView {
   const claimed = new Map((a.result?.evidence ?? []).map((e) => [e.criterion, e.evidence]));
   const criteria: Criterion[] = a.verdict
     ? a.verdict.criteria.map((c) => ({ criterion: c.criterion, result: c.pass ? "pass" : "fail", evidence: c.evidence }))
@@ -370,9 +373,11 @@ function attemptView(a: RawAttempt): AttemptView {
   const evidence = a.result
     ? a.result.summary
     : cut ? "The daemon restarted during this turn. The next attempt picked up the same work." : a.reason ?? "No result posted yet.";
+  const agentId = threads?.get(a.threadId)?.paseoAgentId ?? agents[a.threadId];
   return {
     n: a.n, rung: rung(a.rung), startedAt: a.startedAt, endedAt: a.endedAt, outcome, threadId: a.threadId, interrupted: cut,
     evidence, criteria, checks: a.checks ?? [], judgeRung: rung(a.judgeRung),
+    ...(agentId ? { agentId } : {}),
   };
 }
 
@@ -386,11 +391,12 @@ function summary(r: RawRun, all: Piece[], activity: NonNullable<TaskView["runAct
 }
 
 export function task(r: RawRun, threads: RawThread[], agents: Record<string, string>): TaskView {
-  const s = steps(r, threads);
+  const byThread = new Map(threads.map((t) => [t.id, t]));
+  const s = steps(r, threads, agents);
   const all = s.flatMap((x) => x.pieces);
   const live = all.find(isLive);
   const attempts: Record<string, AttemptView[]> = {};
-  for (const st of r.stages) attempts[st.name] = st.attempts.map(attemptView);
+  for (const st of r.stages) attempts[st.name] = st.attempts.map((a) => attemptView(a, byThread, agents));
   const ids = new Set(r.stages.flatMap((st) => st.attempts.flatMap((a) => [a.threadId, a.judgeId].filter(Boolean) as string[])));
   const open = [...(r.asks ?? [])].reverse().find((a) => a.answer === undefined);
   const activity = runActivity(r, threads);
@@ -414,10 +420,12 @@ export function task(r: RawRun, threads: RawThread[], agents: Record<string, str
 export function threadTask(t: RawThread, agents: Record<string, string>): TaskView {
   const card = threadCard(t, agents);
   const status: Status = card.status === "done" ? "passed" : card.status;
+  const agentId = t.paseoAgentId ?? agents[t.id];
   const p: Piece = {
     id: "TASK", title: t.title, status, phases: [{ stage: t.id, label: "thread", status }], doneWhen: [],
     attempts: t.turns.length, sentBack: 0, interrupted: 0, verdict: "pending", rung: rung(t.rung),
     progress: t.progress && t.progress !== "SessionEnd" ? t.progress : undefined, startedAt: t.createdAt, handoff: false,
+    ...(agentId ? { agentId } : {}),
   };
   const ask = threadAsk(t, new Date());
   return {

@@ -32,6 +32,7 @@ export type FlowNode = {
   end?: string;
   piece?: Piece;
   stage?: string;
+  agentId?: string;
   observed: boolean;
   worker?: string;
   action?: string;
@@ -83,6 +84,7 @@ export function orchestrationNodes(view: TaskView): FlowNode[] {
     title,
     piece,
     stage: stageFor(piece),
+    agentId: piece.agentId ?? piece.phases.flatMap(phase => view.attempts[phase.stage] ?? []).reverse().find(a => a.agentId)?.agentId,
     status: piece.status,
     observed: piece.phases.some(phase => (view.attempts[phase.stage]?.length ?? 0) > 0) || piece.status !== "pending",
     worker: piece.rung,
@@ -293,11 +295,12 @@ function FlowLegend({ theme }: { theme: PluginTheme }) {
 const verdictStatus = (v?: "pass" | "fail" | "pending"): Status => (v === "pass" ? "passed" : v === "fail" ? "failed" : "pending");
 const verdictLabel = (v?: "pass" | "fail" | "pending") => (v === "pass" ? "Pass" : v === "fail" ? "Fail" : "Pending");
 
-export function OrchestrationFlow({ theme, view, selectedStage, onSelect }: {
+export function OrchestrationFlow({ theme, view, selectedStage, onSelect, onOpenAgent }: {
   theme: PluginTheme;
   view: TaskView;
   selectedStage?: string;
   onSelect: (stage: string) => void;
+  onOpenAgent?: (agentId: string) => void;
 }) {
   const [width, setWidth] = useState(0);
   const bands = orchestrationBands(view);
@@ -350,7 +353,7 @@ export function OrchestrationFlow({ theme, view, selectedStage, onSelect }: {
           {countWords(bands.length, "step", true)}, {countWords(flat.length, "piece")}
         </Text>
         <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>
-          Read left to right within each step band, then follow the line down to the next step.
+          Click any active piece to open its agent as a Paseo chat. Read left to right within each step band.
         </Text>
       </View>
 
@@ -399,7 +402,8 @@ export function OrchestrationFlow({ theme, view, selectedStage, onSelect }: {
             const statusHue = hue(statusKey, theme);
             const railColor = node.observed ? statusHue.ink : c.border;
             const endLine = node.action || node.end || node.note;
-            const a11yLabel = [node.title, statusText, node.worker, node.meta].filter(Boolean).join(", ");
+            const canOpenAgent = Boolean(node.agentId && onOpenAgent);
+            const a11yLabel = [node.title, statusText, node.worker, node.meta, canOpenAgent ? "open agent chat" : undefined].filter(Boolean).join(", ");
             const cardStyle = {
               position: "absolute" as const,
               left: pos.x,
@@ -458,14 +462,23 @@ export function OrchestrationFlow({ theme, view, selectedStage, onSelect }: {
                   <Text numberOfLines={1} style={{ color: node.sentBack ? t.amber.ink : c.foregroundMuted, fontSize: 12, flex: 1 }}>
                     {node.meta || (node.observed ? "Active" : "Not started")}
                   </Text>
-                  {node.handoff && (
-                    <Text numberOfLines={1} style={{ color: t.green.ink, fontSize: 12, fontWeight: "700", flexShrink: 0 }}>↳ mem</Text>
-                  )}
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                    {node.handoff && (
+                      <Text numberOfLines={1} style={{ color: t.green.ink, fontSize: 12, fontWeight: "700" }}>↳ mem</Text>
+                    )}
+                    {canOpenAgent && (
+                      <Text numberOfLines={1} style={{ color: c.accent, fontSize: 12, fontWeight: "700" }}>Chat ↗</Text>
+                    )}
+                  </View>
                 </View>
               </>
             );
-            return node.stage ? (
-              <Pressable key={node.id} accessibilityRole="button" accessibilityLabel={a11yLabel} accessibilityState={{ selected }} onPress={() => onSelect(node.stage!)} style={cardStyle}>
+            const handlePress = () => {
+              if (node.stage) onSelect(node.stage);
+              if (node.agentId && onOpenAgent) onOpenAgent(node.agentId);
+            };
+            return node.stage || canOpenAgent ? (
+              <Pressable key={node.id} accessibilityRole="button" accessibilityLabel={a11yLabel} accessibilityState={{ selected }} onPress={handlePress} style={cardStyle}>
                 {body}
               </Pressable>
             ) : (

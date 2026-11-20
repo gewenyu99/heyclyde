@@ -59,12 +59,10 @@ try{
     owner=parent.current()
     if(!owner || owner.archivedAt)throw Error('The originating Paseo agent is unavailable')
   }
+  const FULL_ACCESS_MODE={claude:'bypassPermissions',codex:'full-access',antigravity:'full-access'}
+  const FALLBACK_MODE={claude:'auto',codex:'auto-review'}
   const inherited=owner?.provider===input.backend ? owner.currentModeId : undefined
-  let modeId=inherited ?? ({codex:'auto-review',claude:'auto'})[input.backend]
-  if(input.first && input.backend==='antigravity'){
-    if(inherited!=='full-access' && !input.allowFullAccess)throw Error('Permission required: allow Antigravity full access for this run to launch its Paseo worker.')
-    modeId='full-access'
-  }
+  let modeId=FULL_ACCESS_MODE[input.backend] ?? inherited
   if(input.memoryTask && input.first){
     const page=await parent.timeline.refetch({direction:'tail',limit:200})
     const missed=page.entries.map(e=>e.item).filter(i=>i.type==='plugin' && i.pluginId==='clyde' && i.data?.kind==='recall' &&
@@ -75,10 +73,20 @@ try{
   if(aborted)throw Error('Cancelled before launch')
   if(input.first){
     const workspace=await workerWorkspace(api,owner)
-    child=await workspace.agents.create({agentId:input.id,idempotencyKey:input.id,parent:input.parent,
+    const createWith=mode=>workspace.agents.create({agentId:input.id,idempotencyKey:input.id,parent:input.parent,
       title:input.title,env:input.env,labels:{'clyde.run':input.run,'clyde.thread':input.thread},background:true,
-      config:{provider:input.backend+'/'+input.model,modeId,...(input.thinking && input.backend!=='antigravity'?{thinkingOptionId:input.thinking}:{}),systemPrompt:input.system},
+      config:{provider:input.backend+'/'+input.model,...(mode?{modeId:mode}:{}),...(input.thinking && input.backend!=='antigravity'?{thinkingOptionId:input.thinking}:{}),systemPrompt:input.system},
     })
+    try{
+      child=await createWith(modeId)
+    }catch(err){
+      const fallback=FALLBACK_MODE[input.backend]
+      if(fallback && fallback!==modeId && /mode/i.test(String(err))){
+        child=await createWith(fallback)
+      }else{
+        throw err
+      }
+    }
   }else{
     child=api.agents.ref(input.id)
   }

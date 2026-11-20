@@ -2,14 +2,27 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { Markdown } from "@getpaseo/plugin/client/ui";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { askSupervisorRpc, supervisorRpc } from "../shared/clyde";
 import { formatRpcError, MIN_HIT_HEIGHT } from "./palette";
 import { requestId } from "./request-id";
+import { WorkerPermissions } from "./worker-permissions";
 
-export function SupervisorChat({ theme, runId, draft: savedDraft, onDraftChange }: { theme: PluginTheme; runId: string; draft?: string; onDraftChange?: (text:string)=>void }) {
+export function SupervisorChat({ theme, runId, draft: savedDraft, onDraftChange, openAgent, showPermissions = false, expectedPermission = false, onPendingPermission }: {
+  theme: PluginTheme;
+  runId: string;
+  draft?: string;
+  onDraftChange?: (text: string) => void;
+  openAgent?: (id: string) => void;
+  showPermissions?: boolean;
+  expectedPermission?: boolean;
+  onPendingPermission?: (id: string | null | undefined) => void;
+}) {
   const c = theme.colors;
+  const handlePending = useCallback((id: string | null | undefined) => {
+    onPendingPermission?.(id);
+  }, [onPendingPermission]);
   const read = useRpc(supervisorRpc), ask = useRpc(askSupervisorRpc);
   const conversation = useQuery({
     queryKey: ["clyde", "supervisor", runId],
@@ -65,6 +78,9 @@ export function SupervisorChat({ theme, runId, draft: savedDraft, onDraftChange 
       {(!state && !error || state?.busy) && <Text accessibilityLiveRegion="polite" style={{ fontSize: 13, color: c.foregroundMuted }}>
         {state?.busy ? "Clyde is reading the task…" : "Opening conversation…"}
       </Text>}
+      {showPermissions && (
+        <WorkerPermissions key={runId} theme={theme} runId={runId} openAgent={openAgent} onPending={handlePending} expected={expectedPermission} variant="chat" />
+      )}
       {error && <Text accessibilityRole="alert" selectable style={{ fontSize: 13, color: c.statusDanger }}>{error}</Text>}
       <TextInput multiline editable={!sending} maxLength={8000} accessibilityLabel="Question about this task"
         value={draft} onChangeText={setDraft} placeholder="Ask about this task…" placeholderTextColor={c.foregroundMuted}
