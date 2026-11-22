@@ -615,8 +615,8 @@ export const HOOK_APPS = [
     memory: "autoMemoryEnabled false (in the same file) turns off Claude Code's auto memory.",
     blocks: "PreToolUse denies every tool but Clyde recall while a recall is owed, and denies writes to Claude Code's memory files." },
   { app: "Codex", where: "~/.codex/hooks.json", config: CODEX_HOOKS_JSON, extra: ["~/.codex/config.toml", CODEX_CONFIG_TOML],
-    memory: "memories = false under [features] and generate_memories = false / use_memories = false under [memories] in ~/.codex/config.toml turn off Codex memories.",
-    blocks: "PreToolUse denies every tool but Clyde recall while a recall is owed, and denies writes to ~/.codex/memories. Trust the entries in ChatGPT Settings > Coding > Hooks (Trust all) or by running /hooks once in Codex CLI." },
+    memory: "In ~/.codex/config.toml, memories = false under [features] and generate_memories = false, use_memories = false under [memories] turn off Codex memories.",
+    blocks: "PreToolUse denies every tool but Clyde recall while a recall is owed, and denies writes to ~/.codex/memories. Trust the entries in ChatGPT Settings > Coding > Hooks > User config (Trust all), or run /hooks once in Codex CLI." },
   { app: "Gemini CLI", where: "~/.gemini/extensions/clyde/hooks/hooks.json", config: GEMINI_HOOKS_JSON,
     memory: "Gemini CLI has no memory switch left, so BeforeTool denies save_memory and writes to memory files.",
     blocks: "BeforeTool denies every tool but Clyde recall while a recall is owed." },
@@ -690,4 +690,4 @@ export const AGENT_SETUP_PROMPT = `Set up Clyde on this computer (docs: https://
 ${HOOK_APPS.map(hookSetupText).join("\n\n")}
 
 4. Check the gate: run \`echo '{"session_id":"setup-check","prompt":"plan the billing retry work"}' | ${HOOK_PATH} claude UserPromptSubmit\`, then \`echo '{"session_id":"setup-check","tool_name":"Bash","tool_input":{"command":"ls"}}' | ${HOOK_PATH} claude PreToolUse\` and confirm it prints a deny. Both exit 0.
-5. Restart: tell me every app to restart (Claude Code, Codex plus /hooks once to trust its hooks, Gemini CLI, Antigravity). After the restart, register (step 1), then call recall, check_messages, and remember a first note under 500 characters, and show me its note ID.`;
+5. Restart: tell me every app to restart (Claude Code, ChatGPT desktop Settings > Coding > Hooks > User config > Trust all or Codex CLI /hooks once to trust its hooks, Gemini CLI, Antigravity). After the restart, register (step 1), then call recall, check_messages, and remember a first note under 500 characters, and show me its note ID.`;
