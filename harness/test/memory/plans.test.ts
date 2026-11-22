@@ -63,11 +63,14 @@ const remember = async (token: string) => {
 
 test('R50: plan rows', { skip: SKIP }, () => {
   const rows = sql(`select * from memory.plan order by id`)
-  assert.deepEqual(rows.map((r) => r.id), ['clyde', 'free', 'owner'])
+  assert.deepEqual(rows.map((r) => r.id), ['clyde', 'free', 'owner', 'starter'])
   const by = Object.fromEntries(rows.map((r) => [r.id, r]))
-  const free = by.free, clyde = by.clyde, own = by.owner
-  assert.deepEqual([free.seats, free.recalls_month, free.remembers_month, Number(free.blob_bytes_total), free.artifacts, free.connected_agents, free.overage, free.entries_total],
-    [1000, 300, 50, 0, false, 2, false, 100])
+  const free = by.free, starter = by.starter, clyde = by.clyde, own = by.owner
+  assert.deepEqual([free.seats, free.recalls_month, free.remembers_month, Number(free.blob_bytes_total), Number(free.openai_tokens_month), free.artifacts, free.quests, free.connected_agents, free.overage, free.entries_total],
+    [1000, 50, 15, 0, 50000, false, false, 2, false, 25])
+  assert.deepEqual([Number(starter.price_micro_usd_month), Number(starter.openai_tokens_month), Number(starter.blob_bytes_total), starter.recalls_month,
+    starter.remembers_month, starter.overage, Number(starter.margin_floor), starter.entries_total, starter.artifacts, starter.quests, starter.connected_agents],
+    [2990000, 500000, 524288000, 600, 200, false, 0.2, 600, true, false, 3])
   assert.deepEqual([Number(clyde.price_micro_usd_month), Number(clyde.openai_tokens_month), Number(clyde.blob_bytes_total), clyde.recalls_month,
     clyde.remembers_month, clyde.overage, Number(clyde.margin_floor), clyde.entries_total], [12990000, 1500000, 5368709120, 2000, 500, true, 0.75, null])
   const limits = ['recalls_month', 'remembers_month', 'blob_bytes_total', 'openai_tokens_month', 'connected_agents', 'burst_calls',
@@ -97,14 +100,14 @@ test('R50: the allowlist and comp move together', { skip: SKIP }, async () => {
   }
 })
 
-test('R50: free stops at 100 memories', { skip: SKIP }, async () => {
-  const f = owner('free100', { free: true }), c = owner('clyde100', { paid: 'clyde' })
-  entries(f, 100)
-  entries(c, 100)
+test('R50: free stops at 25 memories', { skip: SKIP }, async () => {
+  const f = owner('free25', { free: true }), c = owner('clyde25', { paid: 'clyde' })
+  entries(f, 25)
+  entries(c, 25)
   const refused = await remember(f.token)
   assert.equal(refused.error, true, refused.text)
-  assert.ok(refused.text.includes('100') && refused.text.includes('Upgrade'), refused.text)
-  assert.equal(count(f), 100)
+  assert.ok(refused.text.includes('25') && refused.text.includes('Upgrade'), refused.text)
+  assert.equal(count(f), 25)
   const kept = await remember(c.token)
   assert.equal(kept.error, false, kept.text)
 })
@@ -119,7 +122,7 @@ test('R50: caps come from memory.plan', { skip: SKIP }, async () => {
     assert.equal(refused.error, true, refused.text)
     assert.ok(refused.text.includes('3'), refused.text)
   } finally {
-    sql(`update memory.plan set entries_total = 100 where id = 'free'`)
+    sql(`update memory.plan set entries_total = 25 where id = 'free'`)
   }
   await lapse()
   const kept = await remember(f.token)
@@ -173,7 +176,7 @@ test("R50: cron embeds within each owner's token cap", { skip: SKIP }, async () 
     const [spent] = sql(`select amount from memory.usage where owner_id = '${c.id}' and kind = 'openai_tokens_month' and period = date_trunc('month', now())::date`)
     assert.ok(Number(spent?.amount ?? 0) > 0, `the clyde owner's sync tokens are on its own counter: ${JSON.stringify(spent)}`)
   } finally {
-    sql(`update memory.plan set openai_tokens_month = null where id = 'free'`)
+    sql(`update memory.plan set openai_tokens_month = 50000 where id = 'free'`)
   }
 })
 

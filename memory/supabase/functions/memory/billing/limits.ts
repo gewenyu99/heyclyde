@@ -8,6 +8,7 @@
 // to the provider's usage meter, billed at a 50% gross margin (cost.ts). Only overage_ceiling_micro_usd_month stops it.
 // Principals with no owner (Wen's runtime, admin, backup and cron credentials, and devices from before R38) have no limits.
 import { AsyncLocalStorage } from "node:async_hooks";
+import { SITE } from "../auth.ts";
 import { root, sql } from "../db.ts";
 import {
   chargeFor, EGRESS_MICRO_USD_PER_GB, includedCostMicroUsd, INVOCATION_MICRO_USD, METERED_KINDS, OPENAI_PRICES_MICRO_USD_PER_M,
@@ -63,7 +64,10 @@ const billsOverage = (v: Verdict) => v.plan.overage && !v.allowlisted && v.state
 async function over(v: Verdict, kind: Metered, cap: number) {
   if (free(v)) return new Limited(await payment(v.owner, `the ${v.plan.name} plan's ${kind} limit (${cap}) is used up.`));
   const reset = MONTHLY.has(kind) ? ` It resets on ${nextReset()}.` : " Delete artifacts you no longer need to free space.";
-  return new Limited(Response.json({ error: `Clyde: you've reached your plan's ${kind} cap of ${cap}.${reset}`, cap: kind, limit: cap },
+  const upgrade = !v.plan.overage && v.state === "paid" && v.plan.id !== "clyde"
+    ? ` Upgrade to Clyde at ${SITE}/usage for higher limits.`
+    : "";
+  return new Limited(Response.json({ error: `Clyde: you've reached your plan's ${kind} cap of ${cap}.${reset}${upgrade}`, cap: kind, limit: cap },
     { status: 429 }));
 }
 
@@ -309,8 +313,12 @@ export async function entriesFull(v: Verdict | undefined): Promise<string | null
   if (!v || cap === null) return null;
   const [r] = await sql`select count(*)::int as n from memory.entry where owner_id = ${v.owner}`;
   if (r.n < cap) return null;
+  if (v.state === "paid") {
+    return `Not remembered: Clyde's ${v.plan.name} plan holds ${cap} memories, and you have ${r.n}. ` +
+      `Upgrade to Clyde at ${SITE}/usage for unlimited stored memories, or delete some you no longer need.`;
+  }
   return `Not remembered: Clyde's ${v.plan.name} plan holds ${cap} memories, and you have ${r.n}. ` +
-    `Upgrade at ${await checkoutLink(v.owner)} for more, or delete some you no longer need.`;
+    `Upgrade at ${await checkoutLink(v.owner, "starter")} (Starter, $2.99/mo) or ${await checkoutLink(v.owner)} (Clyde, $12.99/mo), or delete some you no longer need.`;
 }
 
 /** After a remember: count the bytes of the blobs it stored, and a month of storage for any past the included limit. */
@@ -323,12 +331,19 @@ export async function countBlobs(v: Verdict | undefined, blobs: { size: number }
 
 /** The artifacts flag, for remember with artifacts, get_blob, upload_blob and GET /blobs. */
 export async function assertArtifacts(v: Verdict | undefined) {
-  if (v && !v.plan.artifacts) throw new Limited(await payment(v.owner, `artifacts need the Clyde plan; the ${v.plan.name} plan has none.`));
+  if (v && !v.plan.artifacts) throw new Limited(await payment(v.owner, `artifacts need a paid plan; the ${v.plan.name} plan has none.`));
 }
 
 /** The quests flag, for the quest board MCP tools. */
 export async function assertQuests(v: Verdict | undefined) {
-  if (v && !v.plan.quests) throw new Limited(await payment(v.owner, `the quest board needs the Clyde plan; the ${v.plan.name} plan has none.`));
+  if (!v || v.plan.quests) return;
+  if (v.state === "paid") {
+    throw new Limited(Response.json({
+      error: `Clyde: the quest board needs the Clyde plan ($12.99/mo); the ${v.plan.name} plan has none. Upgrade at ${SITE}/usage`,
+      upgrade_url: `${SITE}/usage`,
+    }, { status: 402 }));
+  }
+  throw new Limited(await payment(v.owner, `the quest board needs the Clyde plan; the ${v.plan.name} plan has none.`, { clydeOnly: true }));
 }
 
 /** The burst limit: at most burst_calls in burst_seconds per owner. The window slides, and the row lock makes it exact across

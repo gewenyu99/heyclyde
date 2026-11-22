@@ -109,10 +109,12 @@ export function blockedOrigin(req: Request, proxied: boolean): Geo {
 
 export const refusal451 = () => Response.json({ error: `Clyde: ${REFUSAL}` }, { status: 451 });
 
-/** The link a 402 hands out: the checkout_url setting with the owner's id. */
-export async function checkoutLink(owner: string) {
+/** The link a 402 hands out: the checkout_url setting with the owner's id (and optional plan id). */
+export async function checkoutLink(owner: string, plan?: string) {
   const base = await setting("checkout_url");
-  return `${base}${base.includes("?") ? "&" : "?"}owner=${encodeURIComponent(owner)}`;
+  const sep = base.includes("?") ? "&" : "?";
+  const planSuffix = plan ? `&plan=${encodeURIComponent(plan)}` : "";
+  return `${base}${sep}owner=${encodeURIComponent(owner)}${planSuffix}`;
 }
 
 /** The answer to a principal whose plan isn't open: 451 from a blocked place, else 402 with the checkout link. */
@@ -122,7 +124,18 @@ export async function refusal(v: Verdict, geo: Geo): Promise<Response> {
 }
 
 /** 402 with the checkout link, for a closed plan or a free plan that ran out. */
-export async function payment(owner: string, why: string) {
+export async function payment(owner: string, why: string, opts?: { clydeOnly?: boolean }) {
   const url = await checkoutLink(owner);
-  return Response.json({ error: `Clyde: ${why} Subscribe at ${url}`, checkout_url: url }, { status: 402 });
+  if (opts?.clydeOnly) {
+    return Response.json({ error: `Clyde: ${why} Subscribe at ${url}`, checkout_url: url }, { status: 402 });
+  }
+  const starterUrl = await checkoutLink(owner, "starter");
+  return Response.json(
+    {
+      error: `Clyde: ${why} Subscribe to Starter ($2.99/mo) at ${starterUrl} or Clyde ($12.99/mo) at ${url}`,
+      checkout_url: url,
+      starter_checkout_url: starterUrl,
+    },
+    { status: 402 },
+  );
 }

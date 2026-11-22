@@ -72,7 +72,7 @@ Read-only tools (6): `recall`, `recall_more`, `get_entry`, `get_blob`, `check_me
 |---|---|
 | Server name (≤ 100) | Clyde |
 | One-liner (≤ 200) | `claude.one_liner` in [clyde.json](clyde.json): "One shared memory for all your AI agents: save a decision or note in Claude, and recall it later from Claude, ChatGPT, Codex, Gemini or Grok." |
-| Description (≤ 2,000) | Paste `claude.description` from [clyde.json](clyde.json) whole (923 characters). |
+| Description (≤ 2,000) | Paste `claude.description` from [clyde.json](clyde.json) whole (1,000 characters). |
 | Categories (1 to 5) | Productivity, Developer tools (docs don't list exact category options, so pick the closest two). |
 | Documentation URL | https://heyclyde.me/docs |
 | Privacy policy URL | https://heyclyde.me/privacy |
@@ -87,7 +87,7 @@ Read-only tools (6): `recall`, `recall_more`, `get_entry`, `get_blob`, `check_me
 | Field | Answer |
 |---|---|
 | Primary use cases | Use the three in `claude.use_cases`: remember decisions across apps, pick up where another agent left off, and hand work to another agent through the quest board. |
-| What users need before connecting | A Clyde account, created on first connect via one-time email link (or Google or GitHub when enabled). Free seats open at 10 per paid user (up to 1,000 total) sharing a $5 USD/month API pool, and tools require the $12.99 USD/month Clyde plan once free seats or the pool fill. |
+| What users need before connecting | A Clyde account, created on first connect via one-time email link (or Google or GitHub when enabled). Free seats open at 10 per paid user (up to 1,000 total) sharing a $5 USD/month API pool. Once free seats or limits run out, Starter is $2.99 USD/month (hard caps, no quest board) and the Clyde plan is $12.99 USD/month (includes the quest board and pay-as-you-go overage). |
 | Reads, writes, or both | Both. It reads notes, files, messages, and quests, and writes notes, files, messages, and quests. |
 
 ### Company
@@ -153,7 +153,7 @@ Apply at [connected.google.com/console/help/?apply](https://connected.google.com
 | App name | Clyde |
 | What it does | `google.description`: "Clyde gives your AI agents one shared memory, so notes, decisions and quests saved in one app can be recalled from Gemini and every other app." |
 | Connection | A remote MCP server over streamable HTTP at https://heyclyde.me/mcp |
-| Users | People who use Gemini alongside Claude, ChatGPT, Codex, or Grok and want one shared memory. Free tier opens 10 free seats per paid account (up to 1,000 total) sharing a $5 USD/month pool, and the Clyde plan is $12.99 USD/month. |
+| Users | People who use Gemini alongside Claude, ChatGPT, Codex, or Grok and want one shared memory. The free tier opens 10 seats per paid user (up to 1,000 total) sharing a $5 USD/month pool. Starter is $2.99 USD/month, and the Clyde plan is $12.99 USD/month. |
 
 Wen accepts Google's Connected Apps terms himself as the account admin.
 

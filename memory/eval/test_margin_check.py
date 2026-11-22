@@ -16,11 +16,11 @@ class MarginCheckTest(unittest.TestCase):
 
         plan = load_free_plan()
         self.assertEqual(plan["seats"], 1000)
-        self.assertEqual(plan["entries_total"], 100)
-        self.assertEqual(plan["recalls_month"], 300)
-        self.assertEqual(plan["remembers_month"], 50)
+        self.assertEqual(plan["entries_total"], 25)
+        self.assertEqual(plan["recalls_month"], 50)
+        self.assertEqual(plan["remembers_month"], 15)
         self.assertEqual(plan["blob_bytes_total"], 0)
-        self.assertEqual(plan["openai_tokens_month"], 250_000)
+        self.assertEqual(plan["openai_tokens_month"], 50_000)
 
     def test_1000_free_accounts_fit_pro(self):
         ok, report = evaluate(1000)
@@ -30,12 +30,12 @@ class MarginCheckTest(unittest.TestCase):
             self.assertEqual(main(["--free", "1000", "--json"]), 0)
 
     def test_excess_free_accounts_fail_pro_quotas(self):
-        ok, report = evaluate(2500)
+        ok, report = evaluate(10_000)
         self.assertFalse(ok)
         self.assertFalse(report["metrics"]["database"]["ok"])
         self.assertFalse(report["metrics"]["invocations"]["ok"])
         with contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(main(["--free", "2500"]), 1)
+            self.assertEqual(main(["--free", "10000"]), 1)
 
 
 if __name__ == "__main__":

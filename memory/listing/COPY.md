@@ -124,33 +124,47 @@ Keep the [ids]. Leave a line empty to cut it.
 
 [home-58] Pricing
 
-[home-59] The free tier is pretty useless. Try it for $12.99.
+[home-59] The free tier is pretty useless. Try Starter for $2.99.
 
 [home-60] Free
 
-[home-61] $0 first 1,000 users
+[home-61] $0 first 1,000 users (10 at launch, +10/paid user)
 
-[home-62] Up to 100 notes stored
+[home-62] 25 stored notes, 50 recalls and 15 writes / month
 
-[home-63] 300 recalls and 50 writes / month
+[home-63] 50K tokens / month (shared $5/mo pool)
 
-[home-64] 2 computers, no card needed
+[home-64] 2 computers, no credit card required
 
 [home-65] No file attachments or quest board
+
+[home-65a] Starter
+
+[home-65b] $2.99 a month
+
+[home-65c] 600 stored notes, 600 recalls and 200 writes / month
+
+[home-65d] 500 MB storage for logs, docs, and screenshots
+
+[home-65e] 500K tokens / month, hard limits (no overage)
+
+[home-65f] 3 computers, all apps
+
+[home-65g] No quest board
 
 [home-66] Clyde
 
 [home-67] $12.99 a month
 
-[home-68] 2,000 recalls and 500 writes / month
+[home-68] Unlimited stored notes, 2,000 recalls and 500 writes / month
 
-[home-69] 5 GB file storage for logs, docs, and screenshots
+[home-69] 5 GB storage for logs, docs, and screenshots
 
-[home-70] 1.5M tokens included for search and ranking
+[home-70] 1.5M tokens / month for search and screening
 
-[home-71] Up to 10 computers, all supported apps, plus the quest board
+[home-71] 10 computers, all apps, and the quest board
 
-[home-72] Overage is raw cost + 50%, capped at a monthly limit you set ($20 default)
+[home-72] Overage is 2.3x raw cost, up to a $20/mo spend limit by default
 
 [home-73] clyde · shared memory for agents
 
@@ -452,7 +466,7 @@ Keep the [ids]. Leave a line empty to cut it.
 
 [terms-04] Terms of service
 
-[terms-05] Updated 15 Nov 2026
+[terms-05] Updated 22 Nov 2026
 
 [terms-06] Short version: Clyde comes as-is, with no warranty. Don't store secrets in it or abuse it.
 
@@ -464,7 +478,7 @@ Keep the [ids]. Leave a line empty to cut it.
 
 [terms-10] Plans and billing
 
-[terms-11] The Free plan is $0 for the first 1,000 users. The paid Clyde plan is $12.99 USD/month, billed via Polar as merchant of record, with a 14-day refund window. Usage beyond plan limits is billed at raw cost + 50%, up to your configured monthly spend cap.
+[terms-11] The Free plan is $0 and opens 10 seats at launch plus 10 per paid user (up to 1,000 users), capped at a shared $5 USD/month API pool across free users. When free seats run out, new users must subscribe to a paid plan to use Clyde tools. When the monthly pool runs out, metered free usage stops until the next UTC month or until you subscribe. The paid Starter plan is $2.99 USD/month with hard limits and no overage charges. The paid Clyde plan is $12.99 USD/month, where usage beyond included plan limits bills at 2.3x raw cost up to your monthly spend limit ($20 USD in billed overage by default, adjustable from $0 to $500). Paid plans are billed via Polar as merchant of record, with a 14-day refund window.
 
 [terms-12] Acceptable use
 

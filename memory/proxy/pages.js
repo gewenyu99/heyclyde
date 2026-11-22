@@ -259,9 +259,9 @@ export function statePage(data, nonce, id = "") {
     case "connected":
       mark = stamp("ok", "Approved", date); h1 = "Connected"; title = "Connected";
       lead = `${app("Your app")} is connected to Clyde.`;
-      // R74: past the free tier's last seat, the app connects but its tools need the plan. Only an https link is a link.
+      // R74: past the free tier's last seat, the app connects but its tools need a paid plan. Only an https link is a link.
       extra = data?.free_full && /^https:\/\//.test(String(data.checkout_url ?? ""))
-        ? note(`No free seats are available right now. <a href="${esc(data.checkout_url)}">Subscribe to Clyde for $12.99 USD/month</a> to start using tools, then return to your app.`)
+        ? note(`No free seats are open right now. Subscribe to <a href="${esc(String(data.checkout_url) + (String(data.checkout_url).includes("?") ? "&" : "?") + "plan=starter")}">Starter ($2.99 USD/month)</a> or <a href="${esc(String(data.checkout_url) + (String(data.checkout_url).includes("?") ? "&" : "?") + "plan=clyde")}">Clyde ($12.99 USD/month)</a> to use tools, then return to your app.`)
         : note("Close this tab and return to your app.");
       break;
     case "refused":

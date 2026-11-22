@@ -97,6 +97,7 @@ export async function startFakeProviders() {
       if (!/^Bearer \S+/.test(String(req.headers.authorization ?? ''))) return reply(401, { error: 'no token' })
       const p = url.pathname
       if (req.method === 'DELETE' && /^\/v1\/subscriptions\/[^/]+$/.test(p)) return state.failing ? reply(500, {}) : reply(200, { id: p.split('/').pop(), status: 'canceled' })
+      if (req.method === 'PATCH' && /^\/v1\/subscriptions\/[^/]+$/.test(p)) return state.failing ? reply(500, {}) : reply(200, { id: p.split('/').pop(), product_id: body?.product_id, status: 'active' })
       if (req.method === 'GET' && p === '/v1/orders/') {
         const items = (state.orders.get(url.searchParams.get('subscription_id') ?? '') ?? []).map((o) => ({ id: o.id, status: 'paid', paid: true, total_amount: o.amount, refunded_amount: 0, refundable_amount: o.amount }))
         return reply(200, { items, pagination: { total_count: items.length, max_page: 1 } })
@@ -116,6 +117,7 @@ export async function startFakeProviders() {
       }
       if (req.method === 'POST' && p === '/v1/checkouts/') return reply(201, { id: 'chk_test', url: `https://sandbox.polar.test/checkout/${body?.external_customer_id}` })
       if (req.method === 'POST' && /^\/subscriptions\/[^/]+\/cancel$/.test(p)) return state.failing ? reply(500, {}) : reply(200, { data: { status: 'canceled' } })
+      if (req.method === 'PATCH' && /^\/subscriptions\/[^/]+$/.test(p)) return state.failing ? reply(500, {}) : reply(200, { data: { id: p.split('/').pop(), status: 'active' } })
       if (req.method === 'GET' && p === '/transactions') return reply(200, { data: [] })
       if (req.method === 'POST' && p === '/adjustments') return state.failing ? reply(500, {}) : reply(201, { data: { id: 'adj_test' } })
       if (req.method === 'POST' && p === '/transactions') return reply(201, { data: { checkout: { url: `https://sandbox.paddle.test/checkout/${body?.custom_data?.owner_id}` } } })

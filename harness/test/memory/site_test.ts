@@ -39,7 +39,9 @@ Deno.test('the home page has the logo, pricing and its links', async () => {
   assert.match(String(r.headers.get('content-type')), /^text\/html/)
   assert.equal(calls, 0, 'the home page needs nothing from the function')
   assert.deepEqual(h1s(html), ['Your agents have the memory of a goldfish.'])
+  assert.ok(text(html).includes('$2.99'))
   assert.ok(text(html).includes('$12.99'))
+  assert.ok(/\bStarter\b/.test(text(html)))
   assert.ok(/\bFree\b/.test(text(html)))
   assert.ok(/<a[^>]*href="\/docs"[^>]*>[^<]*Get Clyde/.test(html), 'a Get Clyde link to the docs')
   for (const href of ['/docs', '/how-it-works', '/faq', '/privacy', '/terms']) assert.ok(html.includes(`href="${href}"`), href)
@@ -131,17 +133,32 @@ Deno.test('the home page has an app picker, a recall carousel and one bottom but
 })
 
 Deno.test('pricing matches memory.plan', async () => {
-  const sql = Deno.readTextFileSync(new URL('../../../memory/supabase/migrations/20261115120000_billing.sql', import.meta.url))
-  const row = (id: string) => new RegExp(`\\('${id}', '[^']+', (\\d+), \\w+, \\w+, [\\d.]+, (\\d+), (\\d+), \\w+, \\w+, (\\d+)[^\\n]*?, (\\w+)\\)`).exec(sql)!
-  const clyde = row('clyde'), free = row('free')
+  const baseSql = Deno.readTextFileSync(new URL('../../../memory/supabase/migrations/20261115120000_billing.sql', import.meta.url))
+  const tierSql = Deno.readTextFileSync(new URL('../../../memory/supabase/migrations/20261122010000_starter_plan_and_free_limits.sql', import.meta.url))
+  const clyde = /\('clyde', '[^']+', (\d+), \w+, \w+, [\d.]+, (\d+), (\d+), \w+, \w+, (\d+)[^\n]*?, (\w+)\)/.exec(baseSql)!
+  const starter = /'starter', 'Starter', (\d+), true, true, [\d.]+,\s*(\d+), (\d+), \d+, \d+,\s*(\d+), \d+, \d+, false, null,\s*null, true, false, (\d+)/.exec(tierSql)!
+  const freeEntries = /entries_total = (\d+)/.exec(tierSql)![1]
+  const freeRecalls = /recalls_month = (\d+)/.exec(tierSql)![1]
+  const freeWrites = /remembers_month = (\d+)/.exec(tierSql)![1]
+  const freeAgents = /connected_agents = (\d+)/.exec(tierSql)![1]
+  const freeSeats = /seats = (\d+)/.exec(tierSql)![1]
+
   const t = text((await get('https://heyclyde.me/')).html)
-  assert.ok(t.includes(`$${(Number(clyde[1]) / 1e6).toFixed(2)}`), 'price')
   const n = (v: string) => Number(v).toLocaleString('en-US')
+  assert.ok(t.includes(`$${(Number(clyde[1]) / 1e6).toFixed(2)}`), 'clyde price')
+  assert.ok(t.includes(`$${(Number(starter[1]) / 1e6).toFixed(2)}`), 'starter price')
   for (const [label, v] of [['recalls', clyde[2]], ['writes', clyde[3]], ['computers', clyde[4]]]) {
     assert.ok(t.includes(`${n(v)} ${label}`), `clyde: ${n(v)} ${label}`)
   }
-  for (const [label, v] of [['recalls', free[2]], ['writes', free[3]], ['computers', free[4]]]) assert.ok(t.includes(`${n(v)} ${label}`), `free: ${n(v)} ${label}`)
-  assert.ok(t.includes(`first ${n(free[5])} users`), `free: first ${n(free[5])} users`)
+  for (const [label, v] of [['recalls', starter[2]], ['writes', starter[3]], ['computers', starter[4]]]) {
+    assert.ok(t.includes(`${n(v)} ${label}`), `starter: ${n(v)} ${label}`)
+  }
+  assert.ok(t.includes(`${n(starter[5])} stored notes`), `starter: ${n(starter[5])} stored notes`)
+  for (const [label, v] of [['recalls', freeRecalls], ['writes', freeWrites], ['computers', freeAgents]]) {
+    assert.ok(t.includes(`${n(v)} ${label}`), `free: ${n(v)} ${label}`)
+  }
+  assert.ok(t.includes(`${n(freeEntries)} stored notes`), `free: ${n(freeEntries)} stored notes`)
+  assert.ok(t.includes(`first ${n(freeSeats)} users`), `free: first ${n(freeSeats)} users`)
   const plans = /<section[^>]*id="pricing"[\s\S]*?<\/section>/.exec((await get('https://heyclyde.me/')).html)?.[0] ?? ''
   assert.ok(plans && !/\bremembers\b/.test(plans), 'plans count writes, not remembers')
 })
@@ -162,7 +179,7 @@ Deno.test('the other pages, the 404 and the www redirect', async () => {
   assert.ok(nope.html.includes('href="/"'), 'the 404 links home')
   assert.equal(calls, 0)
   const terms = text((await get('https://heyclyde.me/terms')).html)
-  for (const place of ['European Union', 'Iceland', 'Liechtenstein', 'Norway', 'United Kingdom', 'Switzerland', 'Quebec', '14-day refund window', '$12.99']) {
+  for (const place of ['European Union', 'Iceland', 'Liechtenstein', 'Norway', 'United Kingdom', 'Switzerland', 'Quebec', '14-day refund window', 'Starter', '$2.99', '$12.99']) {
     assert.ok(terms.includes(place), `terms mentions ${place}`)
   }
   const termsHtml = (await get('https://heyclyde.me/terms')).html
@@ -371,7 +388,7 @@ Deno.test('structured data', async () => {
   assert.deepEqual(blocks.map((b) => b['@type']).sort(), ['Organization', 'SoftwareApplication', 'WebSite'], 'home: WebSite, Organization and SoftwareApplication')
   const app = blocks.find((b) => b['@type'] === 'SoftwareApplication')
   const offers = (app.offers ?? []).map((o: { price: string; priceCurrency: string }) => `${o.price} ${o.priceCurrency}`).sort()
-  assert.deepEqual(offers, ['0 USD', '12.99 USD'])
+  assert.deepEqual(offers, ['0 USD', '12.99 USD', '2.99 USD'])
   const site = blocks.find((b) => b['@type'] === 'WebSite'), org = blocks.find((b) => b['@type'] === 'Organization')
   assert.equal(site.url, 'https://heyclyde.me')
   assert.equal(org.url, 'https://heyclyde.me')

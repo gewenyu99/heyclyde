@@ -106,6 +106,13 @@ export const paddle: Provider = {
     if (!r.ok || typeof url !== "string") throw new ProviderError(`Paddle didn't make a checkout (${r.status})`);
     return url;
   },
+  async upgrade(subscriptionId, productId) {
+    const r = await api("PATCH", `/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+      items: [{ price_id: productId, quantity: 1 }],
+      proration_billing_mode: "prorated_immediately",
+    });
+    if (!r.ok) throw new ProviderError(`Paddle refused to upgrade ${subscriptionId} (${r.status})`);
+  },
   reportUsage() {
     // Paddle bills usage through one-off charges on the subscription, not a meter. Not built: Paddle is the fallback.
     return Promise.reject(new ProviderError("usage-based billing isn't set up for Paddle"));

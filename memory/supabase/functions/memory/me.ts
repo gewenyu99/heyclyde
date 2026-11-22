@@ -6,7 +6,9 @@ import { entitlementOf, forgetOwners } from "./auth.ts";
 import { OverBudget } from "./budget.ts";
 import { chargeFor, includedCostMicroUsd, METERED_KINDS, PLANNED, SUPABASE_PRO } from "./billing/cost.ts";
 import { forget, type Plan } from "./billing/entitlement.ts";
+import { PROVIDERS } from "./billing/index.ts";
 import { deleteOwnerAccount, OwnerProtectedError } from "./billing/lapse.ts";
+import { ProviderError } from "./billing/provider.ts";
 import { EXPORT_BLOB_MAX, EXPORT_STORED_TOTAL, get as getBlob, storageOn } from "./blobs.ts";
 import { asTenant, root as rootSql, sql } from "./db.ts";
 import { screen } from "./judge.ts";
@@ -67,7 +69,7 @@ function includedQuotaFor(plan: Plan, kind: typeof METERED_KINDS[number]): numbe
     case "egress_bytes":
       return plan.price_micro_usd_month > 0 ? Math.round(SUPABASE_PRO.egress_bytes.included / PLANNED.supabaseUsers) : 0;
     case "requests":
-      return plan.price_micro_usd_month > 0
+      return plan.price_micro_usd_month > 0 && plan.overage
         ? Math.round(SUPABASE_PRO.invocations.included / PLANNED.supabaseUsers)
         : (plan.recalls_month ?? 0) + (plan.remembers_month ?? 0);
     case "db_bytes":
@@ -98,7 +100,7 @@ export async function handle(req: Request, path: string, owner: string): Promise
       const costMicro = Number(r?.cost_micro_usd ?? 0);
       const includedCost = includedCostMicroUsd(v.plan, kind);
       const overageMicro = Number.isFinite(includedCost) ? Math.max(0, costMicro - includedCost) : 0;
-      const overageCents = v.metered && overageMicro > 0 ? Math.ceil(chargeFor(overageMicro) / 10_000) : 0;
+      const overageCents = v.metered && v.plan.overage && overageMicro > 0 ? Math.ceil(chargeFor(overageMicro) / 10_000) : 0;
       return {
         kind,
         included: includedQuotaFor(v.plan, kind),
@@ -106,7 +108,8 @@ export async function handle(req: Request, path: string, owner: string): Promise
         overage_cents: overageCents,
       };
     });
-    const [ent] = await rootSql`select (to_jsonb(e)->>'spend_limit_cents')::int as spend_limit_cents
+    const [ent] = await rootSql`select (to_jsonb(e)->>'spend_limit_cents')::int as spend_limit_cents,
+        cancel_at_period_end
       from memory.entitlement e where e.owner_id = ${owner}::uuid`;
     const spendLimitCents = ent?.spend_limit_cents === null || ent?.spend_limit_cents === undefined
       ? v.spendLimitCents
@@ -114,6 +117,8 @@ export async function handle(req: Request, path: string, owner: string): Promise
     return json({
       plan: v.plan.id,
       state: v.state,
+      overage: Boolean(v.plan.overage),
+      cancel_at_period_end: Boolean(ent?.cancel_at_period_end),
       spend_limit_cents: spendLimitCents,
       period,
       meters,
@@ -136,6 +141,47 @@ export async function handle(req: Request, path: string, owner: string): Promise
     await sql`insert into memory.admin_audit (action, target, before, after)
       values ('billing.spend_limit', ${"owner:" + owner}, null, ${sql.json({ spend_limit_cents: cents })})`;
     return json({ spend_limit_cents: Number(updated.spend_limit_cents) });
+  }
+
+  if (path === "/me/billing/upgrade" && req.method === "POST") {
+    const body = await readJsonObject(req);
+    const targetPlanId = typeof body?.plan === "string" && body.plan.trim() ? body.plan.trim().toLowerCase() : "clyde";
+    const [ent] = await rootSql`select provider, subscription_id, plan, state, cancel_at_period_end, current_period_end
+      from memory.entitlement where owner_id = ${owner}::uuid`;
+    const activeSub = ent && ent.state === "paid" && ent.subscription_id &&
+      (!ent.cancel_at_period_end || !ent.current_period_end || new Date(ent.current_period_end).getTime() > Date.now());
+    if (!activeSub) return json({ error: "No active paid subscription to upgrade." }, 409);
+
+    const [currentPlan] = await rootSql`select price_micro_usd_month from memory.plan where id = ${String(ent.plan)}`;
+    const [targetPlan] = await rootSql`select id, price_micro_usd_month, product_ids
+      from memory.plan where id = ${targetPlanId} and open and listed`;
+    if (!targetPlan || !currentPlan || Number(targetPlan.price_micro_usd_month) <= Number(currentPlan.price_micro_usd_month)) {
+      return json({ error: "Choose a higher-tier listed plan to upgrade." }, 400);
+    }
+
+    const p = PROVIDERS[String(ent.provider)];
+    if (!p) return json({ error: "Upgrade isn't supported for this billing provider." }, 400);
+    const productId = (targetPlan.product_ids as Record<string, unknown> | null)?.[p.name];
+    if (typeof productId !== "string" || !productId || !(await p.configured())) {
+      return json({ error: "Upgrade isn't available right now." }, 503);
+    }
+
+    try {
+      await p.upgrade(String(ent.subscription_id), productId);
+    } catch (e) {
+      if (e instanceof ProviderError) {
+        return json({ error: "Couldn't upgrade your subscription right now. Check your payment method or try again." }, 502);
+      }
+      throw e;
+    }
+    await rootSql`update memory.entitlement
+      set plan = ${targetPlanId}, cancel_at_period_end = false, updated_at = now()
+      where owner_id = ${owner}::uuid`;
+    forget(owner);
+    await sql`insert into memory.admin_audit (action, target, before, after)
+      values ('billing.upgrade', ${"owner:" + owner}, ${sql.json({ plan: ent.plan })},
+        ${sql.json({ from: ent.plan, to: targetPlanId, subscription_id: ent.subscription_id })})`;
+    return json({ plan: targetPlanId, upgraded: true });
   }
 
   // ---------------------------------------------------------------- entries (R51 #56, R52 #57)
@@ -697,7 +743,7 @@ export async function handle(req: Request, path: string, owner: string): Promise
 
   if (path === "/me/quests" && req.method === "POST") {
     const ent = await entitlementOf(owner);
-    if (!ent.plan.open || !ent.plan.quests) return json({ error: "Quests require a paid Clyde plan." }, 402);
+    if (!ent.plan.open || !ent.plan.quests) return json({ error: "Quests require the Clyde plan ($12.99/mo)." }, 402);
     const body = await readJsonObject(req);
     if (!body) return json({ error: "Body must be a JSON object." }, 400);
 

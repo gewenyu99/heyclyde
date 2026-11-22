@@ -273,7 +273,7 @@ test('burst: shared across instances, hooks and the runtime token not counted', 
   }
 })
 
-test('free plan: the first 1,000 accounts, its limits give 402 with the checkout link, no artifacts, no quests, and 250k tokens', { skip: SKIP }, async () => {
+test('free plan: the first 1,000 accounts, its limits give 402 with the checkout link, no artifacts, no quests, and 50k tokens', { skip: SKIP }, async () => {
   const p = await paid()
   assert.equal((await tool(p.oauth, 'list_quests', {})).status, 200)
   const u = user()
@@ -282,18 +282,20 @@ test('free plan: the first 1,000 accounts, its limits give 402 with the checkout
   const quest = await tool(u.oauth, 'list_quests', {})
   assert.equal(quest.status, 402, quest.text)
   assert.match(quest.text, /quest board/)
-  seed(u, 'recalls_month', 299)
+  seed(u, 'recalls_month', 49)
   assert.equal((await recall(u.oauth)).status, 200)
   const over = await recall(u.oauth)
   assert.equal(over.status, 402, over.text)
-  assert.ok(JSON.parse(over.text).checkout_url.includes(u.id))
+  const overBody = JSON.parse(over.text)
+  assert.ok(overBody.checkout_url.includes(u.id))
+  assert.ok(overBody.starter_checkout_url?.includes('plan=starter'))
   const artifact = await remember(u.oauth, { artifacts: [{ name: 'x.txt', kind: 'document', text: 'x' }] })
   assert.equal(artifact.status, 402, artifact.text)
   assert.match(artifact.text, /artifacts/)
   assert.equal((await remember(u.oauth)).status, 200)
   const tok = user()
   assert.equal((await rpc(tok.oauth, 'initialize', { protocolVersion: '2025-06-18' })).status, 200)
-  seed(tok, 'openai_tokens_month', 250_000)
+  seed(tok, 'openai_tokens_month', 50_000)
   const tokWrite = await remember(tok.oauth)
   assert.equal(tokWrite.status, 402, tokWrite.text)
   assert.ok(JSON.parse(tokWrite.text).checkout_url.includes(tok.id))
@@ -308,6 +310,24 @@ test('free plan: the first 1,000 accounts, its limits give 402 with the checkout
   } finally {
     sql(`update memory.plan set seats = 1000 where id = 'free'`)
   }
+})
+
+test('starter plan: hard caps give 429, artifacts work, quests give 402, and no overage is billed', { skip: SKIP }, async () => {
+  const s = await paidOn('starter')
+  const artifact = await remember(s.oauth, { artifacts: [{ name: 'st.txt', kind: 'document', text: 'starter ok' }] })
+  assert.equal(artifact.status, 200, artifact.text)
+  assert.equal(overageOf(s), 0)
+
+  const quest = await tool(s.oauth, 'list_quests', {})
+  assert.equal(quest.status, 402, quest.text)
+  assert.match(quest.text, /\/usage/)
+
+  seed(s, 'recalls_month', 600)
+  const capped = await recall(s.oauth)
+  assert.equal(capped.status, 429, capped.text)
+  assert.match(capped.text, /\/usage/)
+  assert.equal(overageOf(s), 0)
+  await readsStillWork(s)
 })
 
 test('connected agents: a plan caps the computers one owner claims', { skip: SKIP }, async () => {

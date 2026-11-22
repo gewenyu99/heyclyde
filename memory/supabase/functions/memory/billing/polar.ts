@@ -137,6 +137,13 @@ export const polar: Provider = {
     if (!r.ok || typeof r.body.url !== "string") throw new ProviderError(`Polar didn't make a checkout (${r.status})`);
     return r.body.url;
   },
+  async upgrade(subscriptionId, productId) {
+    const r = await api("PATCH", `/v1/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+      product_id: productId,
+      proration_behavior: "invoice",
+    });
+    if (!r.ok) throw new ProviderError(`Polar refused to upgrade ${subscriptionId} (${r.status})`);
+  },
   async reportUsage(owner, charge, cost, period, kind = "ai", hour = new Date().toISOString().slice(0, 13)) {
     // One event per owner, period, kind and UTC hour, idempotent via external_id; metadata.amount is charge_micro_usd.
     const r = await api("POST", "/v1/events/ingest", {

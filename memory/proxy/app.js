@@ -75,7 +75,7 @@ const PAGE_SPEC = {
   quests: { title: "Quest board · Clyde", heading: "Quest board", sub: "Post tasks for your agents and check what's open, claimed, or done." },
   agents: { title: "Agents and devices · Clyde", heading: "Agents and devices", sub: "Update agent nicknames, types, harnesses, and repos, or revoke connected devices." },
   apps: { title: "Connected apps · Clyde", heading: "Connected apps", sub: "Check which client apps hold OAuth access and revoke a grant anytime." },
-  usage: { title: "Usage and billing · Clyde", heading: "Usage and billing", sub: "Check your plan, monthly usage meters, and overage spend limit." },
+  usage: { title: "Usage and billing · Clyde", heading: "Usage and billing", sub: "Check your plan, monthly usage, and subscription or spend limit." },
   settings: { title: "Settings · Clyde", heading: "Settings", sub: "Download an NDJSON export of your records or permanently delete your account." },
   callback: { title: "Signing in · Clyde", heading: "Signing in", sub: "Finishing your Google or GitHub sign-in." },
 };
@@ -814,24 +814,82 @@ async function renderUsage() {
     '<div id="u-meters" class="meter-list"></div>' +
     '<form id="u-limit-form" class="cl-card app-form">' +
       '<h2 class="cl-title-3">Monthly spend limit</h2>' +
-      '<p class="cl-hint">Set the monthly overage cap for a paid plan, from $0 to $500 USD in whole dollars.</p>' +
+      '<p class="cl-hint">Set the monthly overage spend limit for the Clyde plan, from $0 to $500 USD in whole dollars.</p>' +
       '<div class="app-actions"><div class="cl-field"><label for="u-dollars">Limit (USD)</label>' +
       '<input id="u-dollars" type="number" min="0" max="500" step="1" class="cl-input" required></div>' +
       '<button type="submit" class="cl-btn cl-btn--primary">Save spend limit</button></div>' +
     '</form>';
 
   var msg = document.getElementById('u-msg');
+  var PLAN_NAME = { free: 'Free', starter: 'Starter', clyde: 'Clyde', owner: 'Owner', none: 'None' };
+  var STATE_NAME = { paid: 'Paid', past_due: 'Past due', comp: 'Comp', lapsed: 'Lapsed', refunded: 'Refunded', blocked: 'Blocked' };
   async function load() {
     var d = await api('/me/usage');
     var s = readSession();
     var limitDollars = d.spend_limit_cents == null ? 0 : (Number(d.spend_limit_cents) / 100);
     document.getElementById('u-dollars').value = String(Math.round(limitDollars));
+    document.getElementById('u-limit-form').classList.toggle('is-hidden', !d.overage);
+    var actions = '';
+    if (s && s.user_id && d.plan !== 'owner' && d.state !== 'paid') {
+      actions = '<div class="app-actions">' +
+        '<a class="cl-btn cl-btn--primary cl-btn--sm" href="/billing/checkout?owner=' + encodeURIComponent(s.user_id) + '&amp;plan=starter">Subscribe to Starter ($2.99/mo)</a>' +
+        '<a class="cl-btn cl-btn--sm" href="/billing/checkout?owner=' + encodeURIComponent(s.user_id) + '&amp;plan=clyde">Subscribe to Clyde ($12.99/mo)</a>' +
+      '</div>';
+    } else if (d.state === 'paid' && d.plan === 'starter') {
+      actions = '<div class="app-actions">' +
+        '<button type="button" class="cl-btn cl-btn--primary cl-btn--sm" id="u-up-open">Upgrade to Clyde ($12.99/mo)</button>' +
+      '</div>' +
+      '<div id="u-up-confirm" class="app-actions is-hidden">' +
+        '<span class="cl-hint">Upgrade to Clyde ($12.99/mo, prorated difference billed today)?</span>' +
+        '<button type="button" class="cl-btn cl-btn--primary cl-btn--sm" id="u-up-go">Upgrade to Clyde</button>' +
+        '<button type="button" class="cl-btn cl-btn--sm" id="u-up-cancel">Keep Starter</button>' +
+      '</div>';
+    }
+    if (d.state === 'paid' && d.cancel_at_period_end) {
+      actions += '<p class="cl-hint">Your subscription ends at the close of this billing period.</p>';
+    }
+    var statusText = d.state === 'paid' && d.cancel_at_period_end
+      ? 'Canceling at period end'
+      : (STATE_NAME[d.state] || d.state || (d.plan === 'free' ? 'Free seat' : 'No active plan'));
+    var capChip = d.plan === 'owner'
+      ? '<span class="cl-chip">Limits: unlimited</span>'
+      : d.plan === 'none'
+      ? '<span class="cl-chip">Access: subscription required</span>'
+      : d.overage
+      ? '<span class="cl-chip">Spend limit: $' + limitDollars.toFixed(2) + '</span>'
+      : '<span class="cl-chip">Caps: hard limits (no overage)</span>';
     document.getElementById('u-summary').innerHTML =
-      '<div class="app-meta"><span class="cl-chip cl-chip--carbon">Plan: ' + esc(d.plan) + '</span>' +
-      '<span class="cl-chip">Status: ' + esc(d.state || d.plan) + '</span>' +
+      '<div class="app-meta"><span class="cl-chip cl-chip--carbon">Plan: ' + esc(PLAN_NAME[d.plan] || d.plan) + '</span>' +
+      '<span class="cl-chip">Status: ' + esc(statusText) + '</span>' +
       '<span class="cl-chip">Period: ' + esc(d.period) + '</span>' +
-      '<span class="cl-chip">Spend limit: $' + limitDollars.toFixed(2) + '</span></div>' +
-      (s && s.user_id && d.plan !== 'owner' ? '<div><a class="cl-btn cl-btn--sm" href="/billing/checkout?owner=' + encodeURIComponent(s.user_id) + '">Subscribe or renew</a></div>' : '');
+      capChip +
+      '</div>' + actions;
+
+    var upOpen = document.getElementById('u-up-open');
+    var upConfirm = document.getElementById('u-up-confirm');
+    if (upOpen && upConfirm) {
+      upOpen.addEventListener('click', function() {
+        upConfirm.classList.remove('is-hidden');
+        upOpen.classList.add('is-hidden');
+      });
+      document.getElementById('u-up-cancel').addEventListener('click', function() {
+        upConfirm.classList.add('is-hidden');
+        upOpen.classList.remove('is-hidden');
+      });
+      document.getElementById('u-up-go').addEventListener('click', async function() {
+        clearNotice(msg);
+        var go = document.getElementById('u-up-go');
+        go.disabled = true;
+        try {
+          await api('/me/billing/upgrade', { method: 'POST', body: JSON.stringify({ plan: 'clyde' }) });
+          notice(msg, 'ok', 'Upgraded to the Clyde plan.');
+          await load();
+        } catch (err) {
+          go.disabled = false;
+          notice(msg, 'bad', err.message);
+        }
+      });
+    }
 
     document.getElementById('u-meters').innerHTML = (d.meters || []).map(function(m) {
       var inc = m.included == null ? 0 : Number(m.included);
@@ -840,7 +898,7 @@ async function renderUsage() {
       return '<div class="cl-card meter-row">' +
         '<div class="meter-top"><strong>' + esc(METER_LABEL[m.kind] || m.kind) + '</strong>' +
         '<span class="cl-mono">' + used.toLocaleString('en-US') + (m.included != null ? ' / ' + inc.toLocaleString('en-US') : ' (no limit)') +
-        ' · Overage: $' + (Number(m.overage_cents || 0) / 100).toFixed(2) + '</span></div>' +
+        (d.overage ? ' · Overage: $' + (Number(m.overage_cents || 0) / 100).toFixed(2) : '') + '</span></div>' +
         '<progress class="meter-bar" max="100" value="' + pct + '"></progress>' +
       '</div>';
     }).join('');

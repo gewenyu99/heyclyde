@@ -3,7 +3,8 @@
 # Vault. Run it once per Polar organization, sandbox first. It is safe to rerun: it reuses a product or endpoint that is
 # already there, and stores the secrets again.
 #
-#   POLAR_TOKEN=<organization access token> ./billing_setup.sh            # production, https://api.polar.sh
+#   POLAR_TOKEN=<organization access token> ./billing_setup.sh                                      # clyde ($12.99/mo)
+#   POLAR_TOKEN=<organization access token> PLAN=starter CAD_CENTS=419 ./billing_setup.sh          # starter ($2.99/mo)
 #   POLAR_TOKEN=<sandbox token> POLAR_API=https://sandbox-api.polar.sh MEMORY_URL=<branch function URL> ./billing_setup.sh
 #
 # The token is read from the environment and sent only to Polar and to memory's console API, which stores it in Vault as
@@ -40,18 +41,24 @@ fi
 
 hook="$MEMORY_URL/billing/polar"
 endpoint=$(polar "$POLAR_API/v1/webhooks/endpoints?limit=100" | jq -c --arg u "$hook" '[.items[] | select(.url == $u)][0] // empty')
+created_hook=0
 if [ -z "$endpoint" ]; then
   endpoint=$(polar -X POST "$POLAR_API/v1/webhooks/endpoints" -d "$(jq -n --arg u "$hook" --argjson e "$EVENTS" '{url: $u, format: "raw", events: $e}')")
+  created_hook=1
   echo "created webhook endpoint for $hook"
 else
   echo "webhook endpoint for $hook exists"
 fi
 secret=$(printf '%s' "$endpoint" | jq -r '.secret // empty')
-[ -n "$secret" ] || { echo "billing_setup.sh: Polar returned no webhook secret; reset it in the dashboard and rerun" >&2; exit 1; }
+if [ -n "$secret" ]; then
+  memory -X PUT "$MEMORY_URL/api/v1/secrets/polar_webhook_secret" -d "$(jq -n --arg v "$secret" '{value: $v}')" >/dev/null
+elif [ "$created_hook" -eq 1 ]; then
+  echo "billing_setup.sh: Polar returned no webhook secret; reset it in the dashboard and rerun" >&2
+  exit 1
+fi
 
-memory -X PUT "$MEMORY_URL/api/v1/secrets/polar_webhook_secret" -d "$(jq -n --arg v "$secret" '{value: $v}')" >/dev/null
 memory -X PUT "$MEMORY_URL/api/v1/secrets/polar_api_token" -d "$(jq -n --arg v "$POLAR_TOKEN" '{value: $v}')" >/dev/null
 memory -X PUT "$MEMORY_URL/api/v1/billing/plans/$PLAN" -d "$(jq -n --arg p "$product" '{product_ids: {polar: $p}}')" >/dev/null
-echo "stored polar_webhook_secret and polar_api_token in Vault, and plan $PLAN sells product $product"
+echo "stored secrets (when returned) and mapped plan $PLAN to product $product"
 echo "next, in the Polar dashboard: a meter clyde_overage (sum of metadata.charge_micro_usd) and a metered price of"
 echo "0.0001 cents per unit on $name. BILLING.md, Overage and the usage meter."

@@ -54,6 +54,8 @@ export interface Provider {
   refund(orderId: string, amount: number): Promise<void>;
   /** A checkout URL for this owner and product. */
   checkout(owner: string, productId: string, email: string | null, successUrl: string): Promise<string>;
+  /** Switch an active subscription to another product (for example, Starter to Clyde). */
+  upgrade(subscriptionId: string, productId: string): Promise<void>;
   /** Report an owner's overage to the provider's usage meter: what to bill (charge) and what it cost memory, both in
    * micro-USD. Resolves once the provider has it. */
   reportUsage(owner: string, chargeMicroUsd: number, costMicroUsd: number, period: string, kind?: string, hour?: string): Promise<void>;

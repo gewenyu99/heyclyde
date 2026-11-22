@@ -1,6 +1,6 @@
 # Billing and entitlement (R38, #42)
 
-Clyde has **one paid plan, `clyde`**. Its price includes a set of limits, and use past them is billed per use at a fixed 50% gross margin over cost, net of Polar's percentage. There is also a **free allocation for the first 1,000 users**, and Wen is on the comp **`owner`** plan with no limits (Wen, 2026-11-15). There are no other tiers. All user-facing text says Clyde, never "memory".
+Clyde has **two paid plans: `starter` ($2.99/mo, hard monthly caps) and `clyde` ($12.99/mo, included limits plus pay-per-use overage at a fixed 50% gross margin net of Polar's fee)**. There is also a **tightened free allocation (10 free seats per paid seat up to 1,000 users)**, and Wen is on the comp **`owner`** plan with no limits (Wen, 2026-11-15). All user-facing text says Clyde, never "memory".
 
 Clyde sells through a merchant of record: **Polar** first, **Paddle** as the fallback. Polar is the legal seller, so it handles sales tax, VAT, invoices, refunds and chargebacks. It pays out to Wen's Canadian bank through Stripe Connect Express. It charges 5% + 50¢ a sale, 1.5% more on non-US cards, and nothing a month.
 
@@ -18,7 +18,7 @@ Every agent and owner request whose credential has an **owner** (a Supabase Auth
 | The owner is | Plan |
 |---|---|
 | a confirmed email on `memory.allowed_email` | that row's `plan`. Wen's is `owner`, which has no limits. Others default to `clyde`, with its limits as hard caps and no overage. |
-| holding an entitlement in state `paid` that hasn't ended | the entitlement's `plan` (`clyde`) |
+| holding an entitlement in state `paid` that hasn't ended | the entitlement's `plan` (`starter` or `clyde`) |
 | holding one of the free plan's seats (`memory.account.free_slot`, taken at sign-up while `plan.seats`, 1,000, lasts) | `free` |
 | anyone else | none: 402 |
 
@@ -50,10 +50,11 @@ Each tier is one row of `memory.plan`, and each limit is a column. A null limit 
 
 On a plan without overage, a paid owner past a cap gets **429**, naming the cap and its reset date, and a free owner gets **402** with the checkout link. Reads such as `get_entry`, `get_blob` and `check_messages` never count.
 
-The seeded rows follow memory/CLYDE-DESIGN.md (R50 #55, R59 #64):
+The seeded rows follow memory/CLYDE-DESIGN.md (R50 #55, R59 #64) and migration `20261122010000`:
 
-- **free** has 1,000 seats. Each month it allows 300 recalls and 50 remembers. It has no artifacts, allows 2 computers, and has no overage.
-- **clyde** costs $12.99 and includes 2,000 recalls, 500 remembers, 5 GiB of artifacts, 1.5M OpenAI tokens and 10 computers, with 20 calls per 10 s. Past that, overage is billed up to a ceiling of $20 a month. It is `listed`, with a `margin_floor` of 0.75.
+- **free** opens 10 seats per paid seat (up to 1,000), sharing a $5/month API pool. Each account holds up to 25 notes, with 50 recalls, 15 remembers, and 50K tokens a month across 2 computers, no artifacts, no quest board, and no overage.
+- **starter** costs $2.99 a month and includes hard monthly caps: up to 600 stored notes, 600 recalls, 200 remembers, 500 MB of artifacts (`524288000` bytes), 500K OpenAI tokens, and 3 computers, with 20 calls per 10 s, no quest board, and no overage. It is `listed`, with a `margin_floor` of 0.20 (23.4% net margin under `PLANNED`).
+- **clyde** costs $12.99 and includes unlimited stored notes, 2,000 recalls, 500 remembers, 5 GiB of artifacts, 1.5M OpenAI tokens, the quest board, and 10 computers, with 20 calls per 10 s. Past that, overage is billed up to a ceiling of $20 a month. It is `listed`, with a `margin_floor` of 0.75.
 - **owner** has no limits.
 
 ## Overage and the usage meter
@@ -79,6 +80,7 @@ Change a tier with SQL or the console: `PUT /api/v1/billing/plans/<id>` with any
 
 | Plan | Payout fee on 1 subscriber | Payout fee shared by 20 |
 |---|---|---|
+| `starter`: $2.99, 500K tokens and 500 MB included | costs $3.35 | costs $2.29, a **23.4%** margin (floor 0.20 ✓) |
 | `clyde`: $12.99, 1.5M tokens and 5 GiB included | costs $5.34 (≤ $7.00 ✓) | costs $3.20, a **75.4%** margin (floor 0.75 ✓) |
 | $10 with 4M tokens included (R38's first draft) | $5.35 | 67.9%, under 70%, so the design moved off it |
 
@@ -191,6 +193,7 @@ Wen does steps 1 to 4. Each needs an account or bank details, which only he can 
 
    ```sh
    cd memory && POLAR_TOKEN='<paste the production token>' ./billing_setup.sh
+   cd memory && POLAR_TOKEN='<paste the production token>' PLAN=starter CAD_CENTS=419 ./billing_setup.sh
    ```
 
    For the sandbox, against a Supabase branch's function URL:
@@ -199,7 +202,7 @@ Wen does steps 1 to 4. Each needs an account or bank details, which only he can 
    POLAR_TOKEN='<sandbox token>' POLAR_API=https://sandbox-api.polar.sh MEMORY_URL=<branch url> ./billing_setup.sh
    ```
 
-   The script creates the `Clyde` product at the plan's price, and the webhook endpoint `https://memory.heyclyde.me/billing/polar`, subscribed to the eight events above. It stores `polar_webhook_secret` and `polar_api_token` in Vault and sets the plan's `product_ids`. Polar requires a price in the organization's default currency, which for Pennywhistle software is CAD, so the product also carries CAD 17.99 (`CAD_CENTS`), and the metered overage price needs a CAD price too. Production: product `b71524f6-d19b-4912-8fd7-7a830c79a142`, set up 2026-11-15.
+   The script creates the `Clyde` (or `Starter` with `PLAN=starter`) product at the plan's price, and the webhook endpoint `https://memory.heyclyde.me/billing/polar`, subscribed to the eight events above. It stores `polar_webhook_secret` and `polar_api_token` in Vault and sets the plan's `product_ids`. Polar requires a price in the organization's default currency, which for Pennywhistle software is CAD, so Clyde also carries CAD 17.99 (`CAD_CENTS=1799`) plus its metered overage price, and Starter carries CAD 4.19 (`CAD_CENTS=419`). Production products: `clyde` `b71524f6-d19b-4912-8fd7-7a830c79a142` (set up 2026-11-15) and `starter` `d939d4b2-f42a-44c4-863d-62b0d6dbc2f3` (set up 2026-11-22).
 
 The lead agent then checks the result. It reads `select count(*) from vault.decrypted_secrets where name in ('polar_api_token','polar_webhook_secret')`, which should return 2. It also lists Polar's products and webhook endpoints.
 

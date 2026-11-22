@@ -186,6 +186,25 @@ test('spend limit bounds', { skip: SKIP }, async () => {
   const afterComp = await request('GET', `${memory.url}/me/usage`, { headers: bearer(comp.signInJwt()), timeoutMs: 30_000 })
   assert.equal(afterComp.status, 200, afterComp.text)
   assert.equal(JSON.parse(afterComp.text).spend_limit_cents, 1000)
+
+  const st = createOwner('starter-usage')
+  exec(`insert into memory.entitlement (owner_id, provider, customer_id, subscription_id, plan, state, event_at)
+    values ('${st.id}', 'polar', 'cus-st', 'sub-st', 'starter', 'paid', now())
+    on conflict (owner_id) do update set plan = 'starter', state = 'paid', updated_at = now();
+    insert into memory.usage (owner_id, period, kind, amount, quantity, cost_micro_usd)
+    values ('${st.id}', date_trunc('month', now() at time zone 'utc')::date, 'ai', 900000, 900000, 117000)
+    on conflict (owner_id, period, kind) do update set amount = excluded.amount, quantity = excluded.quantity, cost_micro_usd = excluded.cost_micro_usd;`)
+  const stUsage = await request('GET', `${memory.url}/me/usage`, { headers: bearer(st.signInJwt()), timeoutMs: 30_000 })
+  assert.equal(stUsage.status, 200, stUsage.text)
+  const stBody = JSON.parse(stUsage.text)
+  assert.equal(stBody.plan, 'starter')
+  assert.equal(stBody.overage, false)
+  assert.equal(stBody.meters.find((m: any) => m.kind === 'ai')?.overage_cents, 0)
+  assert.equal((await request('POST', `${memory.url}/me/billing/upgrade`, {
+    headers: bearer(comp.signInJwt()),
+    body: { plan: 'clyde' },
+    timeoutMs: 30_000,
+  })).status, 409)
 })
 
 // ----------------------------------------------------------------------------------------------------- R51 (#56), R52 (#57), R63 (#68)

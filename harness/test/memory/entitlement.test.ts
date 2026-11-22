@@ -42,6 +42,7 @@ before(async () => {
   putSecret('polar_api_token', `test-polar-api-${nonce()}`)
   putSecret('paddle_api_key', `test-paddle-api-${nonce()}`)
   sql(`update memory.plan set product_ids = '{"polar": "prod_test", "paddle": "pro_test"}' where id = 'clyde'`)
+  sql(`update memory.plan set product_ids = '{"polar": "prod_starter_test", "paddle": "pro_starter_test"}' where id = 'starter'`)
   // The free plan's 1,000 seats are open. R38's unpaid criteria are about an account that holds none, so here none are left.
   sql(`update memory.plan set seats = 0 where id = 'free'`)
   CHECKOUT = sql(`select value from memory.setting where name = 'checkout_url'`)[0].value
@@ -710,6 +711,19 @@ test('checkout: the 402 link sends a known owner to the provider, and refuses a 
   assert.equal((await request('GET', `${local}&plan=free`)).status, 503)
   assert.equal((await request('GET', `${memory.url}/billing/checkout?owner=${randomUUID()}`)).status, 404)
 
+  const st = user()
+  await signIn(st)
+  const stGo = await request('GET', `${local.replace(u.id, st.id)}&plan=starter`)
+  assert.equal(stGo.status, 302, stGo.text)
+  const stMade = providers.calls.filter((c) => c.path === '/v1/checkouts/').at(-1)!
+  assert.deepEqual(stMade.body.products, ['prod_starter_test'])
+  assert.equal(stMade.body.external_customer_id, st.id)
+  const stSub = polarSubscription('subscription.active', { owner: st.id, id: `sub_st_${nonce()}`, country: 'US', productId: 'prod_starter_test' })
+  assert.equal((await deliver(memory.url, '/billing/polar', stSub, signPolar(POLAR, stSub))).status, 200)
+  assert.deepEqual(sql(`select plan, state from memory.entitlement where owner_id = '${st.id}'`), [{ plan: 'starter', state: 'paid' }])
+  assert.equal((await recall(st.oauth)).status, 200)
+  assert.equal((await request('GET', `${local.replace(u.id, st.id)}&plan=starter`)).status, 409)
+
   // Quest #54: paid checkout rejects duplicate subscriptions and DELETE /me cancels active subscriptions first.
   const sub = await pay(u, { country: 'US' })
   assert.equal((await request('GET', local)).status, 409)
@@ -740,13 +754,16 @@ test('admin: plans and entitlements are readable, and a plan is changed by data'
   const admin = (method: string, path: string, body?: unknown) =>
     request(method, `${memory.url}/api/v1${path}`, { headers: bearer(memory.adminToken), body, timeoutMs: 30_000 })
   const plans = JSON.parse((await admin('GET', '/billing/plans')).text).plans as Record<string, any>[]
-  // One paid plan, a comp plan for Wen, and the free allocation (Wen, 2026-11-15).
+  // Two paid plans (starter, clyde), a comp plan for Wen (owner), and the tightened free allocation.
   // bench is this file's own plan for the timing tests.
-  assert.deepEqual(plans.map((p) => p.id).filter((id) => id !== 'bench').sort(), ['clyde', 'free', 'owner'])
+  assert.deepEqual(plans.map((p) => p.id).filter((id) => id !== 'bench').sort(), ['clyde', 'free', 'owner', 'starter'])
   const owner = plans.find((p) => p.id === 'owner')!
   assert.deepEqual([owner.open, owner.recalls_month, owner.remembers_month, owner.openai_tokens_month, owner.burst_calls], [true, null, null, null, null])
   const freePlan = plans.find((p) => p.id === 'free')!
-  assert.deepEqual([freePlan.open, freePlan.recalls_month, freePlan.remembers_month, freePlan.artifacts, freePlan.connected_agents], [true, 300, 50, false, 2])
+  assert.deepEqual([freePlan.open, freePlan.recalls_month, freePlan.remembers_month, freePlan.artifacts, freePlan.connected_agents], [true, 50, 15, false, 2])
+  const starterPlan = plans.find((p) => p.id === 'starter')!
+  assert.deepEqual([starterPlan.open, starterPlan.listed, starterPlan.recalls_month, starterPlan.remembers_month, starterPlan.artifacts, starterPlan.quests, starterPlan.overage, starterPlan.connected_agents, starterPlan.entries_total],
+    [true, true, 600, 200, true, false, false, 3, 600])
   assert.equal(plans.find((p) => p.id === 'clyde')!.overage, true)
   assert.equal(sql(`select plan from memory.allowed_email where email = 'gewenyu99@gmail.com'`)[0]?.plan ?? 'owner', 'owner')
   const u = user()

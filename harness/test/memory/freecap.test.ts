@@ -193,9 +193,9 @@ test('R75: free seats scale as N per M paid users (Clyde is 1st paid user) and s
       body: { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'recall', arguments: { query: 'oolong' } } },
     })
     assert.equal(denied.status, 402, denied.text)
-    // Adding 1 active paid user brings total paid to 2 -> 6 total free seats (3 more open).
+    // Adding 1 active starter paid user brings total paid to 2 -> 6 total free seats (3 more open).
     exec(`insert into memory.entitlement (owner_id, provider, plan, state, event_at, current_period_end)
-      values (gen_random_uuid(), 'polar', 'clyde', 'paid', now(), now() + interval '20 days');`)
+      values (gen_random_uuid(), 'polar', 'starter', 'paid', now(), now() + interval '20 days');`)
     const batch2 = await Promise.all(Array.from({ length: 6 }, () => signIn()))
     const got2 = Number(sql(`select count(*)::int as n from memory.account where free_slot and owner_id = any(array[${batch2.map((u) => `'${u.id}'`).join(',')}]::uuid[])`)[0].n)
     assert.equal(got2, 3)
@@ -206,7 +206,7 @@ test('R75: free seats scale as N per M paid users (Clyde is 1st paid user) and s
   }
 })
 
-test('R75: free monthly spend pool, 250K per-user token cap, and quest-board gate stop free usage', { skip: SKIP }, async () => {
+test('R75: free monthly spend pool, 50K per-user token cap, and quest-board gate stop free usage', { skip: SKIP }, async () => {
   exec(`update memory.account set free_slot = false;`)
   sql(`update memory.plan set seats = 1000, free_per_paid_n = 10, free_per_paid_m = 1 where id = 'free'`)
   const month = `date_trunc('month', now() at time zone 'utc')::date`

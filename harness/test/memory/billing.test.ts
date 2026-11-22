@@ -298,3 +298,49 @@ test('lapsed accounts after 90 days', { skip: SKIP }, async () => {
   assert.equal(sql(`select count(*)::int as n from memory.account where owner_id = '${fresh.id}'`)[0].n, 1)
   assert.equal(sql(`select count(*)::int as n from memory.entry where owner_id = '${fresh.id}'`)[0].n, 1)
 })
+
+test('starter upgrades in-place to clyde through POST /me/billing/upgrade', { skip: SKIP }, async () => {
+  sql(`update memory.plan set product_ids = '{"polar": "prod_starter_test"}' where id = 'starter';
+    update memory.plan set product_ids = '{"polar": "prod_test"}' where id = 'clyde';`)
+  const u = user()
+  const subId = `sub_up_${nonce()}`
+  assert.equal((await rpc(u.oauth, 'initialize', { protocolVersion: '2025-06-18' })).status, 200)
+  const body = polarSubscription('subscription.active', { owner: u.id, id: subId, productId: 'prod_starter_test' })
+  assert.equal((await deliver(memory.url, '/billing/polar', body, signPolar(POLAR, body))).status, 200)
+  assert.equal(sql(`select plan from memory.entitlement where owner_id = '${u.id}'`)[0]?.plan, 'starter')
+
+  providers.state.failing = true
+  try {
+    const failUp = await request('POST', `${memory.url}/me/billing/upgrade`, {
+      headers: bearer(u.plain),
+      body: { plan: 'clyde' },
+      timeoutMs: 30_000,
+    })
+    assert.equal(failUp.status, 502, failUp.text)
+    assert.equal(sql(`select plan from memory.entitlement where owner_id = '${u.id}'`)[0]?.plan, 'starter')
+  } finally {
+    providers.state.failing = false
+  }
+
+  const from = providers.calls.length
+  const up = await request('POST', `${memory.url}/me/billing/upgrade`, {
+    headers: bearer(u.plain),
+    body: { plan: 'clyde' },
+    timeoutMs: 30_000,
+  })
+  assert.equal(up.status, 200, up.text)
+  assert.deepEqual(JSON.parse(up.text), { plan: 'clyde', upgraded: true })
+  const patches = providers.calls.slice(from).filter((c) => c.method === 'PATCH' && c.path === `/v1/subscriptions/${subId}`)
+  assert.equal(patches.length, 1, JSON.stringify(providers.calls.slice(from)))
+  assert.equal(patches[0].body.product_id, 'prod_test')
+  assert.equal(patches[0].body.proration_behavior, 'invoice')
+  assert.equal(sql(`select plan from memory.entitlement where owner_id = '${u.id}'`)[0]?.plan, 'clyde')
+  assert.equal(sql(`select count(*)::int as n from memory.admin_audit where action = 'billing.upgrade' and target = 'owner:${u.id}'`)[0].n, 1)
+  // Already on clyde: 400 (cannot upgrade to same or lower tier).
+  const again = await request('POST', `${memory.url}/me/billing/upgrade`, {
+    headers: bearer(u.plain),
+    body: { plan: 'clyde' },
+    timeoutMs: 30_000,
+  })
+  assert.equal(again.status, 400, again.text)
+})
