@@ -179,7 +179,7 @@ const PAGE_SPEC = {
   graph: { title: "Graph · Clyde", heading: "Graph", sub: "See how your notes connect. Pan, zoom, drag nodes, and filter by link type." },
   quests: { title: "Quest board · Clyde", heading: "Quest board", sub: "Track open, claimed, and finished agent tasks. Post or claim quests through MCP." },
   agents: { title: "Agents and devices · Clyde", heading: "Agents and devices", sub: "Connect a new agent or inspect registered agents and devices. Updates happen through register_agent." },
-  apps: { title: "Connected apps · Clyde", heading: "Connected apps", sub: "See which client apps hold OAuth access to your Clyde notebook." },
+  apps: { title: "Connected apps · Clyde", heading: "Connected apps", sub: "See which client apps hold OAuth access to your Clyde brain." },
   usage: { title: "Usage and billing · Clyde", heading: "Usage and billing", sub: "Check your plan, monthly usage meters, and billing status." },
   settings: { title: "Settings · Clyde", heading: "Settings", sub: "Clyde is read-only on the web. Check your endpoint details and copy MCP prompts below." },
   callback: { title: "Signing in · Clyde", heading: "Signing in", sub: "Finishing your Google or GitHub sign-in." },
@@ -389,11 +389,19 @@ function clearNotice(el) {
 }
 
 function renderSignIn(msg) {
+  var pend = readPendingInvite();
+  var nextTarget = afterSignIn || '/memories';
+  if (pend && nextTarget.indexOf('invite=') < 0 && nextTarget.indexOf('code=') < 0) {
+    nextTarget += (nextTarget.indexOf('?') >= 0 ? '&' : '?') + 'invite=' + encodeURIComponent(pend);
+  }
+  afterSignIn = nextTarget;
+  var bannerClass = msg ? 'app-banner app-banner--bad' : (pend ? 'app-banner app-banner--ok' : 'is-hidden');
+  var bannerText = msg || (pend ? 'Invite code attached. Sign in below to apply it.' : '');
   root.innerHTML =
     '<section class="cl-card signin-box">' +
       '<h2 class="cl-title-2">Sign in to Clyde</h2>' +
       '<p class="cl-hint">Enter your email for a sign-in link or code, or use a password if your account has one. New here? <a class="cl-link" href="/invite">Create an account</a>.</p>' +
-      '<div id="sign-msg" class="' + (msg ? 'app-banner app-banner--bad' : 'is-hidden') + '">' + esc(msg || '') + '</div>' +
+      '<div id="sign-msg" class="' + bannerClass + '">' + esc(bannerText) + '</div>' +
       '<div id="sign-providers" class="is-hidden"></div>' +
       '<form id="otp-req" class="app-grid">' +
         '<div class="cl-field"><label for="s-email">Email</label><input id="s-email" class="cl-input" type="email" required placeholder="you@example.com" autocomplete="email"></div>' +
@@ -424,10 +432,11 @@ function renderSignIn(msg) {
     clearNotice(banner);
     var email = emailEl.value.trim();
     try {
-      var r = await fetch('/auth/v1/otp', {
+      var targetUrl = location.origin + nextTarget;
+      var r = await fetch('/auth/v1/otp?redirect_to=' + encodeURIComponent(targetUrl), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email: email, email_redirect_to: location.origin + location.pathname })
+        body: JSON.stringify({ email: email, email_redirect_to: targetUrl })
       });
       var d = await r.json().catch(function() { return {}; });
       if (!r.ok) throw new Error(d.error_description || d.msg || d.error || "Couldn't send the sign-in email. Check your address and try again.");
@@ -486,13 +495,13 @@ var INV_ARROW = '<svg class="inv-scene__arrow" viewBox="0 0 120 36" fill="none" 
 
 function savePendingInvite(code) {
   try {
-    if (code) sessionStorage.setItem(INV_PENDING_KEY, code);
-    else sessionStorage.removeItem(INV_PENDING_KEY);
+    if (code) { localStorage.setItem(INV_PENDING_KEY, code); sessionStorage.setItem(INV_PENDING_KEY, code); }
+    else { localStorage.removeItem(INV_PENDING_KEY); sessionStorage.removeItem(INV_PENDING_KEY); }
   } catch (e) {}
 }
 
 function readPendingInvite() {
-  try { return sessionStorage.getItem(INV_PENDING_KEY) || ''; } catch (e) { return ''; }
+  try { return sessionStorage.getItem(INV_PENDING_KEY) || localStorage.getItem(INV_PENDING_KEY) || ''; } catch (e) { return ''; }
 }
 
 async function loadInviteInfo(code) {
@@ -548,7 +557,7 @@ async function renderInvite() {
       '</section>'
     : '<section class="inv-pass">' +
         '<div class="inv-pass__copy">' +
-          '<div class="app-meta"><span class="cl-chip cl-chip--carbon">' + (from ? 'Invited by ' + esc(from) : 'Personal invite') + '</span><span class="cl-stamp">One notebook for every agent</span></div>' +
+          '<div class="app-meta"><span class="cl-chip cl-chip--carbon">' + (from ? 'Invited by ' + esc(from) : 'Personal invite') + '</span><span class="cl-stamp">One brain for every agent</span></div>' +
           '<p>Tell Claude once on your laptop. Pick it up in Antigravity or ChatGPT later without repeating yourself.</p>' +
         '</div>' +
         '<div class="inv-pass__side">' + appPills + '</div>' +
@@ -579,12 +588,16 @@ async function renderInvite() {
         '</ol>' +
         '<div class="inv-cta-row">' +
           '<button type="button" class="cl-btn cl-btn--primary cl-btn--lg inv-cta" id="btn-inv-start">' + (isPartner ? 'Claim your partner pass' : 'Create your account') + '</button>' +
-          '<a class="cl-link" href="/memories">Already have an account? Sign in</a>' +
+          '<a class="cl-link" href="' + (validCode ? ('/memories?invite=' + encodeURIComponent(validCode)) : '/memories') + '">Already have an account? Sign in</a>' +
         '</div>' +
       '</div>';
 
     var goBtn = document.getElementById('btn-inv-start');
     if (goBtn) goBtn.addEventListener('click', function() {
+      if (s) {
+        location.assign(redeemUrl);
+        return;
+      }
       var nextQs = new URLSearchParams(location.search);
       nextQs.set('step', 'signup');
       history.pushState(null, '', '/invite?' + nextQs.toString());
@@ -604,7 +617,7 @@ async function renderInvite() {
       '<div class="inv-scene__note">' +
         (isPartner
           ? '<strong>Partner pass stamped.</strong> ' + esc(info.note || 'Your free unlimited plan kicks in as soon as you sign in.')
-          : '<strong>Fresh notebook ready.</strong> Save a decision in one app and your other agents can pull it in the next chat.') +
+          : '<strong>Fresh brain ready.</strong> Save a decision in one app and your other agents can pull it in the next chat.') +
       '</div>' +
       '<ul class="inv-perks">' +
         (isPartner
@@ -637,6 +650,7 @@ async function renderInvite() {
             '<div class="cl-field"><label for="inv-code">One-time code</label><input id="inv-code" class="cl-input" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456"></div>' +
             '<button type="submit" class="cl-btn cl-btn--primary">Verify code and continue</button>' +
           '</form>' +
+          '<p class="cl-hint">Already have an account? <a class="cl-link" href="' + (validCode ? ('/memories?invite=' + encodeURIComponent(validCode)) : '/memories') + '">Sign in instead</a>.</p>' +
         '</section>' +
       '</div>' +
     '</div>';
@@ -816,7 +830,7 @@ function buildOnboardingHtml(ob, activeTab) {
         '<span class="cl-chip cl-chip--carbon">' + (allDone ? 'Setup complete · 3 of 3' : 'First-run setup · ' + doneCount + ' of 3 complete') + '</span>' +
         '<h2 class="cl-title-2">' + (allDone ? 'Your first agent is connected' : 'Connect your first agent') + '</h2>' +
         '<p class="cl-hint">' + (allDone
-          ? 'All three checks passed. Your agents share one notebook.'
+          ? 'All three checks passed. Your agents share one brain.'
           : 'This web UI is read-only. Connect your client, paste the prompt below, then click Check progress.') + '</p>' +
       '</div>' +
       '<div class="app-actions">' +
@@ -1653,6 +1667,9 @@ async function start() {
   var s = readSession();
   updateUserBar(s);
   if (view === 'invite') return renderInvite();
+  var sp0 = new URLSearchParams(location.search);
+  var urlInvite = (sp0.get('invite') || sp0.get('code') || '').trim();
+  if (urlInvite) savePendingInvite(urlInvite);
   if (!s) { renderSignIn(); return; }
   if (!s.user_id) {
     try {
@@ -1663,8 +1680,7 @@ async function start() {
       }
     } catch (e) {}
   }
-  var sp0 = new URLSearchParams(location.search);
-  var pendingInvite = (sp0.get('invite') || '').trim() || readPendingInvite();
+  var pendingInvite = urlInvite || readPendingInvite();
   if (pendingInvite) {
     try {
       var red = await api('/me/invite/redeem', { method: 'POST', body: JSON.stringify({ code: pendingInvite }) });
@@ -1672,8 +1688,9 @@ async function start() {
       if (red && red.unlimited) {
         INV_BANNER_MSG = 'Partner pass active (' + (red.label || 'Partner') + '): unlimited notes, files, recalls, and connected agents, plus the quest board.';
       }
-      if (sp0.has('invite')) {
+      if (sp0.has('invite') || sp0.has('code')) {
         sp0.delete('invite');
+        sp0.delete('code');
         var cleanQs = sp0.toString();
         history.replaceState(null, '', location.pathname + (cleanQs ? '?' + cleanQs : ''));
       }

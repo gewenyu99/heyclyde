@@ -568,3 +568,14 @@ Deno.test('Quest #37: confirm_allow, POST /oauth/approve, and denied state rende
   assert.ok(deniedHtml.includes('Connection denied'), deniedHtml)
   assert.ok(deniedHtml.includes('<strong>ChatGPT</strong>'), deniedHtml)
 })
+
+Deno.test('invite page uses brain copy and preserves partner code across every auth method', async () => {
+  const res = await at('https://heyclyde.me/invite?code=partner-test1234')
+  assert.equal(res.status, 200)
+  const html = await res.text()
+  assert.ok(html.includes('One brain for every agent'), 'expected brain stamp copy')
+  assert.equal(/\bnotebook\b/i.test(html), false, 'unexpected notebook wording on /invite')
+  assert.ok(html.includes('/auth/v1/otp?redirect_to='), 'OTP sign-in passes redirect_to query param')
+  assert.ok(html.includes('localStorage.setItem(INV_PENDING_KEY'), 'pending invite persists in localStorage')
+  assert.ok(html.includes("sp0.get('invite') || sp0.get('code')"), 'start() accepts both invite and code params')
+})

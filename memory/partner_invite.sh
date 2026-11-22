@@ -91,7 +91,7 @@ if mode == "revoke":
     print(f"Revoked {rows[0]['code']} at {rows[0]['revoked_at']}")
     raise SystemExit(0)
 
-code = custom_code.strip() if custom_code.strip() else ("partner-" + secrets.token_urlsafe(12).replace("=", ""))
+code = custom_code.strip() if custom_code.strip() else ("partner-" + secrets.token_hex(8))
 if not re.match(r"^[A-Za-z0-9][A-Za-z0-9_-]{7,63}$", code):
     raise SystemExit("Code must be 8-64 URL-safe letters, digits, dashes, or underscores.")
 
