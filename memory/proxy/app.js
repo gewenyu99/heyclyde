@@ -145,7 +145,7 @@ const PAGE_SPEC = {
   usage: { title: "Usage and billing · Clyde", heading: "Usage and billing", sub: "Check your plan, monthly usage meters, and billing status." },
   settings: { title: "Settings · Clyde", heading: "Settings", sub: "Clyde is read-only on the web. Check your endpoint details and copy MCP prompts below." },
   callback: { title: "Signing in · Clyde", heading: "Signing in", sub: "Finishing your Google or GitHub sign-in." },
-  invite: { title: "You're invited · Clyde", heading: "Shared notes for Claude and Antigravity", sub: "Connect Clyde once so your agents recall past chats and save new decisions automatically." },
+  invite: { title: "You're invited · Clyde", heading: "Shared notes for Claude, Antigravity, and ChatGPT", sub: "Connect Clyde once so your agents recall past chats and save new decisions automatically." },
 };
 
 const PROVIDER_BUTTONS = Object.fromEntries(AUTH_PROVIDERS.map((p) => [p, providerButton(p)]));
@@ -565,8 +565,8 @@ function buildOnboardingHtml(ob, activeTab) {
   var allDone = doneCount === 3;
   var tab = activeTab || 'antigravity';
 
-  var regPrompt = 'Call Clyde register_agent with name "' + (tab === 'antigravity' ? 'antigravity-main' : 'claude-main') +
-    '", context "both", surface "' + (tab === 'antigravity' ? 'Antigravity' : (tab === 'claude-code' ? 'claude-code' : 'claude.ai')) +
+  var regPrompt = 'Call Clyde register_agent with name "' + (tab === 'antigravity' ? 'antigravity-main' : (tab === 'chatgpt' ? 'codex-main' : 'claude-main')) +
+    '", context "both", surface "' + (tab === 'antigravity' ? 'Antigravity' : (tab === 'claude-code' ? 'claude-code' : (tab === 'chatgpt' ? 'codex' : 'claude.ai'))) +
     '", and a short description of what you help me with.';
   var savePrompt = 'Call Clyde remember to save a test note: pattern "observations", title "Clyde setup check", body "Connected my first agent and verified saving a note over MCP.", evidence "Onboarding verification".';
   var recallPrompt = 'Call Clyde recall with query "Clyde setup check", then call get_entry on the returned note id to confirm full details load.';
@@ -582,6 +582,12 @@ function buildOnboardingHtml(ob, activeTab) {
       '<p class="cl-hint">Run this command in your terminal. It installs the Clyde MCP connector and automatic hooks into <code>~/.claude/settings.json</code> and adds the Clyde rule to <code>~/.claude/CLAUDE.md</code>.</p>' +
       mcpCard('1. Install Claude Code MCP + hooks', 'Restart Claude Code after running this command.', 'CLI installer', INSTALL_CMD, false, 'Copy command') +
       mcpCard('2. Register Claude Code in chat', 'Paste this into Claude Code to finish Step 1.', 'register_agent', regPrompt, !s1, 'Copy prompt');
+  } else if (tab === 'chatgpt') {
+    tabBody =
+      '<p class="cl-hint">For <strong>Codex</strong> (ChatGPT desktop app or CLI), run the one-command installer below (or connect over OAuth with <code>codex mcp add clyde --url https://heyclyde.me/mcp &amp;&amp; codex mcp login clyde</code>). For <strong>chatgpt.com</strong>, turn on Developer mode in <strong>Settings / Connectors</strong> and add the MCP URL with OAuth.</p>' +
+      mcpCard('1. Install Codex MCP + hooks', 'Adds Clyde to ~/.codex/config.toml, ~/.codex/hooks.json, and ~/.codex/AGENTS.md.', 'CLI installer', INSTALL_CMD, false, 'Copy command') +
+      mcpCard('2. ChatGPT web OAuth connector URL', 'Use this URL in ChatGPT Settings / Connectors (OAuth).', 'MCP server URL', MCP_ENDPOINT, false, 'Copy URL') +
+      mcpCard('3. Register ChatGPT or Codex in chat', 'Paste this into ChatGPT or Codex to finish Step 1.', 'register_agent', regPrompt, !s1, 'Copy prompt');
   } else {
     tabBody =
       '<p class="cl-hint">In Claude (web, desktop, or mobile), open <strong>Settings / Connectors / Add custom connector</strong>, paste the MCP URL below, click Add, then Connect and sign in with this same account.</p>' +
@@ -594,6 +600,7 @@ function buildOnboardingHtml(ob, activeTab) {
       '<button type="button" class="onb-tab' + (tab === 'antigravity' ? ' is-active' : '') + '" data-onb-tab="antigravity">Antigravity</button>' +
       '<button type="button" class="onb-tab' + (tab === 'claude-code' ? ' is-active' : '') + '" data-onb-tab="claude-code">Claude Code</button>' +
       '<button type="button" class="onb-tab' + (tab === 'claude-web' ? ' is-active' : '') + '" data-onb-tab="claude-web">Claude (Web / Desktop)</button>' +
+      '<button type="button" class="onb-tab' + (tab === 'chatgpt' ? ' is-active' : '') + '" data-onb-tab="chatgpt">ChatGPT / Codex</button>' +
     '</div>' +
     '<div class="onb-panel">' + tabBody + '</div>';
   var step1Body = s1
