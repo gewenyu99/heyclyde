@@ -1,0 +1,49 @@
+# Clyde Local Configuration (clyde.toml)
+[server]
+host = "127.0.0.1"
+port = 8787
+ui = true
+owner_name = "local"
+data_dir = "~/.local/share/clyde"
+
+[auth]
+# "none" (loopback only), "token" (single bearer token), or "devices" (per-device tokens)
+mode = "none"
+# token = "${CLYDE_TOKEN}"
+
+[database]
+# "sqlite" (built-in WAL + FTS5), "postgres", "mysql", "libsql", or "./my-connector.ts"
+connector = "sqlite"
+path = "~/.local/share/clyde/clyde.db"
+# url = "${DATABASE_URL}"
+# schema = "clyde"
+# table_prefix = ""
+fts_backend = "auto"
+vector_backend = "memory"
+
+[blobs]
+backend = "fs"
+dir = "~/.local/share/clyde/blobs"
+
+[embeddings]
+# "none" (offline keyword/graph), "ollama", "openai", or "openai-compatible"
+provider = "none"
+# base_url = "http://127.0.0.1:11434/v1"
+# model = "nomic-embed-text"
+# dimensions = 768
+# api_key = "${OPENAI_API_KEY}"
+
+[judge]
+# "redact-only" (offline secret redaction), "llm", or "off"
+write_screen = "redact-only"
+relevance_filter = "off"
+# provider = "ollama"
+# base_url = "http://127.0.0.1:11434/v1"
+# model = "qwen2.5:3b"
+# api_key = "${OPENAI_API_KEY}"
+
+[ranking]
+arm = "spreading"
+learn_interval_sec = 300
+embed_sync_interval_sec = 300
+event_retention_days = 180

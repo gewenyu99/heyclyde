@@ -2,44 +2,9 @@
 // tool output of a PostToolUse, or the prompt of a UserPromptSubmit. remember() uses it to tell a fact from an
 // observation, and the groom API uses it so the groomer can't put words in Wen's mouth.
 import type { Row, Sql } from "./db.ts";
+import { eventTexts, MIN_QUOTE, quoteIn, squash } from "./core/evidence.ts";
 
-/** A quote shorter than this, once squashed, proves nothing. */
-export const MIN_QUOTE = 8;
-// A match must start and end on a token boundary: the character next to a match, when the match starts or ends with a
-// letter or digit, can't continue a word, an address or a path.
-const JOINS = /[\p{L}\p{N}.\-_:/]/u;
-const EDGE = /[\p{L}\p{N}]/u;
-
-export const squash = (t: string) => t.toLowerCase().replace(/\s+/g, " ").trim();
-
-/** True when `quote` is in `text` once both are lowercased with whitespace runs squashed, at a token boundary. */
-export function quoteIn(text: string, quote: string): boolean {
-  const q = squash(quote), t = squash(text);
-  if (q.length < MIN_QUOTE) return false;
-  for (let at = t.indexOf(q); at >= 0; at = t.indexOf(q, at + 1)) {
-    const before = t[at - 1], after = t[at + q.length];
-    const startsBad = EDGE.test(q[0]) && before !== undefined && JOINS.test(before);
-    const endsBad = EDGE.test(q.at(-1)!) && after !== undefined && JOINS.test(after);
-    if (!startsBad && !endsBad) return true;
-  }
-  return false;
-}
-
-function* strings(value: unknown): Generator<string> {
-  if (typeof value === "string") yield value;
-  else if (Array.isArray(value)) for (const v of value) yield* strings(v);
-  // A content block's "type" names the block. It isn't output.
-  else if (value && typeof value === "object") for (const [k, v] of Object.entries(value)) if (k !== "type") yield* strings(v);
-}
-
-/** The text an event can back a quote with: every string inside a PostToolUse's tool_response, or a UserPromptSubmit's
- * prompt. Never tool_input, which is what the agent sent, and no other event. */
-export function eventTexts(event: string, payload: unknown): string[] {
-  const p = (payload && typeof payload === "object" ? payload : {}) as Row;
-  if (event === "PostToolUse") return [...strings(p.tool_response)];
-  if (event === "UserPromptSubmit") return typeof p.prompt === "string" ? [p.prompt] : [];
-  return [];
-}
+export { eventTexts, MIN_QUOTE, quoteIn, squash };
 
 export type Verdict = { ok: true; event: Row } | { ok: false; why: string };
 

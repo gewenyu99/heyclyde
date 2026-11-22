@@ -17,48 +17,48 @@ import {
   TRANSFERABILITIES,
 } from "./permissions.ts";
 import { forgetGraph } from "./search.ts";
+import {
+  AGENT_NAME,
+  AUTHORITY,
+  BODY_SHORT,
+  canonical,
+  DEFAULT_CATEGORY,
+  digestPayload,
+  EVIDENCE_KINDS,
+  FIELDS,
+  FREE_LINKS,
+  ID_RE,
+  LINK_TYPES,
+  makeId,
+  MAX_BLOB_BYTES,
+  MAX_BLOBS,
+  MAX_BLOBS_BYTES,
+  MAX_CHARS,
+  MEDIA_TYPE_RE,
+  PATTERNS,
+  RANK,
+  Refused,
+  SCOPE_RE,
+  SENSITIVITY,
+  slug,
+  START_CONFIDENCE,
+  unstorable,
+} from "./core/write-rules.ts";
 
-const AUTHORITY = new Set(["approved", "observed", "draft"]);
-const LINK_TYPES = new Set(["supersedes", "supports", "contradicts", "derived_from", "relates", "part_of", "corrects"]);
-const PATTERNS = new Set(["projects", "decisions", "observations", "preferences", "recommendations", "references", "reactions"]);
-const EVIDENCE_KINDS = new Set(["quote", "assistant", "summary", "memory"]);
-export const SCOPE_RE = /^(global|domain:[a-z0-9-]+|repo:[A-Za-z0-9._/-]+|run:[A-Za-z0-9._-]+)$/;
-// private: agents and third-party models see the title only. confidential: agents see it all, third-party models the
-// title only, for work material.
-const SENSITIVITY = new Set(["normal", "private", "confidential"]);
+export { BODY_SHORT, canonical, makeId, MAX_BLOB_BYTES, MAX_BLOBS, MAX_BLOBS_BYTES, MEDIA_TYPE_RE, Refused, SCOPE_RE, slug };
+export const digest = digestPayload;
 
-const RANK: Record<string, number> = { draft: 0, observed: 1, approved: 2 };
-// part_of comes from `project` and supersedes from `supersedes`, so `links` takes the other types.
-const FREE_LINKS = new Set([...LINK_TYPES].filter((t) => t !== "part_of" && t !== "supersedes"));
-const FIELDS = new Set(["id", "pattern", "title", "body", "authority", "scope", "sensitivity", "lang", "valid_from",
-  "source", "evidence_kind", "evidence", "evidence_event", "kind", "project", "links", "supersedes", "blobs", "artifacts", "long",
-  "category", "context", "transferability", "project_slug", "computer"]);
-const DEFAULT_CATEGORY: Record<string, string> = {
-  decisions: "architecture",
-  preferences: "preferences",
-  projects: "product",
-  reactions: "workflow",
-};
 // What a note claims. A fact is checkable against an event memory holds, wen is Wen's own words, an observation is an
 // agent's inference or summary, and a plan says what someone means to do.
 const KINDS = ["fact", "wen", "observation", "plan"];
 /** Where a kind of note starts: its confidence, and how many showings it has to prove itself. A fact whose quote checked
  * out against its event starts settled and high. Everything else is on trial for its first 3 showings. */
 export const START: Record<string, { confidence: number; chances: number }> = {
-  fact: { confidence: 0.9, chances: 0 }, wen: { confidence: 0.7, chances: 3 },
-  observation: { confidence: 0.5, chances: 3 }, plan: { confidence: 0.5, chances: 3 },
+  fact: START_CONFIDENCE.fact,
+  wen: START_CONFIDENCE.user,
+  observation: START_CONFIDENCE.observation,
+  plan: START_CONFIDENCE.plan,
 };
-const AGENT_NAME = /^[a-z0-9_-]{1,40}$/;
-const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
-export const MEDIA_TYPE_RE = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/;
-const SURROGATE = /[\ud800-\udfff]/;
-const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
-
-// One entry can't flood a recall packet. Long material goes in artifacts. An agent's body is held to BODY_SHORT unless it
-// passes long: true.
-const MAX_CHARS: Record<string, number> = { title: 300, body: 4000, evidence: 20000 };
-export const BODY_SHORT = 500;
-export const MAX_BLOBS = 16, MAX_BLOB_BYTES = 4 * 1024 * 1024, MAX_BLOBS_BYTES = 8 * 1024 * 1024;
 
 // The most each caller may write. Every agent session holds a device token, so an agent writes drafts under AGENT_SOURCE,
 // with an id memory generates. A draft hides from no one: authority is a label, and visibility never waits on review. Only
@@ -66,57 +66,10 @@ export const MAX_BLOBS = 16, MAX_BLOB_BYTES = 4 * 1024 * 1024, MAX_BLOBS_BYTES =
 const CALLERS: Record<string, string> = { agent: "draft", runtime: "approved" };
 const AGENT_SOURCE = { kind: "session", title: "An agent session, through remember" };
 
-/** The payload breaks an invariant. Nothing was written. The message has one line per problem. */
-export class Refused extends Error {}
-
-export function slug(text: string) {
-  return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60).replace(/-+$/, "");
-}
-
-/** Python's json.dumps(sort_keys=True), so a digest made by the old server still matches. */
-export function canonical(v: unknown): string {
-  if (Array.isArray(v)) return "[" + v.map(canonical).join(", ") + "]";
-  if (v && typeof v === "object") {
-    return "{" + Object.keys(v).sort().map((k) => `${pyString(k)}: ${canonical((v as Row)[k])}`).join(", ") + "}";
-  }
-  if (typeof v === "string") return pyString(v);
-  if (v === null || v === undefined) return "null";
-  if (typeof v === "number" && Number.isInteger(v)) return String(v);
-  if (typeof v === "number") return Number.isInteger(v) ? `${v}.0` : String(v);
-  return v ? "true" : "false";
-}
-
-function pyString(s: string) {
-  // json.dumps escapes every non-ASCII character as \uXXXX.
-  return JSON.stringify(s).replace(/[\u007f-￿]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
-}
-
-/** sha256 of the payload without its id. Stored on the entry, so a resend can tell its own entry from another. */
-export function digest(payload: Row) {
-  const { id: _, ...rest } = payload;
-  return sha256(canonical(rest));
-}
-
-/** A slug of the scope and title plus the payload's digest. The same write always gets the same id. */
-export function makeId(payload: Row, d: string) {
-  const head = slug(`${payload.scope ?? ""} ${payload.title ?? ""}`);
-  return head ? `${head}-${d.slice(0, 8)}` : d.slice(0, 8);
-}
-
 const text = (v: unknown) => typeof v === "string" && v.trim() ? v.trim() : null;
 const oneOf = (v: unknown, allowed: Set<string>) => typeof v === "string" && allowed.has(v);
 
-/** A refusal for each string memory can't store: NUL outside blob text, or a lone surrogate. */
-function* unstorable(value: unknown, path = ""): Generator<string> {
-  if (typeof value === "string") {
-    if (SURROGATE.test(value) && LONE_SURROGATE.test(value)) yield `${path} has a lone surrogate, half of a character. Send valid UTF-8.`;
-    else if (value.includes("\0") && !/^(blobs|artifacts)\[\d+\]\.text$/.test(path)) yield `${path} has a NUL character, which memory can't store.`;
-  } else if (Array.isArray(value)) {
-    for (const [i, v] of value.entries()) yield* unstorable(v, `${path}[${i}]`);
-  } else if (value && typeof value === "object") {
-    for (const [k, v] of Object.entries(value)) yield* unstorable(v, path ? `${path}.${k}` : k);
-  }
-}
+// digest, makeId, and unstorable live in ./core/write-rules.ts.
 
 const today = () => new Date().toISOString().slice(0, 10);
 const isDate = (v: unknown) =>

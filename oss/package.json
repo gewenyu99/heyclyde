@@ -1,0 +1,28 @@
+{
+  "name": "clyde-memory",
+  "version": "0.1.0",
+  "description": "Local-first shared memory, retrieval, messaging, and quest board server for AI coding agents over MCP and pluggable SQL connectors.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "bin": {
+    "clyde": "./src/cli.ts"
+  },
+  "scripts": {
+    "serve": "node src/cli.ts serve",
+    "mcp": "node src/cli.ts mcp",
+    "doctor": "node src/cli.ts doctor",
+    "test": "node --test test/*.test.ts"
+  },
+  "optionalDependencies": {},
+  "keywords": [
+    "mcp",
+    "memory",
+    "sqlite",
+    "agents",
+    "fts5",
+    "local-first"
+  ]
+}

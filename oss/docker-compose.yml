@@ -1,0 +1,49 @@
+services:
+  clyde:
+    build:
+      context: .
+      args:
+        CLYDE_EXTRA_DEPS: "${CLYDE_EXTRA_DEPS:-pg}"
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      CLYDE_HOST: "0.0.0.0"
+      CLYDE_PORT: "8787"
+      CLYDE_AUTH_MODE: "token"
+      CLYDE_TOKEN: "${CLYDE_TOKEN:-change-me-before-exposing}"
+      CLYDE_DATA_DIR: "/data"
+      CLYDE_DB_CONNECTOR: "${CLYDE_DB_CONNECTOR:-sqlite}"
+      CLYDE_DB_PATH: "${CLYDE_DB_PATH:-/data/clyde.db}"
+      CLYDE_DB_URL: "${CLYDE_DB_URL:-}"
+      CLYDE_EMBED_PROVIDER: "${CLYDE_EMBED_PROVIDER:-none}"
+      CLYDE_EMBED_URL: "${CLYDE_EMBED_URL:-}"
+      CLYDE_EMBED_MODEL: "${CLYDE_EMBED_MODEL:-nomic-embed-text}"
+      CLYDE_EMBED_DIM: "${CLYDE_EMBED_DIM:-0}"
+      CLYDE_EMBED_KEY: "${CLYDE_EMBED_KEY:-}"
+    volumes:
+      - clyde_data:/data
+
+  postgres:
+    image: postgres:17-alpine
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_USER: clyde
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-example}"
+      POSTGRES_DB: clyde
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - clyde_pg:/var/lib/postgresql/data
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - clyde_ollama:/root/.ollama
+
+volumes:
+  clyde_data:
+  clyde_pg:
+  clyde_ollama:

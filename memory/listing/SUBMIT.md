@@ -15,11 +15,11 @@ Submit in this order from clean portals. Public bundles and release assets live 
 
 | Order | Platform | Portal | What to submit | Status |
 |---|---|---|---|---|
-| 1 | Support mailbox | Cloudflare Email Routing | Forward `support@heyclyde.me` to Wen's inbox | Pending Wen (`support@heyclyde.me`) |
+| 1 | Support mailbox | Cloudflare Email Routing | Forward `support@heyclyde.me` to Wen's inbox | Live (verified via `vge2606@gmail.com` on 2026-11-18) |
 | 2 | ChatGPT Apps / Plugins | [platform.openai.com/apps-manage](https://platform.openai.com/apps-manage) | Upload `clyde-openai-plugin.zip` (`/Users/vincent/.gemini/antigravity/scratch/heyclyde/dist/clyde-openai-plugin.zip` or Release `v1.0.0`), save challenge token in `memory.setting`, pass `review@heyclyde.me` password | Ready to submit |
 | 3 | Codex plugin directory | [chatgpt.com/codex/plugins/submit](https://chatgpt.com/codex/plugins/submit) | Repo `https://github.com/gewenyu99/heyclyde` (`.agents/plugins/marketplace.json`, `./plugins/openai`) | Ready to submit |
 | 4 | Claude plugin directory | [claude.ai/settings/plugins/submit](https://claude.ai/settings/plugins/submit) | Repo `https://github.com/gewenyu99/heyclyde` (`./plugins/claude`, `.claude-plugin/marketplace.json`) | Ready to submit |
-| 5 | Claude MCP connector directory | [claude.ai/directory/manage](https://claude.ai/directory/manage) | Remote MCP server `https://heyclyde.me/mcp` (see **Claude directory** below, plus MCP App screenshots and `review@heyclyde.me`) | Ready after step 1 |
+| 5 | Claude MCP connector directory | [claude.ai/directory/manage](https://claude.ai/directory/manage) | Remote MCP server `https://heyclyde.me/mcp` (see **Claude directory** below, plus MCP App screenshots and `review@heyclyde.me`) | Ready to submit |
 | 6 | Antigravity plugin marketplace | [forms.gle/2EX5RFYPoJe1UgxR9](https://forms.gle/2EX5RFYPoJe1UgxR9) | Repo `https://github.com/gewenyu99/heyclyde`, plugin path `./plugins/antigravity` | Ready to submit |
 | 7 | Google Connected Apps | [connected.google.com/console](https://connected.google.com/console) | Preview application + verification token in `memory.setting` `google_connected_apps_verification` + `review@heyclyde.me` | Ready for Wen steps |
 | 8 | Gemini CLI extension gallery | [geminicli.com/extensions](https://geminicli.com/extensions/) | Public repo `gewenyu99/heyclyde` (`gemini-cli-extension` topic, root `gemini-extension.json`, `gemini extensions install https://github.com/gewenyu99/heyclyde`) | Posted |
@@ -31,7 +31,7 @@ Confirm these prerequisites before opening directory portals:
 
 | # | Step | Owner | State on 2026-11-16 |
 |---|---|---|---|
-| 1 | `support@heyclyde.me` must receive mail. Run the four commands below from `memory/proxy`, click Cloudflare's verification email link, send a test mail, and comment on [#60](https://github.com/gewenyu99/like-vincent/issues/60). | Wen | Pending. `heyclyde.me` needs Cloudflare Email Routing enabled and forwarded to Wen's verified inbox. |
+| 1 | `support@heyclyde.me` must receive mail. | Wen | Live. Verified forwarding to `vge2606@gmail.com` on 2026-11-18. |
 | 2 | `https://heyclyde.me/mcp` answers MCP, and `/.well-known/oauth-protected-resource` names `https://heyclyde.me/mcp`. | Server | Live. Verified by `listing_check.py`. |
 | 3 | All 18 tools in `TOOLS` carry `title`, `readOnlyHint` (plus `destructiveHint` on writes), and `openWorldHint: false`. Tool descriptions and `instructions` don't name Wen or tell the model when to call tools. | Server | Live on main. |
 | 4 | Public sign-up (`open_signup = on`), Cloudflare Turnstile protection, platform OAuth callbacks, social OAuth routing (`/oauth/provider`), and R75 free-tier caps are active on main. | Server | Live. Google and GitHub buttons appear on `memory.heyclyde.me` once configured with `memory/oauth_providers_setup.sh`. |

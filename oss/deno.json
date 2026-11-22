@@ -1,0 +1,10 @@
+{
+  "nodeModulesDir": "none",
+  "tasks": {
+    "serve": "deno run -A src/cli.ts serve",
+    "mcp": "deno run -A src/cli.ts mcp",
+    "doctor": "deno run -A src/cli.ts doctor",
+    "test": "deno test --allow-env --allow-read --allow-write --allow-sys --allow-net=127.0.0.1 test/*.test.ts",
+    "check": "deno check src/cli.ts src/core/*.ts src/connectors/*.ts src/runtime/*.ts src/store/*.ts src/server/*.ts src/client/*.ts test/*.test.ts"
+  }
+}

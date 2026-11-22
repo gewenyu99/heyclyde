@@ -14,87 +14,32 @@
 import { asTenant, currentOwner, root, type Row, type Sql, sql } from "./db.ts";
 import { reaction } from "./judge.ts";
 import { paramSet } from "./params.ts";
-import { CO_USE_SESSIONS, forgetGraph } from "./search.ts";
+import { forgetGraph } from "./search.ts";
+import {
+  CAP,
+  type CardVote,
+  CO_USE,
+  coPairs,
+  coUsed,
+  DORMANT,
+  faded,
+  LINK_CAP,
+  LINK_DOWN,
+  LINK_FLOOR,
+  LINK_UP,
+  MISS_EASE,
+  MISS_FREE,
+  type Outcome,
+  OUTCOME_WHY as WHY,
+  outcomesOf,
+  REINFORCE,
+  step,
+  STEPS,
+  type Steps,
+  WAIT_MINUTES,
+} from "./core/learn.ts";
 
-const WAIT_MINUTES = 30;           // how long a recall waits for Wen's next prompt before it counts as no reaction
-const REINFORCE = 0.03, CAP = 0.99;
-const MISS_FREE = 5, MISS_EASE = 0.98;
-const LINK_UP = 0.2, LINK_CAP = 5, LINK_DOWN = 0.9, LINK_FLOOR = 0.2;
-const DORMANT = 0.15;
-
-/** R43's co-use rule. A pair gains `step` a co-use up to `cap`. One recall links every pair of its top `topEntries` used
- * entries, so at most `maxPairs`. A link ranks once `sessions` sessions have co-used it, and loses `fade` for every `fadeEvery`
- * recalls on the clock that show one end without the pair. */
-export const CO_USE = { step: 0.1, cap: 1, topEntries: 4, maxPairs: 6, sessions: CO_USE_SESSIONS, fadeEvery: 200, fade: 0.05 } as const;
-const round6 = (x: number) => Math.round(x * 1e6) / 1e6;
-export const coUsed = (w: number) => round6(Math.min(CO_USE.cap, w + CO_USE.step));
-export const faded = (w: number) => round6(Math.max(0, w - CO_USE.fade));
-
-/** The pairs one recall's used entries link, [src, dst] with src < dst: every pair of the first topEntries distinct ids. */
-export function coPairs(used: string[]): [string, string][] {
-  const top = [...new Set(used)].slice(0, CO_USE.topEntries);
-  const out: [string, string][] = [];
-  for (let i = 0; i < top.length; i++) {
-    for (let j = i + 1; j < top.length; j++) out.push(top[i] < top[j] ? [top[i], top[j]] : [top[j], top[i]]);
-  }
-  return out.slice(0, CO_USE.maxPairs);
-}
-
-export type Outcome = "used" | "irrelevant" | "wrong" | "opened" | "ignored";
-export type Steps = { trialStep: number; settledStep: number };
-/** The step sizes a set that doesn't name its own gets. */
-export const STEPS: Steps = { trialStep: 0.12, settledStep: 0.02 };
-/** How many steps an outcome is worth. Wen's pushback is wrong, the same −1. */
-const WEIGHT: Record<Exclude<Outcome, "ignored">, number> = { used: 1, irrelevant: -0.3, wrong: -1, opened: 0.2 };
-/** Shown but named by no one. Fixed, not scaled by the step, since it's a nudge and not a verdict. */
-const IGNORED = { trial: -0.05, settled: -0.01 };
-const FLOOR = 0.01, CEILING = 0.99;
-
-/** Where an entry's confidence goes after one outcome. `trial` says the entry was on trial in the recall the outcome is
- * for, which stays true for the showing that spent its last chance. Clamped to [0.01, 0.99]. */
-export function step(entry: { confidence: number; trial: boolean }, outcome: Outcome, sizes: Steps = STEPS): number {
-  const delta = outcome === "ignored"
-    ? (entry.trial ? IGNORED.trial : IGNORED.settled)
-    : WEIGHT[outcome] * (entry.trial ? sizes.trialStep : sizes.settledStep);
-  return Math.round(Math.min(CEILING, Math.max(FLOOR, entry.confidence + delta)) * 1e6) / 1e6;
-}
-
-export type CardVote = "helpful" | "nothing_useful" | null;
-
-/** The outcome each shown entry gets from one recall's signals, in the order shown. An entry with several signals takes the
- * strongest, and a tie goes to the negative one. A whole-recall card vote applies independently to any shown entry that has
- * no per-note rating. Ignored needs feedback that named other entries, so a recall nobody gave feedback on moves nothing. */
-export function outcomesOf(
-  { shown, named, opened, blamed, cardVote = null }: {
-    shown: string[];
-    named: Map<string, Outcome>;
-    opened: Set<string>;
-    blamed: string | null;
-    cardVote?: CardVote;
-  },
-): Map<string, Outcome> {
-  const out = new Map<string, Outcome>();
-  for (const id of shown) {
-    const signals: Exclude<Outcome, "ignored">[] = [];
-    if (id === blamed) signals.push("wrong");
-    const said = named.get(id);
-    if (said && said !== "ignored" && said !== "opened") signals.push(said);
-    if (opened.has(id)) signals.push("opened");
-    if (signals.length) {
-      signals.sort((a, b) => Math.abs(WEIGHT[b]) - Math.abs(WEIGHT[a]) || WEIGHT[a] - WEIGHT[b]);
-      out.set(id, signals[0]);
-    } else if (cardVote === "helpful") {
-      out.set(id, "used");
-    } else if (cardVote === "nothing_useful") {
-      out.set(id, "irrelevant");
-    } else if (named.size) out.set(id, "ignored");
-  }
-  return out;
-}
-
-const WHY: Record<Outcome, string> = {
-  used: "the agent used it", irrelevant: "the agent found it irrelevant", wrong: "named wrong", opened: "the agent opened it", ignored: "shown, not used",
-};
+export { type CardVote, CO_USE, coPairs, coUsed, faded, type Outcome, outcomesOf, step, STEPS, type Steps };
 
 async function setConfidence(db: Sql, id: string, next: (c: number) => number, reason: string, rid: string) {
   const [e] = await db`select confidence from memory.entry where id = ${id}`;

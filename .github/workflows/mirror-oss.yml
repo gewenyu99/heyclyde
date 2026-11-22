@@ -1,0 +1,59 @@
+name: OSS Mirror & Audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "memory/supabase/functions/memory/core/**"
+      - "oss/**"
+      - "scripts/audit-oss.mjs"
+      - "scripts/mirror-oss.mjs"
+      - ".github/workflows/mirror-oss.yml"
+  pull_request:
+    paths:
+      - "memory/supabase/functions/memory/core/**"
+      - "oss/**"
+      - "scripts/audit-oss.mjs"
+      - "scripts/mirror-oss.mjs"
+      - ".github/workflows/mirror-oss.yml"
+  workflow_dispatch:
+
+jobs:
+  verify-and-export:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Check core parity and audit OSS tree
+        run: node scripts/mirror-oss.mjs --check
+
+      - name: Clean-room export & audit standalone repo
+        run: node scripts/mirror-oss.mjs --export /tmp/clyde-oss-export --commit
+
+      - name: Run standalone Node tests
+        working-directory: /tmp/clyde-oss-export
+        run: node --test test/*.test.ts
+
+      - name: Run standalone Deno check and tests
+        working-directory: /tmp/clyde-oss-export
+        run: |
+          deno task check
+          deno task test
+
+      - name: Push clean mirror when configured
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.OSS_MIRROR_REPO != '' && secrets.OSS_MIRROR_TOKEN != ''
+        env:
+          OSS_MIRROR_REPO: ${{ vars.OSS_MIRROR_REPO }}
+          OSS_MIRROR_TOKEN: ${{ secrets.OSS_MIRROR_TOKEN }}
+        run: |
+          git -C /tmp/clyde-oss-export push --force "https://x-access-token:${OSS_MIRROR_TOKEN}@github.com/${OSS_MIRROR_REPO}.git" main:main

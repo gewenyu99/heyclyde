@@ -6,6 +6,18 @@ import type { Row, Sql } from "./db.ts";
 import type { Params } from "./params.ts";
 import { type AgentScope, canReadEntry, type EntryFilter, entryWhereSql } from "./permissions.ts";
 import {
+  capLine,
+  closingLine,
+  deepLabel,
+  DEPTHS,
+  moreLine,
+  NOTHING_MORE,
+  type Page,
+  PAGE_HEAD,
+  renderDeepItem as renderCoreDeepItem,
+} from "./core/deep-rules.ts";
+import type { Params as CoreParams } from "./core/params.ts";
+import {
   artifactsLine,
   bigrams,
   clip,
@@ -18,29 +30,12 @@ import {
   spreadMore,
 } from "./search.ts";
 
-export const DEPTHS = ["packet", "deep"];
-export const NOTHING_MORE = "Nothing more in memory matches.";
-export const capLine = (n: number) => `Memory ranks only the top ${n} matches. Narrow the query to see more.`;
-export const moreLine = (rid: string) => `More past these: recall_more(retrieval_id="${rid}").`;
-export const PAGE_HEAD = "Deeper in memory, past what the recall showed. Each item says its kind, strength and state.";
-
-/** "    kind observation · strength 0.70 · settled": the state is superseded, then dormant (under the set's dormant line), then on
- * trial with the chances it has left, then settled. */
-export function deepLabel(row: Row, dormant: number) {
-  const c = Number(row.confidence ?? 0);
-  const state = row.superseded_by ? `superseded by ${row.superseded_by}` : c < dormant ? "dormant"
-    : Number(row.chances_left ?? 0) > 0 ? `on trial, ${row.chances_left} left` : "settled";
-  return `    kind ${row.kind ?? "observation"} · strength ${c.toFixed(2)} · ${state}`;
-}
+export { capLine, closingLine, deepLabel, DEPTHS, moreLine, NOTHING_MORE, PAGE_HEAD };
+export type { Page };
 
 /** One page item: "[n] <id>: <title>", its label, where it came from, the body and its artifacts. A private body never shows. */
 export function renderDeepItem(n: number, row: Row, p: Params) {
-  row = redact(row);
-  const body = p.itemChars && String(row.body).length > p.itemChars ? `${String(row.body).slice(0, p.itemChars)}${MORE}` : row.body;
-  const parts = [`[${n}] ${row.id}: ${row.title}`, deepLabel(row, p.dormant), ...(row.provenance ? [`    ${row.provenance}`] : []), `    ${body}`];
-  const artifacts = artifactsLine(row);
-  if (artifacts) parts.push(`    ${artifacts}`);
-  return parts.join("\n");
+  return renderCoreDeepItem(n, row, p as CoreParams, "Wen");
 }
 
 /** Entries recall hides that match the query's words: dormant ones and superseded ones, best keyword match first. */
@@ -90,8 +85,6 @@ export async function deepPool(
   return pool;
 }
 
-export type Page = { delivered: string[]; chunks: string[]; left: number; capped: boolean };
-
 /** The next page of `pool` past `seen`, up to the packet's item and token budgets, numbered from `start`. An entry deleted since
  * the recall is skipped. `decorate` adds provenance to the rows it is handed before they're rendered. */
 export async function nextPage(db: Sql, p: Params, pool: string[], seen: Set<string>, candidates: number, start = 1,
@@ -127,6 +120,4 @@ export async function nextPage(db: Sql, p: Params, pool: string[], seen: Set<str
   return { delivered, chunks, left: delivered.length ? left : 0, capped: candidates >= p.candidates };
 }
 
-/** The line a page ends with: how to get the next one, or why there is none. */
-export const closingLine = (page: Page, rid: string, p: Params) =>
-  page.left ? moreLine(rid) : page.capped ? capLine(p.candidates) : NOTHING_MORE;
+// Closing line helper comes from ./core/deep-rules.ts.
