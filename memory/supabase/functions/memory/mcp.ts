@@ -266,8 +266,8 @@ export const TOOLS = [
       "tags: up to 8 lowercase words.\n" +
       "priority: urgent, high, normal (default) or low.\n" +
       "context: work, home, hobby, personal or both. Default: the agent's registered context.\n" +
-      "for: who may claim it: any (default), claude, codex, or one agent's name.\n" +
-      "project, computer, agent_type: optional restrictions on who can see and claim this quest.\n" +
+      "for: who this quest is intended for: any (default), claude, codex, or one agent's name.\n" +
+      "project, computer, agent_type: optional routing tags showing which agent this quest is likely for (all of your agents can still see and claim it).\n" +
       "target: optional routing object {types, harness, device_id, device, repo, context}.\n" +
       "artifacts: [{name, sha256}] of files Clyde already holds, like a plan saved with remember. get_entry lists them.\n" +
       "Returns the quest's id. Every agent sees it at session start and in list_quests.",
@@ -300,10 +300,10 @@ export const TOOLS = [
   {
     name: "list_quests",
     ...hints("List quests", true),
-    description: "Reads the quest board. By default, the open quests this agent may claim in its context, high priority first.\n\n" +
+    description: "Reads the quest board. Shows all of your open quests by default, matching quests for this agent first and tagging other quests so you can tell whether a quest is likely for you.\n\n" +
       "show: open (default), mine (quests this agent posted or claimed), done (finished, with their evidence and entries) or all.\n" +
       "tag: only quests with this tag.\n" +
-      "context: work, home, hobby, personal, both or all. Default: the agent's registered context, else all.\n" +
+      "context: work, home, hobby, personal, both or all. Default: all.\n" +
       "project: optional project slug filter.\n" +
       "limit: how many, 1 to 50, default 20.",
     inputSchema: {

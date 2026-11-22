@@ -3,7 +3,7 @@ import {cardVoteReceipt} from "../feedback.ts";
 // redaction, so a card never shows what the text hides: a private entry is its title only, a private blob is withheld, and
 // a recall card lists only what that recall delivered to this MCP session. The text result itself is never touched.
 import { type Row, sql } from "../db.ts";
-import { type AgentScope, canReadEntry, questPermitted } from "../permissions.ts";
+import { type AgentScope, canReadEntry } from "../permissions.ts";
 import { provenanceLines, type Viewer } from "../provenance.ts";
 import { fetchEntries, redact } from "../search.ts";
 import { TRIAL_CHANCES } from "../trial.ts";
@@ -134,8 +134,7 @@ async function questsCard(c: CardCall) {
   const head = c.tool === "list_quests" ? c.text.split("\n")[0] : null;
   if (!ids.length) return { action: c.tool, head: head ?? c.text.split("\n")[0], show: c.args.show ?? "open", quests: [] };
   const rows = await sql`select * from memory.quest where id = any(${ids}::bigint[])`;
-  const scope = c.agentScope ?? null;
-  const byId = new Map(rows.filter((q) => questPermitted(scope, q).ok).map((q) => [Number(q.id), q]));
+  const byId = new Map(rows.map((q) => [Number(q.id), q]));
   return {
     action: c.tool, head: head ?? c.text.split("\n")[0], show: c.args.show ?? "open",
     quests: ids.filter((id) => byId.has(id)).map((id) => questOf(byId.get(id)!)),

@@ -213,10 +213,11 @@ export async function postQuest(who: Who, args: Record<string, unknown>) {
     "Agents see it when their session starts and in list_quests. You'll find its progress there too.";
 }
 
-/** One quest as a list line. */
-function questLine(q: Row) {
+/** One quest as a list line. Non-matching quests stay visible with an advisory tag showing why they are likely for another agent. */
+export function questLine(q: Row, match?: { ok: true } | { ok: false; reason: string }) {
   const proj = q.project ? `, ${q.project}` : "";
-  const head = `- #${q.id} [${q.priority}, ${q.context}${proj}] ${oneLine(q.title)} (from ${q.posted_by}${q.assignee !== "any" ? `, for ${q.assignee}` : ""})`;
+  const fit = match && !match.ok ? `, other: ${match.reason}` : "";
+  const head = `- #${q.id} [${q.priority}, ${q.context}${proj}${fit}] ${oneLine(q.title)} (from ${q.posted_by}${q.assignee !== "any" ? `, for ${q.assignee}` : ""})`;
   if (q.state === "claimed") return `${head}. Claimed by ${q.claimed_by} until ${hhmm(q.lease_until)}.`;
   if (q.state === "done") {
     return `${head}. Done by ${q.claimed_by} on ${hhmm(q.closed_at).slice(0, 10)}: ${clip(oneLine(q.evidence ?? ""), 300)} ` +
@@ -225,6 +226,22 @@ function questLine(q: Row) {
   if (q.state === "abandoned") return `${head}. Abandoned.`;
   const tags = q.tags?.length ? ` Tags: ${q.tags.join(", ")}.` : "";
   return `${head}. Done when: ${clip(oneLine(q.done_when), 160)}${tags}`;
+}
+
+/** Order and annotate quests for a viewer without hiding any of the owner's quests.
+ * For open listings, quests matching the viewer come first; other listings keep newest-first order. */
+export function annotateQuestsForViewer(
+  rows: Row[],
+  viewer: QuestAgent,
+  options: { show: string; projectFilter?: string | null },
+): { row: Row; match?: { ok: true } | { ok: false; reason: string } }[] {
+  const filtered = options.projectFilter
+    ? rows.filter((q) => questMatches(null, q, { project: options.projectFilter }).ok)
+    : rows;
+  if (options.show === "mine") return filtered.map((row) => ({ row }));
+  const tagged = filtered.map((row) => ({ row, match: questMatches(viewer, row, { checkAssignee: true }) }));
+  if (options.show !== "open") return tagged;
+  return [...tagged.filter((x) => x.match.ok), ...tagged.filter((x) => !x.match.ok)];
 }
 
 /** The account owner's Paseo board. The paid device endpoint is tenant-scoped by the caller.
@@ -252,14 +269,8 @@ export async function listQuests(who: Who, args: Record<string, unknown>) {
     projectFilter = normalizeProjectSlug(args.project);
     if (!projectFilter) throw new Refused("project must be a valid project slug like clyde or owner/repo.");
   }
-  const scope = whoToScope(who);
-  const ctx = ctxArg === "all" ? null : ctxArg || who.context;
-  const requested = ctxArg === "all" ? CONTEXTS : ctxArg === "both" ? CONTEXTS : contextsFor(ctx);
-  const contexts = show === "mine"
-    ? CONTEXTS
-    : scope && scope.context !== "both"
-    ? requested.filter((c) => contextsFor(scope.context).includes(c))
-    : requested;
+  const ctx = !ctxArg || ctxArg === "all" || ctxArg === "both" ? null : ctxArg;
+  const contexts = show === "mine" || !ctx ? CONTEXTS : contextsFor(ctx);
   const tag = s(args.tag).trim().toLowerCase();
   const limit = Math.min(Math.max(Number(args.limit) || 20, 1), 50);
   await reopenExpired();
@@ -272,17 +283,15 @@ export async function listQuests(who: Who, args: Record<string, unknown>) {
       coalesce(q.closed_at, q.updated_at) desc, q.id desc
     limit 500`;
   const viewer = whoToQuestAgent(who);
-  const matched = show === "mine"
-    ? rawRows.filter((q) => !projectFilter || questMatches(null, q, { project: projectFilter }).ok)
-    : rawRows.filter((q) => questMatches(viewer, q, { project: projectFilter, checkAssignee: show === "open" }).ok);
-  const rows = matched.slice(0, limit);
-  if (!rows.length) return show === "open" ? "No open quests for you. post_quest puts one on the board." : "No quests match.";
-  const total = matched.length;
+  const annotated = annotateQuestsForViewer(rawRows, viewer, { show, projectFilter });
+  const rows = annotated.slice(0, limit);
+  if (!rows.length) return show === "open" ? "No open quests on the board. post_quest puts one on the board." : "No quests match.";
+  const total = annotated.length;
   const where = show === "mine" ? "" : ` (${ctx ?? "every"} context${tag ? `, tag ${tag}` : ""})`;
   const head = `${plural(total, show === "open" ? "open quest" : show === "done" ? "done quest" : "quest")}${show === "mine" ? " you posted or claimed" : ""}${where}` +
     (total > rows.length ? `, newest ${rows.length} shown` : "") + ".";
   const next = show === "open" ? " claim_quest {id} takes one. Its done_when says when it's finished." : "";
-  return [head + next, ...rows.map(questLine)].join("\n");
+  return [head + next, ...rows.map(({ row, match }) => questLine(row, match))].join("\n");
 }
 
 /** A claimed quest in full: what to do, how to tell it's done, its artifacts and its last notes. */
@@ -324,16 +333,16 @@ export async function claimQuest(who: Who, args: Record<string, unknown>) {
         and claimed_device = ${who.principal} and dispatch_id is not null limit 1`;
       if (dispatched) throw new Refused(`Finish or release dispatched quest #${dispatched.id} before claiming another.`);
     }
-    if (!mayClaim(q, who)) throw new Refused(`Quest #${id} is for ${q.assignee}, so ${who.name} can't claim it.`);
     const match = questMatches(whoToQuestAgent(who), q, { checkAssignee: true });
-    if (!match.ok) throw new Refused(`Quest #${id} doesn't match ${who.name}: ${match.reason}.`);
     const [c] = await tx`update memory.quest set state = 'claimed', claimed_by = ${who.name}, claimed_device = ${who.principal},
         dispatch_id = case when ${mine} then dispatch_id end, dispatch_run = case when ${mine} then dispatch_run end,
         claimed_session = ${who.session}, claimed_at = coalesce(case when ${mine} then claimed_at end, now()),
         lease_minutes = ${minutes}, lease_until = now() + make_interval(mins => ${minutes}::int), updated_at = now()
       where id = ${id} returning lease_until`;
     await tx`insert into memory.quest_note (quest_id, author, device, kind) values (${id}, ${who.name}, ${who.principal}, 'claim')`;
+    const note = match.ok ? "" : `Note: this quest was tagged for another agent/scope (${match.reason}).\n`;
     return `Claimed quest #${id}: ${q.title}. Your lease runs until ${hhmm(c.lease_until)} (${minutes} minutes).\n` +
+      note +
       `${await briefing(tx, q)}\n` +
       "Next: update_quest {id, note} reports progress and renews the lease. complete_quest {id, evidence, entry_id} once done_when " +
       "holds: remember what the work produced first and pass that entry's id. abandon_quest {id, reason} puts it back on the board.";

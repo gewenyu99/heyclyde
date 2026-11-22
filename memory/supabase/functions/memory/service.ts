@@ -357,7 +357,10 @@ export async function readBlob(sha: string, agentScope: AgentScope = null): Prom
     where x.owner_id = ${blob.owner_id} and x.sha256 = ${clean}`;
   const nonPrivate = entries.filter((e) => e.sensitivity !== "private");
   const isPublic = nonPrivate.length > 0;
-  const permitted = isPublic && nonPrivate.some((e) => canReadEntry(agentScope, e));
+  const [questRef] = isPublic
+    ? await sql`select 1 from memory.quest_blob where owner_id = ${blob.owner_id} and sha256 = ${clean} limit 1`
+    : [];
+  const permitted = isPublic && (Boolean(questRef) || nonPrivate.some((e) => canReadEntry(agentScope, e)));
   return {
     ...blob,
     public: isPublic,

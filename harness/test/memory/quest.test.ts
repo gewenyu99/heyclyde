@@ -100,14 +100,16 @@ test('routing by type and repo', { skip: SKIP }, async () => {
   const coderList = await coder('list_quests', { tag })
   assert.equal(coderList.error, false, coderList.text)
   assert.ok(coderList.text.includes(`#${qid}`), coderList.text)
+  assert.ok(!coderList.text.includes('other:'), coderList.text)
 
   const resList = await researcher('list_quests', { tag })
   assert.equal(resList.error, false, resList.text)
-  assert.ok(!resList.text.includes(`#${qid}`), resList.text)
+  assert.ok(resList.text.includes(`#${qid}`), resList.text)
+  assert.ok(resList.text.includes('other:') && resList.text.toLowerCase().includes('type'), resList.text)
 
   const resClaim = await researcher('claim_quest', { id: qid })
-  assert.equal(resClaim.error, true, resClaim.text)
-  assert.ok(resClaim.text.toLowerCase().includes('type'), resClaim.text)
+  assert.equal(resClaim.error, false, resClaim.text)
+  assert.ok(resClaim.text.includes('tagged for another agent/scope') && resClaim.text.toLowerCase().includes('type'), resClaim.text)
 })
 
 test('one matcher', () => {

@@ -20,6 +20,7 @@ import {
   questWhereSql,
 } from '../../../memory/supabase/functions/memory/permissions.ts'
 import { TOOLS } from '../../../memory/supabase/functions/memory/mcp.ts'
+import { annotateQuestsForViewer, questLine } from '../../../memory/supabase/functions/memory/quests.ts'
 import { digest, makeId, Refused, resolveEntryDefaults, validate } from '../../../memory/supabase/functions/memory/write.ts'
 
 const agent = (over: Partial<NonNullable<AgentScope>> = {}): NonNullable<AgentScope> => ({
@@ -352,4 +353,63 @@ Deno.test('R70 project/computer transferability with missing identifiers fails c
     resolveEntryDefaults({ pattern: 'observations', scope: 'run:abc' }, 'anyone', null, null),
     { category: 'general', context: 'general', transferability: 'general', project_slug: null, computer: null },
   )
+})
+
+Deno.test('annotateQuestsForViewer keeps all owner quests visible, sorts matches first on open, and tags mismatches', () => {
+  const viewer = {
+    name: 'antigravity',
+    family: 'antigravity',
+    context: 'work',
+    type: 'coding',
+    agentType: 'coding',
+    projects: ['gewenyu99/heyclyde'],
+    repos: ['gewenyu99/heyclyde'],
+    strictProjects: true,
+    computer: 'macbook',
+  }
+  const qOther = {
+    id: 73,
+    title: 'MedDispute task',
+    done_when: 'Fixed.',
+    priority: 'high',
+    context: 'personal',
+    project: 'med-dispute',
+    assignee: 'gemini',
+    posted_by: 'claude',
+    state: 'open',
+    tags: ['gemini'],
+    target: {},
+  }
+  const qMine = {
+    id: 72,
+    title: 'Clyde fix',
+    done_when: 'Green.',
+    priority: 'normal',
+    context: 'work',
+    project: 'gewenyu99/heyclyde',
+    assignee: 'any',
+    posted_by: 'claude',
+    state: 'open',
+    tags: ['clyde'],
+    target: {},
+  }
+
+  // Open listing shows both quests, puts the matching quest first, and tags the non-matching quest as other.
+  const open = annotateQuestsForViewer([qOther, qMine], viewer, { show: 'open' })
+  assert.deepEqual(open.map((x) => x.row.id), [72, 73])
+  assert.equal(open[0].match?.ok, true)
+  assert.equal(open[1].match?.ok, false)
+  const otherLine = questLine(open[1].row, open[1].match)
+  assert.ok(otherLine.includes('#73') && otherLine.includes('other:'), otherLine)
+  const mineLine = questLine(open[0].row, open[0].match)
+  assert.ok(mineLine.includes('#72') && !mineLine.includes('other:'), mineLine)
+
+  // Show=all preserves newest-first order while keeping the advisory tag.
+  const all = annotateQuestsForViewer([qOther, qMine], viewer, { show: 'all' })
+  assert.deepEqual(all.map((x) => x.row.id), [73, 72])
+  assert.equal(all[0].match?.ok, false)
+
+  // Explicit project filter still narrows to that project.
+  const filtered = annotateQuestsForViewer([qOther, qMine], viewer, { show: 'open', projectFilter: 'med-dispute' })
+  assert.deepEqual(filtered.map((x) => x.row.id), [73])
 })

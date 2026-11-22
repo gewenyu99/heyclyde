@@ -507,8 +507,9 @@ test('R70 quests and broadcasts respect agent realm and project permissions', { 
   const qAcme = await post(workAcme, { title: `Acme task ${tag}`, brief: 'Ship billing.', done_when: 'Paid.', context: 'work', project: 'acme', tags: [tag] })
 
   const list = await hobbyClyde.send('list_quests', { tag })
-  assert.ok(list.text.includes(`#${qClyde}`), list.text)
-  assert.ok(!list.text.includes(`#${qPenny}`) && !list.text.includes(`#${qAcme}`), list.text)
+  assert.ok(list.text.includes(`#${qClyde}`) && list.text.includes(`#${qPenny}`) && list.text.includes(`#${qAcme}`), list.text)
+  assert.ok(list.text.indexOf(`#${qClyde}`) < list.text.indexOf(`#${qPenny}`), list.text)
+  assert.ok(list.text.includes('other:'), list.text)
 
   // SessionStart board for r70-q-clyde includes only clyde hobby quest, never pennywhistle or acme.
   const dev1 = newDevice('r70-q-hook')
@@ -517,9 +518,11 @@ test('R70 quests and broadcasts respect agent realm and project permissions', { 
   assert.equal(start.status, 200, start.text)
   assert.ok(!start.text.includes(`#${qPenny}`) && !start.text.includes(`#${qAcme}`), start.text)
 
-  // Cross-project/cross-realm claim_quest is refused.
-  assert.equal((await hobbyClyde.send('claim_quest', { id: qPenny })).error, true)
-  assert.equal((await hobbyClyde.send('claim_quest', { id: qAcme })).error, true)
+  // Explicit claim_quest succeeds across the owner's own scopes with an advisory note.
+  const claimPenny = await hobbyClyde.send('claim_quest', { id: qPenny })
+  assert.equal(claimPenny.error, false, claimPenny.text)
+  assert.ok(claimPenny.text.includes('tagged for another agent/scope'), claimPenny.text)
+  assert.equal((await hobbyClyde.send('abandon_quest', { id: qPenny, reason: 'returning to board' })).error, false)
   assert.equal((await hobbyClyde.send('claim_quest', { id: qClyde })).error, false)
 
   // Scoped broadcast to all reaches only matching hobby + clyde agents.

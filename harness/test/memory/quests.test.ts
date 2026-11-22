@@ -256,25 +256,36 @@ test('R47 abandon_quest: the claimer releases it, the poster withdraws it', { sk
   assert.ok(late.text.includes('abandoned'), late.text)
 })
 
-test('R47 a quest for an agent or family can be claimed only by it', { skip: SKIP }, async () => {
+test('R47 a quest tagged for an agent or family is annotated in list_quests and claimable with an advisory note', { skip: SKIP }, async () => {
   const poster = await agent('r47-post9')
   await agent('r47-a8')
   const b = await agent('r47-b8')
   const forCodex = await post(poster, { for: 'codex' })
   const forA = await post(poster, { for: 'r47-a8' })
   const claude = await open(memory.token, 'claude-code')
-  const wrong = await claude.send('claim_quest', { id: forCodex })
-  assert.equal(wrong.error, true, wrong.text)
-  assert.ok(wrong.text.includes('for codex'), wrong.text)
+  const listedForClaude = await claude.send('list_quests', {})
+  assert.ok(listed(listedForClaude.text).has(forCodex), listedForClaude.text)
+  assert.ok(listedForClaude.text.includes('other: quest is for codex'), listedForClaude.text)
+  const crossClaim = await claude.send('claim_quest', { id: forCodex })
+  assert.equal(crossClaim.error, false, crossClaim.text)
+  assert.ok(crossClaim.text.includes('quest is for codex'), crossClaim.text)
+  assert.equal((await claude.send('abandon_quest', { id: forCodex, reason: 'handing to codex' })).error, false)
   const codex = await open(memory.token, 'codex-mcp-client')
-  assert.equal((await codex.send('claim_quest', { id: forCodex })).error, false)
-  assert.equal((await b.send('claim_quest', { id: forA })).error, true)
+  const codexClaim = await codex.send('claim_quest', { id: forCodex })
+  assert.equal(codexClaim.error, false, codexClaim.text)
+  assert.ok(!codexClaim.text.includes('tagged for another agent/scope'), codexClaim.text)
+  const bClaim = await b.send('claim_quest', { id: forA })
+  assert.equal(bClaim.error, false, bClaim.text)
+  assert.ok(bClaim.text.includes('quest is for r47-a8'), bClaim.text)
+  assert.equal((await b.send('abandon_quest', { id: forA, reason: 'handing to r47-a8' })).error, false)
   // The same profile again, in a session of its own.
   const a = await open(memory.token, 'r47-a8-app')
-  assert.equal((await a.send('claim_quest', { id: forA })).error, false)
+  const aClaim = await a.send('claim_quest', { id: forA })
+  assert.equal(aClaim.error, false, aClaim.text)
+  assert.ok(!aClaim.text.includes('tagged for another agent/scope'), aClaim.text)
 })
 
-test('R47 list_quests filters by state, mine, tag and context, and defaults to the agent\'s context', { skip: SKIP }, async () => {
+test('R47 list_quests shows all owner quests with advisory tags and honors explicit state, mine, tag and context filters', { skip: SKIP }, async () => {
   const poster = await agent('r47-post10', 'both')
   const a = await agent('r47-a9')
   const home = await agent('r47-home9', 'personal')
@@ -287,15 +298,18 @@ test('R47 list_quests filters by state, mine, tag and context, and defaults to t
   assert.equal((await a.send('claim_quest', { id: d })).error, false)
   const evidence = `Checked ${nonce()} by hand.`
   assert.equal((await a.send('complete_quest', { id: d, evidence, entry_id: await entryBy(a) })).error, false)
-  const mine = listed((await a.send('list_quests', {})).text)
-  assert.ok(mine.has(w) && mine.has(b), [...mine].join(','))
-  assert.ok(!mine.has(p) && !mine.has(d), [...mine].join(','))
-  const theirs = listed((await home.send('list_quests', {})).text)
-  assert.ok(theirs.has(p) && theirs.has(b) && !theirs.has(w), [...theirs].join(','))
+  const defaultList = await a.send('list_quests', {})
+  const mine = listed(defaultList.text)
+  assert.ok(mine.has(w) && mine.has(b) && mine.has(p), [...mine].join(','))
+  assert.ok(!mine.has(d), [...mine].join(','))
+  const workOnly = listed((await a.send('list_quests', { context: 'work' })).text)
+  assert.ok(workOnly.has(w) && workOnly.has(b) && !workOnly.has(p), [...workOnly].join(','))
+  const personalOnly = listed((await home.send('list_quests', { context: 'personal' })).text)
+  assert.ok(personalOnly.has(p) && personalOnly.has(b) && !personalOnly.has(w), [...personalOnly].join(','))
   const all = listed((await poster.send('list_quests', { context: 'all' })).text)
   assert.ok(all.has(w) && all.has(p) && all.has(b), [...all].join(','))
-  const isolated = listed((await a.send('list_quests', { context: 'all' })).text)
-  assert.ok(isolated.has(w) && isolated.has(b) && !isolated.has(p), [...isolated].join(','))
+  const crossVisible = listed((await a.send('list_quests', { context: 'all' })).text)
+  assert.ok(crossVisible.has(w) && crossVisible.has(b) && crossVisible.has(p), [...crossVisible].join(','))
   const tagged = listed((await a.send('list_quests', { tag: 'r47t' })).text)
   assert.ok(tagged.has(w) && !tagged.has(b), [...tagged].join(','))
   const own = listed((await a.send('list_quests', { show: 'mine' })).text)
@@ -441,10 +455,11 @@ test('Paseo dispatchprioritizes urgent work, fences acknowledgements, and recove
   assert.equal((await session.send('abandon_quest', { id: normal, reason: 'done testing exclusivity' })).error, false);
 });
 
-test('Paseo account board sees other projects and claimed jobs while a scoped worker cannot take them', {skip:SKIP}, async()=>{
+test('Paseo account board sees other projects and claimed jobs while auto-dispatch still scopes workers', {skip:SKIP}, async()=>{
   const poster=await agent('paseo-global-author'), assignee=await agent('paseo-global-writer')
   await assignee.send('register_agent',{name:'paseo-global-writer',surface:'paseo',description:'Test writer',context:'work',projects:['owner/one'],strict_projects:true})
-  const outside=await post(poster,{project:'owner/two'}),owned=await post(poster,{project:'owner/one'})
+  const tag=`paseoscope${nonce()}`
+  const outside=await post(poster,{project:'owner/two',tags:[tag]}),owned=await post(poster,{project:'owner/one',tags:[tag]})
   assert.equal((await assignee.send('claim_quest',{id:owned})).error,false)
   const display=await open(memory.token,'clyde-paseo-board')
   const list=await display.send('list_quests',{show:'board',after:outside-1,limit:1})
@@ -453,7 +468,7 @@ test('Paseo account board sees other projects and claimed jobs while a scoped wo
   const second=JSON.parse((await display.send('list_quests',{show:'board',after:first.after})).text.split('\n')[0])
   assert.ok(second.quests.some((q:any)=>q.id===owned && q.state==='claimed'))
   assert.ok((await assignee.send('list_quests',{show:'board'})).error)
-  assert.ok((await assignee.send('claim_quest',{id:outside})).error)
+  assert.equal((await assignee.send('dispatch_quest',{action:'peek',areas:[tag]})).text,'null')
 })
 
 // ------------------------------------------------------------------ the tests below empty tables or reset every quest
