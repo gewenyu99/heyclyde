@@ -579,7 +579,10 @@ test('R41: one function words provenance for every arm\'s packet', { skip: SKIP 
     assert.ok(!/you wrote this|`from \$\{|in repo:/.test(code), `${f} words provenance itself`)
   }
   assert.ok(/provenanceLines\(/.test(readFileSync(join(dir, 'service.ts'), 'utf8')), 'service.ts loads the lines through provenance.ts')
-  for (const f of ['search.ts', 'trial.ts']) assert.ok(/\.provenance\b/.test(readFileSync(join(dir, f), 'utf8')), `${f} prints the line it was given`)
+  for (const [wrapper, core] of [['search.ts', 'core/ranking.ts'], ['trial.ts', 'core/trial.ts']] as const) {
+    const combined = readFileSync(join(dir, wrapper), 'utf8') + '\n' + readFileSync(join(dir, core), 'utf8')
+    assert.ok(/\.provenance\b/.test(combined), `${wrapper} prints the line it was given`)
+  }
 })
 
 // ----------------------------------------------------------------------------------------------------- backup and routes
