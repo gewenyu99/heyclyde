@@ -78,8 +78,10 @@ const APP_CSS = `
 @media (max-width:460px){.inv-tiles{grid-template-columns:minmax(0,1fr)}}
 .inv-tile{display:grid;grid-template-rows:1fr auto;gap:10px;padding:14px;border:1.5px solid var(--cl-rule-strong);border-radius:var(--cl-radius-xl);background:var(--cl-paper-1);aspect-ratio:1 / 1}
 .inv-tile:nth-child(2){background:var(--cl-sticky);border-color:var(--cl-sticky-edge)}
-.inv-tile__art{position:relative;display:flex;align-items:center;justify-content:center;padding:8px;border:1px dashed var(--cl-rule-strong);border-radius:var(--cl-radius-md);background:var(--cl-paper-0);min-height:0;overflow:hidden}
-.inv-tile__art img{max-height:100%;max-width:100%;width:auto;height:auto;object-fit:contain}
+.inv-tile__art{position:relative;display:flex;align-items:center;justify-content:center;padding:8px;border:1px dashed var(--cl-rule-strong);border-radius:var(--cl-radius-md);background:var(--cl-paper-0);min-height:116px;overflow:hidden}
+.inv-tile__art picture{display:flex;align-items:center;justify-content:center;width:100%;height:108px}
+.inv-tile__art img{display:block;height:104px;width:auto;max-width:100%;object-fit:contain}
+@media (max-width:900px){.inv-tile{aspect-ratio:auto;padding:11px;gap:8px}.inv-tile__art{min-height:82px;padding:6px}.inv-tile__art picture{height:74px}.inv-tile__art img{height:72px}}
 .inv-tile__num{position:absolute;top:6px;left:6px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--cl-ink);background:var(--cl-sticky);font:700 11px/1 var(--cl-font-mono);color:var(--cl-ink)}
 .inv-tile__copy{display:grid;gap:3px}
 .inv-tile__copy h3{margin:0;font:700 14px/1.2 var(--cl-font-display);color:var(--cl-ink)}
