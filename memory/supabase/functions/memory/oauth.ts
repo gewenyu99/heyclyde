@@ -703,3 +703,42 @@ export async function handle(req: Request, base: string, path: string, url: URL,
   if (path === "/oauth/wait") return wait(p, base, id);
   return json ? page(p, "error", "no such endpoint.", 404) : text("No such endpoint.", 404);
 }
+
+/** Public email sign-up from /invite: geo-checked, rate-limited, and gated on open_signup (or allowed_email). */
+export async function inviteSignup(req: Request): Promise<Response> {
+  const j = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
+  const raw = await req.text().catch(() => "");
+  if (!raw || raw.length > 4096) return j({ error: "Invalid request body." }, 400);
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return j({ error: "Invalid JSON body." }, 400);
+  }
+  const email = typeof parsed?.email === "string" ? parsed.email.trim().toLowerCase() : "";
+  if (!EMAIL.test(email)) return j({ error: "Enter a valid email address." }, 400);
+  const proxied = await viaProxy(req);
+  if (geoBlocked(geoOf(req, proxied))) return j({ error: REFUSAL }, 451);
+  if (!(await openSignup()) && !(await allowed(email))) {
+    return j({ error: "Sign-ups are closed right now." }, 403);
+  }
+  const client = await clientKey(req);
+  const [{ to, from }] = await sql`select
+      count(*) filter (where email = ${email})::int as to,
+      count(*) filter (where client = ${client})::int as from
+    from memory.signup_attempt where at > now() - interval '1 hour'`;
+  if (to >= MAX_PER_EMAIL) return j({ error: "Too many sign-in emails to that address in the last hour. Try again later." }, 429);
+  if (from >= MAX_PER_CLIENT) return j({ error: "Too many sign-ins from your address in the last hour. Try again later." }, 429);
+  await sql`delete from memory.signup_attempt where at < now() - interval '1 day'`;
+  await sql`insert into memory.signup_attempt (client, email) values (${client}, ${email})`;
+  const redirect = encodeURIComponent("https://heyclyde.me/memories?onboarding=1");
+  const sent = await auth(`/otp?redirect_to=${redirect}`, {
+    method: "POST",
+    body: JSON.stringify({ email, create_user: true }),
+  });
+  if (!sent.ok) {
+    return j({ error: `Couldn't send the sign-in email (${sent.body.msg ?? sent.body.error_description ?? sent.status}).` }, 502);
+  }
+  return j({ ok: true, email });
+}

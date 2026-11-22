@@ -310,7 +310,7 @@ Deno.test('site pages say Clyde', async () => {
   const homeTitle = /<title>([^<]*)<\/title>/i.exec(homeHtml)?.[1] ?? ''
   assert.ok(homeTitle.includes('Clyde'), homeTitle)
 
-  for (const path of ['/memories', '/entries/note-1', '/graph', '/quests', '/agents', '/apps', '/usage', '/settings', '/auth/callback']) {
+  for (const path of ['/memories', '/entries/note-1', '/graph', '/quests', '/agents', '/apps', '/usage', '/settings', '/invite', '/auth/callback']) {
     stub(json({ ok: true }))
     const r = await at(`https://heyclyde.me${path}`)
     assert.equal(r.status, 200, path)

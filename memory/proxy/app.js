@@ -1,9 +1,10 @@
-// Authenticated heyclyde.me app pages (R51-R65): /memories, /entries/<id>, /graph, /quests, /agents, /apps, /usage, /settings.
+// Authenticated heyclyde.me app pages (R51-R65): /memories, /entries/<id>, /graph, /quests, /agents, /apps, /usage, /settings, /invite.
+// Read-only workspace by design: every write, edit, quest, and agent configuration happens through MCP tool calls.
 // Self-contained ES module with nonce'd CSS and vanilla client script, zero external scripts, zero inline style attrs,
 // zero slop, and zero matches of /\bmemory\b/i in visible copy.
 import { AUTH_PROVIDERS, OR_RULE, providerButton } from "../design/auth.js";
 import { AUTH_CSS } from "../design/css.js";
-import { DESIGN_URL, esc, LEGAL, LOGO, MARK, shell } from "./pages.js";
+import { DESIGN_URL, esc, INSTALL, LEGAL, LOGO, MARK, MCP_URL, shell } from "./pages.js";
 import { socialClient } from "./social.js";
 
 const APP_ROUTES = [
@@ -20,9 +21,10 @@ const APP_CSS = `
 .app-wrap{flex:1;padding-block:12px 64px;display:grid;gap:20px;align-content:start}
 .app-nav{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .app-nav .cl-nav__item{width:auto;flex:none}
-.app-bar-user{margin-left:auto;display:flex;align-items:center;gap:10px;font:var(--cl-text-small);color:var(--cl-ink-2)}
+.app-bar-user{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:var(--cl-text-small);color:var(--cl-ink-2)}
 .app-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;padding-bottom:14px;border-bottom:1.5px dashed var(--cl-rule-strong)}
 .app-head h1{margin:4px 0 0}
+.app-head-acts{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .app-grid{display:grid;gap:16px}
 .app-cols-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 .app-cols-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start}
@@ -46,16 +48,79 @@ const APP_CSS = `
 .meter-bar::-webkit-progress-bar{background:var(--cl-paper-2)}
 .meter-bar::-webkit-progress-value{background:var(--cl-carbon);border-radius:var(--cl-radius-pill)}
 .meter-bar::-moz-progress-bar{background:var(--cl-carbon);border-radius:var(--cl-radius-pill)}
-.gr-wrap{border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-xl);background:var(--cl-paper-1);overflow:hidden}
-.gr-svg{display:block;width:100%;height:auto;max-height:560px;background:var(--cl-paper-0)}
-.gr-edge{stroke:var(--cl-rule-strong);stroke-width:1.4}
-.gr-node{cursor:pointer;text-decoration:none}
-.gr-node circle{fill:var(--cl-paper-1);stroke:var(--cl-carbon);stroke-width:2}
-.gr-node.is-center circle{fill:var(--cl-carbon);stroke:var(--cl-ink);stroke-width:2.5}
-.gr-node.is-dormant circle{stroke:var(--cl-ink-3);stroke-dasharray:3 2}
-.gr-node text{font:500 11px/1.2 var(--cl-font-sans);fill:var(--cl-ink)}
-.gr-node:hover circle,.gr-node:focus-visible circle{stroke:var(--cl-ink);stroke-width:3}
-.gr-node:focus-visible{outline:2px solid var(--cl-carbon);outline-offset:2px}
+.mcp-box{display:grid;gap:10px;padding:16px 18px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-lg);background:var(--cl-paper-1)}
+.mcp-box--sticky{background:var(--cl-sticky);border-color:var(--cl-sticky-edge)}
+.mcp-box__head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.mcp-box__title{margin:0;font:var(--cl-text-title-3)}
+.mcp-box__pre{margin:0;padding:11px 13px;border:1px dashed var(--cl-rule-strong);border-radius:var(--cl-radius-md);background:var(--cl-paper-0);font:var(--cl-text-mono);font-size:12.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:var(--cl-ink)}
+.mcp-list{display:grid;gap:12px}
+.onb-card{display:grid;gap:18px;padding:22px;border:1.5px solid var(--cl-ink);border-radius:var(--cl-radius-xl);background:var(--cl-paper-1);box-shadow:var(--cl-copy-2)}
+.onb-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.onb-head h2{margin:4px 0 0}
+.onb-steps{display:grid;gap:14px}
+.onb-step{display:grid;gap:12px;padding:16px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-lg);background:var(--cl-paper-0)}
+.onb-step.is-done{border-color:var(--cl-ok);background:var(--cl-ok-wash)}
+.onb-step__top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.onb-step__num{display:inline-flex;align-items:center;gap:8px;font:var(--cl-text-title-3)}
+.onb-tabs{display:flex;gap:8px;flex-wrap:wrap}
+.onb-tab{appearance:none;padding:6px 12px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-pill);background:var(--cl-paper-1);color:var(--cl-ink-2);font:600 12.5px/1.2 var(--cl-font-sans);cursor:pointer}
+.onb-tab.is-active{border-color:var(--cl-ink);background:var(--cl-sticky);color:var(--cl-ink);box-shadow:var(--cl-copy-1)}
+.onb-panel{display:grid;gap:10px}
+.inv-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:24px;align-items:start}
+@media (max-width:900px){.inv-grid{grid-template-columns:minmax(0,1fr)}}
+.inv-steps{display:grid;gap:14px;margin:0;padding:0;list-style:none}
+.inv-step{display:grid;grid-template-columns:30px minmax(0,1fr);gap:12px;align-items:start;padding:16px;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-lg);background:var(--cl-paper-1)}
+.inv-step__n{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--cl-ink);background:var(--cl-sticky);font:700 13px/1 var(--cl-font-mono);color:var(--cl-ink)}
+.inv-step h3{margin:0 0 4px;font:var(--cl-text-title-3)}
+.inv-step p{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2)}
+.gr-shell{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+@media (max-width:1040px){.gr-shell{grid-template-columns:minmax(0,1fr)}}
+.gr-toolbar{display:grid;gap:12px;padding:14px 16px}
+.gr-toolbar-top{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.gr-search-wrap{position:relative;flex:1 1 240px;min-width:200px}
+.gr-results{position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:20;display:grid;max-height:260px;overflow:auto;border:1px solid var(--cl-ink);border-radius:var(--cl-radius-md);background:var(--cl-paper-1);box-shadow:var(--cl-shadow-2)}
+.gr-res-btn{appearance:none;border:0;border-top:1px dashed var(--cl-rule);background:transparent;text-align:left;padding:9px 12px;cursor:pointer;display:grid;gap:2px;font:var(--cl-text-small);color:var(--cl-ink)}
+.gr-res-btn:first-child{border-top:0}
+.gr-res-btn:hover,.gr-res-btn:focus-visible{background:var(--cl-sticky);outline:none}
+.gr-res-meta{font:var(--cl-text-mono);font-size:11px;color:var(--cl-ink-3)}
+.gr-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.gr-chip-btn{appearance:none;display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-pill);background:var(--cl-paper-0);color:var(--cl-ink-2);font:600 11.5px/1.2 var(--cl-font-mono);cursor:pointer}
+.gr-chip-btn.is-on{border-color:var(--cl-ink);background:var(--cl-paper-1);color:var(--cl-ink)}
+.gr-chip-btn:not(.is-on){opacity:.48;text-decoration:line-through}
+.gr-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.gr-dot--relates{background:var(--cl-pen-blue)}.gr-dot--supports{background:var(--cl-pen-green)}
+.gr-dot--contradicts{background:var(--cl-pen-red)}.gr-dot--supersedes{background:var(--cl-pen-amber)}
+.gr-dot--part_of{background:var(--cl-pen-violet)}.gr-dot--derived_from{background:var(--cl-pen-teal)}
+.gr-dot--co_used{background:var(--cl-pen-graphite)}
+.gr-wrap{position:relative;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-xl);background:var(--cl-paper-0);overflow:hidden}
+.gr-zoom{position:absolute;right:12px;top:12px;z-index:5;display:flex;gap:6px}
+.gr-svg{display:block;width:100%;height:580px;cursor:grab;user-select:none;touch-action:none}
+.gr-svg.is-panning{cursor:grabbing}
+.gr-edge{fill:none;stroke:var(--cl-rule-strong);stroke-width:1.5;opacity:.75;transition:opacity .12s}
+.gr-edge--relates{stroke:var(--cl-pen-blue)}.gr-edge--supports{stroke:var(--cl-pen-green)}
+.gr-edge--contradicts{stroke:var(--cl-pen-red);stroke-dasharray:5 3}.gr-edge--supersedes{stroke:var(--cl-pen-amber);stroke-dasharray:6 2}
+.gr-edge--part_of{stroke:var(--cl-pen-violet)}.gr-edge--derived_from{stroke:var(--cl-pen-teal)}
+.gr-edge--co_used{stroke:var(--cl-pen-graphite);stroke-dasharray:2 4;opacity:.45}
+.gr-edge.is-dim{opacity:.08}.gr-edge.is-hi{opacity:1;stroke-width:2.5}
+.gr-node{cursor:pointer}
+.gr-node circle{stroke:var(--cl-paper-1);stroke-width:2;fill:var(--cl-pen-blue);transition:opacity .12s,stroke-width .12s}
+.gr-node--decisions circle{fill:var(--cl-pen-blue)}.gr-node--projects circle{fill:var(--cl-pen-violet)}
+.gr-node--preferences circle{fill:var(--cl-pen-amber)}.gr-node--observations circle{fill:var(--cl-pen-teal)}
+.gr-node--references circle{fill:var(--cl-pen-green)}.gr-node--recommendations circle{fill:var(--cl-pen-green)}
+.gr-node--reactions circle{fill:var(--cl-pen-red)}.gr-node--other circle{fill:var(--cl-pen-graphite)}
+.gr-node.is-center circle{stroke:var(--cl-ink);stroke-width:3}
+.gr-node.is-selected circle{stroke:var(--cl-ink);stroke-width:3.5}
+.gr-node.is-dormant circle{opacity:.55;stroke-dasharray:3 2}
+.gr-node text{font:600 11px/1.2 var(--cl-font-sans);fill:var(--cl-ink);pointer-events:none;paint-order:stroke;stroke:var(--cl-paper-0);stroke-width:3px;stroke-linejoin:round}
+.gr-node.is-label-hide text{display:none}
+.gr-node.is-dim{opacity:.16}
+.gr-node.is-hi text{display:block}
+.gr-inspector{display:grid;gap:14px;padding:18px;align-content:start}
+.gr-inspector h3{margin:0;font:var(--cl-text-title-3)}
+.gr-ins-body{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2);white-space:pre-wrap;max-height:220px;overflow:auto}
+.gr-ins-links{display:grid;gap:6px;max-height:200px;overflow:auto}
+.gr-ins-link{appearance:none;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-sm);background:var(--cl-paper-0);padding:6px 9px;text-align:left;cursor:pointer;font:var(--cl-text-small);color:var(--cl-ink);display:flex;justify-content:space-between;gap:8px;align-items:center}
+.gr-ins-link:hover{border-color:var(--cl-ink);background:var(--cl-sticky)}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @media (max-width:640px){.bar{flex-wrap:wrap;gap:12px 16px}.app-nav{order:3;flex-basis:100%}}
 .signin-box{max-width:460px;margin:12px auto;display:grid;gap:16px;padding:24px}
@@ -66,23 +131,22 @@ const APP_CSS = `
 .is-hidden{display:none}
 .app-qcol{display:grid;gap:12px}
 .app-qcol-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-bottom:6px;border-bottom:1px dashed var(--cl-rule-strong)}
-.danger-zone{border-color:var(--cl-bad)}
+.agent-card{display:grid;gap:12px;padding:18px}
 `;
 
 const PAGE_SPEC = {
-  entries: { title: "Notes · Clyde", heading: "Notes", sub: "Search and filter notes saved by your agents and connected apps." },
-  entry: { title: "Note · Clyde", heading: "Note detail", sub: "Inspect provenance, artifacts, links, and confidence history. Edit, prune, supersede, or delete this note." },
-  graph: { title: "Graph · Clyde", heading: "Graph", sub: "See how saved notes link together, 1 to 3 hops out (up to 300 nodes)." },
-  quests: { title: "Quest board · Clyde", heading: "Quest board", sub: "Post tasks for your agents and check what's open, claimed, or done." },
-  agents: { title: "Agents and devices · Clyde", heading: "Agents and devices", sub: "Update agent nicknames, types, harnesses, and repos, or revoke connected devices." },
-  apps: { title: "Connected apps · Clyde", heading: "Connected apps", sub: "Check which client apps hold OAuth access and revoke a grant anytime." },
-  usage: { title: "Usage and billing · Clyde", heading: "Usage and billing", sub: "Check your plan, monthly usage, and subscription or spend limit." },
-  settings: { title: "Settings · Clyde", heading: "Settings", sub: "Download an NDJSON export of your records or permanently delete your account." },
+  entries: { title: "Notes · Clyde", heading: "Notes", sub: "Read-only view of notes from your agents. Copy an MCP prompt to save, replace, or link a note." },
+  entry: { title: "Note · Clyde", heading: "Note detail", sub: "Inspect provenance, artifacts, links, and confidence history. Manage this note through your connected agent." },
+  graph: { title: "Graph · Clyde", heading: "Graph", sub: "See how your notes connect. Pan, zoom, drag nodes, and filter by link type." },
+  quests: { title: "Quest board · Clyde", heading: "Quest board", sub: "Track open, claimed, and finished agent tasks. Post or claim quests through MCP." },
+  agents: { title: "Agents and devices · Clyde", heading: "Agents and devices", sub: "Connect a new agent or inspect registered agents and devices. Updates happen through register_agent." },
+  apps: { title: "Connected apps · Clyde", heading: "Connected apps", sub: "See which client apps hold OAuth access to your Clyde notebook." },
+  usage: { title: "Usage and billing · Clyde", heading: "Usage and billing", sub: "Check your plan, monthly usage meters, and billing status." },
+  settings: { title: "Settings · Clyde", heading: "Settings", sub: "Clyde is read-only on the web. Check your endpoint details and copy MCP prompts below." },
   callback: { title: "Signing in · Clyde", heading: "Signing in", sub: "Finishing your Google or GitHub sign-in." },
+  invite: { title: "You're invited · Clyde", heading: "Shared notes for Claude and Antigravity", sub: "Connect Clyde once so your agents recall past chats and save new decisions automatically." },
 };
 
-// The provider buttons the sign-in form can show, from design/auth.mjs. Which ones show is Supabase Auth's call:
-// the page asks /auth/v1/settings and draws only the providers it has turned on.
 const PROVIDER_BUTTONS = Object.fromEntries(AUTH_PROVIDERS.map((p) => [p, providerButton(p)]));
 
 const APP_JS = `(function(){
@@ -91,17 +155,65 @@ if (!root) return;
 var view = root.getAttribute('data-view');
 var entryId = root.getAttribute('data-id') || '';
 var STORE = 'clyde_session_v1';
+var MCP_ENDPOINT = ${JSON.stringify(MCP_URL)};
+var INSTALL_CMD = ${JSON.stringify(INSTALL)};
 var PROVIDER_BUTTONS = ${JSON.stringify(PROVIDER_BUTTONS).replace(/</g, "\\u003c")};
 var OR_RULE = ${JSON.stringify(OR_RULE).replace(/</g, "\\u003c")};
 function __name(f) { return f; }
 var social = (${socialClient.toString()})(window);
-// Where a provider sign-in lands afterwards: this page, or the page a failed callback was headed to.
-var afterSignIn = view === 'callback' ? '/memories' : location.pathname + location.search;
+var afterSignIn = view === 'callback' ? '/memories' : (view === 'invite' ? '/memories?onboarding=1' : location.pathname + location.search);
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
     return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
   });
+}
+
+function copyText(text, btn) {
+  var done = function() {
+    if (!btn) return;
+    var old = btn.getAttribute('data-label') || btn.textContent;
+    btn.setAttribute('data-label', old);
+    btn.textContent = 'Copied';
+    setTimeout(function() { btn.textContent = old; }, 1600);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(function() {
+      fallbackCopy(text);
+      done();
+    });
+  } else {
+    fallbackCopy(text);
+    done();
+  }
+}
+
+function fallbackCopy(text) {
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.className = 'sr-only';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  ta.remove();
+}
+
+if (document.addEventListener) document.addEventListener('click', function(ev) {
+  var btn = ev.target && ev.target.closest ? ev.target.closest('[data-copy]') : null;
+  if (!btn) return;
+  copyText(btn.getAttribute('data-copy') || '', btn);
+});
+
+function mcpCard(title, hint, tool, prompt, sticky) {
+  return '<section class="mcp-box' + (sticky ? ' mcp-box--sticky' : '') + '">' +
+    '<div class="mcp-box__head">' +
+      '<div class="app-meta"><h3 class="mcp-box__title">' + esc(title) + '</h3>' +
+      (tool ? '<span class="cl-chip cl-chip--carbon">MCP: ' + esc(tool) + '</span>' : '') + '</div>' +
+      '<button type="button" class="cl-btn cl-btn--sm" data-copy="' + esc(prompt) + '">Copy prompt</button>' +
+    '</div>' +
+    (hint ? '<p class="cl-hint">' + esc(hint) + '</p>' : '') +
+    '<pre class="mcp-box__pre">' + esc(prompt) + '</pre>' +
+  '</section>';
 }
 
 function readSession() {
@@ -133,17 +245,22 @@ function writeSession(data) {
 function updateUserBar(s) {
   var bar = document.getElementById('app-user-bar');
   if (!bar) return;
+  var inviteUrl = location.origin + '/invite';
   if (!s) {
-    bar.innerHTML = '<a class="cl-btn cl-btn--sm" href="/memories">Sign in</a>';
+    bar.innerHTML = '<a class="cl-btn cl-btn--primary cl-btn--sm" href="/invite">Get started</a>' +
+      '<a class="cl-btn cl-btn--sm" href="/memories">Sign in</a>';
     return;
   }
-  bar.innerHTML = '<span>' + esc(s.email || 'Signed in') + '</span>' +
+  bar.innerHTML =
+    '<a class="cl-btn cl-btn--primary cl-btn--sm" href="/agents?connect=1">Connect agent</a>' +
+    '<button type="button" class="cl-btn cl-btn--sm" data-copy="' + esc(inviteUrl) + '">Copy invite link</button>' +
+    '<span>' + esc(s.email || 'Signed in') + '</span>' +
     '<button type="button" class="cl-btn cl-btn--sm cl-btn--ghost" id="btn-signout">Sign out</button>';
   var out = document.getElementById('btn-signout');
   if (out) out.addEventListener('click', function() {
     var tok = s.access_token;
     writeSession(null);
-    if (tok) fetch('/auth/v1/logout', { method: 'POST', headers: { authorization: 'Bearer ' + tok } }).catch(function(){});
+    if (tok) fetch('/auth/v1/logout?scope=local', { method: 'POST', headers: { authorization: 'Bearer ' + tok } }).catch(function(){});
     renderSignIn();
   });
 }
@@ -223,7 +340,7 @@ function renderSignIn(msg) {
   root.innerHTML =
     '<section class="cl-card signin-box">' +
       '<h2 class="cl-title-2">Sign in to Clyde</h2>' +
-      '<p class="cl-hint">Enter your email for a sign-in link or code, or use a password if your account has one.</p>' +
+      '<p class="cl-hint">Enter your email for a sign-in link or code, or use a password if your account has one. New here? <a class="cl-link" href="/invite">Create an account</a>.</p>' +
       '<div id="sign-msg" class="' + (msg ? 'app-banner app-banner--bad' : 'is-hidden') + '">' + esc(msg || '') + '</div>' +
       '<div id="sign-providers" class="is-hidden"></div>' +
       '<form id="otp-req" class="app-grid">' +
@@ -310,7 +427,91 @@ function renderSignIn(msg) {
   });
 }
 
-// Google and GitHub, when Supabase Auth has them on. A settings call that fails shows none, and email still works.
+function renderInvite() {
+  var s = readSession();
+  var sp = new URLSearchParams(location.search);
+  var from = (sp.get('from') || '').trim().slice(0, 40);
+  var alreadyBanner = s
+    ? '<div class="app-banner app-banner--ok">You\\'re signed in as ' + esc(s.email || 'your account') + '. <a class="cl-link" href="/memories?onboarding=1">Open onboarding</a></div>'
+    : '';
+  root.innerHTML =
+    alreadyBanner +
+    '<div class="inv-grid">' +
+      '<section class="app-grid">' +
+        (from ? '<span class="cl-chip cl-chip--carbon">Invited by ' + esc(from) + '</span>' : '<span class="cl-chip cl-chip--carbon">Works with Claude and Antigravity</span>') +
+        '<ol class="inv-steps">' +
+          '<li class="inv-step"><span class="inv-step__n">1</span><div><h3>Connect Clyde once</h3><p>Run one command for Antigravity or Claude Code, or paste the MCP URL into Claude. Hooks and MCP install together.</p></div></li>' +
+          '<li class="inv-step"><span class="inv-step__n">2</span><div><h3>Recall and save as you work</h3><p>Your agent pulls in related notes from past chats and saves new decisions and results with evidence.</p></div></li>' +
+          '<li class="inv-step"><span class="inv-step__n">3</span><div><h3>Short notes, full files on demand</h3><p>Notes stay under 500 characters so chats stay fast. When an earlier note matters, your agent opens the full note and attached files.</p></div></li>' +
+          '<li class="inv-step"><span class="inv-step__n">4</span><div><h3>Manage everything through your agent</h3><p>This web app is read-only by design. After signing up, you\\'ll connect an agent and run one save and one recall over MCP.</p></div></li>' +
+        '</ol>' +
+      '</section>' +
+      '<section class="cl-card app-form">' +
+        '<h2 class="cl-title-2">Create your account</h2>' +
+        '<p class="cl-hint">Sign up with Google, GitHub, or email. You\\'ll land in guided setup for Claude and Antigravity.</p>' +
+        '<div id="inv-msg" class="is-hidden"></div>' +
+        '<div id="inv-providers" class="is-hidden"></div>' +
+        '<form id="inv-email-form" class="app-grid">' +
+          '<div class="cl-field"><label for="inv-email">Email</label><input id="inv-email" class="cl-input" type="email" required placeholder="you@example.com" autocomplete="email"></div>' +
+          '<button type="submit" class="cl-btn cl-btn--primary" id="btn-inv-send">Send sign-up link</button>' +
+        '</form>' +
+        '<form id="inv-otp-form" class="app-grid is-hidden">' +
+          '<div class="cl-field"><label for="inv-code">One-time code</label><input id="inv-code" class="cl-input" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456"></div>' +
+          '<button type="submit" class="cl-btn cl-btn--primary">Verify code and continue</button>' +
+        '</form>' +
+      '</section>' +
+    '</div>';
+
+  var banner = document.getElementById('inv-msg');
+  var emailEl = document.getElementById('inv-email');
+  var otpForm = document.getElementById('inv-otp-form');
+  afterSignIn = '/memories?onboarding=1';
+  showProviders(document.getElementById('inv-providers'), banner);
+
+  document.getElementById('inv-email-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    clearNotice(banner);
+    var email = emailEl.value.trim();
+    var btn = document.getElementById('btn-inv-send');
+    btn.disabled = true;
+    try {
+      var r = await fetch('/invite/signup', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: email })
+      });
+      var d = await r.json().catch(function() { return {}; });
+      if (!r.ok) throw new Error(d.error || "Couldn't send the sign-up link. Check your email and try again.");
+      otpForm.classList.remove('is-hidden');
+      notice(banner, 'ok', 'Sign-up link sent to ' + email + '. Click the link in your inbox, or enter the 6-digit code below.');
+    } catch (err) {
+      notice(banner, 'bad', err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  otpForm.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    clearNotice(banner);
+    var email = emailEl.value.trim();
+    var token = document.getElementById('inv-code').value.trim();
+    try {
+      var r = await fetch('/auth/v1/verify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ type: 'email', email: email, token: token })
+      });
+      var d = await r.json().catch(function() { return {}; });
+      if (!r.ok || !d.access_token) throw new Error(d.error_description || d.msg || d.error || "That code didn't work or expired. Request a new email.");
+      writeSession(d);
+      location.replace('/memories?onboarding=1');
+    } catch (err) {
+      notice(banner, 'bad', err.message);
+    }
+  });
+}
+
 async function showProviders(box, banner) {
   var on = [];
   try {
@@ -331,7 +532,6 @@ async function showProviders(box, banner) {
   });
 }
 
-// /auth/callback: the provider sent the tab back. The code leaves the address bar before anything else happens.
 async function finishProviderSignIn() {
   var search = location.search;
   history.replaceState(null, '', '/auth/callback');
@@ -357,9 +557,129 @@ function stateBadge(n) {
   return '<span class="cl-state cl-state--settled">Active</span>';
 }
 
+function buildOnboardingHtml(ob, activeTab) {
+  var s1 = ob.agents > 0;
+  var s2 = ob.entries > 0;
+  var s3 = ob.recalls > 0;
+  var doneCount = (s1 ? 1 : 0) + (s2 ? 1 : 0) + (s3 ? 1 : 0);
+  var allDone = doneCount === 3;
+  var tab = activeTab || 'antigravity';
+
+  var regPrompt = 'Call Clyde register_agent with name "' + (tab === 'antigravity' ? 'antigravity-main' : 'claude-main') +
+    '", context "both", surface "' + (tab === 'antigravity' ? 'Antigravity' : (tab === 'claude-code' ? 'claude-code' : 'claude.ai')) +
+    '", and a short description of what you help me with.';
+  var savePrompt = 'Call Clyde remember to save a test note: pattern "observations", title "Clyde setup check", body "Connected my first agent and verified saving a note over MCP.", evidence "Onboarding verification".';
+  var recallPrompt = 'Call Clyde recall with query "Clyde setup check", then call get_entry on the returned note id to confirm full details load.';
+
+  var tabBody = '';
+  if (tab === 'antigravity') {
+    tabBody =
+      '<p class="cl-hint">Run this command in your terminal. It signs your computer in, adds Clyde MCP to <code>~/.gemini/config/mcp_config.json</code>, installs automatic hooks in <code>~/.gemini/config/hooks.json</code>, and adds the Clyde rule to <code>~/.gemini/GEMINI.md</code>.</p>' +
+      mcpCard('1. Install Antigravity MCP + hooks', 'Restart Antigravity after running this command.', 'CLI installer', INSTALL_CMD, false) +
+      mcpCard('2. Register Antigravity in chat', 'Paste this into a new Antigravity chat to finish Step 1.', 'register_agent', regPrompt, true);
+  } else if (tab === 'claude-code') {
+    tabBody =
+      '<p class="cl-hint">Run this command in your terminal. It installs the Clyde MCP connector and automatic hooks into <code>~/.claude/settings.json</code> and adds the Clyde rule to <code>~/.claude/CLAUDE.md</code>.</p>' +
+      mcpCard('1. Install Claude Code MCP + hooks', 'Restart Claude Code after running this command.', 'CLI installer', INSTALL_CMD, false) +
+      mcpCard('2. Register Claude Code in chat', 'Paste this into Claude Code to finish Step 1.', 'register_agent', regPrompt, true);
+  } else {
+    tabBody =
+      '<p class="cl-hint">In Claude (web, desktop, or mobile), open <strong>Settings / Connectors / Add custom connector</strong>, paste the MCP URL below, click Add, then Connect and sign in with this same account.</p>' +
+      mcpCard('1. Claude custom connector URL', 'Paste this URL into Claude Settings / Connectors.', 'MCP server URL', MCP_ENDPOINT, false) +
+      mcpCard('2. Register Claude in chat', 'Start a chat in Claude and paste this prompt to finish Step 1.', 'register_agent', regPrompt, true);
+  }
+
+  return '<section class="onb-card" id="onb-box">' +
+    '<div class="onb-head">' +
+      '<div>' +
+        '<span class="cl-chip cl-chip--carbon">' + (allDone ? 'Setup complete · 3 of 3' : 'First-run setup · ' + doneCount + ' of 3 complete') + '</span>' +
+        '<h2 class="cl-title-2">' + (allDone ? 'Your first agent is live on Clyde' : 'Connect your first agent and test MCP') + '</h2>' +
+        '<p class="cl-hint">' + (allDone
+          ? 'Setup works. Your agents now share one notebook.'
+          : 'This UI is read-only. Connect Claude or Antigravity, then run one save and one recall over MCP.') + '</p>' +
+      '</div>' +
+      '<div class="app-actions">' +
+        '<button type="button" class="cl-btn cl-btn--sm" id="onb-refresh">Check progress</button>' +
+        (allDone ? '<a class="cl-btn cl-btn--primary cl-btn--sm" href="/graph">Open graph</a>' : '') +
+      '</div>' +
+    '</div>' +
+    '<div class="onb-steps">' +
+      '<div class="onb-step' + (s1 ? ' is-done' : '') + '">' +
+        '<div class="onb-step__top">' +
+          '<span class="onb-step__num">Step 1: Connect your first agent</span>' +
+          (s1
+            ? '<span class="cl-stamp cl-stamp--ok">Connected: ' + esc(ob.latest_agent ? ob.latest_agent.name : (ob.agents + ' agent')) + '</span>'
+            : '<span class="cl-chip">Waiting for register_agent</span>') +
+        '</div>' +
+        '<div class="onb-tabs" role="tablist" aria-label="Choose your client">' +
+          '<button type="button" class="onb-tab' + (tab === 'antigravity' ? ' is-active' : '') + '" data-onb-tab="antigravity">Antigravity</button>' +
+          '<button type="button" class="onb-tab' + (tab === 'claude-code' ? ' is-active' : '') + '" data-onb-tab="claude-code">Claude Code</button>' +
+          '<button type="button" class="onb-tab' + (tab === 'claude-web' ? ' is-active' : '') + '" data-onb-tab="claude-web">Claude (Web / Desktop)</button>' +
+        '</div>' +
+        '<div class="onb-panel">' + tabBody + '</div>' +
+      '</div>' +
+      '<div class="onb-step' + (s2 ? ' is-done' : '') + '">' +
+        '<div class="onb-step__top">' +
+          '<span class="onb-step__num">Step 2: Save your first note via MCP</span>' +
+          (s2
+            ? '<span class="cl-stamp cl-stamp--ok">Saved' + (ob.latest_entry ? ': ' + esc(ob.latest_entry.title) : '') + '</span>'
+            : '<span class="cl-chip">Waiting for remember</span>') +
+        '</div>' +
+        (s2 && ob.latest_entry
+          ? '<p class="cl-hint">First note recorded. <a class="cl-link" href="/entries/' + encodeURIComponent(ob.latest_entry.id) + '">Inspect "' + esc(ob.latest_entry.title) + '"</a>.</p>'
+          : mcpCard('Ask your agent to save a note', 'Paste this into Claude or Antigravity once Step 1 is done.', 'remember', savePrompt, false)) +
+      '</div>' +
+      '<div class="onb-step' + (s3 ? ' is-done' : '') + '">' +
+        '<div class="onb-step__top">' +
+          '<span class="onb-step__num">Step 3: Retrieve it via MCP</span>' +
+          (s3
+            ? '<span class="cl-stamp cl-stamp--ok">Verified (' + ob.recalls + (ob.recalls === 1 ? ' recall' : ' recalls') + ')</span>'
+            : '<span class="cl-chip">Waiting for recall</span>') +
+        '</div>' +
+        (s3
+          ? '<p class="cl-hint">Your agent retrieved saved notes over MCP. Future chats can pull full details on demand.</p>'
+          : mcpCard('Ask your agent to recall the note', 'Paste this to verify search and full-note retrieval.', 'recall + get_entry', recallPrompt, false)) +
+      '</div>' +
+    '</div>' +
+  '</section>';
+}
+
+async function mountOnboarding(container, forceShow) {
+  var activeTab = 'antigravity';
+  async function draw() {
+    try {
+      var ob = await api('/me/onboarding');
+      var needs = ob.agents === 0 || ob.entries === 0 || ob.recalls === 0;
+      if (!forceShow && !needs) {
+        container.innerHTML = '';
+        return;
+      }
+      container.innerHTML = buildOnboardingHtml(ob, activeTab);
+      container.querySelectorAll('[data-onb-tab]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          activeTab = btn.getAttribute('data-onb-tab') || 'antigravity';
+          draw();
+        });
+      });
+      var ref = document.getElementById('onb-refresh');
+      if (ref) ref.addEventListener('click', function() { draw(); });
+    } catch (e) {}
+  }
+  await draw();
+}
+
 async function renderEntries() {
   var sp = new URLSearchParams(location.search);
+  var forceOnb = sp.get('onboarding') === '1';
   root.innerHTML =
+    '<div id="onb-slot" class="app-grid"></div>' +
+    mcpCard(
+      'Save a note through your agent',
+      'Clyde has no manual write forms. Copy this prompt into Claude or Antigravity to save a note over MCP.',
+      'remember',
+      'Save a note to Clyde using remember: pattern "decisions", title "<short title>", body "<under 500 chars>", evidence "<source or command output>".',
+      false
+    ) +
     '<form id="f-entries" class="cl-card app-filters">' +
       '<div class="cl-field"><label for="q-in">Search</label><input id="q-in" name="q" class="cl-input" value="' + esc(sp.get('q') || '') + '" placeholder="Title or text"></div>' +
       '<div class="cl-field"><label for="kind-in">Kind</label><select id="kind-in" name="kind" class="cl-select"><option value="">All</option><option value="decisions">decisions</option><option value="fact">fact</option><option value="preferences">preferences</option><option value="projects">projects</option><option value="observations">observations</option><option value="recommendations">recommendations</option><option value="references">references</option><option value="reactions">reactions</option><option value="wen">wen</option><option value="plan">plan</option></select></div>' +
@@ -390,7 +710,7 @@ async function renderEntries() {
       var list = document.getElementById('entries-list');
       status.textContent = d.total.toLocaleString('en-US') + ' ' + (d.total === 1 ? 'note' : 'notes') + (d.total >= 1000 ? ' (showing newest 1,000)' : '');
       if (!d.entries.length) {
-        list.innerHTML = '<div class="cl-empty"><p class="cl-empty__title">No matching notes</p><p class="cl-empty__text">Nothing matches those filters. Clear your search or switch State to all to include pruned and superseded notes.</p></div>';
+        list.innerHTML = '<div class="cl-empty"><p class="cl-empty__title">No matching notes</p><p class="cl-empty__text">Nothing matches those filters. Connect an agent above and save your first note over MCP, or switch State to all.</p></div>';
         return;
       }
       list.innerHTML = d.entries.map(function(n) {
@@ -414,7 +734,7 @@ async function renderEntries() {
     e.preventDefault();
     load();
   });
-  await load();
+  await Promise.all([mountOnboarding(document.getElementById('onb-slot'), forceOnb), load()]);
 }
 
 async function renderEntryDetail() {
@@ -447,10 +767,13 @@ async function renderEntryDetail() {
         }).join('') + '</tbody></table></div>'
       : '<p class="cl-hint">No confidence changes yet.</p>';
 
+    var replacePrompt = 'In Clyde, call get_entry with id "' + e.id + '", then call remember with supersedes: ["' + e.id + '"] to replace it with an updated note and evidence.';
+    var linkPrompt = 'In Clyde, save a related note using remember with links: [{"type": "relates", "to": "' + e.id + '"}] and evidence.';
+    var inspectPrompt = 'In Clyde, call get_entry with id "' + e.id + '" and read any attached artifacts using get_blob.';
+
     root.innerHTML =
       '<div class="app-actions"><a class="cl-btn cl-btn--sm" href="/memories">Back to notes</a>' +
       '<a class="cl-btn cl-btn--sm" href="/graph?center=' + encodeURIComponent(e.id) + '">Open in graph</a></div>' +
-      '<div id="detail-msg" class="is-hidden"></div>' +
       '<article class="cl-card app-grid">' +
         '<div class="app-meta"><span class="cl-chip">' + esc(e.pattern || e.kind) + '</span>' + stateBadge(d) +
         (e.project ? '<span class="cl-chip cl-chip--carbon">' + esc(e.project) + '</span>' : '') +
@@ -466,83 +789,14 @@ async function renderEntryDetail() {
         '<div class="cl-card app-grid"><h3 class="cl-title-3">Links</h3>' + linksHtml + '</div>' +
       '</section>' +
       '<section class="cl-card app-grid"><h3 class="cl-title-3">Confidence history</h3>' + histHtml + '</section>' +
-      '<form id="edit-form" class="cl-card app-form">' +
-        '<h3 class="cl-title-3">Edit note</h3>' +
-        '<div class="cl-field"><label for="ed-title">Title</label><input id="ed-title" class="cl-input" value="' + esc(e.title) + '" maxlength="300" placeholder="1 to 300 characters" required></div>' +
-        '<div class="cl-field"><label for="ed-body">Body</label><textarea id="ed-body" class="cl-textarea" maxlength="4000" placeholder="1 to 4,000 characters" required>' + esc(e.body || '') + '</textarea></div>' +
-        '<div class="cl-field"><label for="ed-ev">Evidence</label><textarea id="ed-ev" class="cl-textarea" maxlength="20000" placeholder="Source or reason for this note (required, 1 to 20,000 characters)">' + esc(e.evidence || '') + '</textarea></div>' +
-        '<div class="app-form-row">' +
-          '<div class="cl-field"><label for="ed-proj">Project</label><input id="ed-proj" class="cl-input" value="' + esc(e.project || '') + '" placeholder="Project ID (optional)"></div>' +
-          '<div class="cl-field"><label for="ed-ctx">Context</label><select id="ed-ctx" class="cl-select"><option value="general">general</option><option value="work">work</option><option value="home">home</option><option value="hobby">hobby</option><option value="personal">personal</option></select></div>' +
-          '<div class="cl-field"><label for="ed-sens">Sensitivity</label><select id="ed-sens" class="cl-select"><option value="normal">normal</option><option value="private">private</option><option value="confidential">confidential</option></select></div>' +
+      '<section class="app-grid">' +
+        '<h3 class="cl-title-3">Manage this note via MCP</h3>' +
+        '<div class="app-cols-2">' +
+          mcpCard('Replace or update this note', 'Write a replacement note with supersedes so history stays intact.', 'remember', replacePrompt, true) +
+          mcpCard('Link another note to this one', 'Connect decisions, evidence, or follow-ups in the graph.', 'remember', linkPrompt, false) +
         '</div>' +
-        '<div class="app-actions"><button type="submit" class="cl-btn cl-btn--primary">Save changes</button></div>' +
-      '</form>' +
-      '<section class="cl-card app-grid">' +
-        '<h3 class="cl-title-3">Actions</h3>' +
-        '<div class="app-actions">' +
-          '<button type="button" class="cl-btn" id="btn-prune">Prune note</button>' +
-          '<form id="sup-form" class="app-actions"><label for="sup-id" class="sr-only">Replacement note ID</label><input id="sup-id" class="cl-input" placeholder="Replacement note ID" required><button type="submit" class="cl-btn">Mark superseded</button></form>' +
-          '<button type="button" class="cl-btn cl-btn--danger" id="btn-del">Delete note</button>' +
-          '<button type="button" class="cl-btn cl-btn--danger is-hidden" id="btn-del-yes">Delete note permanently</button>' +
-        '</div>' +
+        mcpCard('Load full note and artifacts in chat', 'Pull this exact note and its attached files into Claude or Antigravity.', 'get_entry + get_blob', inspectPrompt, false) +
       '</section>';
-
-    document.getElementById('ed-ctx').value = e.context || 'general';
-    document.getElementById('ed-sens').value = e.sensitivity || 'normal';
-    var msg = document.getElementById('detail-msg');
-
-    document.getElementById('edit-form').addEventListener('submit', async function(ev) {
-      ev.preventDefault();
-      clearNotice(msg);
-      try {
-        await api('/me/entries/' + encodeURIComponent(entryId), {
-          method: 'PATCH',
-          body: JSON.stringify({
-            title: document.getElementById('ed-title').value,
-            body: document.getElementById('ed-body').value,
-            evidence: document.getElementById('ed-ev').value,
-            project: document.getElementById('ed-proj').value.trim() || null,
-            context: document.getElementById('ed-ctx').value,
-            sensitivity: document.getElementById('ed-sens').value
-          })
-        });
-        notice(msg, 'ok', 'Note saved.');
-        renderEntryDetail();
-      } catch (err) { notice(msg, 'bad', err.message); }
-    });
-
-    document.getElementById('btn-prune').addEventListener('click', async function() {
-      clearNotice(msg);
-      try {
-        await api('/me/entries/' + encodeURIComponent(entryId) + '/prune', { method: 'POST', body: '{}' });
-        notice(msg, 'ok', 'Note pruned. Confidence is 0%, so default recall hides it.');
-        renderEntryDetail();
-      } catch (err) { notice(msg, 'bad', err.message); }
-    });
-
-    document.getElementById('sup-form').addEventListener('submit', async function(ev) {
-      ev.preventDefault();
-      clearNotice(msg);
-      try {
-        await api('/me/entries/' + encodeURIComponent(entryId) + '/supersede', {
-          method: 'POST',
-          body: JSON.stringify({ replacement: document.getElementById('sup-id').value.trim() })
-        });
-        notice(msg, 'ok', 'Note marked as superseded.');
-        renderEntryDetail();
-      } catch (err) { notice(msg, 'bad', err.message); }
-    });
-
-    document.getElementById('btn-del').addEventListener('click', function() {
-      document.getElementById('btn-del-yes').classList.remove('is-hidden');
-    });
-    document.getElementById('btn-del-yes').addEventListener('click', async function() {
-      try {
-        await api('/me/entries/' + encodeURIComponent(entryId), { method: 'DELETE' });
-        location.href = '/memories';
-      } catch (err) { notice(msg, 'bad', err.message); }
-    });
   } catch (err) {
     root.innerHTML = '<div class="app-banner app-banner--bad">' + esc(err.message) + '</div>';
   }
@@ -550,257 +804,579 @@ async function renderEntryDetail() {
 
 async function renderGraph() {
   var sp = new URLSearchParams(location.search);
+  var EDGE_TYPES = ['relates', 'supports', 'contradicts', 'supersedes', 'part_of', 'derived_from', 'co_used'];
+  var activeEdges = {};
+  EDGE_TYPES.forEach(function(t) { activeEdges[t] = true; });
+  var state = {
+    center: sp.get('center') || '',
+    depth: sp.get('depth') || '2',
+    pattern: '',
+    showPruned: false,
+    data: null,
+    pos: {},
+    deg: {},
+    selected: null,
+    hovered: null,
+    viewBox: { x: 0, y: 0, w: 960, h: 580 }
+  };
+
   root.innerHTML =
-    '<form id="g-form" class="cl-card app-form-row">' +
-      '<div class="cl-field"><label for="g-center">Center note ID</label><input id="g-center" class="cl-input" value="' + esc(sp.get('center') || '') + '" placeholder="Leave blank for most linked"></div>' +
-      '<div class="cl-field"><label for="g-depth">Depth</label><select id="g-depth" class="cl-select"><option value="1">1 hop</option><option value="2">2 hops</option><option value="3">3 hops</option></select></div>' +
-      '<div class="app-actions"><button type="submit" class="cl-btn cl-btn--primary">Load graph</button></div>' +
-    '</form>' +
+    '<section class="cl-card gr-toolbar">' +
+      '<div class="gr-toolbar-top">' +
+        '<div class="cl-field gr-search-wrap"><label for="g-search">Find or jump to note</label>' +
+          '<input id="g-search" class="cl-input" autocomplete="off" placeholder="Search by title or id...">' +
+          '<div id="g-results" class="gr-results is-hidden"></div>' +
+        '</div>' +
+        '<div class="cl-field"><label for="g-depth">Depth</label><select id="g-depth" class="cl-select"><option value="1">1 hop</option><option value="2">2 hops</option><option value="3">3 hops</option></select></div>' +
+        '<div class="cl-field"><label for="g-pattern">Pattern</label><select id="g-pattern" class="cl-select"><option value="">All patterns</option><option value="decisions">decisions</option><option value="projects">projects</option><option value="preferences">preferences</option><option value="observations">observations</option><option value="references">references</option><option value="recommendations">recommendations</option><option value="reactions">reactions</option></select></div>' +
+        '<label class="gr-chip-btn is-on" for="g-pruned"><input id="g-pruned" type="checkbox"> Show pruned</label>' +
+      '</div>' +
+      '<div class="gr-filters" id="g-edge-filters">' +
+        '<span class="cl-label">Links</span>' +
+        EDGE_TYPES.map(function(t) {
+          return '<button type="button" class="gr-chip-btn is-on" data-edge-type="' + t + '"><span class="gr-dot gr-dot--' + t + '"></span>' + t + '</button>';
+        }).join('') +
+      '</div>' +
+    '</section>' +
     '<div id="g-status" class="cl-hint" role="status" aria-live="polite">Loading graph...</div>' +
-    '<div id="g-canvas" class="gr-wrap"></div>' +
-    '<div id="g-nodes" class="app-table-wrap"></div>';
+    '<div class="gr-shell">' +
+      '<div class="gr-wrap" id="g-canvas-wrap">' +
+        '<div class="gr-zoom">' +
+          '<button type="button" class="cl-btn cl-btn--sm" id="g-zin" aria-label="Zoom in">+</button>' +
+          '<button type="button" class="cl-btn cl-btn--sm" id="g-zout" aria-label="Zoom out">-</button>' +
+          '<button type="button" class="cl-btn cl-btn--sm" id="g-fit">Fit</button>' +
+        '</div>' +
+        '<div id="g-canvas"></div>' +
+      '</div>' +
+      '<aside class="cl-card gr-inspector" id="g-inspector"><p class="cl-hint">Select a node to inspect its full text, links, and MCP prompt.</p></aside>' +
+    '</div>';
 
   var depthEl = document.getElementById('g-depth');
-  depthEl.value = sp.get('depth') || '2';
+  depthEl.value = state.depth;
+  var patEl = document.getElementById('g-pattern');
+  var prunedEl = document.getElementById('g-pruned');
+  var searchEl = document.getElementById('g-search');
+  var resultsEl = document.getElementById('g-results');
+
+  function visibleGraph() {
+    if (!state.data) return { nodes: [], edges: [], adj: {} };
+    var nodes = state.data.nodes.filter(function(n) {
+      if (!state.showPruned && Number(n.confidence) < 0.15 && n.id !== state.data.center) return false;
+      if (state.pattern && (n.pattern || n.kind) !== state.pattern && n.id !== state.data.center) return false;
+      return true;
+    });
+    var keep = {};
+    nodes.forEach(function(n) { keep[n.id] = n; });
+    var edges = state.data.edges.filter(function(e) {
+      var t = EDGE_TYPES.indexOf(e.type) >= 0 ? e.type : 'relates';
+      return keep[e.src] && keep[e.dst] && activeEdges[t];
+    });
+    var adj = {};
+    nodes.forEach(function(n) { adj[n.id] = []; });
+    edges.forEach(function(e) {
+      adj[e.src].push({ id: e.dst, type: e.type, dir: '->' });
+      adj[e.dst].push({ id: e.src, type: e.type, dir: '<-' });
+    });
+    return { nodes: nodes, edges: edges, adj: adj, byId: keep };
+  }
+
+  function runLayout(nodes, edges, centerId) {
+    var pos = {};
+    var vel = {};
+    var W = 960, H = 580, cx = W / 2, cy = H / 2;
+    nodes.forEach(function(n, i) {
+      if (n.id === centerId) {
+        pos[n.id] = { x: cx, y: cy };
+      } else {
+        var ang = i * 2.3999632;
+        var rad = 65 + Math.sqrt(i + 1) * 42;
+        pos[n.id] = { x: cx + Math.cos(ang) * rad * 1.25, y: cy + Math.sin(ang) * rad };
+      }
+      vel[n.id] = { x: 0, y: 0 };
+    });
+    var nCount = nodes.length;
+    var ticks = nCount > 180 ? 55 : (nCount > 80 ? 85 : 120);
+    var repulse = nCount > 120 ? 2200 : 3400;
+    var springLen = nCount > 120 ? 95 : 125;
+    for (var t = 0; t < ticks; t++) {
+      var cool = 1 - (t / ticks) * 0.72;
+      for (var i = 0; i < nCount; i++) {
+        var a = nodes[i].id, pa = pos[a];
+        for (var j = i + 1; j < nCount; j++) {
+          var b = nodes[j].id, pb = pos[b];
+          var dx = pa.x - pb.x, dy = pa.y - pb.y;
+          var d2 = dx * dx + dy * dy + 25;
+          var f = repulse / d2;
+          var dist = Math.sqrt(d2);
+          var fx = (dx / dist) * f, fy = (dy / dist) * f;
+          vel[a].x += fx; vel[a].y += fy;
+          vel[b].x -= fx; vel[b].y -= fy;
+        }
+      }
+      for (var k = 0; k < edges.length; k++) {
+        var ed = edges[k];
+        var p1 = pos[ed.src], p2 = pos[ed.dst];
+        if (!p1 || !p2) continue;
+        var ex = p2.x - p1.x, ey = p2.y - p1.y;
+        var d = Math.sqrt(ex * ex + ey * ey) || 1;
+        var pull = (d - springLen) * 0.045;
+        var ux = (ex / d) * pull, uy = (ey / d) * pull;
+        vel[ed.src].x += ux; vel[ed.src].y += uy;
+        vel[ed.dst].x -= ux; vel[ed.dst].y -= uy;
+      }
+      for (var m = 0; m < nCount; m++) {
+        var id = nodes[m].id;
+        vel[id].x += (cx - pos[id].x) * 0.012;
+        vel[id].y += (cy - pos[id].y) * 0.012;
+        vel[id].x *= 0.78;
+        vel[id].y *= 0.78;
+        var step = Math.sqrt(vel[id].x * vel[id].x + vel[id].y * vel[id].y);
+        if (step > 28) {
+          vel[id].x = (vel[id].x / step) * 28;
+          vel[id].y = (vel[id].y / step) * 28;
+        }
+        if (id !== centerId) {
+          pos[id].x += vel[id].x * cool;
+          pos[id].y += vel[id].y * cool;
+        }
+      }
+    }
+    state.pos = pos;
+    fitView(nodes);
+  }
+
+  function fitView(nodes) {
+    if (!nodes || !nodes.length) {
+      state.viewBox = { x: 0, y: 0, w: 960, h: 580 };
+      return;
+    }
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    nodes.forEach(function(n) {
+      var p = state.pos[n.id];
+      if (!p) return;
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    });
+    var pad = 90;
+    var w = Math.max(420, (maxX - minX) + pad * 2);
+    var h = Math.max(260, (maxY - minY) + pad * 2);
+    var aspect = 960 / 580;
+    if (w / h > aspect) h = w / aspect;
+    else w = h * aspect;
+    state.viewBox = {
+      x: ((minX + maxX) / 2) - w / 2,
+      y: ((minY + maxY) / 2) - h / 2,
+      w: w,
+      h: h
+    };
+  }
+
+  function renderInspector(vg) {
+    var box = document.getElementById('g-inspector');
+    var n = vg.byId[state.selected] || vg.byId[state.data && state.data.center] || vg.nodes[0];
+    if (!n) {
+      box.innerHTML = '<p class="cl-hint">No visible nodes match these filters.</p>';
+      return;
+    }
+    state.selected = n.id;
+    var links = vg.adj[n.id] || [];
+    var linksHtml = links.length
+      ? '<div class="gr-ins-links">' + links.map(function(l) {
+          var target = vg.byId[l.id];
+          var label = target ? (target.title || l.id) : l.id;
+          return '<button type="button" class="gr-ins-link" data-pick="' + esc(l.id) + '"><span>' + esc(label.slice(0, 48)) + '</span><code>' + esc(l.type) + '</code></button>';
+        }).join('') + '</div>'
+      : '<p class="cl-hint">No visible links on this node.</p>';
+    var mcpPrompt = 'In Clyde, call get_entry with id "' + n.id + '", or link a new note to it via remember with links: [{"type": "relates", "to": "' + n.id + '"}].';
+    box.innerHTML =
+      '<div class="app-meta">' +
+        '<span class="cl-chip">' + esc(n.pattern || n.kind) + '</span>' +
+        (n.project ? '<span class="cl-chip cl-chip--carbon">' + esc(n.project) + '</span>' : '') +
+        '<span class="cl-memory__conf">' + confText(n.confidence) + '</span>' +
+      '</div>' +
+      '<h3>' + esc(n.title || n.id) + '</h3>' +
+      (n.body ? '<p class="gr-ins-body">' + esc(n.body) + '</p>' : '') +
+      '<div class="app-actions">' +
+        (n.id !== state.data.center ? '<button type="button" class="cl-btn cl-btn--primary cl-btn--sm" id="g-recenter">Re-center here</button>' : '') +
+        '<a class="cl-btn cl-btn--sm" href="/entries/' + encodeURIComponent(n.id) + '">Open full note</a>' +
+        '<button type="button" class="cl-btn cl-btn--sm" data-copy="' + esc(mcpPrompt) + '">Copy MCP prompt</button>' +
+      '</div>' +
+      '<div><span class="cl-label">Connected notes (' + links.length + ')</span>' + linksHtml + '</div>';
+
+    var rec = document.getElementById('g-recenter');
+    if (rec) rec.addEventListener('click', function() {
+      state.center = n.id;
+      history.replaceState(null, '', '/graph?center=' + encodeURIComponent(n.id) + '&depth=' + encodeURIComponent(state.depth));
+      load();
+    });
+    box.querySelectorAll('[data-pick]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        state.selected = btn.getAttribute('data-pick');
+        draw();
+      });
+    });
+  }
+
+  function applySpotlight(svg, vg) {
+    var focusId = state.hovered;
+    var nb = {};
+    if (focusId) {
+      nb[focusId] = true;
+      (vg.adj[focusId] || []).forEach(function(l) { nb[l.id] = true; });
+    }
+    svg.querySelectorAll('.gr-node').forEach(function(el) {
+      var id = el.getAttribute('data-node');
+      el.classList.toggle('is-dim', Boolean(focusId && !nb[id]));
+      el.classList.toggle('is-hi', Boolean(focusId && nb[id]));
+    });
+    svg.querySelectorAll('.gr-edge').forEach(function(el) {
+      var s = el.getAttribute('data-src'), d = el.getAttribute('data-dst');
+      var hit = focusId && (s === focusId || d === focusId);
+      el.classList.toggle('is-dim', Boolean(focusId && !hit));
+      el.classList.toggle('is-hi', Boolean(hit));
+    });
+  }
+
+  function draw() {
+    var vg = visibleGraph();
+    var canvas = document.getElementById('g-canvas');
+    var st = document.getElementById('g-status');
+    var total = state.data ? (state.data.total_notes || state.data.nodes.length) : 0;
+    st.textContent = vg.nodes.length + ' of ' + total + (total === 1 ? ' note, ' : ' notes, ') + vg.edges.length + (vg.edges.length === 1 ? ' link' : ' links') +
+      (state.data && state.data.nodes.length >= 300 ? ' (300-node cap)' : '') + ' · Drag background to pan, scroll to zoom, drag any node to rearrange.';
+
+    if (!vg.nodes.length) {
+      canvas.innerHTML = '<div class="cl-empty"><p class="cl-empty__title">No notes in the graph yet</p><p class="cl-empty__text">Once your agents save notes over MCP, they appear here.</p></div>';
+      renderInspector(vg);
+      return;
+    }
+
+    var zoomedIn = state.viewBox.w < 720;
+    var edgesSvg = vg.edges.map(function(ed) {
+      var a = state.pos[ed.src], b = state.pos[ed.dst];
+      if (!a || !b) return '';
+      var t = EDGE_TYPES.indexOf(ed.type) >= 0 ? ed.type : 'relates';
+      return '<line class="gr-edge gr-edge--' + t + '" data-src="' + esc(ed.src) + '" data-dst="' + esc(ed.dst) + '" x1="' + a.x.toFixed(1) + '" y1="' + a.y.toFixed(1) + '" x2="' + b.x.toFixed(1) + '" y2="' + b.y.toFixed(1) + '"></line>';
+    }).join('');
+
+    var nodesSvg = vg.nodes.map(function(n) {
+      var p = state.pos[n.id] || { x: 480, y: 290 };
+      var isCenter = n.id === state.data.center;
+      var isSel = n.id === state.selected;
+      var deg = (vg.adj[n.id] || []).length;
+      var r = isCenter ? 13 : Math.min(13, 6 + Math.sqrt(deg) * 2.1);
+      var pat = ['decisions','projects','preferences','observations','references','recommendations','reactions'].indexOf(n.pattern) >= 0 ? n.pattern : 'other';
+      var showLbl = isCenter || isSel || zoomedIn || vg.nodes.length <= 28 || deg >= 4;
+      var cls = 'gr-node gr-node--' + pat + (isCenter ? ' is-center' : '') + (isSel ? ' is-selected' : '') +
+        (Number(n.confidence) < 0.15 ? ' is-dormant' : '') + (showLbl ? '' : ' is-label-hide');
+      var label = String(n.title || n.id).slice(0, 30);
+      return '<g class="' + cls + '" data-node="' + esc(n.id) + '" tabindex="0" role="button" aria-label="' + esc((n.title || n.id) + ', ' + confText(n.confidence)) + '">' +
+        '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="' + r.toFixed(1) + '"></circle>' +
+        '<text x="' + (p.x + r + 5).toFixed(1) + '" y="' + (p.y + 4).toFixed(1) + '">' + esc(label) + '</text>' +
+      '</g>';
+    }).join('');
+
+    var vb = state.viewBox;
+    canvas.innerHTML =
+      '<svg class="gr-svg" id="g-svg" viewBox="' + vb.x.toFixed(1) + ' ' + vb.y.toFixed(1) + ' ' + vb.w.toFixed(1) + ' ' + vb.h.toFixed(1) +
+      '" role="group" aria-label="Note neighborhood graph"><title>Note neighborhood graph</title>' + edgesSvg + nodesSvg + '</svg>';
+
+    var svg = document.getElementById('g-svg');
+    var dragNode = null, panning = false, startPt = null, startVb = null, moved = false;
+
+    function toSvgPoint(ev) {
+      var rect = svg.getBoundingClientRect();
+      return {
+        x: state.viewBox.x + ((ev.clientX - rect.left) / rect.width) * state.viewBox.w,
+        y: state.viewBox.y + ((ev.clientY - rect.top) / rect.height) * state.viewBox.h
+      };
+    }
+
+    function setVb() {
+      svg.setAttribute('viewBox', state.viewBox.x.toFixed(1) + ' ' + state.viewBox.y.toFixed(1) + ' ' + state.viewBox.w.toFixed(1) + ' ' + state.viewBox.h.toFixed(1));
+    }
+
+    svg.addEventListener('pointerdown', function(ev) {
+      var g = ev.target && ev.target.closest ? ev.target.closest('.gr-node') : null;
+      moved = false;
+      if (g) {
+        dragNode = g.getAttribute('data-node');
+        svg.setPointerCapture(ev.pointerId);
+      } else {
+        panning = true;
+        startPt = { x: ev.clientX, y: ev.clientY };
+        startVb = { x: state.viewBox.x, y: state.viewBox.y, w: state.viewBox.w, h: state.viewBox.h };
+        svg.classList.add('is-panning');
+        svg.setPointerCapture(ev.pointerId);
+      }
+    });
+
+    svg.addEventListener('pointermove', function(ev) {
+      if (dragNode) {
+        moved = true;
+        var pt = toSvgPoint(ev);
+        state.pos[dragNode] = { x: pt.x, y: pt.y };
+        var g = svg.querySelector('.gr-node[data-node="' + CSS.escape(dragNode) + '"]');
+        if (g) {
+          var c = g.querySelector('circle'), tx = g.querySelector('text');
+          var r = Number(c.getAttribute('r') || 7);
+          c.setAttribute('cx', pt.x.toFixed(1));
+          c.setAttribute('cy', pt.y.toFixed(1));
+          tx.setAttribute('x', (pt.x + r + 5).toFixed(1));
+          tx.setAttribute('y', (pt.y + 4).toFixed(1));
+        }
+        svg.querySelectorAll('.gr-edge').forEach(function(line) {
+          if (line.getAttribute('data-src') === dragNode) {
+            line.setAttribute('x1', pt.x.toFixed(1));
+            line.setAttribute('y1', pt.y.toFixed(1));
+          }
+          if (line.getAttribute('data-dst') === dragNode) {
+            line.setAttribute('x2', pt.x.toFixed(1));
+            line.setAttribute('y2', pt.y.toFixed(1));
+          }
+        });
+      } else if (panning && startPt && startVb) {
+        var rect = svg.getBoundingClientRect();
+        var dx = ((ev.clientX - startPt.x) / rect.width) * startVb.w;
+        var dy = ((ev.clientY - startPt.y) / rect.height) * startVb.h;
+        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) moved = true;
+        state.viewBox.x = startVb.x - dx;
+        state.viewBox.y = startVb.y - dy;
+        setVb();
+      }
+    });
+
+    svg.addEventListener('pointerup', function(ev) {
+      if (dragNode && !moved) {
+        state.selected = dragNode;
+        draw();
+      }
+      dragNode = null;
+      panning = false;
+      svg.classList.remove('is-panning');
+    });
+
+    svg.addEventListener('wheel', function(ev) {
+      ev.preventDefault();
+      var factor = ev.deltaY > 0 ? 1.16 : 0.86;
+      var pt = toSvgPoint(ev);
+      var nw = Math.max(180, Math.min(4800, state.viewBox.w * factor));
+      var nh = nw * (580 / 960);
+      state.viewBox.x = pt.x - (pt.x - state.viewBox.x) * (nw / state.viewBox.w);
+      state.viewBox.y = pt.y - (pt.y - state.viewBox.y) * (nh / state.viewBox.h);
+      state.viewBox.w = nw;
+      state.viewBox.h = nh;
+      setVb();
+    }, { passive: false });
+
+    svg.querySelectorAll('.gr-node').forEach(function(el) {
+      el.addEventListener('pointerenter', function() {
+        state.hovered = el.getAttribute('data-node');
+        applySpotlight(svg, vg);
+      });
+      el.addEventListener('pointerleave', function() {
+        state.hovered = null;
+        applySpotlight(svg, vg);
+      });
+      el.addEventListener('keydown', function(ev) {
+        if (ev.key === 'Enter' || ev.key === ' ') {
+          ev.preventDefault();
+          state.selected = el.getAttribute('data-node');
+          draw();
+        }
+      });
+    });
+
+    renderInspector(vg);
+  }
 
   async function load() {
     var qs = new URLSearchParams();
-    var c = document.getElementById('g-center').value.trim();
-    if (c) qs.set('center', c);
-    qs.set('depth', depthEl.value || '2');
+    if (state.center) qs.set('center', state.center);
+    qs.set('depth', state.depth || '2');
     try {
-      var d = await api('/me/graph?' + qs.toString());
-      var st = document.getElementById('g-status');
-      st.textContent = d.nodes.length + (d.nodes.length === 1 ? ' node, ' : ' nodes, ') + d.edges.length + (d.edges.length === 1 ? ' link' : ' links') + (d.center ? ' around ' + d.center : '') + (d.nodes.length >= 300 ? ' (300-node cap)' : '');
-      if (!d.nodes.length) {
-        document.getElementById('g-canvas').innerHTML = '<div class="cl-empty"><p class="cl-empty__title">No notes in the graph yet</p><p class="cl-empty__text">Once your agents or apps save notes, their links appear here.</p></div>';
-        document.getElementById('g-nodes').innerHTML = '';
-        return;
-      }
-      var pos = {};
-      var cx = 420, cy = 260;
-      pos[d.center] = { x: cx, y: cy };
-      var ring = d.nodes.filter(function(n) { return n.id !== d.center; });
-      ring.forEach(function(n, idx) {
-        var r = idx < 12 ? 125 : (idx < 48 ? 205 : 240);
-        var angle = (idx * 2.399963);
-        pos[n.id] = { x: Math.round(cx + Math.cos(angle) * r * 1.45), y: Math.round(cy + Math.sin(angle) * r) };
-      });
-      var edgesSvg = d.edges.map(function(ed) {
-        var a = pos[ed.src], b = pos[ed.dst];
-        if (!a || !b) return '';
-        return '<line class="gr-edge" x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '"></line>';
-      }).join('');
-      var nodesSvg = d.nodes.map(function(n) {
-        var p = pos[n.id] || { x: cx, y: cy };
-        var isCenter = n.id === d.center;
-        var cls = 'gr-node' + (isCenter ? ' is-center' : '') + (Number(n.confidence) < 0.15 ? ' is-dormant' : '');
-        var r = isCenter ? 11 : 7;
-        var label = String(n.title || n.id).slice(0, 26);
-        return '<a href="/entries/' + encodeURIComponent(n.id) + '" class="' + cls + '" data-node="' + esc(n.id) + '" aria-label="' + esc((n.title || n.id) + ', ' + confText(n.confidence)) + '">' +
-          '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + r + '"></circle>' +
-          '<text x="' + (p.x + 12) + '" y="' + (p.y + 4) + '">' + esc(label) + '</text>' +
-        '</a>';
-      }).join('');
-      document.getElementById('g-canvas').innerHTML =
-        '<svg class="gr-svg" viewBox="0 0 840 520" role="group" aria-label="Note neighborhood graph"><title>Note neighborhood graph</title>' + edgesSvg + nodesSvg + '</svg>';
-      document.getElementById('g-nodes').innerHTML =
-        '<table class="app-table"><thead><tr><th>Note</th><th>Kind</th><th>Confidence</th></tr></thead><tbody>' +
-        d.nodes.map(function(n) {
-          return '<tr><td><a class="cl-link" href="/entries/' + encodeURIComponent(n.id) + '">' + esc(n.title || n.id) + '</a></td><td>' + esc(n.pattern || n.kind) + '</td><td>' + confText(n.confidence) + '</td></tr>';
-        }).join('') + '</tbody></table>';
+      state.data = await api('/me/graph?' + qs.toString());
+      state.selected = state.data.center;
+      runLayout(state.data.nodes || [], state.data.edges || [], state.data.center);
+      draw();
     } catch (err) {
       document.getElementById('g-status').textContent = err.message;
     }
   }
 
-  document.getElementById('g-form').addEventListener('submit', function(e) {
-    e.preventDefault();
-    load();
+  depthEl.addEventListener('change', function() { state.depth = depthEl.value; load(); });
+  patEl.addEventListener('change', function() { state.pattern = patEl.value; draw(); });
+  prunedEl.addEventListener('change', function() { state.showPruned = prunedEl.checked; draw(); });
+  document.querySelectorAll('[data-edge-type]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var t = btn.getAttribute('data-edge-type');
+      activeEdges[t] = !activeEdges[t];
+      btn.classList.toggle('is-on', activeEdges[t]);
+      draw();
+    });
   });
+
+  function zoomBy(factor) {
+    var cx = state.viewBox.x + state.viewBox.w / 2;
+    var cy = state.viewBox.y + state.viewBox.h / 2;
+    var nw = Math.max(180, Math.min(4800, state.viewBox.w * factor));
+    var nh = nw * (580 / 960);
+    state.viewBox = { x: cx - nw / 2, y: cy - nh / 2, w: nw, h: nh };
+    draw();
+  }
+  document.getElementById('g-zin').addEventListener('click', function() { zoomBy(0.78); });
+  document.getElementById('g-zout').addEventListener('click', function() { zoomBy(1.28); });
+  document.getElementById('g-fit').addEventListener('click', function() {
+    fitView(visibleGraph().nodes);
+    draw();
+  });
+
+  var searchTimer = null;
+  searchEl.addEventListener('input', function() {
+    clearTimeout(searchTimer);
+    var q = searchEl.value.trim();
+    if (!q) { resultsEl.classList.add('is-hidden'); resultsEl.innerHTML = ''; return; }
+    searchTimer = setTimeout(async function() {
+      try {
+        var d = await api('/me/entries?q=' + encodeURIComponent(q) + '&state=all');
+        var hits = (d.entries || []).slice(0, 8);
+        if (!hits.length) {
+          resultsEl.innerHTML = '<div class="gr-res-btn"><span>No matching notes</span></div>';
+        } else {
+          resultsEl.innerHTML = hits.map(function(n) {
+            return '<button type="button" class="gr-res-btn" data-jump="' + esc(n.id) + '"><span>' + esc(n.title || n.id) + '</span>' +
+              '<span class="gr-res-meta">' + esc(n.pattern || n.kind) + ' · ' + confText(n.confidence) + '</span></button>';
+          }).join('');
+        }
+        resultsEl.classList.remove('is-hidden');
+        resultsEl.querySelectorAll('[data-jump]').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            state.center = btn.getAttribute('data-jump');
+            searchEl.value = '';
+            resultsEl.classList.add('is-hidden');
+            history.replaceState(null, '', '/graph?center=' + encodeURIComponent(state.center) + '&depth=' + encodeURIComponent(state.depth));
+            load();
+          });
+        });
+      } catch (e) {}
+    }, 180);
+  });
+  if (document.addEventListener) document.addEventListener('click', function(ev) {
+    if (!searchEl.contains(ev.target) && !resultsEl.contains(ev.target)) resultsEl.classList.add('is-hidden');
+  });
+
   await load();
 }
 
 async function renderQuests() {
   root.innerHTML =
-    '<form id="q-post" class="cl-card app-form">' +
-      '<h2 class="cl-title-3">Post a quest</h2>' +
-      '<div id="q-msg" class="is-hidden"></div>' +
-      '<div class="app-form-row">' +
-        '<div class="cl-field"><label for="qt-title">Title</label><input id="qt-title" class="cl-input" required maxlength="120" placeholder="Short task title (up to 120 chars)"></div>' +
-        '<div class="cl-field"><label for="qt-pri">Priority</label><select id="qt-pri" class="cl-select"><option value="normal">normal</option><option value="high">high</option><option value="urgent">urgent</option><option value="low">low</option></select></div>' +
-        '<div class="cl-field"><label for="qt-ctx">Context</label><select id="qt-ctx" class="cl-select"><option value="both">both</option><option value="work">work</option><option value="home">home</option><option value="hobby">hobby</option><option value="personal">personal</option></select></div>' +
-      '</div>' +
-      '<div class="cl-field"><label for="qt-brief">Brief</label><textarea id="qt-brief" class="cl-textarea" required maxlength="500" placeholder="Describe what needs doing (up to 500 chars)"></textarea></div>' +
-      '<div class="cl-field"><label for="qt-done">Done when</label><input id="qt-done" class="cl-input" required maxlength="300" placeholder="Check or command that proves it is done (up to 300 chars)"></div>' +
-      '<div class="app-form-row">' +
-        '<div class="cl-field"><label for="qt-types">Target agent types (comma-separated)</label><input id="qt-types" class="cl-input" placeholder="coding, review"></div>' +
-        '<div class="cl-field"><label for="qt-repo">Target repo</label><input id="qt-repo" class="cl-input" placeholder="owner/repo or project slug"></div>' +
-      '</div>' +
-      '<div class="app-actions"><button type="submit" class="cl-btn cl-btn--primary">Post quest</button></div>' +
-    '</form>' +
+    mcpCard(
+      'Post a quest through your agent',
+      'Agents post, claim, update, and finish quests over MCP so every handoff keeps its evidence.',
+      'post_quest',
+      'Call Clyde post_quest with title "<short task>", brief "<what to do and why>", done_when "<check that proves completion>", priority "normal", context "both".',
+      true
+    ) +
     '<div id="q-board" class="app-cols-3">' +
       '<section class="app-qcol"><div class="app-qcol-head"><h2 class="cl-title-3">Open</h2><span class="cl-chip" id="cnt-open">0</span></div><div id="col-open" class="app-grid"></div></section>' +
       '<section class="app-qcol"><div class="app-qcol-head"><h2 class="cl-title-3">Claimed</h2><span class="cl-chip" id="cnt-claimed">0</span></div><div id="col-claimed" class="app-grid"></div></section>' +
       '<section class="app-qcol"><div class="app-qcol-head"><h2 class="cl-title-3">Done</h2><span class="cl-chip" id="cnt-done">0</span></div><div id="col-done" class="app-grid"></div></section>' +
     '</div>';
 
-  async function load() {
-    var results = await Promise.all([api('/me/quests'), api('/me/agents')]);
-    var qData = results[0], aData = results[1];
-    var nickByAgent = {};
-    (aData.agents || []).forEach(function(a) {
-      nickByAgent[a.name] = a.nickname || a.name;
-    });
-    var groups = { open: [], claimed: [], done: [] };
-    (qData.quests || []).forEach(function(q) {
-      if (q.state === 'open') groups.open.push(q);
-      else if (q.state === 'claimed') groups.claimed.push(q);
-      else groups.done.push(q);
-    });
-    ['open', 'claimed', 'done'].forEach(function(col) {
-      document.getElementById('cnt-' + col).textContent = String(groups[col].length);
-      var el = document.getElementById('col-' + col);
-      el.innerHTML = groups[col].length ? groups[col].map(function(q) {
-        var claimant = q.claimed_by ? (nickByAgent[q.claimed_by] || q.claimed_by) : '';
-        return '<article class="cl-quest' + (col === 'done' ? ' is-done' : '') + '">' +
-          '<div class="cl-quest__stub"><span class="cl-quest__no">#' + esc(q.id) + '</span><span class="cl-quest__pri' + (['urgent', 'high'].includes(q.priority) ? ' is-high' : '') + '">' + esc(q.priority) + '</span></div>' +
-          '<div class="cl-quest__main">' +
-            '<div class="cl-quest__head"><h3 class="cl-quest__title">' + esc(q.title) + '</h3>' +
-            (q.unmatched ? '<span class="cl-chip cl-chip--warn">No matching agent</span>' : '') +
-            '<span class="cl-stamp">' + esc(q.state) + '</span></div>' +
-            '<p class="cl-quest__brief">' + esc(q.brief) + '</p>' +
-            '<div class="cl-quest__done"><strong>Done when:</strong> ' + esc(q.done_when) + '</div>' +
-            '<div class="cl-quest__for">' +
-              (claimant ? 'Claimed by <b>' + esc(claimant) + '</b>' : 'For <b>' + esc(q.assignee || 'any') + '</b>') +
-              (q.project ? ' · ' + esc(q.project) : '') +
-            '</div>' +
-          '</div>' +
-        '</article>';
-      }).join('') : '<p class="cl-hint">No ' + col + ' quests.</p>';
-    });
-  }
-
-  var msg = document.getElementById('q-msg');
-  document.getElementById('q-post').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    clearNotice(msg);
-    var types = document.getElementById('qt-types').value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-    var repo = document.getElementById('qt-repo').value.trim();
-    var target = {};
-    if (types.length) target.types = types;
-    if (repo) target.repo = repo;
-    try {
-      await api('/me/quests', {
-        method: 'POST',
-        body: JSON.stringify({
-          title: document.getElementById('qt-title').value,
-          brief: document.getElementById('qt-brief').value,
-          done_when: document.getElementById('qt-done').value,
-          priority: document.getElementById('qt-pri').value,
-          context: document.getElementById('qt-ctx').value,
-          target: target
-        })
-      });
-      document.getElementById('q-post').reset();
-      notice(msg, 'ok', 'Quest posted.');
-      await load();
-    } catch (err) { notice(msg, 'bad', err.message); }
+  var results = await Promise.all([api('/me/quests'), api('/me/agents')]);
+  var qData = results[0], aData = results[1];
+  var nickByAgent = {};
+  (aData.agents || []).forEach(function(a) {
+    nickByAgent[a.name] = a.nickname || a.name;
   });
-  await load();
+  var groups = { open: [], claimed: [], done: [] };
+  (qData.quests || []).forEach(function(q) {
+    if (q.state === 'open') groups.open.push(q);
+    else if (q.state === 'claimed') groups.claimed.push(q);
+    else groups.done.push(q);
+  });
+  ['open', 'claimed', 'done'].forEach(function(col) {
+    document.getElementById('cnt-' + col).textContent = String(groups[col].length);
+    var el = document.getElementById('col-' + col);
+    el.innerHTML = groups[col].length ? groups[col].map(function(q) {
+      var claimant = q.claimed_by ? (nickByAgent[q.claimed_by] || q.claimed_by) : '';
+      var claimPrompt = 'Call Clyde claim_quest with id ' + q.id + ', complete the task, save the result with remember, then call complete_quest.';
+      return '<article class="cl-quest' + (col === 'done' ? ' is-done' : '') + '">' +
+        '<div class="cl-quest__stub"><span class="cl-quest__no">#' + esc(q.id) + '</span><span class="cl-quest__pri' + (['urgent', 'high'].includes(q.priority) ? ' is-high' : '') + '">' + esc(q.priority) + '</span></div>' +
+        '<div class="cl-quest__main">' +
+          '<div class="cl-quest__head"><h3 class="cl-quest__title">' + esc(q.title) + '</h3>' +
+          (q.unmatched ? '<span class="cl-chip cl-chip--warn">No matching agent</span>' : '') +
+          '<span class="cl-stamp">' + esc(q.state) + '</span></div>' +
+          '<p class="cl-quest__brief">' + esc(q.brief) + '</p>' +
+          '<div class="cl-quest__done"><strong>Done when:</strong> ' + esc(q.done_when) + '</div>' +
+          '<div class="cl-quest__for">' +
+            (claimant ? 'Claimed by <b>' + esc(claimant) + '</b>' : 'For <b>' + esc(q.assignee || 'any') + '</b>') +
+            (q.project ? ' · ' + esc(q.project) : '') +
+          '</div>' +
+          (col === 'open' ? '<div class="app-actions"><button type="button" class="cl-btn cl-btn--sm" data-copy="' + esc(claimPrompt) + '">Copy claim prompt</button></div>' : '') +
+        '</div>' +
+      '</article>';
+    }).join('') : '<p class="cl-hint">No ' + col + ' quests.</p>';
+  });
 }
 
 async function renderAgents() {
-  root.innerHTML = '<div id="ag-msg" class="is-hidden"></div><section class="app-grid"><h2>Registered agents</h2><div id="ag-list" class="app-grid"></div></section>' +
-    '<section class="app-grid"><h2>Connected devices</h2><div id="dev-list" class="app-grid"></div></section>';
-  var msg = document.getElementById('ag-msg');
+  var sp = new URLSearchParams(location.search);
+  var connectMode = sp.get('connect') === '1';
+  root.innerHTML =
+    '<div id="ag-onb" class="app-grid"></div>' +
+    '<section class="app-grid"><h2 class="cl-title-2">Registered agents</h2><div id="ag-list" class="app-grid"></div></section>' +
+    '<section class="app-grid"><h2 class="cl-title-2">Connected devices</h2><div id="dev-list" class="app-grid"></div></section>';
 
-  async function load() {
-    var d = await Promise.all([api('/me/agents'), api('/me/devices')]);
-    var agents = d[0].agents || [], devices = d[1].devices || [];
-    document.getElementById('ag-list').innerHTML = agents.length ? agents.map(function(a, idx) {
-      return '<form class="cl-card app-form ag-form" data-name="' + esc(a.name) + '">' +
-        '<div class="app-meta"><strong>' + esc(a.name) + '</strong>' + (a.device ? '<span class="cl-chip">Device: ' + esc(a.device) + '</span>' : '') + '</div>' +
-        '<div class="app-form-row">' +
-          '<div class="cl-field"><label for="ag-nick-' + idx + '">Nickname</label><input id="ag-nick-' + idx + '" name="nickname" class="cl-input" value="' + esc(a.nickname || '') + '" placeholder="Lowercase slug, e.g. ada"></div>' +
-          '<div class="cl-field"><label for="ag-type-' + idx + '">Type</label><select id="ag-type-' + idx + '" name="type" class="cl-select">' +
-            ['coding','exploration','research','review','ops','assistant','other'].map(function(t) {
-              return '<option value="' + t + '"' + (a.type === t ? ' selected' : '') + '>' + t + '</option>';
-            }).join('') +
-          '</select></div>' +
-          '<div class="cl-field"><label for="ag-harness-' + idx + '">Harness</label><input id="ag-harness-' + idx + '" name="harness" class="cl-input" value="' + esc(a.harness || '') + '" placeholder="e.g. claude-code"></div>' +
-          '<div class="cl-field"><label for="ag-repos-' + idx + '">Repos</label><input id="ag-repos-' + idx + '" name="repos" class="cl-input" value="' + esc((a.repos || []).join(', ')) + '" placeholder="owner/repo, clyde"></div>' +
-        '</div>' +
-        '<div class="app-actions"><button type="submit" class="cl-btn cl-btn--primary cl-btn--sm">Save agent</button></div>' +
-      '</form>';
-    }).join('') : '<p class="cl-hint">No agents registered yet. Connect an app or start a CLI session so your first agent registers.</p>';
+  var results = await Promise.all([
+    mountOnboarding(document.getElementById('ag-onb'), connectMode),
+    api('/me/agents'),
+    api('/me/devices')
+  ]);
+  var agents = results[1].agents || [], devices = results[2].devices || [];
+  document.getElementById('ag-list').innerHTML = agents.length ? agents.map(function(a) {
+    var updatePrompt = 'Call Clyde register_agent with name "' + a.name + '", context "' + (a.context || 'both') + '", surface "' + (a.surface || 'Antigravity') +
+      '", description "' + (a.description || 'Coding and ops agent') + '", and update my nickname, type, harness, or repos as needed.';
+    return '<article class="cl-card agent-card">' +
+      '<div class="app-meta"><strong>' + esc(a.name) + '</strong>' +
+      (a.nickname ? '<span class="cl-chip cl-chip--carbon">@' + esc(a.nickname) + '</span>' : '') +
+      (a.type ? '<span class="cl-chip">' + esc(a.type) + '</span>' : '') +
+      (a.surface ? '<span class="cl-chip">' + esc(a.surface) + '</span>' : '') +
+      (a.harness ? '<span class="cl-chip">' + esc(a.harness) + '</span>' : '') +
+      (a.device ? '<span class="cl-chip">Device: ' + esc(a.device) + '</span>' : '') +
+      '</div>' +
+      (a.description ? '<p class="cl-hint">' + esc(a.description) + '</p>' : '') +
+      ((a.repos && a.repos.length) ? '<div class="app-meta"><span class="cl-label">Repos</span>' + a.repos.map(function(r) { return '<span class="cl-chip">' + esc(r) + '</span>'; }).join('') + '</div>' : '') +
+      '<div class="app-actions"><button type="button" class="cl-btn cl-btn--sm" data-copy="' + esc(updatePrompt) + '">Copy MCP update prompt</button></div>' +
+    '</article>';
+  }).join('') : '<p class="cl-hint">No agents registered yet. Follow Step 1 above to connect Claude or Antigravity.</p>';
 
-    document.getElementById('dev-list').innerHTML = devices.length ? devices.map(function(dv) {
-      return '<div class="cl-card app-actions"><strong>' + esc(dv.name) + '</strong>' +
-        '<span class="cl-chip">Hooks: ' + esc(dv.hooks || 'full') + '</span>' +
-        (dv.revoked_at ? '<span class="cl-chip cl-chip--bad">Revoked</span>' : '<button type="button" class="cl-btn cl-btn--danger cl-btn--sm dev-rev" data-id="' + esc(dv.id) + '">Revoke device</button>') +
-      '</div>';
-    }).join('') : '<p class="cl-hint">No connected devices yet. Run the Clyde installer on a computer to add one.</p>';
-
-    document.querySelectorAll('.ag-form').forEach(function(form) {
-      form.addEventListener('submit', async function(e) {
-        e.preventDefault();
-        clearNotice(msg);
-        var name = form.getAttribute('data-name');
-        var repos = form.querySelector('[name="repos"]').value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-        try {
-          await api('/me/agents/' + encodeURIComponent(name), {
-            method: 'PATCH',
-            body: JSON.stringify({
-              nickname: form.querySelector('[name="nickname"]').value.trim() || null,
-              type: form.querySelector('[name="type"]').value,
-              harness: form.querySelector('[name="harness"]').value.trim() || null,
-              repos: repos
-            })
-          });
-          notice(msg, 'ok', 'Saved changes for ' + name + '.');
-          await load();
-        } catch (err) { notice(msg, 'bad', err.message); }
-      });
-    });
-
-    document.querySelectorAll('.dev-rev').forEach(function(btn) {
-      btn.addEventListener('click', async function() {
-        clearNotice(msg);
-        try {
-          await api('/me/devices/' + encodeURIComponent(btn.getAttribute('data-id')), { method: 'DELETE' });
-          notice(msg, 'ok', 'Device revoked. Tokens for this device no longer work.');
-          await load();
-        } catch (err) { notice(msg, 'bad', err.message); }
-      });
-    });
-  }
-  await load();
+  document.getElementById('dev-list').innerHTML = devices.length ? devices.map(function(dv) {
+    return '<div class="cl-card app-actions"><strong>' + esc(dv.name) + '</strong>' +
+      '<span class="cl-chip">Hooks: ' + esc(dv.hooks || 'full') + '</span>' +
+      (dv.revoked_at ? '<span class="cl-chip cl-chip--bad">Revoked</span>' : '<span class="cl-state cl-state--settled">Active</span>') +
+    '</div>';
+  }).join('') : '<p class="cl-hint">No connected devices yet. Run the installer on a computer to add one.</p>';
 }
 
 async function renderApps() {
-  root.innerHTML = '<div id="apps-msg" class="is-hidden"></div><div id="apps-list" class="app-grid"></div>';
-  var msg = document.getElementById('apps-msg');
-  async function load() {
-    var d = await api('/me/apps');
-    var list = d.apps || [];
-    document.getElementById('apps-list').innerHTML = list.length ? list.map(function(a) {
-      return '<div class="cl-card app-actions"><div><strong>' + esc(a.name || a.id) + '</strong> <span class="cl-mono">(' + esc(a.id) + ')</span></div>' +
-        '<button type="button" class="cl-btn cl-btn--danger cl-btn--sm app-rev" data-id="' + esc(a.id) + '">Revoke access</button></div>';
-    }).join('') : '<div class="cl-empty"><p class="cl-empty__title">No connected apps</p><p class="cl-empty__text">Approve Clyde inside Claude, ChatGPT, Gemini, Grok, or Antigravity to see OAuth grants here.</p></div>';
-
-    document.querySelectorAll('.app-rev').forEach(function(btn) {
-      btn.addEventListener('click', async function() {
-        clearNotice(msg);
-        try {
-          await api('/me/apps/' + encodeURIComponent(btn.getAttribute('data-id')), { method: 'DELETE' });
-          notice(msg, 'ok', 'App access revoked.');
-          await load();
-        } catch (err) { notice(msg, 'bad', err.message); }
-      });
-    });
-  }
-  await load();
+  root.innerHTML =
+    '<div id="apps-list" class="app-grid"></div>' +
+    mcpCard(
+      'Connect another app',
+      'Add Clyde as a custom MCP connector in Claude, ChatGPT, Gemini, Grok, or Antigravity using this URL.',
+      'MCP server URL',
+      MCP_ENDPOINT,
+      false
+    );
+  var d = await api('/me/apps');
+  var list = d.apps || [];
+  document.getElementById('apps-list').innerHTML = list.length ? list.map(function(a) {
+    return '<div class="cl-card app-actions"><div><strong>' + esc(a.name || a.id) + '</strong> <span class="cl-mono">(' + esc(a.id) + ')</span></div>' +
+      '<span class="cl-state cl-state--settled">Connected</span></div>';
+  }).join('') : '<div class="cl-empty"><p class="cl-empty__title">No connected apps</p><p class="cl-empty__text">Approve Clyde inside Claude, ChatGPT, Gemini, Grok, or Antigravity to see OAuth grants here.</p></div>';
 }
 
 var METER_LABEL = {
@@ -812,161 +1388,63 @@ var METER_LABEL = {
 };
 
 async function renderUsage() {
-  root.innerHTML = '<div id="u-msg" class="is-hidden"></div><div id="u-summary" class="cl-card app-grid"></div>' +
-    '<div id="u-meters" class="meter-list"></div>' +
-    '<form id="u-limit-form" class="cl-card app-form">' +
-      '<h2 class="cl-title-3">Monthly spend limit</h2>' +
-      '<p class="cl-hint">Set the monthly overage spend limit for the Clyde plan, from $0 to $500 USD in whole dollars.</p>' +
-      '<div class="app-actions"><div class="cl-field"><label for="u-dollars">Limit (USD)</label>' +
-      '<input id="u-dollars" type="number" min="0" max="500" step="1" class="cl-input" required></div>' +
-      '<button type="submit" class="cl-btn cl-btn--primary">Save spend limit</button></div>' +
-    '</form>';
-
-  var msg = document.getElementById('u-msg');
+  root.innerHTML = '<div id="u-summary" class="cl-card app-grid"></div><div id="u-meters" class="meter-list"></div>';
   var PLAN_NAME = { free: 'Free', starter: 'Starter', clyde: 'Clyde', owner: 'Owner', none: 'None' };
   var STATE_NAME = { paid: 'Paid', past_due: 'Past due', comp: 'Comp', lapsed: 'Lapsed', refunded: 'Refunded', blocked: 'Blocked' };
-  async function load() {
-    var d = await api('/me/usage');
-    var s = readSession();
-    var limitDollars = d.spend_limit_cents == null ? 0 : (Number(d.spend_limit_cents) / 100);
-    document.getElementById('u-dollars').value = String(Math.round(limitDollars));
-    document.getElementById('u-limit-form').classList.toggle('is-hidden', !d.overage);
-    var actions = '';
-    if (s && s.user_id && d.plan !== 'owner' && d.state !== 'paid') {
-      actions = '<div class="app-actions">' +
-        '<a class="cl-btn cl-btn--primary cl-btn--sm" href="/billing/checkout?owner=' + encodeURIComponent(s.user_id) + '&amp;plan=starter">Subscribe to Starter ($2.99/mo)</a>' +
-        '<a class="cl-btn cl-btn--sm" href="/billing/checkout?owner=' + encodeURIComponent(s.user_id) + '&amp;plan=clyde">Subscribe to Clyde ($12.99/mo)</a>' +
-      '</div>';
-    } else if (d.state === 'paid' && d.plan === 'starter') {
-      actions = '<div class="app-actions">' +
-        '<button type="button" class="cl-btn cl-btn--primary cl-btn--sm" id="u-up-open">Upgrade to Clyde ($12.99/mo)</button>' +
-      '</div>' +
-      '<div id="u-up-confirm" class="app-actions is-hidden">' +
-        '<span class="cl-hint">Upgrade to Clyde ($12.99/mo, prorated difference billed today)?</span>' +
-        '<button type="button" class="cl-btn cl-btn--primary cl-btn--sm" id="u-up-go">Upgrade to Clyde</button>' +
-        '<button type="button" class="cl-btn cl-btn--sm" id="u-up-cancel">Keep Starter</button>' +
-      '</div>';
-    }
-    if (d.state === 'paid' && d.cancel_at_period_end) {
-      actions += '<p class="cl-hint">Your subscription ends at the close of this billing period.</p>';
-    }
-    var statusText = d.state === 'paid' && d.cancel_at_period_end
-      ? 'Canceling at period end'
-      : (STATE_NAME[d.state] || d.state || (d.plan === 'free' ? 'Free seat' : 'No active plan'));
-    var capChip = d.plan === 'owner'
-      ? '<span class="cl-chip">Limits: unlimited</span>'
-      : d.plan === 'none'
-      ? '<span class="cl-chip">Access: subscription required</span>'
-      : d.overage
-      ? '<span class="cl-chip">Spend limit: $' + limitDollars.toFixed(2) + '</span>'
-      : '<span class="cl-chip">Caps: hard limits (no overage)</span>';
-    document.getElementById('u-summary').innerHTML =
-      '<div class="app-meta"><span class="cl-chip cl-chip--carbon">Plan: ' + esc(PLAN_NAME[d.plan] || d.plan) + '</span>' +
-      '<span class="cl-chip">Status: ' + esc(statusText) + '</span>' +
-      '<span class="cl-chip">Period: ' + esc(d.period) + '</span>' +
-      capChip +
-      '</div>' + actions;
+  var d = await api('/me/usage');
+  var limitDollars = d.spend_limit_cents == null ? 0 : (Number(d.spend_limit_cents) / 100);
+  var statusText = d.state === 'paid' && d.cancel_at_period_end
+    ? 'Canceling at period end'
+    : (STATE_NAME[d.state] || d.state || (d.plan === 'free' ? 'Free seat' : 'No active plan'));
+  var capChip = d.plan === 'owner'
+    ? '<span class="cl-chip">Limits: unlimited</span>'
+    : d.plan === 'none'
+    ? '<span class="cl-chip">Access: subscription required</span>'
+    : d.overage
+    ? '<span class="cl-chip">Spend limit: $' + limitDollars.toFixed(2) + '</span>'
+    : '<span class="cl-chip">Caps: hard limits (no overage)</span>';
+  document.getElementById('u-summary').innerHTML =
+    '<div class="app-meta"><span class="cl-chip cl-chip--carbon">Plan: ' + esc(PLAN_NAME[d.plan] || d.plan) + '</span>' +
+    '<span class="cl-chip">Status: ' + esc(statusText) + '</span>' +
+    '<span class="cl-chip">Period: ' + esc(d.period) + '</span>' +
+    capChip +
+    '</div>';
 
-    var upOpen = document.getElementById('u-up-open');
-    var upConfirm = document.getElementById('u-up-confirm');
-    if (upOpen && upConfirm) {
-      upOpen.addEventListener('click', function() {
-        upConfirm.classList.remove('is-hidden');
-        upOpen.classList.add('is-hidden');
-      });
-      document.getElementById('u-up-cancel').addEventListener('click', function() {
-        upConfirm.classList.add('is-hidden');
-        upOpen.classList.remove('is-hidden');
-      });
-      document.getElementById('u-up-go').addEventListener('click', async function() {
-        clearNotice(msg);
-        var go = document.getElementById('u-up-go');
-        go.disabled = true;
-        try {
-          await api('/me/billing/upgrade', { method: 'POST', body: JSON.stringify({ plan: 'clyde' }) });
-          notice(msg, 'ok', 'Upgraded to the Clyde plan.');
-          await load();
-        } catch (err) {
-          go.disabled = false;
-          notice(msg, 'bad', err.message);
-        }
-      });
-    }
-
-    document.getElementById('u-meters').innerHTML = (d.meters || []).map(function(m) {
-      var inc = m.included == null ? 0 : Number(m.included);
-      var used = Number(m.used || 0);
-      var pct = inc > 0 ? Math.min(100, Math.round((used / inc) * 100)) : 0;
-      return '<div class="cl-card meter-row">' +
-        '<div class="meter-top"><strong>' + esc(METER_LABEL[m.kind] || m.kind) + '</strong>' +
-        '<span class="cl-mono">' + used.toLocaleString('en-US') + (m.included != null ? ' / ' + inc.toLocaleString('en-US') : ' (no limit)') +
-        (d.overage ? ' · Overage: $' + (Number(m.overage_cents || 0) / 100).toFixed(2) : '') + '</span></div>' +
-        '<progress class="meter-bar" max="100" value="' + pct + '"></progress>' +
-      '</div>';
-    }).join('');
-  }
-
-  document.getElementById('u-limit-form').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    clearNotice(msg);
-    var dollars = Number(document.getElementById('u-dollars').value);
-    var cents = Math.round(dollars * 100);
-    try {
-      await api('/me/billing', { method: 'PATCH', body: JSON.stringify({ spend_limit_cents: cents }) });
-      notice(msg, 'ok', 'Spend limit updated to $' + (cents / 100).toFixed(2) + '.');
-      await load();
-    } catch (err) { notice(msg, 'bad', err.message); }
-  });
-  await load();
+  document.getElementById('u-meters').innerHTML = (d.meters || []).map(function(m) {
+    var inc = m.included == null ? 0 : Number(m.included);
+    var used = Number(m.used || 0);
+    var pct = inc > 0 ? Math.min(100, Math.round((used / inc) * 100)) : 0;
+    return '<div class="cl-card meter-row">' +
+      '<div class="meter-top"><strong>' + esc(METER_LABEL[m.kind] || m.kind) + '</strong>' +
+      '<span class="cl-mono">' + used.toLocaleString('en-US') + (m.included != null ? ' / ' + inc.toLocaleString('en-US') : ' (no limit)') +
+      (d.overage ? ' · Overage: $' + (Number(m.overage_cents || 0) / 100).toFixed(2) : '') + '</span></div>' +
+      '<progress class="meter-bar" max="100" value="' + pct + '"></progress>' +
+    '</div>';
+  }).join('');
 }
 
 async function renderSettings() {
+  var s = readSession();
+  var inviteUrl = location.origin + '/invite';
   root.innerHTML =
-    '<div id="set-msg" class="is-hidden"></div>' +
     '<section class="cl-card app-grid">' +
-      '<h2 class="cl-title-3">Export your data</h2>' +
-      '<p class="cl-hint">Download clyde-export.ndjson with your notes, links, agents, devices, quests, usage, and audit records. Attached files up to 4 MiB are included.</p>' +
-      '<div class="app-actions"><button type="button" class="cl-btn cl-btn--primary" id="btn-export">Download NDJSON export</button></div>' +
-    '</section>' +
-    '<section class="cl-card app-grid danger-zone">' +
-      '<h2 class="cl-title-3">Delete account</h2>' +
-      '<p class="cl-hint">Permanently erase every note, file, agent, device, quest, and your sign-in record. This cannot be undone.</p>' +
-      '<div class="app-actions">' +
-        '<button type="button" class="cl-btn cl-btn--danger" id="btn-acc-del">Delete account</button>' +
-        '<button type="button" class="cl-btn cl-btn--danger is-hidden" id="btn-acc-del-yes">Delete account permanently</button>' +
+      '<h2 class="cl-title-3">Agent-only workspace</h2>' +
+      '<p class="cl-hint">There are no settings forms here. Connect an agent to register, save notes, and coordinate over MCP.</p>' +
+      '<div class="app-meta">' +
+        '<span class="cl-chip cl-chip--carbon">Account: ' + esc((s && s.email) || 'Signed in') + '</span>' +
+        '<span class="cl-chip">MCP: ' + esc(MCP_ENDPOINT) + '</span>' +
       '</div>' +
-    '</section>';
-  var msg = document.getElementById('set-msg');
-
-  document.getElementById('btn-export').addEventListener('click', async function() {
-    clearNotice(msg);
-    try {
-      var r = await api('/me/export', { raw: true });
-      if (!r.ok) throw new Error("Couldn't download export (HTTP " + r.status + '). Try again.');
-      var blob = await r.blob();
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement('a');
-      a.href = url;
-      a.download = 'clyde-export.ndjson';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      notice(msg, 'ok', 'Export downloaded.');
-    } catch (err) { notice(msg, 'bad', err.message); }
-  });
-
-  document.getElementById('btn-acc-del').addEventListener('click', function() {
-    document.getElementById('btn-acc-del-yes').classList.remove('is-hidden');
-  });
-  document.getElementById('btn-acc-del-yes').addEventListener('click', async function() {
-    clearNotice(msg);
-    try {
-      await api('/me', { method: 'DELETE' });
-      writeSession(null);
-      root.innerHTML = '<div class="cl-card app-grid"><h2 class="cl-title-2">Account deleted</h2><p class="cl-hint">All your notes, files, devices, and account records have been deleted.</p><a class="cl-btn" href="/">Back home</a></div>';
-    } catch (err) { notice(msg, 'bad', err.message); }
-  });
+      '<div class="app-actions">' +
+        '<a class="cl-btn cl-btn--primary cl-btn--sm" href="/agents?connect=1">Connect new agent</a>' +
+        '<a class="cl-btn cl-btn--sm" href="/agents">View agents</a>' +
+        '<button type="button" class="cl-btn cl-btn--sm" data-copy="' + esc(inviteUrl) + '">Copy invite link</button>' +
+      '</div>' +
+    '</section>' +
+    '<div class="mcp-list">' +
+      mcpCard('Install Clyde on a new computer', 'Sets up Antigravity, Claude Code, Codex, and Gemini CLI with MCP and hooks.', 'CLI installer', INSTALL_CMD, true) +
+      mcpCard('Update an agent profile via MCP', 'Change nickname, type, harness, projects, or repos through register_agent.', 'register_agent', 'Call Clyde register_agent with my current agent name and update its nickname, type, repos, and projects.', false) +
+      mcpCard('Inspect or audit saved notes via MCP', 'Ask your agent to search, review, or supersede outdated notes.', 'recall + remember', 'Call Clyde recall to find outdated notes on this project, inspect them with get_entry, and supersede any that changed.', false) +
+    '</div>';
 }
 
 async function start() {
@@ -974,6 +1452,7 @@ async function start() {
   parseCallbackHash();
   var s = readSession();
   updateUserBar(s);
+  if (view === 'invite') return renderInvite();
   if (!s) { renderSignIn(); return; }
   if (!s.user_id) {
     try {
@@ -1008,6 +1487,7 @@ export function appPage(path, nonce) {
   else if (path === "/usage") view = "usage";
   else if (path === "/settings") view = "settings";
   else if (path === "/entries") view = "entries";
+  else if (path === "/invite") view = "invite";
   else if (path === "/auth/callback") view = "callback";
   else if (path.startsWith("/entries/")) {
     const raw = path.slice("/entries/".length);
@@ -1029,11 +1509,16 @@ export function appPage(path, nonce) {
   }).join("");
 
   const header = `<header class="bar wrap"><a class="logo" href="/" aria-label="Clyde home">${LOGO()}</a>` +
-    `<nav class="app-nav" aria-label="Workspace">${nav}</nav><div id="app-user-bar" class="app-bar-user"></div></header>`;
+    (view === "invite" ? "" : `<nav class="app-nav" aria-label="Workspace">${nav}</nav>`) +
+    `<div id="app-user-bar" class="app-bar-user"></div></header>`;
+
+  const headActs = view === "invite" || view === "callback"
+    ? ""
+    : `<div class="app-head-acts"><a class="cl-btn cl-btn--primary cl-btn--sm" href="/agents?connect=1">Connect new agent</a><a class="cl-btn cl-btn--sm" href="/agents">View agents</a></div>`;
 
   const main = `<main class="wrap app-wrap">` +
-    `<div class="app-head"><div><span class="cl-label">Clyde workspace</span><h1 class="cl-title-1">${esc(spec.heading)}</h1>` +
-    `<p class="cl-hint">${esc(spec.sub)}</p></div></div>` +
+    `<div class="app-head"><div><span class="cl-label">${view === "invite" ? "Clyde invite" : "Clyde workspace"}</span><h1 class="cl-title-1">${esc(spec.heading)}</h1>` +
+    `<p class="cl-hint">${esc(spec.sub)}</p></div>${headActs}</div>` +
     `<div id="app-root" class="app-grid" data-view="${view}" data-id="${esc(id)}"><noscript><p class="cl-error">Turn on JavaScript to use your Clyde workspace.</p></noscript></div>` +
     `</main>`;
 

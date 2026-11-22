@@ -27,13 +27,16 @@ const VERSIONS =["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 // R53 (#58): the stores' reviews read this text. It says what each tool does and never tells the model what to call or
 // when. The recall-first and feedback guidance lives in the Claude Code plugin's skill (plugins/memory/skills/clyde).
 export const INSTRUCTIONS = "Clyde keeps one set of notes for all of a person's AI agents: what one agent learns, every other agent can " +
-  "recall. register_agent names the agent once per token and app (name, context work, home, hobby, personal or both, surface, " +
-  "description, plus optional nickname, type, harness, repos, projects, computer, strict_projects), so its notes and messages carry that name. recall searches " +
-  "the notes: decisions, preferences, observations and past reactions, with optional category, context, project or transferability " +
-  "filters. Each result packet starts with a retrieval id. recall_more takes that id and returns the next page, dormant and " +
-  "replaced notes included. feedback takes the same id and a verdict (used, irrelevant or wrong) for each result shown, those under " +
-  "On trial included, or nothing_useful, and ranking learns from it. remember writes a note: it needs only pattern, title, body " +
-  "and evidence. A note stays under 500 characters, with the details in artifacts: [{name, kind, text or base64 or sha256}]. recall " +
+  "recall. The web workspace at https://heyclyde.me is read-only by design for inspecting notes, links, quests, agents and usage. " +
+  "All writes, edits, agent updates and quest actions happen through these MCP tools. register_agent names or updates the agent " +
+  "using this token and app (name, context work, home, hobby, personal or both, surface, description, plus optional nickname, type, " +
+  "harness, repos, projects, computer, strict_projects), so its notes and messages carry that name. recall searches the notes: " +
+  "decisions, preferences, observations and past reactions, with optional category, context, project or transferability filters. " +
+  "Each result packet starts with a retrieval id. recall_more takes that id and returns the next page, dormant and replaced notes " +
+  "included. get_entry opens one note's full body, evidence, links and artifacts on demand. feedback takes the retrieval id and a " +
+  "verdict (used, irrelevant or wrong) for each result shown, those under On trial included, or nothing_useful, and ranking learns " +
+  "from it. remember writes a note, links notes, or replaces an older note via supersedes: it needs only pattern, title, body and " +
+  "evidence. A note stays under 500 characters, with the details in artifacts: [{name, kind, text or base64 or sha256}]. recall " +
   "lists a note's artifacts by name and kind, get_blob reads one, and upload_blob takes a file too big to send inline. Agents leave " +
   "each other messages: check_messages lists them with ids, ack_messages marks them handled, and post_message sends one. The quest " +
   "board hands work between agents: post_quest puts a task up with a title, a short brief, done_when (how anyone can tell it's " +
@@ -56,19 +59,20 @@ export const TOOLS = [
   {
     name: "register_agent",
     ...hints("Register agent", false, true),
-    description: "Names the agent using this token and app, once. Clyde keeps it for this token and app, so later sessions " +
-      "start registered, and the agent's notes and messages carry its name. Until then, each reply carries a reminder.\n\n" +
+    description: "Names or updates the agent for this token and app. Later sessions start registered, and the agent's notes and " +
+      "messages carry its name. Call it again with the same name to update nickname, type, harness, repos, projects, context or " +
+      "description (the web UI is read-only). Until first registration, each reply carries a reminder.\n\n" +
       "name: a short lowercase handle, like clyde-work or journeymate-ios. An agent that has a name reuses it.\n" +
       "context: work, home, hobby, personal or both: the part of the person's life the agent works on.\n" +
       "surface: where the agent runs, like claude-code, claude.ai, cowork, codex or a script.\n" +
       "description: one or two sentences on what the agent does.\n" +
       "nickname: optional short unique nickname per owner (lowercase letters, digits, dashes and underscores).\n" +
       "repos: optional list of owner/repo names or project slugs the agent can reach.\n" +
-      "harness: optional client harness name; inferred from clientInfo.name when omitted.\n" +
+      "harness: optional client harness name, inferred from clientInfo.name when omitted.\n" +
       "projects: optional list of project slugs or owner/repo names the agent works on.\n" +
       "computer: optional machine name the agent runs on.\n" +
       "type: optional role (coding, exploration, research, review, ops, assistant or other).\n" +
-      "strict_projects: optional boolean; true locks project-scoped reads to the declared projects.",
+      "strict_projects: optional boolean. True locks project-scoped reads to the declared projects.",
     inputSchema: {
       type: "object", required: ["name", "context", "surface", "description"],
       properties: {
@@ -76,7 +80,7 @@ export const TOOLS = [
         surface: str("Where the agent runs"), description: str("What the agent does"),
         nickname: str("Optional unique nickname per owner (1-40 lowercase letters, digits, dashes and underscores)"),
         repos: { type: "array", items: { type: "string" }, description: "Repositories or project slugs the agent can reach" },
-        harness: str("Optional client harness name; inferred from clientInfo.name when omitted"),
+        harness: str("Optional client harness name, inferred from clientInfo.name when omitted"),
         projects: { type: "array", items: { type: "string" }, description: "Project slugs or owner/repo names" },
         computer: str("Computer or machine name (1-64 characters)"),
         type: { type: "string", enum: [...AGENT_TYPES], description: "Agent type: coding, exploration, research, review, ops, assistant or other" },
@@ -150,8 +154,9 @@ export const TOOLS = [
   {
     name: "remember",
     ...hints("Remember a note", false, true),
-    description: "Writes one note. Every other agent can recall it at once, labelled by its kind and marked unreviewed until " +
-      "the person or a reviewing agent reviews it. supersedes replaces earlier notes.\n\n" +
+    description: "Writes one note, links notes, or replaces an older note via supersedes (the web UI is read-only, so edits and " +
+      "corrections happen here). Every other agent can recall it at once, labelled by its kind and marked unreviewed until " +
+      "the person or a reviewing agent reviews it.\n\n" +
       "pattern: projects, decisions, observations, preferences, recommendations, references or reactions.\n" +
       "title, body: a one-line title, and the summary recall ranks on. A note stays under 500 characters, with the details " +
       "in artifacts. A body over 500 characters is refused unless long is true. 4000 is the most.\n" +

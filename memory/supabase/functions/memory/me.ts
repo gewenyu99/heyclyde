@@ -81,6 +81,27 @@ function includedQuotaFor(plan: Plan, kind: typeof METERED_KINDS[number]): numbe
 export async function handle(req: Request, path: string, owner: string): Promise<Response> {
   const url = new URL(req.url);
 
+  // ---------------------------------------------------------------- onboarding progress
+  if (path === "/me/onboarding" && req.method === "GET") {
+    const [counts] = await sql`select
+      (select count(*)::int from memory.agent) as agents,
+      (select count(*)::int from memory.device where revoked_at is null) as devices,
+      (select count(*)::int from memory.entry) as entries,
+      (select count(*)::int from memory.retrieval where parent_id is null) as recalls`;
+    const [latestAgent] = await sql`select name, surface, harness, created_at
+      from memory.agent order by created_at desc nulls last, name limit 1`;
+    const [latestEntry] = await sql`select id, title, pattern, created_at
+      from memory.entry order by created_at desc nulls last, id limit 1`;
+    return json({
+      agents: Number(counts?.agents ?? 0),
+      devices: Number(counts?.devices ?? 0),
+      entries: Number(counts?.entries ?? 0),
+      recalls: Number(counts?.recalls ?? 0),
+      latest_agent: latestAgent ?? null,
+      latest_entry: latestEntry ?? null,
+    });
+  }
+
   // ---------------------------------------------------------------- usage & billing (R60 #65)
   if (path === "/me/usage" && req.method === "GET") {
     const v = await entitlementOf(owner);
@@ -526,13 +547,23 @@ export async function handle(req: Request, path: string, owner: string): Promise
       frontier = next;
     }
 
+    const [{ total_notes }] = await sql`select count(*)::int as total_notes from memory.entry`;
+    if (visited.size < 2) {
+      const recent = await sql`select id from memory.entry order by created_at desc nulls last, id limit 40`;
+      for (const r of recent) {
+        visited.add(String(r.id));
+        if (visited.size >= MAX_NODES) break;
+      }
+    }
+
     const nodeIds = [...visited];
     const entries = nodeIds.length
-      ? await sql`select id, title, pattern, kind, project, confidence from memory.entry where id = any(${nodeIds}::text[])`
+      ? await sql`select id, title, body, pattern, kind, project, context, category, confidence, created_at
+          from memory.entry where id = any(${nodeIds}::text[])`
       : [];
     const present = new Set(entries.map((e) => String(e.id)));
     const edges = links.filter((l) => present.has(String(l.src)) && present.has(String(l.dst)));
-    return json({ center, depth, nodes: entries, edges });
+    return json({ center, depth, total_notes: Number(total_notes ?? entries.length), nodes: entries, edges });
   }
 
   // ---------------------------------------------------------------- agents & devices (R61 #66)
