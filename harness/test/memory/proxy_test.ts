@@ -422,8 +422,34 @@ Deno.test('the workspace sign-in carries the provider buttons and the callback p
   assert.ok(html.includes('Continue with Google') && html.includes('Continue with GitHub'), 'buttons ship in the script, shown once /auth/v1/settings says so')
   assert.ok(html.includes('/auth/v1/settings') && html.includes('/auth/v1/authorize') && html.includes('grant_type=pkce'))
   assert.ok(html.includes('.cl-btn--provider'), 'auth.css is inlined')
+  assert.ok(html.includes('.app-nav .cl-nav__item{width:auto;flex:none}'), 'workspace nav tabs stay horizontal on desktop')
   const script = /<script nonce="[^"]+">([\s\S]*?)<\/script>/.exec(html)?.[1] ?? ''
+  assert.ok(script.includes('function __name(f) { return f; }'), 'esbuild keep_names __name helper is defined before socialClient')
   assert.doesNotThrow(() => new Function(script), 'the page script, provider client included, parses')
+  // Simulate Wrangler/esbuild keep_names injecting __name(...) inside socialClient.toString()
+  const esbuildScript = script.replace('function next(raw) {', 'function next(raw) {').replace(/var social = \(([\s\S]*?)\)\(window\);/, (_, fn) =>
+    `var social = (${fn.replace(/return\s*\{\s*begin:/, '__name(next, "next"); return { begin:')})(window);`)
+  const els: Record<string, any> = {
+    'app-root': { getAttribute: (k: string) => k === 'data-view' ? 'usage' : '', innerHTML: '' },
+    'app-user-bar': { innerHTML: '' },
+    'sign-providers': { innerHTML: '', classList: { remove() {}, add() {} }, querySelectorAll: () => [] },
+    'btn-toggle-pw': { addEventListener() {} },
+    'otp-req': { addEventListener() {} },
+    'otp-verify': { addEventListener() {} },
+    'pw-form': { addEventListener() {}, classList: { toggle() {} } },
+  }
+  const docStub = {
+    getElementById: (id: string) => els[id] ?? { addEventListener() {}, classList: { add() {}, remove() {}, toggle() {} } },
+    querySelectorAll: () => [],
+  }
+  const winStub: any = { location: { origin: 'https://heyclyde.me', pathname: '/usage', search: '', hash: '' } }
+  assert.doesNotThrow(() =>
+    new Function('document', 'window', 'location', 'localStorage', 'history', 'fetch', esbuildScript)(
+      docStub, winStub, winStub.location, { getItem: () => null, removeItem() {}, setItem() {} },
+      { replaceState() {} }, () => Promise.resolve({ ok: false, json: () => Promise.resolve({}) }),
+    )
+  )
+  assert.ok(els['app-root'].innerHTML.includes('Sign in to Clyde'), 'APP_JS renders sign-in UI with esbuild __name present')
   assert.ok(!/<script[^>]*>[^<]*<\/script>[\s\S]*\son[a-z]+=/i.test(html), 'no inline event handlers')
   const cb = await at('https://heyclyde.me/auth/callback?state=s&code=c')
   assert.equal(cb.status, 200)

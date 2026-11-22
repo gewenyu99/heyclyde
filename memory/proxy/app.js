@@ -19,6 +19,7 @@ const APP_ROUTES = [
 const APP_CSS = `
 .app-wrap{flex:1;padding-block:12px 64px;display:grid;gap:20px;align-content:start}
 .app-nav{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.app-nav .cl-nav__item{width:auto;flex:none}
 .app-bar-user{margin-left:auto;display:flex;align-items:center;gap:10px;font:var(--cl-text-small);color:var(--cl-ink-2)}
 .app-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;padding-bottom:14px;border-bottom:1.5px dashed var(--cl-rule-strong)}
 .app-head h1{margin:4px 0 0}
@@ -92,6 +93,7 @@ var entryId = root.getAttribute('data-id') || '';
 var STORE = 'clyde_session_v1';
 var PROVIDER_BUTTONS = ${JSON.stringify(PROVIDER_BUTTONS).replace(/</g, "\\u003c")};
 var OR_RULE = ${JSON.stringify(OR_RULE).replace(/</g, "\\u003c")};
+function __name(f) { return f; }
 var social = (${socialClient.toString()})(window);
 // Where a provider sign-in lands afterwards: this page, or the page a failed callback was headed to.
 var afterSignIn = view === 'callback' ? '/memories' : location.pathname + location.search;
