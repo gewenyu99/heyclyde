@@ -104,6 +104,7 @@ const APP_CSS = `
 .gr-edge.is-dim{opacity:.08}.gr-edge.is-hi{opacity:1;stroke-width:2.5}
 .gr-node{cursor:pointer}
 .gr-node circle{stroke:var(--cl-paper-1);stroke-width:2;fill:var(--cl-pen-blue);transition:opacity .12s,stroke-width .12s}
+.gr-node .gr-hit{fill:transparent;stroke:none}
 .gr-node--decisions circle{fill:var(--cl-pen-blue)}.gr-node--projects circle{fill:var(--cl-pen-violet)}
 .gr-node--preferences circle{fill:var(--cl-pen-amber)}.gr-node--observations circle{fill:var(--cl-pen-teal)}
 .gr-node--references circle{fill:var(--cl-pen-green)}.gr-node--recommendations circle{fill:var(--cl-pen-green)}
@@ -111,7 +112,7 @@ const APP_CSS = `
 .gr-node.is-center circle{stroke:var(--cl-ink);stroke-width:3}
 .gr-node.is-selected circle{stroke:var(--cl-ink);stroke-width:3.5}
 .gr-node.is-dormant circle{opacity:.55;stroke-dasharray:3 2}
-.gr-node text{font:600 11px/1.2 var(--cl-font-sans);fill:var(--cl-ink);pointer-events:none;paint-order:stroke;stroke:var(--cl-paper-0);stroke-width:3px;stroke-linejoin:round}
+.gr-node text{font:600 11px/1.2 var(--cl-font-sans);fill:var(--cl-ink);paint-order:stroke;stroke:var(--cl-paper-0);stroke-width:3px;stroke-linejoin:round}
 .gr-node.is-label-hide text{display:none}
 .gr-node.is-dim{opacity:.16}
 .gr-node.is-hi text{display:block}
@@ -204,12 +205,12 @@ if (document.addEventListener) document.addEventListener('click', function(ev) {
   copyText(btn.getAttribute('data-copy') || '', btn);
 });
 
-function mcpCard(title, hint, tool, prompt, sticky) {
+function mcpCard(title, hint, tool, prompt, sticky, btnLabel) {
   return '<section class="mcp-box' + (sticky ? ' mcp-box--sticky' : '') + '">' +
     '<div class="mcp-box__head">' +
       '<div class="app-meta"><h3 class="mcp-box__title">' + esc(title) + '</h3>' +
       (tool ? '<span class="cl-chip cl-chip--carbon">MCP: ' + esc(tool) + '</span>' : '') + '</div>' +
-      '<button type="button" class="cl-btn cl-btn--sm" data-copy="' + esc(prompt) + '">Copy prompt</button>' +
+      '<button type="button" class="cl-btn cl-btn--sm" data-copy="' + esc(prompt) + '">' + esc(btnLabel || 'Copy prompt') + '</button>' +
     '</div>' +
     (hint ? '<p class="cl-hint">' + esc(hint) + '</p>' : '') +
     '<pre class="mcp-box__pre">' + esc(prompt) + '</pre>' +
@@ -252,7 +253,6 @@ function updateUserBar(s) {
     return;
   }
   bar.innerHTML =
-    '<a class="cl-btn cl-btn--primary cl-btn--sm" href="/agents?connect=1">Connect agent</a>' +
     '<button type="button" class="cl-btn cl-btn--sm" data-copy="' + esc(inviteUrl) + '">Copy invite link</button>' +
     '<span>' + esc(s.email || 'Signed in') + '</span>' +
     '<button type="button" class="cl-btn cl-btn--sm cl-btn--ghost" id="btn-signout">Sign out</button>';
@@ -575,19 +575,32 @@ function buildOnboardingHtml(ob, activeTab) {
   if (tab === 'antigravity') {
     tabBody =
       '<p class="cl-hint">Run this command in your terminal. It signs your computer in, adds Clyde MCP to <code>~/.gemini/config/mcp_config.json</code>, installs automatic hooks in <code>~/.gemini/config/hooks.json</code>, and adds the Clyde rule to <code>~/.gemini/GEMINI.md</code>.</p>' +
-      mcpCard('1. Install Antigravity MCP + hooks', 'Restart Antigravity after running this command.', 'CLI installer', INSTALL_CMD, false) +
-      mcpCard('2. Register Antigravity in chat', 'Paste this into a new Antigravity chat to finish Step 1.', 'register_agent', regPrompt, true);
+      mcpCard('1. Install Antigravity MCP + hooks', 'Restart Antigravity after running this command.', 'CLI installer', INSTALL_CMD, false, 'Copy command') +
+      mcpCard('2. Register Antigravity in chat', 'Paste this into a new Antigravity chat to finish Step 1.', 'register_agent', regPrompt, !s1, 'Copy prompt');
   } else if (tab === 'claude-code') {
     tabBody =
       '<p class="cl-hint">Run this command in your terminal. It installs the Clyde MCP connector and automatic hooks into <code>~/.claude/settings.json</code> and adds the Clyde rule to <code>~/.claude/CLAUDE.md</code>.</p>' +
-      mcpCard('1. Install Claude Code MCP + hooks', 'Restart Claude Code after running this command.', 'CLI installer', INSTALL_CMD, false) +
-      mcpCard('2. Register Claude Code in chat', 'Paste this into Claude Code to finish Step 1.', 'register_agent', regPrompt, true);
+      mcpCard('1. Install Claude Code MCP + hooks', 'Restart Claude Code after running this command.', 'CLI installer', INSTALL_CMD, false, 'Copy command') +
+      mcpCard('2. Register Claude Code in chat', 'Paste this into Claude Code to finish Step 1.', 'register_agent', regPrompt, !s1, 'Copy prompt');
   } else {
     tabBody =
       '<p class="cl-hint">In Claude (web, desktop, or mobile), open <strong>Settings / Connectors / Add custom connector</strong>, paste the MCP URL below, click Add, then Connect and sign in with this same account.</p>' +
-      mcpCard('1. Claude custom connector URL', 'Paste this URL into Claude Settings / Connectors.', 'MCP server URL', MCP_ENDPOINT, false) +
-      mcpCard('2. Register Claude in chat', 'Start a chat in Claude and paste this prompt to finish Step 1.', 'register_agent', regPrompt, true);
+      mcpCard('1. Claude custom connector URL', 'Paste this URL into Claude Settings / Connectors.', 'MCP server URL', MCP_ENDPOINT, false, 'Copy URL') +
+      mcpCard('2. Register Claude in chat', 'Start a chat in Claude and paste this prompt to finish Step 1.', 'register_agent', regPrompt, !s1, 'Copy prompt');
   }
+
+  var step1Tabs =
+    '<div class="onb-tabs" role="tablist" aria-label="Choose your client">' +
+      '<button type="button" class="onb-tab' + (tab === 'antigravity' ? ' is-active' : '') + '" data-onb-tab="antigravity">Antigravity</button>' +
+      '<button type="button" class="onb-tab' + (tab === 'claude-code' ? ' is-active' : '') + '" data-onb-tab="claude-code">Claude Code</button>' +
+      '<button type="button" class="onb-tab' + (tab === 'claude-web' ? ' is-active' : '') + '" data-onb-tab="claude-web">Claude (Web / Desktop)</button>' +
+    '</div>' +
+    '<div class="onb-panel">' + tabBody + '</div>';
+  var step1Body = s1
+    ? '<details><summary class="cl-hint">Show Claude and Antigravity setup steps</summary>' + step1Tabs + '</details>'
+    : step1Tabs;
+  var savedLabel = ob.latest_entry ? String(ob.latest_entry.title || '') : '';
+  if (savedLabel.length > 26) savedLabel = savedLabel.slice(0, 25) + '…';
 
   return '<section class="onb-card" id="onb-box">' +
     '<div class="onb-head">' +
@@ -611,18 +624,13 @@ function buildOnboardingHtml(ob, activeTab) {
             ? '<span class="cl-stamp cl-stamp--ok">Connected: ' + esc(ob.latest_agent ? ob.latest_agent.name : (ob.agents + ' agent')) + '</span>'
             : '<span class="cl-chip">Waiting for register_agent</span>') +
         '</div>' +
-        '<div class="onb-tabs" role="tablist" aria-label="Choose your client">' +
-          '<button type="button" class="onb-tab' + (tab === 'antigravity' ? ' is-active' : '') + '" data-onb-tab="antigravity">Antigravity</button>' +
-          '<button type="button" class="onb-tab' + (tab === 'claude-code' ? ' is-active' : '') + '" data-onb-tab="claude-code">Claude Code</button>' +
-          '<button type="button" class="onb-tab' + (tab === 'claude-web' ? ' is-active' : '') + '" data-onb-tab="claude-web">Claude (Web / Desktop)</button>' +
-        '</div>' +
-        '<div class="onb-panel">' + tabBody + '</div>' +
+        step1Body +
       '</div>' +
       '<div class="onb-step' + (s2 ? ' is-done' : '') + '">' +
         '<div class="onb-step__top">' +
           '<span class="onb-step__num">Step 2: Save your first note via MCP</span>' +
           (s2
-            ? '<span class="cl-stamp cl-stamp--ok">Saved' + (ob.latest_entry ? ': ' + esc(ob.latest_entry.title) : '') + '</span>'
+            ? '<span class="cl-stamp cl-stamp--ok">Saved' + (savedLabel ? ': ' + esc(savedLabel) : '') + '</span>'
             : '<span class="cl-chip">Waiting for remember</span>') +
         '</div>' +
         (s2 && ob.latest_entry
@@ -644,7 +652,7 @@ function buildOnboardingHtml(ob, activeTab) {
   '</section>';
 }
 
-async function mountOnboarding(container, forceShow) {
+async function mountOnboarding(container, forceShow, onRefresh) {
   var activeTab = 'antigravity';
   async function draw() {
     try {
@@ -662,7 +670,10 @@ async function mountOnboarding(container, forceShow) {
         });
       });
       var ref = document.getElementById('onb-refresh');
-      if (ref) ref.addEventListener('click', function() { draw(); });
+      if (ref) ref.addEventListener('click', function() {
+        draw();
+        if (onRefresh) onRefresh();
+      });
     } catch (e) {}
   }
   await draw();
@@ -734,7 +745,7 @@ async function renderEntries() {
     e.preventDefault();
     load();
   });
-  await Promise.all([mountOnboarding(document.getElementById('onb-slot'), forceOnb), load()]);
+  await Promise.all([mountOnboarding(document.getElementById('onb-slot'), forceOnb, load), load()]);
 }
 
 async function renderEntryDetail() {
@@ -959,9 +970,9 @@ async function renderGraph() {
       if (p.x > maxX) maxX = p.x;
       if (p.y > maxY) maxY = p.y;
     });
-    var pad = 90;
-    var w = Math.max(420, (maxX - minX) + pad * 2);
-    var h = Math.max(260, (maxY - minY) + pad * 2);
+    var pad = 75;
+    var w = Math.max(320, (maxX - minX) + pad * 2);
+    var h = Math.max(210, (maxY - minY) + pad * 2);
     var aspect = 960 / 580;
     if (w / h > aspect) h = w / aspect;
     else w = h * aspect;
@@ -1071,9 +1082,11 @@ async function renderGraph() {
       var showLbl = isCenter || isSel || zoomedIn || vg.nodes.length <= 28 || deg >= 4;
       var cls = 'gr-node gr-node--' + pat + (isCenter ? ' is-center' : '') + (isSel ? ' is-selected' : '') +
         (Number(n.confidence) < 0.15 ? ' is-dormant' : '') + (showLbl ? '' : ' is-label-hide');
-      var label = String(n.title || n.id).slice(0, 30);
-      return '<g class="' + cls + '" data-node="' + esc(n.id) + '" tabindex="0" role="button" aria-label="' + esc((n.title || n.id) + ', ' + confText(n.confidence)) + '">' +
-        '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="' + r.toFixed(1) + '"></circle>' +
+      var rawTitle = String(n.title || n.id);
+      var label = rawTitle.length > 28 ? rawTitle.slice(0, 27) + '…' : rawTitle;
+      return '<g class="' + cls + '" data-node="' + esc(n.id) + '" tabindex="0" role="button" aria-label="' + esc(rawTitle + ', ' + confText(n.confidence)) + '">' +
+        '<circle class="gr-hit" cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="' + (r + 7).toFixed(1) + '"></circle>' +
+        '<circle class="gr-vis" cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="' + r.toFixed(1) + '"></circle>' +
         '<text x="' + (p.x + r + 5).toFixed(1) + '" y="' + (p.y + 4).toFixed(1) + '">' + esc(label) + '</text>' +
       '</g>';
     }).join('');
@@ -1120,12 +1133,11 @@ async function renderGraph() {
         state.pos[dragNode] = { x: pt.x, y: pt.y };
         var g = svg.querySelector('.gr-node[data-node="' + CSS.escape(dragNode) + '"]');
         if (g) {
-          var c = g.querySelector('circle'), tx = g.querySelector('text');
-          var r = Number(c.getAttribute('r') || 7);
-          c.setAttribute('cx', pt.x.toFixed(1));
-          c.setAttribute('cy', pt.y.toFixed(1));
-          tx.setAttribute('x', (pt.x + r + 5).toFixed(1));
-          tx.setAttribute('y', (pt.y + 4).toFixed(1));
+          var hit = g.querySelector('.gr-hit'), c = g.querySelector('.gr-vis'), tx = g.querySelector('text');
+          var r = Number((c && c.getAttribute('r')) || 7);
+          if (hit) { hit.setAttribute('cx', pt.x.toFixed(1)); hit.setAttribute('cy', pt.y.toFixed(1)); }
+          if (c) { c.setAttribute('cx', pt.x.toFixed(1)); c.setAttribute('cy', pt.y.toFixed(1)); }
+          if (tx) { tx.setAttribute('x', (pt.x + r + 5).toFixed(1)); tx.setAttribute('y', (pt.y + 4).toFixed(1)); }
         }
         svg.querySelectorAll('.gr-edge').forEach(function(line) {
           if (line.getAttribute('data-src') === dragNode) {
@@ -1344,7 +1356,7 @@ async function renderAgents() {
       (a.nickname ? '<span class="cl-chip cl-chip--carbon">@' + esc(a.nickname) + '</span>' : '') +
       (a.type ? '<span class="cl-chip">' + esc(a.type) + '</span>' : '') +
       (a.surface ? '<span class="cl-chip">' + esc(a.surface) + '</span>' : '') +
-      (a.harness ? '<span class="cl-chip">' + esc(a.harness) + '</span>' : '') +
+      (a.harness && (!a.surface || a.harness.toLowerCase() !== a.surface.toLowerCase()) ? '<span class="cl-chip">' + esc(a.harness) + '</span>' : '') +
       (a.device ? '<span class="cl-chip">Device: ' + esc(a.device) + '</span>' : '') +
       '</div>' +
       (a.description ? '<p class="cl-hint">' + esc(a.description) + '</p>' : '') +
@@ -1369,7 +1381,8 @@ async function renderApps() {
       'Add Clyde as a custom MCP connector in Claude, ChatGPT, Gemini, Grok, or Antigravity using this URL.',
       'MCP server URL',
       MCP_ENDPOINT,
-      false
+      false,
+      'Copy URL'
     );
   var d = await api('/me/apps');
   var list = d.apps || [];
@@ -1425,7 +1438,6 @@ async function renderUsage() {
 
 async function renderSettings() {
   var s = readSession();
-  var inviteUrl = location.origin + '/invite';
   root.innerHTML =
     '<section class="cl-card app-grid">' +
       '<h2 class="cl-title-3">Agent-only workspace</h2>' +
@@ -1434,16 +1446,11 @@ async function renderSettings() {
         '<span class="cl-chip cl-chip--carbon">Account: ' + esc((s && s.email) || 'Signed in') + '</span>' +
         '<span class="cl-chip">MCP: ' + esc(MCP_ENDPOINT) + '</span>' +
       '</div>' +
-      '<div class="app-actions">' +
-        '<a class="cl-btn cl-btn--primary cl-btn--sm" href="/agents?connect=1">Connect new agent</a>' +
-        '<a class="cl-btn cl-btn--sm" href="/agents">View agents</a>' +
-        '<button type="button" class="cl-btn cl-btn--sm" data-copy="' + esc(inviteUrl) + '">Copy invite link</button>' +
-      '</div>' +
     '</section>' +
     '<div class="mcp-list">' +
-      mcpCard('Install Clyde on a new computer', 'Sets up Antigravity, Claude Code, Codex, and Gemini CLI with MCP and hooks.', 'CLI installer', INSTALL_CMD, true) +
-      mcpCard('Update an agent profile via MCP', 'Change nickname, type, harness, projects, or repos through register_agent.', 'register_agent', 'Call Clyde register_agent with my current agent name and update its nickname, type, repos, and projects.', false) +
-      mcpCard('Inspect or audit saved notes via MCP', 'Ask your agent to search, review, or supersede outdated notes.', 'recall + remember', 'Call Clyde recall to find outdated notes on this project, inspect them with get_entry, and supersede any that changed.', false) +
+      mcpCard('Install Clyde on a new computer', 'Sets up Antigravity, Claude Code, Codex, and Gemini CLI with MCP and hooks.', 'CLI installer', INSTALL_CMD, true, 'Copy command') +
+      mcpCard('Update an agent profile via MCP', 'Change nickname, type, harness, projects, or repos through register_agent.', 'register_agent', 'Call Clyde register_agent with my current agent name and update its nickname, type, repos, and projects.', false, 'Copy prompt') +
+      mcpCard('Inspect or audit saved notes via MCP', 'Ask your agent to search, review, or supersede outdated notes.', 'recall + remember', 'Call Clyde recall to find outdated notes on this project, inspect them with get_entry, and supersede any that changed.', false, 'Copy prompt') +
     '</div>';
 }
 
