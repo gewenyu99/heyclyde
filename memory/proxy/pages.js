@@ -396,7 +396,7 @@ const APPS = [
 <li><span><span class="k">Hooks (required):</span> The prompt carries every app's hook config, shown below, and the agent checks each file holds them once.</span></li>
 <li><span><span class="k">Gate check:</span> A new task's first tool call is refused until the agent calls <code>recall</code>, and writes to the app's own memory files are always refused.</span></li>
 <li><span><span class="k">Confirm:</span> After the restart, the agent registers, calls <code>recall</code>, and saves a first note with <code>remember</code> so a note ID returns.</span></li>
-<li><span><span class="k">Restart:</span> Restart every app (Codex also needs <code>/hooks</code> once to trust them).</span></li></ol>
+<li><span><span class="k">Restart:</span> Restart every app (in ChatGPT desktop click <span class="k">Settings → Coding → Hooks → User config → Trust all</span>, or run <code>/hooks</code> once in Codex CLI).</span></li></ol>
 ${copyPre("Paste into your coding agent", AGENT_SETUP_PROMPT)}
 ${CARD_HOOKS["agent-setup"].map((a) => hookCfg(a)).join("\n")}
 <details class="app-fold"><summary>Pre-restart check via ~/.config/memory/token</summary>${copyPre("Confirm register_agent + first memory", CLYDE_VERIFY_SH)}</details>`,
@@ -450,7 +450,7 @@ ${hookCfg("Claude Code", "Your client's hook config (Claude Code format)")}`,
 <li><span><span class="k">Hooks (required):</span> These exact entries, once each. By hand: install the script with the second command and merge them yourself.</span></li>
 <li><span><span class="k">Gate:</span> On a new task every tool but <code>recall</code> is refused until the agent calls it, and writes to the app's own memory files are always refused.</span></li>
 <li><span><span class="k">Confirm:</span> After the restart, the agent registers, calls <code>recall</code>, and saves a first note with <code>remember</code> so a note ID returns.</span></li>
-<li><span><span class="k">Restart:</span> Restart Claude Code, and restart Codex then run <code>/hooks</code> once to trust the hooks.</span></li></ol>
+<li><span><span class="k">Restart:</span> Restart Claude Code. In ChatGPT desktop open <span class="k">Settings → Coding → Hooks → User config</span> and click <span class="k">Trust all</span> (or run <code>/hooks</code> once in Codex CLI).</span></li></ol>
 ${copyBox(INSTALL)}${copyBox(HOOK_INSTALL)}
 ${hookCfg("Claude Code")}
 ${hookCfg("Codex")}`,
@@ -469,7 +469,7 @@ ${hookCfg("Gemini CLI")}`,
   {
     id: "chatgpt", logo: "chatgpt", name: "ChatGPT", sub: "chatgpt.com", tag: "Custom connector",
     body: `<ol class="steps">${REGISTER("Once the connector is on, the first thing ChatGPT does is call")}</span></li>
-<li><span><span class="k">MCP:</span> Turn on developer mode in <span class="k">Settings → Connectors</span> and add the URL.</span></li>
+<li><span><span class="k">MCP:</span> Turn on developer mode in <span class="k">Settings → Apps &amp; Connectors</span> and add the URL (or in ChatGPT desktop open <span class="k">Settings → Integrations → Plugins → Add → Add MCP server</span> with Streamable HTTP).</span></li>
 <li><span><span class="k">Login:</span> Connect and click the sign-in link in your email.</span></li>
 ${NO_HOOKS("ChatGPT")} into <span class="k">Settings → Personalization → Custom instructions</span>.</span></li>
 <li><span><span class="k">Confirm:</span> Ask ChatGPT to save a first note with <code>remember</code>.</span></li>

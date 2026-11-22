@@ -571,18 +571,23 @@ text = path.read_text() if path.exists() else ""
 # Drop any earlier [mcp_servers.kb], [mcp_servers.memory] or [mcp_servers.clyde] table and its subtables, up to the next table.
 names = r"(kb|memory|clyde)"
 text = re.sub(r"(?ms)^\[mcp_servers\." + names + r"(\.[^\]]*)?\][^\n]*\n.*?(?=^\[(?!mcp_servers\." + names + r"[\].])|\Z)", "", text)
-# Codex memories off: memories = false under [features].
+# Codex memories off: [features] memories = false and [memories] generate_memories/use_memories = false.
 lines = text.rstrip("\n").split("\n") if text.strip() else []
-at = next((i for i, l in enumerate(lines) if l.strip() == "[features]"), None)
-if at is None:
-    lines += ["", "[features]", "memories = false"]
-else:
+def set_key(section, key, value):
+    at = next((i for i, l in enumerate(lines) if l.strip() == section), None)
+    if at is None:
+        lines.extend(["", section, f"{key} = {value}"])
+        return
     end = next((i for i in range(at + 1, len(lines)) if lines[i].lstrip().startswith("[")), len(lines))
-    hit = next((i for i in range(at + 1, end) if re.match(r"\s*memories\s*=", lines[i])), None)
+    hit = next((i for i in range(at + 1, end) if re.match(rf"\s*{re.escape(key)}\s*=", lines[i])), None)
     if hit is None:
-        lines.insert(at + 1, "memories = false")
+        lines.insert(at + 1, f"{key} = {value}")
     else:
-        lines[hit] = "memories = false"
+        lines[hit] = f"{key} = {value}"
+
+set_key("[features]", "memories", "false")
+set_key("[memories]", "use_memories", "false")
+set_key("[memories]", "generate_memories", "false")
 text = re.sub(r"\n{3,}", "\n\n", "\n".join(lines).strip("\n"))
 auth = json.dumps("Bearer " + token)
 block = f"[mcp_servers.clyde]\nurl = {json.dumps(mcp)}\nhttp_headers = {{ Authorization = {auth} }}\n"
@@ -595,7 +600,7 @@ except ImportError:
 write(path, text, 0o600)
 ' "$MCP_URL" "$TOKEN"
 put_rule ~/.codex/AGENTS.md
-echo "Codex: Clyde is connected as $DEVICE, with its hooks. Run /hooks in Codex once to trust them."
+echo "Codex: Clyde is connected as $DEVICE, with its hooks. Trust them in ChatGPT Settings > Coding > Hooks (Trust all) or run /hooks in Codex CLI."
 
 if [ -n "$GEMINI" ]; then
   put_gemini

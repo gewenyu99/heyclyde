@@ -793,9 +793,10 @@ function buildOnboardingHtml(ob, activeTab) {
       mcpCard('1. Install Claude Code MCP + hooks', 'Sets up MCP, hooks, and device sign-in in one command.', '', INSTALL_CMD, false, 'Copy command');
   } else if (tab === 'chatgpt') {
     connectBlock =
-      '<p class="cl-hint">For <strong>Codex</strong> (desktop app or CLI), run the installer below, then run <code>/hooks</code> in Codex once to trust the hooks. Or connect without hooks using <code>codex mcp add clyde --url https://heyclyde.me/mcp &amp;&amp; codex mcp login clyde</code>. For <strong>chatgpt.com</strong>, turn on Developer mode in <strong>Settings / Connectors</strong> and add the URL below with OAuth.</p>' +
-      mcpCard('1. Install Codex MCP + hooks', 'Adds Clyde to ~/.codex/config.toml, ~/.codex/hooks.json, and ~/.codex/AGENTS.md.', '', INSTALL_CMD, false, 'Copy command') +
-      mcpCard('Or connect ChatGPT web over OAuth', 'Paste into ChatGPT Settings / Connectors with OAuth.', 'OAuth URL', MCP_ENDPOINT, false, 'Copy URL');
+      '<p class="cl-hint">For <strong>ChatGPT desktop (Work tab)</strong> and <strong>Codex CLI</strong>, run the command below. Trust the hooks in ChatGPT under <strong>Settings / Coding / Hooks / User config / Trust all</strong> (or run <code>/hooks</code> in Codex CLI), then click <strong>Always allow</strong> on the first Clyde tool prompt.</p>' +
+      mcpCard('1. Install ChatGPT Work / Codex MCP + hooks', 'Adds Clyde to ~/.codex/config.toml, ~/.codex/hooks.json, and ~/.codex/AGENTS.md, and turns off built-in Codex notes.', '', INSTALL_CMD, false, 'Copy command') +
+      '<p class="cl-hint">Prefer OAuth without hooks? In ChatGPT desktop, open <strong>Settings / Integrations / Plugins / Add / Add MCP server</strong> (Streamable HTTP) or run <code>codex mcp add clyde --url https://heyclyde.me/mcp &amp;&amp; codex mcp login clyde</code>. For <strong>ChatGPT Chat mode</strong> on <code>chatgpt.com</code>, turn on Developer mode in <strong>Settings / Apps &amp; Connectors</strong> and add the URL below.</p>' +
+      mcpCard('Or connect ChatGPT over OAuth', 'Streamable HTTP MCP endpoint for ChatGPT Chat mode, desktop Plugins, or Codex CLI.', 'OAuth URL', MCP_ENDPOINT, false, 'Copy URL');
   } else {
     connectBlock =
       '<p class="cl-hint">In Claude (web, desktop, or mobile), open <strong>Settings / Connectors / Add custom connector</strong>, paste the URL below, click Add, then click Connect and sign in with the same account.</p>' +

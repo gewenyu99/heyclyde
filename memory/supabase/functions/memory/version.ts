@@ -12,7 +12,7 @@
 // Each is pinned to the hash of its surface: version.test.ts fails unless the surface on disk hashes to the entry for the
 // current version, no two versions share a hash, and no entry that main already has changed. After a bump, add an entry
 // with the hash the failing test prints. deploy.sh runs that guard before it deploys.
-export const CLIENT_VERSION = "20261122.1";
+export const CLIENT_VERSION = "20261122.2";
 export const SERVER_VERSION = "20261122.2";
 
 /** Every client version that was released, oldest first, with the day it was. A client is expired only when it is behind
@@ -30,10 +30,12 @@ export const CLIENT_RELEASES: { version: string; released: string }[] = [
   { version: "20261118.2", released: "2026-11-18" },
   { version: "20261119.1", released: "2026-11-19" },
   { version: "20261122.1", released: "2026-11-22" },
+  { version: "20261122.2", released: "2026-11-22" },
 ];
 
 /** SHA-256 of the client files at each client version: `{ "20261102.1": "<hash>" }`. Entries are never edited or removed. */
 export const CLIENT_SURFACE_HASHES: Record<string, string> = {
+  "20261122.2": "ff3ad485dbb8cc79a194c6a145103102909759b4ad35184b6578cc7583126323",
   "20261122.1": "6b0a1c5b805ad4a528c5fc70ca3daa5f88dfcb235c43e9de9f40d6b64f691bd9",
   "20261119.1": "de5c63e72988407a38aa121773c3f920d72820699d2f7390696237c2b036332e",
   "20261118.2": "ce7c73c9a66f8bdce4868891ae6887709e8911b05f2c3ec22b46ef4c42789231",

@@ -590,9 +590,13 @@ export const CODEX_HOOKS_JSON = `{
   }
 }`;
 
-// Codex's own memories, off. The installer sets this in ~/.codex/config.toml without touching the rest of the file.
+// Codex's own memories, off. The installer sets these in ~/.codex/config.toml without touching the rest of the file.
 export const CODEX_CONFIG_TOML = `[features]
-memories = false`;
+memories = false
+
+[memories]
+generate_memories = false
+use_memories = false`;
 
 export const GEMINI_HOOKS_JSON = `{
   "hooks": {
@@ -611,8 +615,8 @@ export const HOOK_APPS = [
     memory: "autoMemoryEnabled false (in the same file) turns off Claude Code's auto memory.",
     blocks: "PreToolUse denies every tool but Clyde recall while a recall is owed, and denies writes to Claude Code's memory files." },
   { app: "Codex", where: "~/.codex/hooks.json", config: CODEX_HOOKS_JSON, extra: ["~/.codex/config.toml", CODEX_CONFIG_TOML],
-    memory: "memories = false under [features] in ~/.codex/config.toml turns off Codex memories.",
-    blocks: "PreToolUse denies every tool but Clyde recall while a recall is owed, and denies writes to ~/.codex/memories. Run /hooks once in Codex to trust the entries." },
+    memory: "memories = false under [features] and generate_memories = false / use_memories = false under [memories] in ~/.codex/config.toml turn off Codex memories.",
+    blocks: "PreToolUse denies every tool but Clyde recall while a recall is owed, and denies writes to ~/.codex/memories. Trust the entries in ChatGPT Settings > Coding > Hooks (Trust all) or by running /hooks once in Codex CLI." },
   { app: "Gemini CLI", where: "~/.gemini/extensions/clyde/hooks/hooks.json", config: GEMINI_HOOKS_JSON,
     memory: "Gemini CLI has no memory switch left, so BeforeTool denies save_memory and writes to memory files.",
     blocks: "BeforeTool denies every tool but Clyde recall while a recall is owed." },
