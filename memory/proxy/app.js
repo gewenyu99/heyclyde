@@ -4,7 +4,7 @@
 // zero slop, and zero matches of /\bmemory\b/i in visible copy.
 import { AUTH_PROVIDERS, OR_RULE, providerButton } from "../design/auth.js";
 import { AUTH_CSS } from "../design/css.js";
-import { DESIGN_URL, esc, INSTALL, LEGAL, LOGO, MARK, MCP_URL, shell } from "./pages.js";
+import { appLogo, DESIGN_URL, esc, INSTALL, LEGAL, LOGO, MARK, MCP_URL, SCENE_IMG, shell } from "./pages.js";
 import { socialClient } from "./social.js";
 
 const APP_ROUTES = [
@@ -54,25 +54,39 @@ const APP_CSS = `
 .mcp-box__title{margin:0;font:var(--cl-text-title-3)}
 .mcp-box__pre{margin:0;padding:11px 13px;border:1px dashed var(--cl-rule-strong);border-radius:var(--cl-radius-md);background:var(--cl-paper-0);font:var(--cl-text-mono);font-size:12.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:var(--cl-ink)}
 .mcp-list{display:grid;gap:12px}
-.onb-card{display:grid;gap:18px;padding:22px;border:1.5px solid var(--cl-ink);border-radius:var(--cl-radius-xl);background:var(--cl-paper-1);box-shadow:var(--cl-copy-2)}
+.onb-card{display:grid;gap:16px;padding:20px;border:1.5px solid var(--cl-ink);border-radius:var(--cl-radius-xl);background:var(--cl-paper-1);box-shadow:var(--cl-copy-2)}
 .onb-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap}
 .onb-head h2{margin:4px 0 0}
-.onb-steps{display:grid;gap:14px}
-.onb-step{display:grid;gap:12px;padding:16px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-lg);background:var(--cl-paper-0)}
-.onb-step.is-done{border-color:var(--cl-ok);background:var(--cl-ok-wash)}
-.onb-step__top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
-.onb-step__num{display:inline-flex;align-items:center;gap:8px;font:var(--cl-text-title-3)}
+.onb-track{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media (max-width:720px){.onb-track{grid-template-columns:minmax(0,1fr)}}
+.onb-pill{display:grid;gap:6px;padding:12px 14px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-lg);background:var(--cl-paper-0)}
+.onb-pill.is-done{border-color:var(--cl-ok);background:var(--cl-ok-wash)}
+.onb-pill__top{display:flex;align-items:center;justify-content:space-between;gap:8px;font:600 13px/1.2 var(--cl-font-sans);color:var(--cl-ink)}
+.onb-pill__sub{font:var(--cl-text-small);color:var(--cl-ink-2)}
 .onb-tabs{display:flex;gap:8px;flex-wrap:wrap}
-.onb-tab{appearance:none;padding:6px 12px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-pill);background:var(--cl-paper-1);color:var(--cl-ink-2);font:600 12.5px/1.2 var(--cl-font-sans);cursor:pointer}
+.onb-tab{appearance:none;display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-pill);background:var(--cl-paper-1);color:var(--cl-ink-2);font:600 12.5px/1.2 var(--cl-font-sans);cursor:pointer}
+.onb-tab img{width:16px;height:16px;display:block}
 .onb-tab.is-active{border-color:var(--cl-ink);background:var(--cl-sticky);color:var(--cl-ink);box-shadow:var(--cl-copy-1)}
-.onb-panel{display:grid;gap:10px}
-.inv-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:24px;align-items:start}
-@media (max-width:900px){.inv-grid{grid-template-columns:minmax(0,1fr)}}
-.inv-steps{display:grid;gap:14px;margin:0;padding:0;list-style:none}
-.inv-step{display:grid;grid-template-columns:30px minmax(0,1fr);gap:12px;align-items:start;padding:16px;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-lg);background:var(--cl-paper-1)}
-.inv-step__n{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--cl-ink);background:var(--cl-sticky);font:700 13px/1 var(--cl-font-mono);color:var(--cl-ink)}
-.inv-step h3{margin:0 0 4px;font:var(--cl-text-title-3)}
-.inv-step p{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2)}
+.onb-panel{display:grid;gap:12px}
+.inv-stage{display:grid;gap:20px;align-content:start}
+.inv-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.inv-apps{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.inv-app-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-pill);background:var(--cl-paper-1);font:600 12px/1 var(--cl-font-sans);color:var(--cl-ink-2)}
+.inv-app-pill img{width:15px;height:15px;display:block}
+.inv-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:0;padding:0;list-style:none}
+@media (max-width:900px){.inv-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:460px){.inv-tiles{grid-template-columns:minmax(0,1fr)}}
+.inv-tile{display:grid;grid-template-rows:1fr auto;gap:10px;padding:14px;border:1.5px solid var(--cl-rule-strong);border-radius:var(--cl-radius-xl);background:var(--cl-paper-1);aspect-ratio:1 / 1}
+.inv-tile:nth-child(2){background:var(--cl-sticky);border-color:var(--cl-sticky-edge)}
+.inv-tile__art{position:relative;display:flex;align-items:center;justify-content:center;padding:8px;border:1px dashed var(--cl-rule-strong);border-radius:var(--cl-radius-md);background:var(--cl-paper-0);min-height:0;overflow:hidden}
+.inv-tile__art img{max-height:100%;max-width:100%;width:auto;height:auto;object-fit:contain}
+.inv-tile__num{position:absolute;top:6px;left:6px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--cl-ink);background:var(--cl-sticky);font:700 11px/1 var(--cl-font-mono);color:var(--cl-ink)}
+.inv-tile__copy{display:grid;gap:3px}
+.inv-tile__copy h3{margin:0;font:700 14px/1.2 var(--cl-font-display);color:var(--cl-ink)}
+.inv-tile__copy p{margin:0;font:400 12px/1.35 var(--cl-font-sans);color:var(--cl-ink-2)}
+.inv-cta-row{display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap;padding-top:4px}
+.inv-cta{min-width:260px;justify-content:center;font-size:16px;padding:14px 28px;box-shadow:var(--cl-copy-2)}
+.inv-signup-wrap{display:grid;gap:12px;max-width:460px;width:100%;margin:0 auto}
 .gr-shell{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
 @media (max-width:1040px){.gr-shell{grid-template-columns:minmax(0,1fr)}}
 .gr-toolbar{display:grid;gap:12px;padding:14px 16px}
@@ -149,6 +163,18 @@ const PAGE_SPEC = {
 };
 
 const PROVIDER_BUTTONS = Object.fromEntries(AUTH_PROVIDERS.map((p) => [p, providerButton(p)]));
+const INVITE_ART = {
+  standing: SCENE_IMG("standing", "Clyde holding a sticky note ready to connect", 92, 112),
+  relay: SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 156, 90),
+  goldfish: SCENE_IMG("goldfish", "Clyde staring at a goldfish in a bowl", 96, 112),
+  questboard: SCENE_IMG("questboard", "Clyde pointing at a board of sticky notes", 98, 110),
+};
+const CLIENT_ICONS = {
+  antigravity: appLogo("antigravity", 16),
+  "claude-code": appLogo("claude-code", 16),
+  claude: appLogo("claude", 16),
+  chatgpt: appLogo("chatgpt", 16),
+};
 
 const APP_JS = `(function(){
 var root = document.getElementById('app-root');
@@ -158,6 +184,8 @@ var entryId = root.getAttribute('data-id') || '';
 var STORE = 'clyde_session_v1';
 var MCP_ENDPOINT = ${JSON.stringify(MCP_URL)};
 var INSTALL_CMD = ${JSON.stringify(INSTALL)};
+var INVITE_ART = ${JSON.stringify(INVITE_ART).replace(/</g, "\\u003c")};
+var CLIENT_ICONS = ${JSON.stringify(CLIENT_ICONS).replace(/</g, "\\u003c")};
 var PROVIDER_BUTTONS = ${JSON.stringify(PROVIDER_BUTTONS).replace(/</g, "\\u003c")};
 var OR_RULE = ${JSON.stringify(OR_RULE).replace(/</g, "\\u003c")};
 function __name(f) { return f; }
@@ -431,24 +459,64 @@ function renderInvite() {
   var s = readSession();
   var sp = new URLSearchParams(location.search);
   var from = (sp.get('from') || '').trim().slice(0, 40);
+  var step = sp.get('step') === 'signup' ? 'signup' : 'intro';
   var alreadyBanner = s
     ? '<div class="app-banner app-banner--ok">You\\'re signed in as ' + esc(s.email || 'your account') + '. <a class="cl-link" href="/memories?onboarding=1">Open onboarding</a></div>'
     : '';
+
+  if (step === 'intro') {
+    root.innerHTML =
+      alreadyBanner +
+      '<div class="inv-stage">' +
+        '<div class="inv-top">' +
+          (from ? '<span class="cl-chip cl-chip--carbon">Invited by ' + esc(from) + '</span>' : '<span class="cl-chip cl-chip--carbon">Shared notebook for your AI agents</span>') +
+          '<div class="inv-apps">' +
+            '<span class="inv-app-pill">' + CLIENT_ICONS.antigravity + 'Antigravity</span>' +
+            '<span class="inv-app-pill">' + CLIENT_ICONS.claude + 'Claude</span>' +
+            '<span class="inv-app-pill">' + CLIENT_ICONS.chatgpt + 'ChatGPT / Codex</span>' +
+          '</div>' +
+        '</div>' +
+        '<ol class="inv-tiles">' +
+          '<li class="inv-tile">' +
+            '<div class="inv-tile__art"><span class="inv-tile__num">1</span>' + INVITE_ART.standing + '</div>' +
+            '<div class="inv-tile__copy"><h3>Connect once</h3><p>One command sets up MCP and hooks, or connect by OAuth URL.</p></div>' +
+          '</li>' +
+          '<li class="inv-tile">' +
+            '<div class="inv-tile__art"><span class="inv-tile__num">2</span>' + INVITE_ART.relay + '</div>' +
+            '<div class="inv-tile__copy"><h3>Recall and save</h3><p>Agents pull past notes into new chats and save new decisions.</p></div>' +
+          '</li>' +
+          '<li class="inv-tile">' +
+            '<div class="inv-tile__art"><span class="inv-tile__num">3</span>' + INVITE_ART.goldfish + '</div>' +
+            '<div class="inv-tile__copy"><h3>No blank slates</h3><p>Short notes load fast in new chats. Full specs open only when needed.</p></div>' +
+          '</li>' +
+          '<li class="inv-tile">' +
+            '<div class="inv-tile__art"><span class="inv-tile__num">4</span>' + INVITE_ART.questboard + '</div>' +
+            '<div class="inv-tile__copy"><h3>Read-only web UI</h3><p>No forms to fill out. Your agents handle every note edit and quest.</p></div>' +
+          '</li>' +
+        '</ol>' +
+        '<div class="inv-cta-row">' +
+          '<button type="button" class="cl-btn cl-btn--primary cl-btn--lg inv-cta" id="btn-inv-start">Create your account</button>' +
+          '<a class="cl-link" href="/memories">Already have an account? Sign in</a>' +
+        '</div>' +
+      '</div>';
+
+    var goBtn = document.getElementById('btn-inv-start');
+    if (goBtn) goBtn.addEventListener('click', function() {
+      var nextQs = new URLSearchParams(location.search);
+      nextQs.set('step', 'signup');
+      history.pushState(null, '', '/invite?' + nextQs.toString());
+      renderInvite();
+    });
+    return;
+  }
+
   root.innerHTML =
     alreadyBanner +
-    '<div class="inv-grid">' +
-      '<section class="app-grid">' +
-        (from ? '<span class="cl-chip cl-chip--carbon">Invited by ' + esc(from) + '</span>' : '<span class="cl-chip cl-chip--carbon">Works with Claude and Antigravity</span>') +
-        '<ol class="inv-steps">' +
-          '<li class="inv-step"><span class="inv-step__n">1</span><div><h3>Connect Clyde once</h3><p>Run one command for Antigravity or Claude Code, or paste the MCP URL into Claude. Hooks and MCP install together.</p></div></li>' +
-          '<li class="inv-step"><span class="inv-step__n">2</span><div><h3>Recall and save as you work</h3><p>Your agent pulls in related notes from past chats and saves new decisions and results with evidence.</p></div></li>' +
-          '<li class="inv-step"><span class="inv-step__n">3</span><div><h3>Short notes, full files on demand</h3><p>Notes stay under 500 characters so chats stay fast. When an earlier note matters, your agent opens the full note and attached files.</p></div></li>' +
-          '<li class="inv-step"><span class="inv-step__n">4</span><div><h3>Manage everything through your agent</h3><p>This web app is read-only by design. After signing up, you\\'ll connect an agent and run one save and one recall over MCP.</p></div></li>' +
-        '</ol>' +
-      '</section>' +
+    '<div class="inv-signup-wrap">' +
+      '<div><button type="button" class="cl-btn cl-btn--sm cl-btn--ghost" id="btn-inv-back">Back to overview</button></div>' +
       '<section class="cl-card app-form">' +
         '<h2 class="cl-title-2">Create your account</h2>' +
-        '<p class="cl-hint">Sign up with Google, GitHub, or email. You\\'ll land in guided setup for Claude and Antigravity.</p>' +
+        '<p class="cl-hint">Sign up with Google, GitHub, or email. Next, you\\'ll connect your first agent and test it with one prompt.</p>' +
         '<div id="inv-msg" class="is-hidden"></div>' +
         '<div id="inv-providers" class="is-hidden"></div>' +
         '<form id="inv-email-form" class="app-grid">' +
@@ -461,6 +529,15 @@ function renderInvite() {
         '</form>' +
       '</section>' +
     '</div>';
+
+  var backBtn = document.getElementById('btn-inv-back');
+  if (backBtn) backBtn.addEventListener('click', function() {
+    var backQs = new URLSearchParams(location.search);
+    backQs.delete('step');
+    var q = backQs.toString();
+    history.pushState(null, '', '/invite' + (q ? '?' + q : ''));
+    renderInvite();
+  });
 
   var banner = document.getElementById('inv-msg');
   var emailEl = document.getElementById('inv-email');
@@ -503,7 +580,7 @@ function renderInvite() {
         body: JSON.stringify({ type: 'email', email: email, token: token })
       });
       var d = await r.json().catch(function() { return {}; });
-      if (!r.ok || !d.access_token) throw new Error(d.error_description || d.msg || d.error || "That code didn't work or expired. Request a new email.");
+      if (!r.ok || !d.access_token) throw new Error(d.error_description || d.msg || d.error || "That code didn't match or expired. Send a new sign-up link and try again.");
       writeSession(d);
       location.replace('/memories?onboarding=1');
     } catch (err) {
@@ -511,6 +588,10 @@ function renderInvite() {
     }
   });
 }
+
+if (window.addEventListener) window.addEventListener('popstate', function() {
+  if (view === 'invite') renderInvite();
+});
 
 async function showProviders(box, banner) {
   var on = [];
@@ -565,47 +646,54 @@ function buildOnboardingHtml(ob, activeTab) {
   var allDone = doneCount === 3;
   var tab = activeTab || 'antigravity';
 
-  var regPrompt = 'Call Clyde register_agent with name "' + (tab === 'antigravity' ? 'antigravity-main' : (tab === 'chatgpt' ? 'codex-main' : 'claude-main')) +
-    '", context "both", surface "' + (tab === 'antigravity' ? 'Antigravity' : (tab === 'claude-code' ? 'claude-code' : (tab === 'chatgpt' ? 'codex' : 'claude.ai'))) +
-    '", and a short description of what you help me with.';
-  var savePrompt = 'Call Clyde remember to save a test note: pattern "observations", title "Clyde setup check", body "Connected my first agent and verified saving a note over MCP.", evidence "Onboarding verification".';
-  var recallPrompt = 'Call Clyde recall with query "Clyde setup check", then call get_entry on the returned note id to confirm full details load.';
+  var agentName = tab === 'antigravity' ? 'antigravity-main' : (tab === 'chatgpt' ? 'codex-main' : 'claude-main');
+  var surfaceName = tab === 'antigravity' ? 'Antigravity' : (tab === 'claude-code' ? 'claude-code' : (tab === 'chatgpt' ? 'codex' : 'claude.ai'));
+  var allInOnePrompt =
+    'Run all three Clyde onboarding checks in order:\\n' +
+    '1. Call Clyde register_agent with name "' + agentName + '", context "both", surface "' + surfaceName + '", and a short description of what you help me with.\\n' +
+    '2. Call Clyde remember to save a test note: pattern "observations", title "Clyde setup check", body "Connected my first agent and verified saving a note over MCP.", evidence "Onboarding verification".\\n' +
+    '3. Call Clyde recall with query "Clyde setup check", then call get_entry on the returned note id to verify full details load.\\n' +
+    'Reply with the registered agent name, saved note id, and retrieved note title.';
 
-  var tabBody = '';
+  var connectBlock = '';
   if (tab === 'antigravity') {
-    tabBody =
-      '<p class="cl-hint">Run this command in your terminal. It signs your computer in, adds Clyde MCP to <code>~/.gemini/config/mcp_config.json</code>, installs automatic hooks in <code>~/.gemini/config/hooks.json</code>, and adds the Clyde rule to <code>~/.gemini/GEMINI.md</code>.</p>' +
-      mcpCard('1. Install Antigravity MCP + hooks', 'Restart Antigravity after running this command.', 'CLI installer', INSTALL_CMD, false, 'Copy command') +
-      mcpCard('2. Register Antigravity in chat', 'Paste this into a new Antigravity chat to finish Step 1.', 'register_agent', regPrompt, !s1, 'Copy prompt');
+    connectBlock =
+      '<p class="cl-hint">Run this in your terminal, then restart Antigravity and sign in when asked. It adds Clyde MCP to <code>~/.gemini/config/mcp_config.json</code>, installs hooks in <code>~/.gemini/config/hooks.json</code>, and adds the Clyde rule to <code>~/.gemini/GEMINI.md</code>.</p>' +
+      mcpCard('1. Install Antigravity MCP + hooks', 'Adds Clyde MCP, hooks, and the Clyde rule for Antigravity.', '', INSTALL_CMD, false, 'Copy command');
   } else if (tab === 'claude-code') {
-    tabBody =
-      '<p class="cl-hint">Run this command in your terminal. It installs the Clyde MCP connector and automatic hooks into <code>~/.claude/settings.json</code> and adds the Clyde rule to <code>~/.claude/CLAUDE.md</code>.</p>' +
-      mcpCard('1. Install Claude Code MCP + hooks', 'Restart Claude Code after running this command.', 'CLI installer', INSTALL_CMD, false, 'Copy command') +
-      mcpCard('2. Register Claude Code in chat', 'Paste this into Claude Code to finish Step 1.', 'register_agent', regPrompt, !s1, 'Copy prompt');
+    connectBlock =
+      '<p class="cl-hint">Run this in your terminal, then restart Claude Code. It adds Clyde MCP to <code>~/.claude.json</code>, installs hooks in <code>~/.claude/settings.json</code>, and adds the Clyde rule to <code>~/.claude/CLAUDE.md</code>.</p>' +
+      mcpCard('1. Install Claude Code MCP + hooks', 'Sets up MCP, hooks, and device sign-in in one command.', '', INSTALL_CMD, false, 'Copy command');
   } else if (tab === 'chatgpt') {
-    tabBody =
-      '<p class="cl-hint">For <strong>Codex</strong> (ChatGPT desktop app or CLI), run the one-command installer below (or connect over OAuth with <code>codex mcp add clyde --url https://heyclyde.me/mcp &amp;&amp; codex mcp login clyde</code>). For <strong>chatgpt.com</strong>, turn on Developer mode in <strong>Settings / Connectors</strong> and add the MCP URL with OAuth.</p>' +
-      mcpCard('1. Install Codex MCP + hooks', 'Adds Clyde to ~/.codex/config.toml, ~/.codex/hooks.json, and ~/.codex/AGENTS.md.', 'CLI installer', INSTALL_CMD, false, 'Copy command') +
-      mcpCard('2. ChatGPT web OAuth connector URL', 'Use this URL in ChatGPT Settings / Connectors (OAuth).', 'MCP server URL', MCP_ENDPOINT, false, 'Copy URL') +
-      mcpCard('3. Register ChatGPT or Codex in chat', 'Paste this into ChatGPT or Codex to finish Step 1.', 'register_agent', regPrompt, !s1, 'Copy prompt');
+    connectBlock =
+      '<p class="cl-hint">For <strong>Codex</strong> (desktop app or CLI), run the installer below, then run <code>/hooks</code> in Codex once to trust the hooks. Or connect without hooks using <code>codex mcp add clyde --url https://heyclyde.me/mcp &amp;&amp; codex mcp login clyde</code>. For <strong>chatgpt.com</strong>, turn on Developer mode in <strong>Settings / Connectors</strong> and add the URL below with OAuth.</p>' +
+      mcpCard('1. Install Codex MCP + hooks', 'Adds Clyde to ~/.codex/config.toml, ~/.codex/hooks.json, and ~/.codex/AGENTS.md.', '', INSTALL_CMD, false, 'Copy command') +
+      mcpCard('Or connect ChatGPT web over OAuth', 'Paste into ChatGPT Settings / Connectors with OAuth.', 'OAuth URL', MCP_ENDPOINT, false, 'Copy URL');
   } else {
-    tabBody =
-      '<p class="cl-hint">In Claude (web, desktop, or mobile), open <strong>Settings / Connectors / Add custom connector</strong>, paste the MCP URL below, click Add, then Connect and sign in with this same account.</p>' +
-      mcpCard('1. Claude custom connector URL', 'Paste this URL into Claude Settings / Connectors.', 'MCP server URL', MCP_ENDPOINT, false, 'Copy URL') +
-      mcpCard('2. Register Claude in chat', 'Start a chat in Claude and paste this prompt to finish Step 1.', 'register_agent', regPrompt, !s1, 'Copy prompt');
+    connectBlock =
+      '<p class="cl-hint">In Claude (web, desktop, or mobile), open <strong>Settings / Connectors / Add custom connector</strong>, paste the URL below, click Add, then click Connect and sign in with the same account.</p>' +
+      mcpCard('1. Add Claude custom connector', 'Paste into Claude Settings / Connectors.', 'OAuth URL', MCP_ENDPOINT, false, 'Copy URL');
   }
 
-  var step1Tabs =
+  var setupBody =
     '<div class="onb-tabs" role="tablist" aria-label="Choose your client">' +
-      '<button type="button" class="onb-tab' + (tab === 'antigravity' ? ' is-active' : '') + '" data-onb-tab="antigravity">Antigravity</button>' +
-      '<button type="button" class="onb-tab' + (tab === 'claude-code' ? ' is-active' : '') + '" data-onb-tab="claude-code">Claude Code</button>' +
-      '<button type="button" class="onb-tab' + (tab === 'claude-web' ? ' is-active' : '') + '" data-onb-tab="claude-web">Claude (Web / Desktop)</button>' +
-      '<button type="button" class="onb-tab' + (tab === 'chatgpt' ? ' is-active' : '') + '" data-onb-tab="chatgpt">ChatGPT / Codex</button>' +
+      '<button type="button" class="onb-tab' + (tab === 'antigravity' ? ' is-active' : '') + '" data-onb-tab="antigravity">' + CLIENT_ICONS.antigravity + 'Antigravity</button>' +
+      '<button type="button" class="onb-tab' + (tab === 'claude-code' ? ' is-active' : '') + '" data-onb-tab="claude-code">' + CLIENT_ICONS['claude-code'] + 'Claude Code</button>' +
+      '<button type="button" class="onb-tab' + (tab === 'claude-web' ? ' is-active' : '') + '" data-onb-tab="claude-web">' + CLIENT_ICONS.claude + 'Claude (Web / Desktop)</button>' +
+      '<button type="button" class="onb-tab' + (tab === 'chatgpt' ? ' is-active' : '') + '" data-onb-tab="chatgpt">' + CLIENT_ICONS.chatgpt + 'ChatGPT / Codex</button>' +
     '</div>' +
-    '<div class="onb-panel">' + tabBody + '</div>';
-  var step1Body = s1
-    ? '<details><summary class="cl-hint">Show Claude and Antigravity setup steps</summary>' + step1Tabs + '</details>'
-    : step1Tabs;
+    '<div class="onb-panel">' +
+      connectBlock +
+      mcpCard(
+        '2. Run all 3 checks in one prompt',
+        'Paste this into your agent to run register_agent, remember, recall, and get_entry in one turn.',
+        'register_agent + remember + recall',
+        allInOnePrompt,
+        !allDone,
+        'Copy all 3 steps'
+      ) +
+    '</div>';
+
   var savedLabel = ob.latest_entry ? String(ob.latest_entry.title || '') : '';
   if (savedLabel.length > 26) savedLabel = savedLabel.slice(0, 25) + '…';
 
@@ -613,49 +701,33 @@ function buildOnboardingHtml(ob, activeTab) {
     '<div class="onb-head">' +
       '<div>' +
         '<span class="cl-chip cl-chip--carbon">' + (allDone ? 'Setup complete · 3 of 3' : 'First-run setup · ' + doneCount + ' of 3 complete') + '</span>' +
-        '<h2 class="cl-title-2">' + (allDone ? 'Your first agent is live on Clyde' : 'Connect your first agent and test MCP') + '</h2>' +
+        '<h2 class="cl-title-2">' + (allDone ? 'Your first agent is connected' : 'Connect your first agent') + '</h2>' +
         '<p class="cl-hint">' + (allDone
-          ? 'Setup works. Your agents now share one notebook.'
-          : 'This UI is read-only. Connect Claude or Antigravity, then run one save and one recall over MCP.') + '</p>' +
+          ? 'All three checks passed. Your agents share one notebook.'
+          : 'This web UI is read-only. Connect your client, paste the prompt below, then click Check progress.') + '</p>' +
       '</div>' +
       '<div class="app-actions">' +
         '<button type="button" class="cl-btn cl-btn--sm" id="onb-refresh">Check progress</button>' +
         (allDone ? '<a class="cl-btn cl-btn--primary cl-btn--sm" href="/graph">Open graph</a>' : '') +
       '</div>' +
     '</div>' +
-    '<div class="onb-steps">' +
-      '<div class="onb-step' + (s1 ? ' is-done' : '') + '">' +
-        '<div class="onb-step__top">' +
-          '<span class="onb-step__num">Step 1: Connect your first agent</span>' +
-          (s1
-            ? '<span class="cl-stamp cl-stamp--ok">Connected: ' + esc(ob.latest_agent ? ob.latest_agent.name : (ob.agents + ' agent')) + '</span>'
-            : '<span class="cl-chip">Waiting for register_agent</span>') +
-        '</div>' +
-        step1Body +
+    '<div class="onb-track">' +
+      '<div class="onb-pill' + (s1 ? ' is-done' : '') + '">' +
+        '<div class="onb-pill__top"><span>1. Connect agent</span>' + (s1 ? '<span class="cl-stamp cl-stamp--ok">Done</span>' : '<span class="cl-chip">Waiting</span>') + '</div>' +
+        '<span class="onb-pill__sub">' + (s1 ? esc(ob.latest_agent ? ob.latest_agent.name : (ob.agents + ' connected')) : 'Calls register_agent') + '</span>' +
       '</div>' +
-      '<div class="onb-step' + (s2 ? ' is-done' : '') + '">' +
-        '<div class="onb-step__top">' +
-          '<span class="onb-step__num">Step 2: Save your first note via MCP</span>' +
-          (s2
-            ? '<span class="cl-stamp cl-stamp--ok">Saved' + (savedLabel ? ': ' + esc(savedLabel) : '') + '</span>'
-            : '<span class="cl-chip">Waiting for remember</span>') +
-        '</div>' +
-        (s2 && ob.latest_entry
-          ? '<p class="cl-hint">First note recorded. <a class="cl-link" href="/entries/' + encodeURIComponent(ob.latest_entry.id) + '">Inspect "' + esc(ob.latest_entry.title) + '"</a>.</p>'
-          : mcpCard('Ask your agent to save a note', 'Paste this into Claude or Antigravity once Step 1 is done.', 'remember', savePrompt, false)) +
+      '<div class="onb-pill' + (s2 ? ' is-done' : '') + '">' +
+        '<div class="onb-pill__top"><span>2. Save first note</span>' + (s2 ? '<span class="cl-stamp cl-stamp--ok">Done</span>' : '<span class="cl-chip">Waiting</span>') + '</div>' +
+        '<span class="onb-pill__sub">' + (s2 && ob.latest_entry ? '<a class="cl-link" href="/entries/' + encodeURIComponent(ob.latest_entry.id) + '">' + esc(savedLabel) + '</a>' : 'Calls remember') + '</span>' +
       '</div>' +
-      '<div class="onb-step' + (s3 ? ' is-done' : '') + '">' +
-        '<div class="onb-step__top">' +
-          '<span class="onb-step__num">Step 3: Retrieve it via MCP</span>' +
-          (s3
-            ? '<span class="cl-stamp cl-stamp--ok">Verified (' + ob.recalls + (ob.recalls === 1 ? ' recall' : ' recalls') + ')</span>'
-            : '<span class="cl-chip">Waiting for recall</span>') +
-        '</div>' +
-        (s3
-          ? '<p class="cl-hint">Your agent retrieved saved notes over MCP. Future chats can pull full details on demand.</p>'
-          : mcpCard('Ask your agent to recall the note', 'Paste this to verify search and full-note retrieval.', 'recall + get_entry', recallPrompt, false)) +
+      '<div class="onb-pill' + (s3 ? ' is-done' : '') + '">' +
+        '<div class="onb-pill__top"><span>3. Retrieve note</span>' + (s3 ? '<span class="cl-stamp cl-stamp--ok">Done</span>' : '<span class="cl-chip">Waiting</span>') + '</div>' +
+        '<span class="onb-pill__sub">' + (s3 ? (ob.recalls + (ob.recalls === 1 ? ' recall verified' : ' recalls verified')) : 'Calls recall + get_entry') + '</span>' +
       '</div>' +
     '</div>' +
+    (allDone
+      ? '<details><summary class="cl-hint">Show setup instructions and all-in-one prompt</summary>' + setupBody + '</details>'
+      : setupBody) +
   '</section>';
 }
 
