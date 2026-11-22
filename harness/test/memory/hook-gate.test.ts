@@ -134,6 +134,21 @@ test("Antigravity's recall through call_mcp_tool pays the debt; other tools wait
   assert.equal(g.decide('antigravity', 'run_command', { CommandLine: 'ls' }, 'a1', T0 + 4), 'allow')
 })
 
+test('Claude Desktop UUID connector tool names pay registration, recall, and remember gates', () => {
+  const g = env()
+  const cid = 'mcp__b49facd9-22e8-4aab-9606-3ce6c6a7d959'
+  g.run('claude', 'SessionStart', { session_id: 'u1' }, T0)
+  assert.equal(g.decide('claude', 'Bash', { command: 'ls' }, 'u1', T0 + 1), 'deny')
+  assert.equal(g.decide('claude', `${cid}__register_agent`, {}, 'u1', T0 + 2), 'allow')
+  g.run('claude', 'UserPromptSubmit', { session_id: 'u1', prompt: 'explore the medical venture server read only' }, T0 + 3)
+  assert.equal(g.decide('claude', 'Bash', { command: 'ls' }, 'u1', T0 + 4), 'deny')
+  assert.equal(g.decide('claude', `${cid}__list_quests`, {}, 'u1', T0 + 5), 'deny')
+  assert.equal(g.decide('claude', `${cid}__recall`, { query: 'medical venture server' }, 'u1', T0 + 6), 'allow')
+  assert.equal(g.decide('claude', 'Bash', { command: 'ls' }, 'u1', T0 + 7), 'allow')
+  g.run('claude', 'PostToolUse', { session_id: 'u1', tool_name: `${cid}__remember`, tool_input: { title: 't', body: 'b' }, tool_response: {} }, T0 + 8)
+  assert.equal(g.run('claude', 'Stop', { session_id: 'u1' }, T0 + 9), '')
+})
+
 test('Clyde down: nothing is owed or blocked, and the agent hears Clyde is busy', () => {
   const dir = tempDir('clyde-down-')
   dirs.push(dir)

@@ -171,7 +171,7 @@ CLYDE_TOOLS = ("recall", "recall_more", "remember", "feedback", "register_agent"
 def is_tool(name, *names):
     return any(re.search(r"(^|[_:.])" + n + "$", name, re.I) for n in names)
 def is_clyde_tool(name, *names):
-    return any(re.search(r"(?:^|[_:.])(?:memory|clyde)[_:.]+" + n + "$", name, re.I) for n in names)
+    return any(re.search(r"(?:^|[_:.])(?:memory|clyde|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})[_:.]+" + n + "$", name, re.I) for n in names)
 
 sfile = sdir / f"{sha(client + chr(58) + sid)}.json"
 state = load_json(sfile)
