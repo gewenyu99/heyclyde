@@ -81,7 +81,55 @@ function includedQuotaFor(plan: Plan, kind: typeof METERED_KINDS[number]): numbe
 export async function handle(req: Request, path: string, owner: string): Promise<Response> {
   const url = new URL(req.url);
 
-  // ---------------------------------------------------------------- onboarding progress
+  // ---------------------------------------------------------------- onboarding & partner invite redeem
+  if (path === "/me/invite/redeem" && req.method === "POST") {
+    const body = await readJsonObject(req);
+    const code = typeof body?.code === "string" ? body.code.trim() : "";
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{7,63}$/.test(code)) {
+      return json({ error: "That isn't a valid invite code." }, 400);
+    }
+    const result = await rootSql.begin(async (tx) => {
+      const [inv] = await tx`select code, plan, label, invited_by, note, max_uses, uses, expires_at, revoked_at
+        from memory.invite where code = ${code} for update`;
+      if (!inv) return { status: 404, body: { error: "That invite link doesn't exist." } };
+      const [already] = await tx`select 1 from memory.invite_redemption
+        where code = ${code} and owner_id = ${owner}::uuid`;
+      if (already) {
+        return {
+          status: 200,
+          body: { redeemed: true, already: true, plan: String(inv.plan), unlimited: inv.plan === "partner" || inv.plan === "owner", label: String(inv.label), invited_by: String(inv.invited_by) },
+        };
+      }
+      if (inv.revoked_at) return { status: 410, body: { error: "That invite link has been revoked." } };
+      if (inv.expires_at && new Date(inv.expires_at).getTime() <= Date.now()) {
+        return { status: 410, body: { error: "That invite link has expired." } };
+      }
+      if (inv.max_uses !== null && Number(inv.uses) >= Number(inv.max_uses)) {
+        return { status: 410, body: { error: "That invite link has reached its limit." } };
+      }
+      const [acct] = await tx`select email from memory.account where owner_id = ${owner}::uuid`;
+      const email = String(acct?.email || "");
+      await tx`insert into memory.invite_redemption (code, owner_id, email)
+        values (${code}, ${owner}::uuid, ${email})`;
+      await tx`update memory.invite set uses = uses + 1 where code = ${code}`;
+      await tx`insert into memory.entitlement (owner_id, provider, plan, state, event_at, updated_at)
+        values (${owner}::uuid, 'invite', ${String(inv.plan)}, 'comp', now(), now())
+        on conflict (owner_id) do update set
+          plan = case when memory.entitlement.plan = 'owner' then 'owner' else excluded.plan end,
+          state = case when memory.entitlement.plan = 'owner' then memory.entitlement.state else 'comp' end,
+          provider = case when memory.entitlement.plan = 'owner' then memory.entitlement.provider else 'invite' end,
+          event_at = now(),
+          updated_at = now()`;
+      await tx`update memory.account set free_slot = false where owner_id = ${owner}::uuid and free_slot`;
+      return {
+        status: 200,
+        body: { redeemed: true, already: false, plan: String(inv.plan), unlimited: inv.plan === "partner" || inv.plan === "owner", label: String(inv.label), invited_by: String(inv.invited_by) },
+      };
+    });
+    if (result.status === 200) forget(owner);
+    return json(result.body, result.status);
+  }
+
   if (path === "/me/onboarding" && req.method === "GET") {
     const [counts] = await sql`select
       (select count(*)::int from memory.agent) as agents,

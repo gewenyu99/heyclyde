@@ -68,10 +68,17 @@ const APP_CSS = `
 .onb-tab img{width:16px;height:16px;display:block}
 .onb-tab.is-active{border-color:var(--cl-ink);background:var(--cl-sticky);color:var(--cl-ink);box-shadow:var(--cl-copy-1)}
 .onb-panel{display:grid;gap:12px}
-.inv-stage{display:grid;gap:20px;align-content:start}
-.inv-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.inv-stage{display:grid;gap:18px;align-content:start}
+.inv-pass{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:16px 20px;border:1.5px solid var(--cl-ink);border-radius:var(--cl-radius-xl);background:var(--cl-paper-1);box-shadow:var(--cl-copy-1)}
+.inv-pass--partner{background:var(--cl-sticky);border-color:var(--cl-ink);box-shadow:var(--cl-copy-2)}
+.inv-pass__copy{display:grid;gap:6px;min-width:0;flex:1 1 280px}
+.inv-pass__copy h2{margin:0;font:var(--cl-text-title-2)}
+.inv-pass__copy p{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2)}
+.inv-pass__note{margin:2px 0 0;padding:8px 12px;border:1px dashed var(--cl-rule-strong);border-radius:var(--cl-radius-md);background:var(--cl-paper-0);font:500 13px/1.4 var(--cl-font-sans);color:var(--cl-ink)}
+.inv-pass__side{display:grid;gap:8px;justify-items:end;align-content:center}
+@media (max-width:720px){.inv-pass__side{justify-items:start}}
 .inv-apps{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.inv-app-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-pill);background:var(--cl-paper-1);font:600 12px/1 var(--cl-font-sans);color:var(--cl-ink-2)}
+.inv-app-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-pill);background:var(--cl-paper-0);font:600 12px/1 var(--cl-font-sans);color:var(--cl-ink-2)}
 .inv-app-pill img{width:15px;height:15px;display:block}
 .inv-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:0;padding:0;list-style:none}
 @media (max-width:900px){.inv-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -81,6 +88,7 @@ const APP_CSS = `
 .inv-tile__art{position:relative;display:flex;align-items:center;justify-content:center;padding:8px;border:1px dashed var(--cl-rule-strong);border-radius:var(--cl-radius-md);background:var(--cl-paper-0);min-height:116px;overflow:hidden}
 .inv-tile__art picture{display:flex;align-items:center;justify-content:center;width:100%;height:108px}
 .inv-tile__art img{display:block;height:104px;width:auto;max-width:100%;object-fit:contain}
+.inv-tile--flip img{transform:scaleX(-1)}
 @media (max-width:900px){.inv-tile{aspect-ratio:auto;padding:11px;gap:8px}.inv-tile__art{min-height:82px;padding:6px}.inv-tile__art picture{height:74px}.inv-tile__art img{height:72px}}
 .inv-tile__num{position:absolute;top:6px;left:6px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--cl-ink);background:var(--cl-sticky);font:700 11px/1 var(--cl-font-mono);color:var(--cl-ink)}
 .inv-tile__copy{display:grid;gap:3px}
@@ -88,7 +96,21 @@ const APP_CSS = `
 .inv-tile__copy p{margin:0;font:400 12px/1.35 var(--cl-font-sans);color:var(--cl-ink-2)}
 .inv-cta-row{display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap;padding-top:4px}
 .inv-cta{min-width:260px;justify-content:center;font-size:16px;padding:14px 28px;box-shadow:var(--cl-copy-2)}
-.inv-signup-wrap{display:grid;gap:12px;max-width:460px;width:100%;margin:0 auto}
+.inv-signup-wrap{display:grid;gap:14px}
+.inv-signup-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,440px);gap:24px;align-items:center}
+@media (max-width:860px){.inv-signup-grid{grid-template-columns:minmax(0,1fr)}}
+.inv-scene{display:grid;gap:16px;padding:24px;border:1.5px dashed var(--cl-rule-strong);border-radius:var(--cl-radius-xl);background:var(--cl-paper-1)}
+.inv-scene--partner{border-style:solid;border-color:var(--cl-ink);background:var(--cl-sticky);box-shadow:var(--cl-copy-2)}
+.inv-scene__stage{display:flex;align-items:center;justify-content:center;gap:14px;padding:12px 8px;border:1px dashed var(--cl-rule-strong);border-radius:var(--cl-radius-lg);background:var(--cl-paper-0)}
+.inv-scene__stage picture{display:flex;align-items:center;justify-content:center}
+.inv-scene__stage img{display:block;height:132px;width:auto;max-width:100%;object-fit:contain}
+.inv-scene__arrow{width:48px;height:20px;color:var(--cl-carbon);flex:none}
+@media (max-width:860px){.inv-scene__arrow{display:none}.inv-scene__stage img{height:104px}}
+.inv-scene__note{padding:12px 14px;border:1px solid var(--cl-sticky-edge);border-radius:var(--cl-radius-md);background:var(--cl-sticky);color:var(--cl-ink);font:500 13.5px/1.45 var(--cl-font-sans);transform:rotate(-1deg)}
+.inv-scene--partner .inv-scene__note{background:var(--cl-paper-0);border-color:var(--cl-ink)}
+.inv-perks{list-style:none;margin:0;padding:0;display:grid;gap:7px;font:var(--cl-text-small);color:var(--cl-ink-2)}
+.inv-perks li{display:grid;grid-template-columns:16px minmax(0,1fr);gap:6px}
+.inv-perks li::before{content:"+";font:700 13px/1.3 var(--cl-font-mono);color:var(--cl-ok)}
 .gr-shell{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
 @media (max-width:1040px){.gr-shell{grid-template-columns:minmax(0,1fr)}}
 .gr-toolbar{display:grid;gap:12px;padding:14px 16px}
@@ -457,47 +479,106 @@ function renderSignIn(msg) {
   });
 }
 
-function renderInvite() {
+var INV_CACHE = {};
+var INV_PENDING_KEY = 'clyde_pending_invite_v1';
+var INV_BANNER_MSG = '';
+var INV_ARROW = '<svg class="inv-scene__arrow" viewBox="0 0 120 36" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 20 C36 14 72 23 108 17"/><path d="M95 8 C102 12 108 15 113 17 C107 21 101 25 96 30"/></svg>';
+
+function savePendingInvite(code) {
+  try {
+    if (code) sessionStorage.setItem(INV_PENDING_KEY, code);
+    else sessionStorage.removeItem(INV_PENDING_KEY);
+  } catch (e) {}
+}
+
+function readPendingInvite() {
+  try { return sessionStorage.getItem(INV_PENDING_KEY) || ''; } catch (e) { return ''; }
+}
+
+async function loadInviteInfo(code) {
+  if (!code) return null;
+  if (INV_CACHE[code]) return INV_CACHE[code];
+  try {
+    var r = await fetch('/invite/info?code=' + encodeURIComponent(code));
+    var d = await r.json().catch(function() { return { valid: false, error: "Couldn't check this invite link." }; });
+    INV_CACHE[code] = d;
+    return d;
+  } catch (e) {
+    return { valid: false, error: "Couldn't reach Clyde to check this invite." };
+  }
+}
+
+async function renderInvite() {
   var s = readSession();
   var sp = new URLSearchParams(location.search);
-  var from = (sp.get('from') || '').trim().slice(0, 40);
+  var code = (sp.get('code') || '').trim();
+  var fromParam = (sp.get('from') || '').trim().slice(0, 40);
   var step = sp.get('step') === 'signup' ? 'signup' : 'intro';
+
+  var info = code ? await loadInviteInfo(code) : null;
+  var isPartner = Boolean(info && info.valid && info.unlimited);
+  var validCode = Boolean(info && info.valid) ? info.code : '';
+  var from = (info && info.valid && info.invited_by) ? info.invited_by : fromParam;
+  if (validCode) savePendingInvite(validCode);
+
+  var redeemUrl = validCode ? ('/memories?onboarding=1&invite=' + encodeURIComponent(validCode)) : '/memories?onboarding=1';
   var alreadyBanner = s
-    ? '<div class="app-banner app-banner--ok">You\\'re signed in as ' + esc(s.email || 'your account') + '. <a class="cl-link" href="/memories?onboarding=1">Open onboarding</a></div>'
+    ? '<div class="app-banner app-banner--ok">You\\'re signed in as ' + esc(s.email || 'your account') + '. <a class="cl-link" href="' + redeemUrl + '">' + (isPartner ? 'Activate partner pass and start setup' : 'Continue to setup') + '</a></div>'
     : '';
+  var badCodeBanner = (code && info && !info.valid)
+    ? '<div class="app-banner app-banner--warn">' + esc(info.error || 'That invite link is no longer active.') + ' You can still create a regular account below.</div>'
+    : '';
+
+  var appPills =
+    '<div class="inv-apps">' +
+      '<span class="inv-app-pill">' + CLIENT_ICONS.antigravity + 'Antigravity</span>' +
+      '<span class="inv-app-pill">' + CLIENT_ICONS.claude + 'Claude</span>' +
+      '<span class="inv-app-pill">' + CLIENT_ICONS.chatgpt + 'ChatGPT / Codex</span>' +
+    '</div>';
+
+  var passBanner = isPartner
+    ? '<section class="inv-pass inv-pass--partner">' +
+        '<div class="inv-pass__copy">' +
+          '<div class="app-meta"><span class="cl-stamp cl-stamp--ok">Partner pass · Unlimited</span><span class="cl-chip cl-chip--carbon">Invited by ' + esc(from || 'Wen') + '</span></div>' +
+          '<h2>' + esc(info.label || 'Partner invite') + '</h2>' +
+          '<p>On the house: unlimited notes, files, recalls, and connected agents, plus the quest board.</p>' +
+          (info.note ? '<div class="inv-pass__note">' + esc(info.note) + '</div>' : '') +
+        '</div>' +
+        '<div class="inv-pass__side">' + appPills + '</div>' +
+      '</section>'
+    : '<section class="inv-pass">' +
+        '<div class="inv-pass__copy">' +
+          '<div class="app-meta"><span class="cl-chip cl-chip--carbon">' + (from ? 'Invited by ' + esc(from) : 'Personal invite') + '</span><span class="cl-stamp">One notebook for every agent</span></div>' +
+          '<p>Tell Claude once on your laptop. Pick it up in Antigravity or ChatGPT later without repeating yourself.</p>' +
+        '</div>' +
+        '<div class="inv-pass__side">' + appPills + '</div>' +
+      '</section>';
 
   if (step === 'intro') {
     root.innerHTML =
-      alreadyBanner +
+      alreadyBanner + badCodeBanner +
       '<div class="inv-stage">' +
-        '<div class="inv-top">' +
-          (from ? '<span class="cl-chip cl-chip--carbon">Invited by ' + esc(from) + '</span>' : '<span class="cl-chip cl-chip--carbon">Shared notebook for your AI agents</span>') +
-          '<div class="inv-apps">' +
-            '<span class="inv-app-pill">' + CLIENT_ICONS.antigravity + 'Antigravity</span>' +
-            '<span class="inv-app-pill">' + CLIENT_ICONS.claude + 'Claude</span>' +
-            '<span class="inv-app-pill">' + CLIENT_ICONS.chatgpt + 'ChatGPT / Codex</span>' +
-          '</div>' +
-        '</div>' +
+        passBanner +
         '<ol class="inv-tiles">' +
-          '<li class="inv-tile">' +
+          '<li class="inv-tile inv-tile--flip">' +
             '<div class="inv-tile__art"><span class="inv-tile__num">1</span>' + INVITE_ART.standing + '</div>' +
-            '<div class="inv-tile__copy"><h3>Connect once</h3><p>One command sets up MCP and hooks, or connect by OAuth URL.</p></div>' +
+            '<div class="inv-tile__copy"><h3>Connect once</h3><p>Run one command for MCP and hooks, or add the OAuth URL.</p></div>' +
           '</li>' +
           '<li class="inv-tile">' +
             '<div class="inv-tile__art"><span class="inv-tile__num">2</span>' + INVITE_ART.relay + '</div>' +
-            '<div class="inv-tile__copy"><h3>Recall and save</h3><p>Agents pull past notes into new chats and save new decisions.</p></div>' +
+            '<div class="inv-tile__copy"><h3>Recall and save</h3><p>Agents pull past notes into fresh chats and save decisions as you work.</p></div>' +
           '</li>' +
           '<li class="inv-tile">' +
             '<div class="inv-tile__art"><span class="inv-tile__num">3</span>' + INVITE_ART.goldfish + '</div>' +
-            '<div class="inv-tile__copy"><h3>No blank slates</h3><p>Short notes load fast in new chats. Full specs open only when needed.</p></div>' +
+            '<div class="inv-tile__copy"><h3>No blank slates</h3><p>Notes cap at 500 chars so chats start fast. Attached files open on demand.</p></div>' +
           '</li>' +
           '<li class="inv-tile">' +
             '<div class="inv-tile__art"><span class="inv-tile__num">4</span>' + INVITE_ART.questboard + '</div>' +
-            '<div class="inv-tile__copy"><h3>Read-only web UI</h3><p>No forms to fill out. Your agents handle every note edit and quest.</p></div>' +
+            '<div class="inv-tile__copy"><h3>Read-only web UI</h3><p>No forms to fill out. Your agents handle every note and quest.</p></div>' +
           '</li>' +
         '</ol>' +
         '<div class="inv-cta-row">' +
-          '<button type="button" class="cl-btn cl-btn--primary cl-btn--lg inv-cta" id="btn-inv-start">Create your account</button>' +
+          '<button type="button" class="cl-btn cl-btn--primary cl-btn--lg inv-cta" id="btn-inv-start">' + (isPartner ? 'Claim your partner pass' : 'Create your account') + '</button>' +
           '<a class="cl-link" href="/memories">Already have an account? Sign in</a>' +
         '</div>' +
       '</div>';
@@ -512,24 +593,52 @@ function renderInvite() {
     return;
   }
 
+  var sceneBlock =
+    '<aside class="inv-scene' + (isPartner ? ' inv-scene--partner' : '') + '">' +
+      '<div class="app-meta">' +
+        (isPartner
+          ? '<span class="cl-stamp cl-stamp--ok">Partner pass · Unlimited</span><span class="cl-chip cl-chip--carbon">From ' + esc(from || 'Wen') + '</span>'
+          : '<span class="cl-chip cl-chip--carbon">' + (from ? 'Invited by ' + esc(from) : 'Step 2 of 2') + '</span><span class="cl-stamp">Under 2 minutes</span>') +
+      '</div>' +
+      '<div class="inv-scene__stage">' + INVITE_ART.relay + INV_ARROW + '</div>' +
+      '<div class="inv-scene__note">' +
+        (isPartner
+          ? '<strong>Partner pass stamped.</strong> ' + esc(info.note || 'Your free unlimited plan kicks in as soon as you sign in.')
+          : '<strong>Fresh notebook ready.</strong> Save a decision in one app and your other agents can pull it in the next chat.') +
+      '</div>' +
+      '<ul class="inv-perks">' +
+        (isPartner
+          ? '<li>Unlimited notes, files, recalls, and connected agents</li>' +
+            '<li>Quest board and cross-agent messaging included</li>' +
+            '<li>Free comp plan with no card or monthly bill</li>'
+          : '<li>Works with Antigravity, Claude Code, Claude, and ChatGPT / Codex</li>' +
+            '<li>One prompt tests agent setup, saving, and recall</li>' +
+            '<li>Read-only web UI so you never maintain notes by hand</li>') +
+      '</ul>' +
+    '</aside>';
+
   root.innerHTML =
-    alreadyBanner +
+    alreadyBanner + badCodeBanner +
     '<div class="inv-signup-wrap">' +
       '<div><button type="button" class="cl-btn cl-btn--sm cl-btn--ghost" id="btn-inv-back">Back to overview</button></div>' +
-      '<section class="cl-card app-form">' +
-        '<h2 class="cl-title-2">Create your account</h2>' +
-        '<p class="cl-hint">Sign up with Google, GitHub, or email. Next, you\\'ll connect your first agent and test it with one prompt.</p>' +
-        '<div id="inv-msg" class="is-hidden"></div>' +
-        '<div id="inv-providers" class="is-hidden"></div>' +
-        '<form id="inv-email-form" class="app-grid">' +
-          '<div class="cl-field"><label for="inv-email">Email</label><input id="inv-email" class="cl-input" type="email" required placeholder="you@example.com" autocomplete="email"></div>' +
-          '<button type="submit" class="cl-btn cl-btn--primary" id="btn-inv-send">Send sign-up link</button>' +
-        '</form>' +
-        '<form id="inv-otp-form" class="app-grid is-hidden">' +
-          '<div class="cl-field"><label for="inv-code">One-time code</label><input id="inv-code" class="cl-input" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456"></div>' +
-          '<button type="submit" class="cl-btn cl-btn--primary">Verify code and continue</button>' +
-        '</form>' +
-      '</section>' +
+      '<div class="inv-signup-grid">' +
+        sceneBlock +
+        '<section class="cl-card app-form">' +
+          (isPartner ? '<span class="cl-stamp cl-stamp--ok">Free partner plan</span>' : '') +
+          '<h2 class="cl-title-2">' + (isPartner ? 'Claim your partner pass' : 'Create your account') + '</h2>' +
+          '<p class="cl-hint">Sign up with Google, GitHub, or email. Next, you\\'ll connect your first agent and test it with one prompt.</p>' +
+          '<div id="inv-msg" class="is-hidden"></div>' +
+          '<div id="inv-providers" class="is-hidden"></div>' +
+          '<form id="inv-email-form" class="app-grid">' +
+            '<div class="cl-field"><label for="inv-email">Email</label><input id="inv-email" class="cl-input" type="email" required placeholder="you@example.com" autocomplete="email"></div>' +
+            '<button type="submit" class="cl-btn cl-btn--primary" id="btn-inv-send">Send sign-up link</button>' +
+          '</form>' +
+          '<form id="inv-otp-form" class="app-grid is-hidden">' +
+            '<div class="cl-field"><label for="inv-code">One-time code</label><input id="inv-code" class="cl-input" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456"></div>' +
+            '<button type="submit" class="cl-btn cl-btn--primary">Verify code and continue</button>' +
+          '</form>' +
+        '</section>' +
+      '</div>' +
     '</div>';
 
   var backBtn = document.getElementById('btn-inv-back');
@@ -544,7 +653,7 @@ function renderInvite() {
   var banner = document.getElementById('inv-msg');
   var emailEl = document.getElementById('inv-email');
   var otpForm = document.getElementById('inv-otp-form');
-  afterSignIn = '/memories?onboarding=1';
+  afterSignIn = redeemUrl;
   showProviders(document.getElementById('inv-providers'), banner);
 
   document.getElementById('inv-email-form').addEventListener('submit', async function(e) {
@@ -554,10 +663,12 @@ function renderInvite() {
     var btn = document.getElementById('btn-inv-send');
     btn.disabled = true;
     try {
+      var payload = { email: email };
+      if (validCode) payload.code = validCode;
       var r = await fetch('/invite/signup', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email: email })
+        body: JSON.stringify(payload)
       });
       var d = await r.json().catch(function() { return {}; });
       if (!r.ok) throw new Error(d.error || "Couldn't send the sign-up link. Check your email and try again.");
@@ -584,7 +695,7 @@ function renderInvite() {
       var d = await r.json().catch(function() { return {}; });
       if (!r.ok || !d.access_token) throw new Error(d.error_description || d.msg || d.error || "That code didn't match or expired. Send a new sign-up link and try again.");
       writeSession(d);
-      location.replace('/memories?onboarding=1');
+      location.replace(redeemUrl);
     } catch (err) {
       notice(banner, 'bad', err.message);
     }
@@ -764,6 +875,7 @@ async function renderEntries() {
   var sp = new URLSearchParams(location.search);
   var forceOnb = sp.get('onboarding') === '1';
   root.innerHTML =
+    (INV_BANNER_MSG ? '<div class="app-banner app-banner--ok" role="status">' + esc(INV_BANNER_MSG) + '</div>' : '') +
     '<div id="onb-slot" class="app-grid"></div>' +
     mcpCard(
       'Save a note through your agent',
@@ -1483,14 +1595,14 @@ var METER_LABEL = {
 
 async function renderUsage() {
   root.innerHTML = '<div id="u-summary" class="cl-card app-grid"></div><div id="u-meters" class="meter-list"></div>';
-  var PLAN_NAME = { free: 'Free', starter: 'Starter', clyde: 'Clyde', owner: 'Owner', none: 'None' };
+  var PLAN_NAME = { free: 'Free', starter: 'Starter', clyde: 'Clyde', partner: 'Partner', owner: 'Owner', none: 'None' };
   var STATE_NAME = { paid: 'Paid', past_due: 'Past due', comp: 'Comp', lapsed: 'Lapsed', refunded: 'Refunded', blocked: 'Blocked' };
   var d = await api('/me/usage');
   var limitDollars = d.spend_limit_cents == null ? 0 : (Number(d.spend_limit_cents) / 100);
   var statusText = d.state === 'paid' && d.cancel_at_period_end
     ? 'Canceling at period end'
-    : (STATE_NAME[d.state] || d.state || (d.plan === 'free' ? 'Free seat' : 'No active plan'));
-  var capChip = d.plan === 'owner'
+    : (d.plan === 'partner' ? 'Partner unlimited' : (STATE_NAME[d.state] || d.state || (d.plan === 'free' ? 'Free seat' : 'No active plan')));
+  var capChip = (d.plan === 'owner' || d.plan === 'partner')
     ? '<span class="cl-chip">Limits: unlimited</span>'
     : d.plan === 'none'
     ? '<span class="cl-chip">Access: subscription required</span>'
@@ -1550,6 +1662,24 @@ async function start() {
         s = writeSession({ access_token: s.access_token, refresh_token: s.refresh_token, user: u, expires_at: s.expires_at });
       }
     } catch (e) {}
+  }
+  var sp0 = new URLSearchParams(location.search);
+  var pendingInvite = (sp0.get('invite') || '').trim() || readPendingInvite();
+  if (pendingInvite) {
+    try {
+      var red = await api('/me/invite/redeem', { method: 'POST', body: JSON.stringify({ code: pendingInvite }) });
+      savePendingInvite('');
+      if (red && red.unlimited) {
+        INV_BANNER_MSG = 'Partner pass active (' + (red.label || 'Partner') + '): unlimited notes, files, recalls, and connected agents, plus the quest board.';
+      }
+      if (sp0.has('invite')) {
+        sp0.delete('invite');
+        var cleanQs = sp0.toString();
+        history.replaceState(null, '', location.pathname + (cleanQs ? '?' + cleanQs : ''));
+      }
+    } catch (e) {
+      savePendingInvite('');
+    }
   }
   if (view === 'entries') return renderEntries();
   if (view === 'entry') return renderEntryDetail();

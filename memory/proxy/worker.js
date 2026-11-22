@@ -97,7 +97,7 @@ function failed(url, message) {
 // verification file, and since R78 the one-command installer and its files (`curl -fsSL https://heyclyde.me/install | sh`).
 // Every other path there is the site.
 const SITE_API = (path) => path === "/mcp" || path === "/mcp/" || path === "/install" || path.startsWith("/install/files/") ||
-  path === "/invite/signup" || path === "/me" || path.startsWith("/me/") || path === "/billing/checkout" ||
+  path === "/invite/signup" || path === "/invite/info" || path === "/me" || path.startsWith("/me/") || path === "/billing/checkout" ||
   path.startsWith("/.well-known/oauth-protected-resource") ||
   path === "/.well-known/google-connected-apps" || path === "/.well-known/openai-apps-challenge";
 

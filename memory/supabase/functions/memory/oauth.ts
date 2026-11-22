@@ -704,7 +704,39 @@ export async function handle(req: Request, base: string, path: string, url: URL,
   return json ? page(p, "error", "no such endpoint.", 404) : text("No such endpoint.", 404);
 }
 
-/** Public email sign-up from /invite: geo-checked, rate-limited, and gated on open_signup (or allowed_email). */
+const INVITE_CODE = /^[A-Za-z0-9][A-Za-z0-9_-]{7,63}$/;
+
+/** Look up a partner/special invite code for /invite?code=... */
+export async function inviteInfo(url: URL): Promise<Response> {
+  const j = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
+  const code = (url.searchParams.get("code") ?? "").trim();
+  if (!INVITE_CODE.test(code)) return j({ valid: false, error: "Invalid invite code." }, 404);
+  const [inv] = await sql`select code, plan, label, invited_by, note, max_uses, uses, expires_at, revoked_at
+    from memory.invite where code = ${code}`;
+  if (!inv) return j({ valid: false, error: "That invite link doesn't exist." }, 404);
+  if (inv.revoked_at) return j({ valid: false, error: "That invite link has been revoked." }, 410);
+  if (inv.expires_at && new Date(inv.expires_at).getTime() <= Date.now()) {
+    return j({ valid: false, error: "That invite link has expired." }, 410);
+  }
+  const maxUses = inv.max_uses === null || inv.max_uses === undefined ? null : Number(inv.max_uses);
+  const uses = Number(inv.uses ?? 0);
+  if (maxUses !== null && uses >= maxUses) {
+    return j({ valid: false, error: "That invite link has reached its limit." }, 410);
+  }
+  return j({
+    valid: true,
+    code: String(inv.code),
+    plan: String(inv.plan),
+    unlimited: inv.plan === "partner" || inv.plan === "owner",
+    label: String(inv.label || "Partner invite"),
+    invited_by: String(inv.invited_by || "Wen"),
+    note: inv.note ? String(inv.note) : null,
+    remaining: maxUses === null ? null : Math.max(0, maxUses - uses),
+  });
+}
+
+/** Public email sign-up from /invite: geo-checked, rate-limited, and gated on open_signup (or allowed_email or active invite code). */
 export async function inviteSignup(req: Request): Promise<Response> {
   const j = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
@@ -720,7 +752,20 @@ export async function inviteSignup(req: Request): Promise<Response> {
   if (!EMAIL.test(email)) return j({ error: "Enter a valid email address." }, 400);
   const proxied = await viaProxy(req);
   if (geoBlocked(geoOf(req, proxied))) return j({ error: REFUSAL }, 451);
-  if (!(await openSignup()) && !(await allowed(email))) {
+
+  const rawCode = typeof parsed?.code === "string" ? parsed.code.trim() : "";
+  let validCode = "";
+  if (rawCode) {
+    if (!INVITE_CODE.test(rawCode)) return j({ error: "That invite code isn't valid." }, 400);
+    const [inv] = await sql`select code, max_uses, uses, expires_at, revoked_at from memory.invite where code = ${rawCode}`;
+    if (!inv || inv.revoked_at || (inv.expires_at && new Date(inv.expires_at).getTime() <= Date.now()) ||
+      (inv.max_uses !== null && Number(inv.uses) >= Number(inv.max_uses))) {
+      return j({ error: "That invite link is no longer active." }, 410);
+    }
+    validCode = String(inv.code);
+  }
+
+  if (!validCode && !(await openSignup()) && !(await allowed(email))) {
     return j({ error: "Sign-ups are closed right now." }, 403);
   }
   const client = await clientKey(req);
@@ -732,7 +777,10 @@ export async function inviteSignup(req: Request): Promise<Response> {
   if (from >= MAX_PER_CLIENT) return j({ error: "Too many sign-ins from your address in the last hour. Try again later." }, 429);
   await sql`delete from memory.signup_attempt where at < now() - interval '1 day'`;
   await sql`insert into memory.signup_attempt (client, email) values (${client}, ${email})`;
-  const redirect = encodeURIComponent("https://heyclyde.me/memories?onboarding=1");
+  const target = validCode
+    ? `https://heyclyde.me/memories?onboarding=1&invite=${encodeURIComponent(validCode)}`
+    : "https://heyclyde.me/memories?onboarding=1";
+  const redirect = encodeURIComponent(target);
   const sent = await auth(`/otp?redirect_to=${redirect}`, {
     method: "POST",
     body: JSON.stringify({ email, create_user: true }),
@@ -740,5 +788,5 @@ export async function inviteSignup(req: Request): Promise<Response> {
   if (!sent.ok) {
     return j({ error: `Couldn't send the sign-in email (${sent.body.msg ?? sent.body.error_description ?? sent.status}).` }, 502);
   }
-  return j({ ok: true, email });
+  return j({ ok: true, email, invite: validCode || null });
 }

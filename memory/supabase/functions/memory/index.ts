@@ -340,6 +340,7 @@ async function serve(req: Request, url: URL, path: string, who: Principal): Prom
     const asJson = (req.headers.get("accept") ?? "").includes("application/json") && await viaProxy(req);
     return oauth.handle(req, await baseOf(req), path, url, asJson);
   }
+  if (m === "GET" && path === "/invite/info") return oauth.inviteInfo(url);
   if (m === "POST" && path === "/invite/signup") return oauth.inviteSignup(req);
   if (path === "/install" || path.startsWith("/install/")) return install(req, path, url);
   if (m === "POST" && path === "/devices/claim") {

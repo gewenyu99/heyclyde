@@ -40,7 +40,7 @@ export function credentialFor(path: string): Kind | null {
   if (path === "/billing/usage/report" || path === "/billing/guard" || path === "/billing/lapse") return "cron";
   if (isWebhook(path)) return "webhook";
   if (path === "/billing/checkout" || path === "/billing/thanks") return "open";
-  if (path === "/healthz" || path === "/install" || path.startsWith("/install/") || path === "/invite/signup") return "open";
+  if (path === "/healthz" || path === "/install" || path.startsWith("/install/") || path === "/invite/signup" || path === "/invite/info") return "open";
   if (path.startsWith("/oauth/") || path.startsWith("/.well-known/")) return "open";
   if (path === "/devices/claim" || path === "/me" || path.startsWith("/me/")) return "owner";
   if (path === "/" || path === "/api/v1" || path.startsWith("/api/v1/")) return "admin";
