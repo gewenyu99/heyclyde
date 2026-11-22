@@ -51,9 +51,13 @@ jobs:
           deno task test
 
       - name: Push clean mirror when configured
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.OSS_MIRROR_REPO != '' && secrets.OSS_MIRROR_TOKEN != ''
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.OSS_MIRROR_REPO != ''
         env:
           OSS_MIRROR_REPO: ${{ vars.OSS_MIRROR_REPO }}
           OSS_MIRROR_TOKEN: ${{ secrets.OSS_MIRROR_TOKEN }}
         run: |
+          if [ -z "$OSS_MIRROR_TOKEN" ]; then
+            echo "OSS_MIRROR_TOKEN secret is not set; skipping push."
+            exit 0
+          fi
           git -C /tmp/clyde-oss-export push --force "https://x-access-token:${OSS_MIRROR_TOKEN}@github.com/${OSS_MIRROR_REPO}.git" main:main
