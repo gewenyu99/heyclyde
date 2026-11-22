@@ -130,16 +130,12 @@ export function canReadEntry(agent: AgentScope, entry: EntryMeta, explicitFilter
     if (realms !== null && !realms.has(ec)) return false;
   }
 
-  // 3. Project isolation (fail closed if project-transferable entry lacks project_slug).
+  // 3. Project labels are advisory context by default; only strict_projects enforces a project read wall.
   if (t === "project" && agent) {
     if (!entry.project_slug) return false;
-    const mine = agentProjectsOf(agent);
     if (agent.strictProjects) {
+      const mine = agentProjectsOf(agent);
       if (!mine.some((ap) => projectMatches(ap, entry.project_slug))) return false;
-    } else if (mine.length > 0) {
-      const matchedMine = mine.some((ap) => projectMatches(ap, entry.project_slug));
-      const matchedExplicit = Boolean(explicitFilter?.project && projectMatches(explicitFilter.project, entry.project_slug));
-      if (!matchedMine && !matchedExplicit) return false;
     }
   }
 

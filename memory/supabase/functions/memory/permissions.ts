@@ -93,17 +93,14 @@ export function entryWhereClauses(db: Sql, alias: string, agent: AgentScope, fil
       clauses.push(db`(${col("transferability")} = 'general' or ${col("context")} = 'general' or ${col("context")} = any(${[...realms]}::text[]))`);
     }
 
-    const mine = agentProjectsOf(agent);
     if (agent.strictProjects) {
+      const mine = agentProjectsOf(agent);
       if (mine.length === 0) {
         clauses.push(db`${col("transferability")} <> 'project'`);
       } else {
         const projOr = orAll(db, mine.map((ap) => sqlProjectMatch(db, col("project_slug"), ap)));
         clauses.push(db`(${col("transferability")} <> 'project' or (${col("project_slug")} is not null and (${projOr})))`);
       }
-    } else if (mine.length > 0 && !filter?.project?.trim()) {
-      const projOr = orAll(db, mine.map((ap) => sqlProjectMatch(db, col("project_slug"), ap)));
-      clauses.push(db`(${col("transferability")} <> 'project' or (${col("project_slug")} is not null and (${projOr})))`);
     } else {
       clauses.push(db`(${col("transferability")} <> 'project' or ${col("project_slug")} is not null)`);
     }

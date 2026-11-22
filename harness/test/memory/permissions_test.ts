@@ -134,10 +134,16 @@ Deno.test('R70 canReadEntry enforces project and computer isolation and strict_p
   assert.equal(canReadEntry(strictEmpty, clyde), false)
 
   const relaxed = agent({ context: 'hobby', projects: ['clyde'], computer: null, principal: 'mac-mini', strictProjects: false })
-  assert.equal(canReadEntry(relaxed, penny), false, 'declared projects still isolate by default')
-  assert.equal(canReadEntry(relaxed, penny, { project: 'pennywhistle' }), true, 'non-strict allows explicit cross-project filter in allowed realm')
+  assert.equal(canReadEntry(relaxed, penny), true, 'project labels are advisory context when strictProjects is false')
+  assert.equal(canReadEntry(relaxed, penny, { project: 'pennywhistle' }), true, 'explicit project filter still matches in allowed realm')
+  assert.equal(canReadEntry(relaxed, clyde, { project: 'pennywhistle' }), false, 'explicit project filter still narrows')
+  assert.equal(canReadEntry(relaxed, workClyde), false, 'realm ceiling still applies to non-strict agents')
   assert.equal(canReadEntry(relaxed, laptopOnly), false, 'falls back to principal when computer is null')
   assert.equal(canReadEntry(relaxed, miniOnly), true)
+
+  const relaxedSql = entryWhereClauses(fakeDb, 'e', relaxed).map((c: Frag) => c.text).join(' AND ')
+  assert.ok(relaxedSql.includes("e.transferability <> 'project' or e.project_slug is not null"), relaxedSql)
+  assert.ok(!relaxedSql.includes('regexp_replace'), 'non-strict agent projects do not emit SQL project visibility wall')
 
   const withRepo = agent({ context: 'hobby', projects: [], sessionRepo: 'clyde', strictProjects: true })
   assert.equal(canReadEntry(withRepo, clyde), true)
