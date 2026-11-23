@@ -29,7 +29,7 @@ type Record = Resident & {
 };
 type Run = { id: string; status: string; auditedHead?: string; stages: { summary?: string }[] };
 const rules =
-  "Use the agent-bound clyde_recall tool on every new task, scope change or information gap. Skip only unchanged follow-ups with sufficient context. Before replying remember durable decisions and verified results with evidence. Use clyde_feedback after recall. Suggest your role and responsibility tags with clyde_suggest_role once you understand your assignment. Use clyde_delegate for background work and clyde_prefer_model for persistent project preferences. Respect explicit stage choices.";
+  "Use the agent-bound clyde_recall tool on every new task, scope change or information gap. Skip only unchanged follow-ups with sufficient context. Before replying remember durable decisions and verified results with evidence. Use clyde_feedback after recall. Never bypass clyde_* with the raw memory MCP server so Clyde cards render. Suggest your role and responsibility tags with clyde_suggest_role once you understand your assignment. Use clyde_delegate for background work and clyde_prefer_model for persistent project preferences. Respect explicit stage choices.";
 
 export function projectSlug(cwd: string): string {
   try {
@@ -173,18 +173,97 @@ export function residents(server: PluginServerContext) {
     const result=await chat.recall(await chatRow(agent,paseo),query,paseo,true);
     return {retrieval:result.retrieval_id,notes:result.items.length};
   });
-  const memory = [
-    "recall",
-    "recall_more",
-    "remember",
-    "feedback",
-    "check_messages",
-    "ack_messages",
-    "get_entry",
-    "get_blob",
-    "list_quests",
-    "post_quest",
-  ].map((operation) =>
+  const memoryInputs = {
+    recall: z.object({
+      query: z.string().min(1),
+      task: z.string().optional(),
+      scope: z.string().optional(),
+      depth: z.enum(["packet", "deep"]).optional(),
+      category: z.string().optional(),
+      context: z.string().optional(),
+      project: z.string().optional(),
+      transferability: z.string().optional(),
+    }),
+    recall_more: z.object({
+      retrieval_id: z.string().min(1),
+    }),
+    remember: z.object({
+      pattern: z.string().min(1),
+      title: z.string().min(1),
+      body: z.string().min(1),
+      evidence: z.string().min(1),
+      kind: z.string().optional(),
+      evidence_kind: z.string().optional(),
+      evidence_event: z.number().int().optional(),
+      scope: z.string().optional(),
+      project: z.string().optional(),
+      project_slug: z.string().optional(),
+      category: z.string().optional(),
+      context: z.string().optional(),
+      transferability: z.string().optional(),
+      computer: z.string().optional(),
+      sensitivity: z.string().optional(),
+      lang: z.string().optional(),
+      valid_from: z.string().optional(),
+      long: z.boolean().optional(),
+      supersedes: z.array(z.string()).optional(),
+      links: z.array(z.object({ type: z.string(), to: z.string() })).optional(),
+      artifacts: z.array(z.object({
+        name: z.string(),
+        kind: z.string().optional(),
+        text: z.string().optional(),
+        base64: z.string().optional(),
+        sha256: z.string().optional(),
+      })).optional(),
+    }),
+    feedback: z.object({
+      retrieval_id: z.string().min(1),
+      entries: z.array(z.object({
+        entry_id: z.string().min(1),
+        verdict: z.enum(["used", "irrelevant", "wrong"]),
+      })).optional(),
+      nothing_useful: z.boolean().optional(),
+      entry_id: z.string().optional(),
+      verdict: z.string().optional(),
+      note: z.string().optional(),
+    }),
+    check_messages: z.object({}),
+    ack_messages: z.object({
+      ids: z.array(z.number().int()).min(1),
+    }),
+    get_entry: z.object({
+      id: z.string().min(1),
+    }),
+    get_blob: z.object({
+      sha256: z.string().min(1),
+      offset: z.number().int().optional(),
+      limit: z.number().int().optional(),
+    }),
+    list_quests: z.object({
+      show: z.enum(["open", "mine", "done", "all"]).optional(),
+      tag: z.string().optional(),
+      context: z.string().optional(),
+      project: z.string().optional(),
+      limit: z.number().int().optional(),
+    }),
+    post_quest: z.object({
+      title: z.string().min(1),
+      brief: z.string().min(1),
+      done_when: z.string().min(1),
+      tags: z.array(z.string()).optional(),
+      priority: z.enum(["urgent", "high", "normal", "low"]).optional(),
+      context: z.string().optional(),
+      project: z.string().optional(),
+      artifacts: z.array(z.object({
+        name: z.string(),
+        kind: z.string().optional(),
+        text: z.string().optional(),
+        base64: z.string().optional(),
+        sha256: z.string().optional(),
+      })).optional(),
+    }),
+  } as const;
+  const memory = (Object.keys(memoryInputs) as (keyof typeof memoryInputs)[]).map((operation) =>
     defineAgentTool({
       name: "clyde_" + operation,
       title: "Clyde " + operation,
@@ -201,7 +280,7 @@ export function residents(server: PluginServerContext) {
         check_messages: "Read messages for this agent.",
         ack_messages: "Acknowledge handled message ids.",
       } as { [name: string]: string })[operation],
-      input: z.record(z.string(), z.unknown()),
+      input: memoryInputs[operation],
       async execute(args, { agent,paseo }) {
         const info = agent as typeof agent & ChatInfo;
         const projectChat = isProjectChat(info);
@@ -302,15 +381,22 @@ export function residents(server: PluginServerContext) {
       return { text: "Started " + run.id + ". Follow it in Clyde. The foreground conversation can continue." };
     },
   });
+  const withoutRawMemoryMcp = <M extends { readonly [name: string]: unknown }>(mcpServers?: M): M | undefined => {
+    if (!mcpServers || !("memory" in mcpServers)) return mcpServers;
+    const { memory: _drop, ...rest } = mcpServers;
+    return rest as unknown as M;
+  };
   server.addHook("agent.open.before", async ({ request }, context) => {
     api = context.paseo;
     if (!request.cwd || request.purpose === "history" || isTransientHelper(request)) return;
+    const mcpServers = withoutRawMemoryMcp(request.mcpServers);
     if (isProjectChat(request)) {
       const row = discover(request.agentId, request.cwd, request.provider);
       // Prewarm the agent's memory session. A failed recall is reported in the chat when a turn needs it.
       void agentCall(asAgent(row), "check_messages", {}).catch(() => {});
       return {
         ...request,
+        ...(mcpServers ? { mcpServers } : {}),
         tools: [...request.tools, ...memory, suggest, delegate, preference],
         env: { ...request.env, CLYDE_PASEO_AGENT: row.id },
       };
@@ -319,6 +405,7 @@ export function residents(server: PluginServerContext) {
     // without being added to the interactive resident roster.
     return {
       ...request,
+      ...(mcpServers ? { mcpServers } : {}),
       tools: [...request.tools, ...memory],
       env: { ...request.env, CLYDE_PASEO_AGENT: request.agentId },
     };

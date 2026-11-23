@@ -90,9 +90,19 @@ test("the roster lists current project chats and migrates only generated respons
   assert.equal(bg.tools.some(t => t.name === "clyde_delegate"), false, "background workers do not receive interactive delegate tool");
   assert.equal(JSON.parse(readFileSync(file, "utf8"))["background"], undefined, "background workers are not added to resident roster");
   const pointMan = chat("point-man", { labels: { clyde: "point-man" } });
-  const lead = await openChat(pointMan);
+  const lead = await hooks.get("agent.open.before")({
+    request: { tools: [], env: {}, mcpServers: { memory: { type: "http", url: "https://memory.heyclyde.me/mcp" }, other: { type: "http", url: "https://example.com/mcp" } }, ...pointMan, agentId: pointMan.id, purpose: "interactive" },
+  }, { paseo });
   assert.ok(lead.tools.some(t => t.name === "clyde_recall"));
   assert.ok(lead.tools.some(t => t.name === "clyde_delegate"));
+  assert.equal("memory" in lead.mcpServers, false, "raw memory MCP server is stripped when Paseo clyde_* tools are attached");
+  assert.equal("other" in lead.mcpServers, true, "unrelated MCP servers are preserved");
+  const recallTool = lead.tools.find(t => t.name === "clyde_recall");
+  assert.ok("query" in recallTool.input.shape, "clyde_recall exposes explicit query property for strict schema providers");
+  const feedbackTool = lead.tools.find(t => t.name === "clyde_feedback");
+  assert.ok("retrieval_id" in feedbackTool.input.shape, "clyde_feedback exposes explicit retrieval_id property");
+  const rememberTool = lead.tools.find(t => t.name === "clyde_remember");
+  assert.ok("pattern" in rememberTool.input.shape && "title" in rememberTool.input.shape && "body" in rememberTool.input.shape && "evidence" in rememberTool.input.shape);
   const tool = lead.tools.find(t => t.name === "clyde_suggest_role");
   await tool.execute({ role: "Coordinate release", areas: ["release"] }, { agent: pointMan });
   assert.deepEqual(JSON.parse(readFileSync(file, "utf8"))[pointMan.id].areas, ["release"]);
