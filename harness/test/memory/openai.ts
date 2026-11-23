@@ -38,6 +38,13 @@ function answer(path: string, body: any, gemini: boolean, fixedTokens?: number):
   if (path === '/embeddings' && !gemini) {
     return { data: body.input.map((t: string, index: number) => ({ index, embedding: vector(t) })), usage: { total_tokens: tokens } }
   }
+  if (gemini && /^\/models\/[^/]+:batchEmbedContents$/.test(path) && Array.isArray(body.requests)) {
+    const embeddings = body.requests.map((r: { content?: { parts?: { text?: string }[] } }) => {
+      const text = (r.content?.parts ?? []).map((p) => p.text ?? '').join('\n')
+      return { values: vector(text) }
+    })
+    return { embeddings, usageMetadata: { promptTokenCount: tokens, totalTokenCount: tokens } }
+  }
   if (path === '/decisions') {
     const input = String(body.input)
     const refuse = input.includes(FAKE_REFUSE), pushback = input.includes(FAKE_PUSHBACK)
@@ -93,7 +100,7 @@ export async function startFakeOpenAI(options: FakeOptions = {}): Promise<FakeOp
         path,
         body,
         headers: req.headers,
-        tokens: out?.usage?.input_tokens ?? out?.usage?.total_input_tokens ?? out?.usage?.total_tokens ?? 0,
+        tokens: out?.usage?.input_tokens ?? out?.usage?.total_input_tokens ?? out?.usage?.total_tokens ?? out?.usageMetadata?.totalTokenCount ?? 0,
         api: gemini ? 'gemini' : 'openai',
       })
       const send = () => {

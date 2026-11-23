@@ -107,7 +107,7 @@ Deno.test('paddle: Paddle-Signature ts;h1 verifies, and events map to access', a
 Deno.test('cost: overage is 2.3x cost and includedCostMicroUsd matches clyde included limits', () => {
   assert.equal(chargeFor(100_000), 230_000)
   const clyde = { price_micro_usd_month: 12_990_000, openai_tokens_month: 1_500_000, blob_bytes_total: 5_368_709_120 }
-  assert.equal(includedCostMicroUsd(clyde, 'ai'), 195_000)
+  assert.equal(includedCostMicroUsd(clyde, 'ai'), 225_000)
 })
 
 Deno.test('entitlement: webhooks take no bearer token, checkout is open, and the cache lasts 60 s by default', () => {

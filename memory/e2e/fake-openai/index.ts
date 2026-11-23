@@ -32,6 +32,16 @@ Deno.serve(async (req) => {
       usage: { total_tokens: input.reduce((s, t) => s + tokens(t), 0) },
     });
   }
+  if (/^\/models\/[^/]+:batchEmbedContents$/.test(path) && Array.isArray(body.requests)) {
+    const texts: string[] = body.requests.map((r: Record<string, any>) =>
+      ((r.content?.parts ?? []) as Record<string, string>[]).map((p) => p.text ?? "").join("\n")
+    );
+    const total = texts.reduce((s, t) => s + tokens(t), 0);
+    return Response.json({
+      embeddings: texts.map((t) => ({ values: vector(t) })),
+      usageMetadata: { promptTokenCount: total, totalTokenCount: total },
+    });
+  }
   if (path === "/decisions") {
     const inputTokens = tokens(String(body.input ?? ""));
     if (body.questions && !Array.isArray(body.questions)) {

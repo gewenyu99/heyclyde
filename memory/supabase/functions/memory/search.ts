@@ -1,7 +1,7 @@
 // Retrieval arms. Every arm reads the same store and returns the same packet shape; only ranking differs.
 import { config } from "./config.ts";
 import { type Row, type Sql, timing } from "./db.ts";
-import { embed, toPgvector } from "./embed.ts";
+import { activeEmbedModel, embed, toPgvector } from "./embed.ts";
 import { type Params, SPREAD, spreadKnobs } from "./params.ts";
 import type { Params as CoreParams } from "./core/params.ts";
 import {
@@ -184,19 +184,20 @@ const queryVectors = new Map<string, number[]>();
 
 /** Keep the last 512 query vectors per isolate, so a repeated query costs no API call. */
 async function queryVector(query: string) {
-  const key = `${config.embedModel}\n${query}`;
+  const model = await activeEmbedModel();
+  const key = `${model}\n${query}`;
   if (!queryVectors.has(key)) {
     if (queryVectors.size >= 512) queryVectors.delete(queryVectors.keys().next().value!);
     queryVectors.set(key, (await embed([query]))[0]);
   }
-  return queryVectors.get(key)!;
+  return { vec: queryVectors.get(key)!, model };
 }
 
 async function vectorRanks(db: Sql, query: string, limit: number, agentScope: AgentScope = null, filter?: EntryFilter): Promise<[string[], string | null]> {
-  let vec: number[];
+  let vec: number[], model: string;
   try {
-    vec = await queryVector(query);
-  } catch (e) { // OpenAI down, no key or over budget: keyword ranks still answer.
+    ({ vec, model } = await queryVector(query));
+  } catch (e) { // Provider down, no key or over budget: keyword ranks still answer.
     return [[], `embed-failed: ${(e as Error).name}`];
   }
   // R49: an exact scan of the owner's own vectors, halfvec(1024) stored inline, found through entry_embedding's
@@ -206,6 +207,7 @@ async function vectorRanks(db: Sql, query: string, limit: number, agentScope: Ag
   const started = performance.now();
   const rows = await db`with near as (
       select x.owner_id, x.entry_id as id, x.embedding <=> ${toPgvector(vec)}::extensions.halfvec as d from memory.entry_embedding x
+      where x.model = ${model}
       order by d limit ${limit * 4})
     select n.id from near n join memory.entry_current e on e.owner_id = n.owner_id and e.id = n.id
       ${entryWhereStartSql(db, "e", agentScope, filter)}

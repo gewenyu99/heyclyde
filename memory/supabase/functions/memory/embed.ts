@@ -1,8 +1,18 @@
-// Embeddings from OpenAI's text-embedding-3-large, cut to 1024 dimensions. Private and confidential entries never reach a
-// third-party model, so OpenAI only ever sees their title.
+// Embeddings: Gemini's gemini-embedding-001 (1024 dims via MRL) when gemini_key is configured, falling back seamlessly to
+// OpenAI's text-embedding-3-large (1024 dims) otherwise. Private and confidential entries never reach a third-party model,
+// so the provider only ever sees their title.
 import { config } from "./config.ts";
-import { assertBudget, meter } from "./budget.ts";
+import { assertBudget, type Kind, meter } from "./budget.ts";
 import { type Row, secret, type Sql, sql } from "./db.ts";
+
+export const GEMINI_EMBED_MODEL = "gemini-embedding-001";
+const DEFAULT_GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta";
+
+export type EmbedDeps = {
+  assertBudget?: (kind: Kind) => Promise<void>;
+  meter?: (kind: Kind, tokens: number, model?: string) => Promise<void>;
+  readSecret?: (name: string) => Promise<string>;
+};
 
 export async function sha256(data: string | Uint8Array): Promise<string> {
   const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
@@ -16,8 +26,20 @@ export function entryText(row: Row): string {
   return row.search_text || [row.title, row.body, row.evidence].filter(Boolean).join("\n");
 }
 
-export function contentSha(text: string) {
-  return sha256(`${config.embedModel}\n${text}`);
+async function geminiEmbedConfig(readSecret: (name: string) => Promise<string> = secret): Promise<{ url: string; key: string } | null> {
+  const key = (Deno.env.get("MEMORY_GEMINI_KEY") || await readSecret("gemini_key")).trim();
+  if (!key) return null;
+  const url = (Deno.env.get("MEMORY_GEMINI_URL") || DEFAULT_GEMINI_URL).replace(/\/+$/, "");
+  return { url, key };
+}
+
+/** The active embedding model: Gemini when gemini_key is configured, else OpenAI fallback. */
+export async function activeEmbedModel(deps?: Pick<EmbedDeps, "readSecret">): Promise<string> {
+  return (await geminiEmbedConfig(deps?.readSecret ?? secret)) ? GEMINI_EMBED_MODEL : config.embedModel;
+}
+
+export async function contentSha(text: string, model?: string) {
+  return sha256(`${model ?? await activeEmbedModel()}\n${text}`);
 }
 
 /** Where OpenAI calls go, and with which key. Tier 3 sets MEMORY_OPENAI_URL to a local fake, which takes no real key,
@@ -30,8 +52,41 @@ export async function openai(): Promise<{ url: string; key: string }> {
   return { url: "https://api.openai.com/v1", key };
 }
 
-export async function embed(texts: string[]): Promise<number[][]> {
-  await assertBudget("embed");
+function normalize(vec: number[]): number[] {
+  const norm = Math.hypot(...vec);
+  return norm > 0 ? vec.map((x) => x / norm) : vec;
+}
+
+export async function embed(texts: string[], deps?: EmbedDeps): Promise<number[][]> {
+  const checkBudget = deps?.assertBudget ?? assertBudget;
+  const record = deps?.meter ?? meter;
+  const readSecret = deps?.readSecret ?? secret;
+  await checkBudget("embed");
+  const gem = await geminiEmbedConfig(readSecret);
+  if (gem) {
+    const r = await fetch(`${gem.url}/models/${GEMINI_EMBED_MODEL}:batchEmbedContents`, {
+      method: "POST",
+      headers: { "x-goog-api-key": gem.key, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        requests: texts.map((text) => ({
+          model: `models/${GEMINI_EMBED_MODEL}`,
+          content: { parts: [{ text }] },
+          outputDimensionality: config.embedDim,
+        })),
+      }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!r.ok) throw new Error(`Gemini embeddings ${r.status}: ${(await r.text()).slice(0, 200)}`);
+    const body = await r.json();
+    const tokens = Number(body.usageMetadata?.totalTokenCount ?? body.usageMetadata?.promptTokenCount ?? 0)
+      || Math.max(1, Math.ceil(texts.reduce((sum, t) => sum + t.length, 0) / 4));
+    await record("embed", tokens, GEMINI_EMBED_MODEL);
+    const vecs: number[][] = (body.embeddings ?? []).map((e: Row) => normalize(e.values as number[]));
+    if (vecs.length !== texts.length || vecs.some((v) => v.length !== config.embedDim)) {
+      throw new Error(`${GEMINI_EMBED_MODEL} returned ${vecs.length} vectors, expected ${texts.length} of ${config.embedDim}`);
+    }
+    return vecs;
+  }
   const { url, key } = await openai();
   const r = await fetch(`${url}/embeddings`, {
     method: "POST",
@@ -41,7 +96,7 @@ export async function embed(texts: string[]): Promise<number[][]> {
   });
   if (!r.ok) throw new Error(`OpenAI embeddings ${r.status}: ${(await r.text()).slice(0, 200)}`);
   const body = await r.json();
-  await meter("embed", body.usage.total_tokens, config.embedModel);
+  await record("embed", body.usage.total_tokens, config.embedModel);
   const vecs = body.data.sort((a: Row, b: Row) => a.index - b.index).map((d: Row) => d.embedding);
   if (vecs.length !== texts.length || vecs.some((v: number[]) => v.length !== config.embedDim)) {
     throw new Error(`${config.embedModel} returned ${vecs.length} vectors, expected ${texts.length} of ${config.embedDim}`);
@@ -53,21 +108,22 @@ export function toPgvector(vec: number[]) {
   return "[" + vec.map((x) => x.toFixed(6)).join(",") + "]";
 }
 
-/** Embed every entry whose text changed since its last embedding. Returns the count embedded. */
+/** Embed every entry whose text or model changed since its last embedding. Returns the count embedded. */
 export async function syncEmbeddings(db: Sql = sql, batch = 64): Promise<number> {
-  const rows = await db`select e.id, e.title, e.body, e.evidence, e.search_text, e.sensitivity, x.content_sha256 from memory.entry e
+  const model = await activeEmbedModel();
+  const rows = await db`select e.id, e.title, e.body, e.evidence, e.search_text, e.sensitivity, x.content_sha256, x.model from memory.entry e
     left join memory.entry_embedding x on x.owner_id = e.owner_id and x.entry_id = e.id`;
   const stale: [Row, string, string][] = [];
   for (const r of rows) {
-    const text = entryText(r), sha = await contentSha(text);
-    if (r.content_sha256 !== sha) stale.push([r, text, sha]);
+    const text = entryText(r), sha = await contentSha(text, model);
+    if (r.content_sha256 !== sha || r.model !== model) stale.push([r, text, sha]);
   }
   for (let i = 0; i < stale.length; i += batch) {
     const chunk = stale.slice(i, i + batch);
     const vecs = await embed(chunk.map(([, t]) => t.slice(0, 8000)));
     for (const [[r, , sha], v] of chunk.map((c, j) => [c, vecs[j]] as const)) {
       await db`insert into memory.entry_embedding (entry_id, model, content_sha256, embedding)
-        values (${r.id}, ${config.embedModel}, ${sha}, ${toPgvector(v)}::extensions.halfvec)
+        values (${r.id}, ${model}, ${sha}, ${toPgvector(v)}::extensions.halfvec)
         on conflict (owner_id, entry_id) do update set model = excluded.model, content_sha256 = excluded.content_sha256,
           embedding = excluded.embedding, updated_at = now()`;
     }

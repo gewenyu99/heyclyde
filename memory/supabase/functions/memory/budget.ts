@@ -16,8 +16,8 @@ export class OverBudget extends Error {
   override name = "OverBudget";
 }
 
-/** $5 a month at text-embedding-3-large's $0.13 per million tokens, unless the setting says otherwise. */
-const DEFAULT_GENERAL_TOKENS = 38_000_000;
+/** 100M tokens a month (~$10-$15 across Gemini and OpenAI models), unless the setting says otherwise. */
+const DEFAULT_GENERAL_TOKENS = 100_000_000;
 const DEFAULT_RESERVE_TOKENS = 5_000_000;
 
 /** Why this kind of call may not spend now, or null when it may. The write judge answers to its reserve alone and every
