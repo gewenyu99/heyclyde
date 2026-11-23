@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
 import { repoRoot } from '../../src/config.ts'
-import { readUiResource, uiResources, uriOf, wantsUi, UI_EXTENSION, UI_MIME } from '../../../memory/supabase/functions/memory/ui/apps.ts'
+import { readUiResource, requestWantsUi, uiResources, uriOf, wantsUi, UI_EXTENSION, UI_MIME } from '../../../memory/supabase/functions/memory/ui/apps.ts'
 import { CARDS, cardHtml } from '../../../memory/supabase/functions/memory/ui/cards.ts'
 import { CARD_CSS } from '../../../memory/supabase/functions/memory/ui/style.ts'
 import { COMPONENTS_CSS, LOGO_LOCKUP, TOKENS_CSS } from '../../../memory/supabase/functions/memory/ui/design.ts'
@@ -50,6 +50,10 @@ test('R67 only card-rendering clients get cards', () => {
   }
   assert.equal(right, 10)
   assert.equal(wantsUi({ clientInfo: { name: 'r67-any' }, capabilities: ext([UI_MIME]) }), true)
+  assert.equal(requestWantsUi({ _meta: { 'io.modelcontextprotocol/clientCapabilities': ext([UI_MIME]) } }), true)
+  assert.equal(requestWantsUi({ _meta: { 'openai/userAgent': 'Mozilla/5.0' } }), true)
+  assert.equal(requestWantsUi({}, 'openai-mcp/1.0.0'), true)
+  assert.equal(requestWantsUi({}, 'claude-code/1.0'), false)
 })
 
 test('R67 cards are self-contained', () => {

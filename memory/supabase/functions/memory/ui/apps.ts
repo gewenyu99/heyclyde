@@ -33,8 +33,14 @@ export function wantsUi(initParams: any): boolean {
   const name = initParams?.clientInfo?.name;
   return typeof name === "string" && CHAT_APPS.test(name.trim());
 }
-/** The stateless protocol (2026-07-28) sends the client's capabilities with every request. */
-export const requestWantsUi = (params: any) => declares(params?._meta?.["io.modelcontextprotocol/clientCapabilities"]);
+/** Whether a stateless request (without an MCP session header) wants cards: it declares the UI extension in _meta
+ * (2026-07-28), carries ChatGPT's openai/* request metadata, or identifies a card-rendering chat app in User-Agent. */
+export function requestWantsUi(params: any, userAgent?: string | null): boolean {
+  if (declares(params?._meta?.["io.modelcontextprotocol/clientCapabilities"])) return true;
+  const meta = params?._meta;
+  if (meta && typeof meta === "object" && Object.keys(meta).some((k) => k.startsWith("openai/"))) return true;
+  return typeof userAgent === "string" && CHAT_APPS.test(userAgent.trim());
+}
 
 /** What ChatGPT shows while a tool runs and after, at most 64 characters each. */
 const INVOKING: Record<string, [string, string]> = {

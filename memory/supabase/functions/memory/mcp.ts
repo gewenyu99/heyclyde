@@ -689,15 +689,26 @@ async function sessionOf(
   session: string | null,
   principal: string,
 ): Promise<{ client: string | null; agent: Profile | null; sessionRepo: string | null; ui: boolean }> {
-  if (!session) return { client: null, agent: null, sessionRepo: null, ui: false };
-  const [row] = await sql`select c.client, c.principal, c.ui,
-      c.session_context, c.session_projects, c.session_computer, c.session_strict_projects,
-      to_jsonb(a) as aj,
-      s.repo as session_repo
-    from memory.mcp_client c
-    left join memory.agent a on a.owner_id = c.owner_id and a.name = c.agent
-    left join memory.mcp_session s on s.owner_id = c.owner_id and s.id = c.session_id
-    where c.session_id = ${session}`;
+  if (!session && !principal.startsWith("oauth:")) return { client: null, agent: null, sessionRepo: null, ui: false };
+  const [row] = session
+    ? await sql`select c.client, c.principal, c.ui,
+        c.session_context, c.session_projects, c.session_computer, c.session_strict_projects,
+        to_jsonb(a) as aj,
+        s.repo as session_repo
+      from memory.mcp_client c
+      left join memory.agent a on a.owner_id = c.owner_id and a.name = c.agent
+      left join memory.mcp_session s on s.owner_id = c.owner_id and s.id = c.session_id
+      where c.session_id = ${session}`
+    : await sql`select c.client, c.principal, c.ui,
+        c.session_context, c.session_projects, c.session_computer, c.session_strict_projects,
+        to_jsonb(a) as aj,
+        null::text as session_repo
+      from memory.mcp_client c
+      left join memory.agent_binding b on b.owner_id = c.owner_id and b.principal = c.principal and b.client = c.client
+      left join memory.agent a on a.owner_id = c.owner_id and a.name = coalesce(c.agent, b.agent)
+      where c.owner_id = memory.owner_default() and c.principal = ${principal}
+      order by c.created_at desc
+      limit 1`;
   const aj = (row?.aj ?? null) as Record<string, any> | null;
   const mine = row?.principal === principal && aj?.name;
   return {
@@ -721,9 +732,15 @@ async function sessionOf(
 }
 
 /** Whether this request's client renders cards (R67): it said so at initialize, or says so on this request. */
-async function rendersCards(msg: RpcMessage, session: string | null, principal: string) {
-  if (requestWantsUi(msg.params)) return true;
-  if (!session) return false;
+async function rendersCards(msg: RpcMessage, session: string | null, principal: string, userAgent: string | null) {
+  if (requestWantsUi(msg.params, userAgent)) return true;
+  if (!session) {
+    if (!principal.startsWith("oauth:")) return false;
+    const [row] = await sql`select ui from memory.mcp_client
+      where owner_id = memory.owner_default() and principal = ${principal}
+      order by created_at desc limit 1`;
+    return row?.ui === true;
+  }
   const [row] = await sql`select ui from memory.mcp_client where session_id = ${session} and principal = ${principal}`;
   return row?.ui === true;
 }
@@ -755,7 +772,7 @@ async function card(c: Parameters<typeof cardData>[0]): Promise<{ _meta: Record<
 
 const QUEST_TOOLS = new Set(["dispatch_quest", "post_quest", "list_quests", "claim_quest", "update_quest", "complete_quest", "abandon_quest"]);
 
-async function answer(msg: RpcMessage, session: string | null, minted: { id?: string }, who: Principal) {
+async function answer(msg: RpcMessage, session: string | null, minted: { id?: string }, who: Principal, userAgent: string | null) {
   const id = msg.id;
   switch (msg.method) {
     case "initialize": {
@@ -786,7 +803,7 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
     case "ping":
       return result(id, {});
     case "tools/list":
-      return result(id, { tools: (await rendersCards(msg, session, who.device ?? who.role)) ? uiTools(TOOLS) : TOOLS });
+      return result(id, { tools: (await rendersCards(msg, session, who.device ?? who.role, userAgent)) ? uiTools(TOOLS) : TOOLS });
     // R67: the cards. Only a client that renders them is told they exist, but reading one is harmless for anyone.
     case "resources/list":
       return result(id, { resources: uiResources() });
@@ -837,7 +854,7 @@ async function answer(msg: RpcMessage, session: string | null, minted: { id?: st
           await sql`update memory.agent set last_seen = now()
             where owner_id = memory.owner_default() and name = ${known.agent.name} and last_seen < now() - interval '1 minute'`;
         }
-        cards = known.ui || requestWantsUi(msg.params);
+        cards = known.ui || requestWantsUi(msg.params, userAgent);
         badge = badgeOf(known);
         currentScope = scopeOf({ agent: known.agent, sessionRepo: known.sessionRepo, principal });
         const args = msg.params?.arguments ?? {};
@@ -882,13 +899,14 @@ export async function handle(req: Request, who: Principal): Promise<Response> {
     return Response.json(error(null, -32700, "Parse error"), { status: 400 });
   }
   const session = req.headers.get("mcp-session-id");
+  const userAgent = req.headers.get("user-agent");
   const minted: { id?: string } = {};
   const batch = Array.isArray(body);
   const replies = [];
   for (const msg of batch ? body as RpcMessage[] : [body as RpcMessage]) {
     let reply;
     try {
-      reply = await answer(msg, session, minted, who);
+      reply = await answer(msg, session, minted, who, userAgent);
     } catch (e) {
       if (e instanceof limits.Limited) return e.response;
       throw e;
