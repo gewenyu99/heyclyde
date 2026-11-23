@@ -14,6 +14,8 @@ var SM = "cl-btn cl-btn--sm ";
 var GH = SM + "cl-btn--ghost ";
 var PR = SM + "cl-btn--primary ";
 var oa = window.openai || null;
+var mcpHost = false;
+var mcpResult = false;
 var noIpc = false;
 var st = { data: null, verdicts: {}, sent: false, busy: false, vote: null };
 
@@ -65,14 +67,18 @@ function request(method, params) {
 }
 function notify(method, params) { post({ jsonrpc: "2.0", method: method, params: params || {} }); }
 function callTool(name, args) {
+  if (mcpHost && !noIpc) return request("tools/call", { name: name, arguments: args });
   if (oa && typeof oa.callTool === "function") return Promise.resolve(oa.callTool(name, args));
   if (noIpc) return Promise.reject(new Error("IPC not available for MCP tool call"));
   return request("tools/call", { name: name, arguments: args });
 }
 function openLink(url) {
   url = safeUrl(url); if (!url) return;
-  if (oa && typeof oa.openExternal === "function") oa.openExternal({ href: url });
-  else request("ui/open-link", { url: url }).catch(function () { window.open(url, "_blank", "noopener"); });
+  if (!mcpHost && oa && typeof oa.openExternal === "function") oa.openExternal({ href: url });
+  else request("ui/open-link", { url: url }).catch(function () {
+    if (oa && typeof oa.openExternal === "function") oa.openExternal({ href: url });
+    else window.open(url, "_blank", "noopener");
+  });
 }
 function textOf(result) {
   var c = result && result.content, out = [];
@@ -95,8 +101,8 @@ function resized() {
   var r = docEl.getBoundingClientRect(), height = Math.ceil(document.body.getBoundingClientRect().height);
   if (height > 0) docEl.style.height = height + "px";
   if (height === lastH) return; lastH = height;
-  if (oa) { if (typeof oa.notifyIntrinsicHeight === "function") oa.notifyIntrinsicHeight(height); return; }
-  notify("ui/notifications/size-changed", { width: Math.ceil(r.width), height: height });
+  if (oa && typeof oa.notifyIntrinsicHeight === "function") oa.notifyIntrinsicHeight(height);
+  if (window.parent && window.parent !== window) notify("ui/notifications/size-changed", { width: Math.ceil(r.width), height: height });
 }
 window.addEventListener("message", function (ev) {
   if (ev.source !== window.parent) return;
@@ -107,7 +113,14 @@ window.addEventListener("message", function (ev) {
     if (m.error) w.fail(new Error(m.error.message || "The chat app refused.")); else w.ok(m.result);
     return;
   }
-  if (m.method === "ui/notifications/tool-result") show(m.params);
+  if (m.method === "ui/notifications/tool-result") {
+    var res = m.params;
+    if (!cardOf(res) && oa && (oa.toolResponseMetadata || oa.toolOutput)) {
+      res = { content: res && res.content, structuredContent: (res && res.structuredContent) || oa.toolOutput, _meta: oa.toolResponseMetadata };
+    }
+    if (cardOf(res)) { mcpResult = true; show(res); }
+    else if (!st.data) show(res);
+  }
   else if (m.method === "ui/notifications/host-context-changed") context(m.params);
   else if (m.method === "ui/notifications/tool-cancelled") failed("The call was cancelled.");
   else if (m.id !== undefined && (m.method === "ui/resource-teardown" || m.method === "ping")) post({ jsonrpc: "2.0", id: m.id, result: {} });
@@ -506,16 +519,25 @@ if (oa) {
   if (oa.displayMode && oa.displayMode !== "inline" && typeof oa.requestDisplayMode === "function") {
     try { oa.requestDisplayMode({ mode: "inline" }); } catch (e) { /* the host keeps its mode */ }
   }
-  var ready = function () { var r = { _meta: oa.toolResponseMetadata, structuredContent: oa.toolOutput }; if (cardOf(r)) show(r); };
+  var ready = function () {
+    if (mcpResult || st.data) return;
+    var r = { _meta: oa.toolResponseMetadata, structuredContent: oa.toolOutput };
+    if (cardOf(r)) show(r);
+  };
   window.addEventListener("openai:set_globals", function (e) { var g = e.detail && e.detail.globals; if (g && g.theme) theme(g.theme); ready(); });
   ready();
-} else {
+}
+// ChatGPT mounts MCP Apps frames with both window.openai and a postMessage bridge; always run the MCP Apps handshake so the
+// host receives ui/initialize + ui/notifications/initialized instead of timing out waiting for the frame.
+if (window.parent && window.parent !== window) {
   request("ui/initialize", { protocolVersion: "2026-01-26", appInfo: { name: "clyde-" + KIND, version: "1" }, appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] } }).then(function (r) {
+    mcpHost = true;
     if (r && r.hostCapabilities && r.hostCapabilities.serverTools === false) noIpc = true;
     context(r && r.hostContext);
     notify("ui/notifications/initialized", {});
     // The card shows inline and open in the conversation (R78). The host answers with the mode it set, and may keep its own.
     request("ui/request-display-mode", { mode: "inline" }).catch(function () {});
+    lastH = 0;
     resized();
   }, function () { notify("ui/notifications/initialized", {}); });
 }

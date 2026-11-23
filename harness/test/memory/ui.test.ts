@@ -225,3 +225,26 @@ test('an empty recall offers no feedback action', { skip: NO_CHROME }, () => {
   assert.match(report.frames.empty.text, /Nothing in Clyde matches/)
   assert.ok(!report.frames.empty.buttons.some(label => /That helped|That didn/.test(label)))
 })
+
+test('ChatGPT hybrid host with window.openai still completes MCP Apps handshake and renders', { skip: NO_CHROME }, () => {
+  const report = run([
+    {
+      id: 'chatgpt-hybrid', card: 'recall', html: cardHtml('recall'), theme: 'dark', result: FIXTURES.recall, width: 640,
+      withOpenAi: true, clicks: ['div.c-foot button.cl-btn--primary'],
+    },
+    {
+      id: 'chatgpt-meta-oa', card: 'recall', html: cardHtml('recall'), theme: 'light', result: FIXTURES.recall, width: 640,
+      withOpenAi: true, stripMeta: true,
+    },
+  ])
+  for (const id of ['chatgpt-hybrid', 'chatgpt-meta-oa'] as const) {
+    assert.equal(report.initialized[id], true, `${id} completes ui/initialize + initialized despite window.openai`)
+    assert.equal(report.frames[id].ready, 'recall', `${id} renders the recall card`)
+    assert.ok(report.sizes[id]?.height > 0, `${id} sends ui/notifications/size-changed`)
+    assert.ok(report.frames[id].oaHeights.length > 0, `${id} notifies window.openai intrinsic height too`)
+  }
+  assert.equal(report.frames['chatgpt-hybrid'].oaCalls, 0, 'hybrid MCP Apps host sends tools/call over MCP bridge')
+  assert.deepEqual(report.calls.map((c: any) => ({ frame: c.frame, name: c.name })), [
+    { frame: 'chatgpt-hybrid', name: 'feedback' },
+  ])
+})

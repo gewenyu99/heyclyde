@@ -8,7 +8,10 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 
-export type Frame = { id: string; card: string; html: string; theme: 'light' | 'dark'; result: unknown; width?: number; clicks?: string[]; noIpc?: boolean }
+export type Frame = {
+  id: string; card: string; html: string; theme: 'light' | 'dark'; result: unknown;
+  width?: number; clicks?: string[]; noIpc?: boolean; withOpenAi?: boolean; stripMeta?: boolean;
+}
 
 /** The markup every fixture string carries. A card that escapes properly shows it as text and creates no such element. */
 export const XSS = `<img src=x onerror="window.top.__xss=1"><script>window.top.__xss=1</script><b class="injected">bold</b>`
@@ -16,8 +19,14 @@ export const XSS = `<img src=x onerror="window.top.__xss=1"><script>window.top._
 /** A host page for these frames. `calls` answers tools/call by tool name. */
 export function hostPage(frames: Frame[], calls: Record<string, unknown> = {}): string {
   const cells = frames.map((f) => `<section><h2>${f.id} · ${f.theme}</h2><iframe id="${f.id}" style="width:${f.width ?? 640}px;height:200px;border:0;display:block;background:${f.theme === 'dark' ? '#262624' : '#faf9f5'}"></iframe></section>`).join('')
-  const data = JSON.stringify({ frames: frames.map(({ id, card, theme, result, clicks, noIpc }) => ({ id, card, theme, result, clicks: clicks ?? [], noIpc: !!noIpc })), calls }).replace(/</g, '\\u003c')
-  const docs = JSON.stringify(Object.fromEntries(frames.map((f) => [f.id, f.html]))).replace(/</g, '\\u003c')
+  const data = JSON.stringify({ frames: frames.map(({ id, card, theme, result, clicks, noIpc, withOpenAi, stripMeta }) => ({ id, card, theme, result, clicks: clicks ?? [], noIpc: !!noIpc, withOpenAi: !!withOpenAi, stripMeta: !!stripMeta })), calls }).replace(/</g, '\\u003c')
+  const docs = JSON.stringify(Object.fromEntries(frames.map((f) => {
+    if (!f.withOpenAi) return [f.id, f.html]
+    const meta = (f.result as any)?._meta ?? null
+    const safeJson = (v: unknown) => JSON.stringify(v).replace(/</g, '\\u003c')
+    const stub = `<script>window.openai={theme:${safeJson(f.theme)},displayMode:"inline",toolOutput:null,toolResponseMetadata:${f.stripMeta ? safeJson(meta) : 'null'},notifyIntrinsicHeight:function(h){window.__oaHeights=(window.__oaHeights||[]);window.__oaHeights.push(h);},callTool:function(){window.__oaCalls=(window.__oaCalls||0)+1;return Promise.resolve({});},openExternal:function(){}};</script>`
+    return [f.id, f.html.replace('<script>', stub + '<script>')]
+  }))).replace(/</g, '\\u003c')
   return `<!doctype html><html><head><meta charset="utf-8"><style>body{margin:16px;font:13px system-ui;background:#eee}section{margin:0 0 18px}h2{font-size:12px;margin:0 0 6px;color:#555}</style></head><body>${cells}
 <pre id="report"></pre>
 <script>
@@ -35,7 +44,11 @@ window.addEventListener('message', (ev) => {
   if (m.id !== undefined && m.method) log.requests.push({ frame: f.id, method: m.method, params: m.params });
   if (m.method === 'ui/initialize') log.appCapabilities[f.id] = m.params.appCapabilities;
   if (m.method === 'ui/initialize') reply({ protocolVersion: m.params.protocolVersion, hostInfo: { name: 'clyde-test-host', version: '1' }, hostCapabilities: {}, hostContext: { theme: f.theme, displayMode: 'inline' } });
-  else if (m.method === 'ui/notifications/initialized') { log.initialized[f.id] = true; ev.source.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: f.result }, '*'); }
+  else if (m.method === 'ui/notifications/initialized') {
+    log.initialized[f.id] = true;
+    const payload = f.stripMeta && f.result && typeof f.result === 'object' ? { content: f.result.content } : f.result;
+    ev.source.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: payload }, '*');
+  }
   else if (m.method === 'ui/notifications/size-changed') { log.sizes[f.id] = m.params; frame.style.height = m.params.height + 'px'; }
   else if (m.method === 'tools/call') {
     log.calls.push({ frame: f.id, name: m.params.name, arguments: m.params.arguments });
@@ -65,6 +78,8 @@ setTimeout(() => {
       background: getComputedStyle(doc.querySelector('.clyde') ?? doc.body).backgroundColor,
       memoryPadding: (() => { const m = doc.querySelector('.cl-memory'); return m ? getComputedStyle(m).padding : null; })(),
       docHeight: doc.documentElement.style.height,
+      oaHeights: document.getElementById(f.id).contentWindow.__oaHeights ?? [],
+      oaCalls: document.getElementById(f.id).contentWindow.__oaCalls ?? 0,
     };
   }
   document.getElementById('report').textContent = 'REPORT' + JSON.stringify({ frames: out, xss: window.__xss, ...log }) + 'END';
