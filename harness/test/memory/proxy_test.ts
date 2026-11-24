@@ -579,3 +579,95 @@ Deno.test('invite page uses brain copy and preserves partner code across every a
   assert.ok(html.includes('localStorage.setItem(INV_PENDING_KEY'), 'pending invite persists in localStorage')
   assert.ok(html.includes("sp0.get('invite') || sp0.get('code')"), 'start() accepts both invite and code params')
 })
+
+Deno.test('Round 1B: OAuth error accessibility, password toggle, Check now, recovery docs, and workspace core', async () => {
+  // ask_email without error: autofocus, password field in details with Show/Hide toggle, script runs even without Turnstile
+  stub(json({ state: 'ask_email', message: 'memory: enter your email' }))
+  const askHtml = await (await get('/oauth/consent?authorization_id=abc12345')).text()
+  assert.ok(askHtml.includes('<a class="cl-skip" href="#main">Skip to content</a>'), 'OAuth page has skip link')
+  assert.ok(askHtml.includes('<main id="main" tabindex="-1" class="sign">'), 'OAuth main has id=main tabindex=-1')
+  assert.ok(askHtml.includes('id="email" type="email" name="email" autocomplete="email" required autofocus'), 'email has autofocus initially')
+  assert.ok(askHtml.includes('<details class="cl-field"><summary>Have a password?</summary><div class="cl-field"><label for="password">Password</label><div class="cl-pw-wrap">') && askHtml.includes('id="toggle-pw"'), 'password toggle inside details')
+  assert.ok(askHtml.includes("getElementById('toggle-pw')") && askHtml.includes('pageshow'), 'ask_email emits interaction script without Turnstile')
+
+  // ask_email with error: drops autofocus, links #ask-error via aria-describedby & aria-invalid
+  stub(json({ state: 'ask_email', error: 'Bad email', email: 'bad@example.com' }))
+  const errHtml = await (await get('/oauth/consent?authorization_id=abc12345')).text()
+  assert.ok(errHtml.includes('<p class="cl-error" id="ask-error" role="alert" tabindex="-1">Bad email</p>'), 'ask-error has alert role and tabindex=-1')
+  assert.ok(errHtml.includes('aria-describedby="ask-error" aria-invalid="true"') && !/id="email"[^>]*autofocus/.test(errHtml), 'email drops autofocus and points to #ask-error')
+
+  // check_email & waiting: Check now manual refresh link alongside Refresh: 3
+  for (const [state, route] of [['check_email', 'consent'], ['waiting', 'wait']] as const) {
+    stub(json({ state, email: 'a@example.com' }))
+    const r = await get(`/oauth/${route}?authorization_id=abc12345`)
+    assert.equal(r.headers.get('refresh'), '3; url=/oauth/wait?authorization_id=abc12345')
+    const html = await r.text()
+    assert.ok(html.includes('href="/oauth/wait?authorization_id=abc12345">Check now</a>'), `${state}: Check now link`)
+  }
+
+  // refused & expired without retry: Open setup docs link
+  for (const [state, status, route] of [['refused', 403, 'approve'], ['expired', 410, 'wait']] as const) {
+    stub(json({ state }, status))
+    const html = await (await get(`/oauth/${route}?authorization_id=abc12345`)).text()
+    assert.ok(html.includes('href="https://heyclyde.me/docs">Open setup docs</a>'), `${state}: Open setup docs link`)
+  }
+
+  // confirm_allow emits double-submit guard script
+  stub(json({ state: 'confirm_allow', client: 'Claude', decision_token: 't1' }))
+  const allowHtml = await (await get('/oauth/approve?authorization_id=abc12345')).text()
+  assert.ok(allowHtml.includes("getElementById('allow')") && allowHtml.includes('setTimeout(function()') && allowHtml.includes('pageshow'), 'confirm_allow guards double submit')
+
+  // Workspace authenticated views: usage meter formatting/status chips, entry breadcrumb, and Retry recovery card
+  const appRes = await at('https://heyclyde.me/usage')
+  const appHtml = await appRes.text()
+  assert.ok(appHtml.includes('<a class="cl-skip" href="#main">Skip to content</a>') && appHtml.includes('<main id="main" tabindex="-1" class="wrap app-wrap">'), 'workspace skip link')
+  assert.ok(appHtml.includes('sign-prov-skel') && appHtml.includes('aria-controls="onb-panel"') && appHtml.includes('ArrowRight'), 'CLS skeleton & accessible onboarding tabs')
+  const appScript = /<script nonce="[^"]+">([\s\S]*?)<\/script>/.exec(appHtml)?.[1] ?? ''
+  const runView = async (view: string, id: string, fetchImpl: (url: string) => Promise<unknown>) => {
+    const els: Record<string, any> = {
+      'app-root': { getAttribute: (k: string) => k === 'data-view' ? view : (k === 'data-id' ? id : ''), innerHTML: '' },
+      'app-user-bar': { innerHTML: '' },
+      'u-summary': { innerHTML: '' },
+      'u-meters': { innerHTML: '' },
+    }
+    const docStub = { getElementById: (k: string) => els[k] ?? { addEventListener() {}, classList: { add() {}, remove() {}, toggle() {} } }, querySelectorAll: () => [] }
+    const winStub: any = { location: { origin: 'https://heyclyde.me', pathname: '/usage', search: '', hash: '' } }
+    const session = JSON.stringify({ access_token: 'tok-1', user_id: 'u-1', email: 'a@example.com', expires_at: Date.now() + 600_000 })
+    new Function('document', 'window', 'location', 'localStorage', 'history', 'fetch', appScript)(
+      docStub, winStub, winStub.location, { getItem: (k: string) => k === 'clyde_session_v1' ? session : null, removeItem() {}, setItem() {} },
+      { replaceState() {} }, fetchImpl,
+    )
+    await new Promise((r) => setTimeout(r, 10))
+    return els
+  }
+  const usageEls = await runView('usage', '', async () => ({
+    ok: true, status: 200,
+    text: async () => JSON.stringify({
+      plan: 'starter', state: 'paid', period: '2026-11', overage: false,
+      meters: [
+        { kind: 'egress_bytes', used: 85 * 1024 * 1024, included: 100 * 1024 * 1024, overage_cents: 0 },
+        { kind: 'db_bytes', used: 10 * 1024 * 1024, included: 10 * 1024 * 1024, overage_cents: 0 },
+      ],
+    }),
+  }))
+  assert.ok(usageEls['u-meters'].innerHTML.includes('85.0 MB / 100.0 MB (85%)') && usageEls['u-meters'].innerHTML.includes('Near limit') && usageEls['u-meters'].innerHTML.includes('meter-bar--warn'), 'usage renders byte units + Near limit warning')
+  assert.ok(usageEls['u-meters'].innerHTML.includes('10.0 MB / 10.0 MB (100%)') && usageEls['u-meters'].innerHTML.includes('At limit') && usageEls['u-meters'].innerHTML.includes('meter-bar--bad'), 'usage renders At limit danger')
+
+  const overageEls = await runView('usage', '', async () => ({
+    ok: true, status: 200,
+    text: async () => JSON.stringify({
+      plan: 'clyde', state: 'paid', period: '2026-11', overage: true, spend_limit_cents: 1000,
+      meters: [{ kind: 'requests', used: 1200, included: 1000, overage_cents: 45 }, { kind: 'db_bytes', used: 1024, included: 0, overage_cents: 0 }],
+    }),
+  }))
+  assert.ok(overageEls['u-meters'].innerHTML.includes('Over included') && !overageEls['u-meters'].innerHTML.includes('At limit') && overageEls['u-meters'].innerHTML.includes('no separate cap'), 'usage distinguishes overage from hard stop and unmetered db_bytes')
+
+  const entryErrEls = await runView('entry', 'e-9', async () => ({ ok: false, status: 500, text: async () => JSON.stringify({ error: 'DB unavailable' }) }))
+  assert.ok(entryErrEls['app-root'].innerHTML.includes('role="alert"') && entryErrEls['app-root'].innerHTML.includes('DB unavailable') && entryErrEls['app-root'].innerHTML.includes('Retry'), 'entry detail shows Retry recovery card on error')
+
+  const entryOkEls = await runView('entry', 'e-9', async () => ({
+    ok: true, status: 200,
+    text: async () => JSON.stringify({ entry: { id: 'e-9', title: 'Test note', body: 'Hello', pattern: 'decisions', confidence: 0.9 } }),
+  }))
+  assert.ok(entryOkEls['app-root'].innerHTML.includes('aria-label="Breadcrumb"') && entryOkEls['app-root'].innerHTML.includes('href="/memories">Notes</a>') && entryOkEls['app-root'].innerHTML.includes('Test note'), 'entry detail renders accessible breadcrumb')
+})

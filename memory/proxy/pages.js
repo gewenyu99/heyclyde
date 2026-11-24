@@ -26,7 +26,7 @@ const WORDMARK = `<a class="logo" href="https://heyclyde.me/" aria-label="clyde 
 
 export const PAGE_CSS = `
 .soon{color:var(--cl-pen-red);font-weight:700;margin-left:2px}.soon-note{margin:6px 0 0;font:var(--cl-text-small);color:var(--cl-ink-3)}
-body{margin:0;min-height:100vh;display:flex;flex-direction:column;background-image:url(/_clyde/brand/grain.svg)}
+body{margin:0;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;background-image:url(/_clyde/brand/grain.svg)}
 a{color:var(--cl-carbon)}
 :focus-visible{outline:2px solid var(--cl-carbon);outline-offset:2px}
 img{max-width:100%}
@@ -35,34 +35,45 @@ img{max-width:100%}
 .bar.center{justify-content:center}
 .logo{display:inline-flex;line-height:0}
 .logo img{height:30px;width:auto}
-.topnav{display:flex;gap:22px;margin-left:auto;font:500 14px/1 var(--cl-font-sans)}
-.topnav a{color:var(--cl-ink-2);text-decoration:none}
+.topnav{display:flex;gap:8px 22px;margin-left:auto;font:500 14px/1 var(--cl-font-sans)}
+.topnav a{display:inline-flex;align-items:center;min-height:24px;padding:4px 2px;color:var(--cl-ink-2);text-decoration:none}
 .topnav a:hover{color:var(--cl-ink)}
-@media (max-width:640px){.bar{flex-wrap:wrap;gap:12px 16px}.topnav{order:3;flex-basis:100%;margin-left:0;flex-wrap:wrap;gap:10px 16px;padding-top:10px;border-top:1px dashed var(--cl-rule)}.bar .acts,.bar .cl-status{margin-left:auto}}
+@media (max-width:640px){.bar{flex-wrap:wrap;gap:12px 16px}.topnav{order:3;flex-basis:100%;margin-left:0;flex-wrap:wrap;gap:4px 12px;padding-top:10px;border-top:1px dashed var(--cl-rule)}.bar .acts,.bar .cl-status{margin-left:auto}}
 .cl-status .v{text-transform:none;letter-spacing:0}
 .foot{margin-top:auto;padding-block:40px 32px}
 .foot .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px 24px;flex-wrap:wrap;border-top:1px dashed var(--cl-rule-strong);padding-top:22px;font:var(--cl-text-mono);font-size:12px;color:var(--cl-ink-3)}
 .foot .brand{display:flex;align-items:center;gap:10px}
 .foot .brand img{height:22px;width:22px}
-.foot nav{display:flex;gap:18px;flex-wrap:wrap}
+.foot nav{display:flex;gap:6px 18px;flex-wrap:wrap}
+.foot nav a{display:inline-flex;align-items:center;min-height:24px;padding:4px 2px}
 .foot a{color:var(--cl-ink-2)}
 .foot .legal{flex-basis:100%;line-height:1.5}
+@media (max-width:720px),(pointer:coarse){.topnav a,.foot nav a{min-height:40px;padding:8px 6px}}
 code{font-family:var(--cl-font-mono);font-size:.9em}
 `;
 
-// R80: the sign-in form's Turnstile wiring. The send button opens once Turnstile vouches for the person, or once a
-// password is typed (a password sign-in needs no token), and closes again on an expired or failed check. A sent form
-// locks its button, so a double click sends one email.
-const HUMAN_JS = `(function(){var f=document.getElementById('ask'),b=document.getElementById('send'),s=document.getElementById('human'),` +
-  `p=document.getElementById('password'),ok=false;function sync(){b.disabled=!(ok||(p&&p.value.length>0))}` +
-  `window.clydeHuman=function(){ok=true;s.textContent='Ready.';sync()};` +
-  `window.clydeNotYet=function(){ok=false;s.textContent='Checking again…';sync()};` +
-  `window.clydeCheckFailed=function(){ok=false;s.textContent="The check didn't load. Reload the page, or turn off a blocker for challenges.cloudflare.com.";sync()};` +
-  `if(p)p.addEventListener('input',sync);f.addEventListener('submit',function(e){if(b.disabled){e.preventDefault();return}` +
-  `setTimeout(function(){b.disabled=true;b.textContent='Sending…'},0)})})();`;
+// R80: the sign-in form's Turnstile, password toggle, submit lock, provider double-click guard, and bfcache reset.
+const ASK_JS = `(function(){var f=document.getElementById('ask'),b=document.getElementById('send'),s=document.getElementById('human'),` +
+  `p=document.getElementById('password'),tp=document.getElementById('toggle-pw'),ok=!s,busy=false;` +
+  `function label(){return p&&p.value.length>0?'Sign in':'Send sign-in link'}` +
+  `function sync(){if(!b)return;if(!busy){b.disabled=!(ok||(p&&p.value.length>0));b.textContent=label();b.removeAttribute('aria-busy')}}` +
+  `window.clydeHuman=function(){ok=true;if(s)s.textContent='Ready.';sync()};` +
+  `window.clydeNotYet=function(){ok=false;if(s)s.textContent='Checking again\\u2026';sync()};` +
+  `window.clydeCheckFailed=function(){ok=false;if(s)s.textContent="The check didn't load. Reload the page, or turn off a blocker for challenges.cloudflare.com.";sync()};` +
+  `if(tp&&p)tp.addEventListener('click',function(){var show=p.type==='password';p.type=show?'text':'password';tp.textContent=show?'Hide':'Show';tp.setAttribute('aria-pressed',String(show));tp.setAttribute('aria-label',show?'Hide password':'Show password')});` +
+  `if(p)p.addEventListener('input',sync);` +
+  `if(f&&b)f.addEventListener('submit',function(e){if(busy||b.disabled){e.preventDefault();return}busy=true;setTimeout(function(){b.disabled=true;b.setAttribute('aria-busy','true');b.textContent=p&&p.value.length>0?'Signing in\\u2026':'Sending\\u2026'},0)});` +
+  `document.querySelectorAll('.cl-auth-providers a.cl-btn--provider').forEach(function(a){a.addEventListener('click',function(e){if(a.getAttribute('aria-busy')==='true'){e.preventDefault();return}a.setAttribute('aria-busy','true')})});` +
+  `window.addEventListener('pageshow',function(){busy=false;sync();document.querySelectorAll('.cl-auth-providers a.cl-btn--provider').forEach(function(a){a.removeAttribute('aria-busy')})});` +
+  `sync()})();`;
+
+const ALLOW_JS = `(function(){var f=document.getElementById('allow'),busy=false;if(!f)return;` +
+  `var btns=f.querySelectorAll('button[type="submit"]');` +
+  `f.addEventListener('submit',function(e){if(busy){e.preventDefault();return}busy=true;setTimeout(function(){btns.forEach(function(b){b.disabled=true;b.setAttribute('aria-busy','true')})},0)});` +
+  `window.addEventListener('pageshow',function(){busy=false;btns.forEach(function(b){b.disabled=false;b.removeAttribute('aria-busy')})})})();`;
 
 const SIGN_CSS = `
-main.sign{flex:1;display:flex;align-items:center;justify-content:center;padding:8px max(16px,env(safe-area-inset-left,0px)) 40px}
+main.sign{flex:1;display:flex;align-items:center;justify-content:center;padding:max(8px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(40px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
 .ticket{width:100%;max-width:460px;overflow:hidden}
 .ticket-head{display:flex;justify-content:space-between;gap:12px;padding:12px 20px;border-bottom:1.5px dashed var(--cl-rule-strong);background:var(--cl-paper-1)}
 .ticket-body{display:grid;gap:14px;padding:28px 28px 30px;grid-template-columns:minmax(0,1fr)}
@@ -80,6 +91,9 @@ main.sign{flex:1;display:flex;align-items:center;justify-content:center;padding:
 @keyframes cl-dot{0%,80%,100%{opacity:.25}40%{opacity:1}}
 @media (prefers-reduced-motion:reduce){.dots i{animation:none;opacity:.7}}
 form.ask{display:grid;gap:14px;margin-top:4px}
+details.cl-field summary{cursor:pointer;font:var(--cl-text-small);color:var(--cl-ink-2);list-style-position:inside;min-height:24px;padding:4px 0}
+details.cl-field[open] summary{margin-bottom:4px}
+@media (max-width:720px),(pointer:coarse){details.cl-field summary{min-height:40px;padding:10px 0}.cl-pw-wrap .cl-btn{min-height:44px}}
 .human{margin:0;font:var(--cl-text-small);color:var(--cl-ink-3)}
 form.ask .cl-btn[disabled]{opacity:.55;cursor:progress}
 .retry{justify-self:start;text-decoration:none}
@@ -113,13 +127,16 @@ export const HERO_CSS = `
 export const APP_STEPS_CSS = `
 .works li img,.app-logo img{display:block;width:20px;height:20px;object-fit:contain}
 .app{display:flex;flex-direction:column;gap:14px;padding:20px}
+.app>*,.app .app-head>div{min-width:0;max-width:100%;overflow-wrap:anywhere}
+.app .cl-copy,.app .cl-file{width:100%;max-width:100%;min-width:0}
 .app.cl-sticky{padding:24px 20px 20px}
 .app .fine{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2)}
 .app .fine code{color:var(--cl-ink);overflow-wrap:anywhere}
 .app .cl-file pre{max-height:220px;overflow:auto}
 .app-fold{border-top:1px dashed var(--cl-rule-strong);padding-top:10px}
-.app-fold summary{cursor:pointer;font:var(--cl-text-mono);font-size:12px;color:var(--cl-ink-2)}
+.app-fold summary{cursor:pointer;font:var(--cl-text-mono);font-size:12px;color:var(--cl-ink-2);list-style-position:inside;min-height:24px;padding:4px 0}
 .app-fold[open] summary{margin-bottom:10px}
+@media (max-width:720px),(pointer:coarse){.app-fold summary{min-height:40px;padding:10px 0}}
 @media (max-width:480px){.app .cl-copy code{font-size:12px}}
 ol.steps{margin:0;padding:0;list-style:none;counter-reset:s;display:grid;gap:8px;font:var(--cl-text-body);color:var(--cl-ink-2)}
 ol.steps li{counter-increment:s;display:grid;grid-template-columns:22px minmax(0,1fr);gap:8px;align-items:baseline}
@@ -137,7 +154,7 @@ export const CONNECT_CSS = APP_STEPS_CSS + `
 .apps{columns:2 380px;column-gap:16px;margin-bottom:68px}
 @media (max-width:820px){.apps{columns:1}}
 .apps>.app{display:inline-flex;width:100%;vertical-align:top;break-inside:avoid;margin:0 0 16px}
-.app-head{display:flex;align-items:center;gap:12px;min-width:0}
+.app-head{display:flex;align-items:center;gap:12px;min-width:0;flex-wrap:wrap}
 .app-logo{width:40px;height:40px;flex:none;display:grid;place-items:center;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-md);background:var(--cl-paper-1)}
 .app-logo img{width:24px;height:24px}
 .mono-tile{font:700 13px/1 var(--cl-font-mono);color:var(--cl-ink-2)}
@@ -170,12 +187,14 @@ export const SCENE_CSS = `
 .win-top .dots{display:inline-flex;gap:5px;margin-right:4px}.win-top .dots::before,.win-top .dots::after{content:"";width:9px;height:9px;border-radius:50%;border:1px solid var(--cl-rule-strong);background:var(--cl-paper-2)}
 `;
 
-export const COPY_JS = `document.querySelectorAll('[data-copy]').forEach(function(b){b.addEventListener('click',function(){
-var t=b.getAttribute('data-copy');function ok(){b.textContent='Copied';b.classList.add('is-done');setTimeout(function(){b.textContent='Copy';b.classList.remove('is-done')},1600)}
-if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(ok,function(){})}else{var a=document.createElement('textarea');
-a.value=t;document.body.appendChild(a);a.select();try{document.execCommand('copy');ok()}catch(e){}a.remove()}})});`;
+export const COPY_JS = `(function(){var lr=null;function say(m){if(!lr){lr=document.createElement('span');lr.className='cl-sr-only';lr.setAttribute('role','status');lr.setAttribute('aria-live','polite');lr.setAttribute('aria-atomic','true');document.body.appendChild(lr)}lr.textContent='';setTimeout(function(){lr.textContent=m},10)}` +
+  `function fb(t){var a=document.createElement('textarea');a.value=t;a.className='cl-sr-only';a.setAttribute('readonly','');document.body.appendChild(a);a.select();var c=false;try{c=Boolean(document.execCommand&&document.execCommand('copy'))}catch(e){c=false}a.remove();return c}` +
+  `document.querySelectorAll('[data-copy]').forEach(function(b){b.addEventListener('click',function(){var t=b.getAttribute('data-copy')||'';` +
+  `function show(lbl,done){clearTimeout(b._ct);b.textContent=lbl;b.classList.toggle('is-done',!!done);say(lbl);b._ct=setTimeout(function(){b.textContent='Copy';b.classList.remove('is-done')},1600)}` +
+  `if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(function(){show('Copied',true)},function(){var ok=fb(t);show(ok?'Copied':'Copy failed',ok)})}` +
+  `else{var ok=fb(t);show(ok?'Copied':'Copy failed',ok)}})})})();`;
 
-const STATUS_JS = `(function(){var p=document.getElementById('status');if(!p)return;
+const STATUS_JS = `(function(){var p=document.getElementById('status');if(!p)return;p.setAttribute('aria-atomic','true');
 fetch('/healthz',{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(d){
 p.className='cl-status is-ok';p.textContent='Online';if(d&&d.version){var v=document.createElement('span');v.className='v';
 v.textContent='v'+d.version;p.appendChild(document.createTextNode(' \\u00b7 '));p.appendChild(v)}}).catch(function(){p.className='cl-status is-bad';p.textContent='Offline'})})();`;
@@ -190,7 +209,7 @@ function seoTags(nonce, title, seo) {
   const url = SITE + seo.path, d = esc(seo.description), t = esc(title);
   return `<meta name="description" content="${d}"><link rel="canonical" href="${url}">` +
     `<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1"><meta property="og:locale" content="en_US">` +
-    `<link rel="apple-touch-icon" href="/brand/clyde-512.png"><meta name="theme-color" content="#f3f1ea">` +
+    `<link rel="apple-touch-icon" href="/brand/clyde-512.png">` +
     `<meta property="og:type" content="${esc(seo.type || "website")}"><meta property="og:site_name" content="Clyde"><meta property="og:title" content="${t}">` +
     `<meta property="og:description" content="${d}"><meta property="og:url" content="${url}"><meta property="og:image" content="${OG_IMAGE}">` +
     `<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="Clyde, a doodle with a sticky note on his forehead">` +
@@ -204,7 +223,7 @@ const minCss = (css) => css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, " "
 
 export function shell({ nonce, title, css, body, script = "", noindex = true, seo = null }) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>${esc(title)}</title><meta name="color-scheme" content="light dark">${noindex ? '<meta name="robots" content="noindex">' : ""}${seoTags(nonce, title, seo)}
+<title>${esc(title)}</title><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f4f1" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#121311" media="(prefers-color-scheme: dark)">${noindex ? '<meta name="robots" content="noindex">' : ""}${seoTags(nonce, title, seo)}
 <link rel="icon" href="/_clyde/brand/favicon.svg" type="image/svg+xml"><style nonce="${nonce}">${FONTS_CSS}${TOKENS_CSS}${COMPONENTS_CSS}${minCss(PAGE_CSS + css)}</style></head><body class="cl-root">${body}${
     script ? `<script nonce="${nonce}">${script}</script>` : ""}</body></html>`;
 }
@@ -212,7 +231,7 @@ export function shell({ nonce, title, css, body, script = "", noindex = true, se
 export const copyBox = (value, label = "Copy") =>
   `<div class="cl-copy"><code>${esc(value)}</code><button class="cl-btn cl-btn--sm" type="button" data-copy="${esc(value)}" aria-label="${esc(label)}">Copy</button></div>`;
 export const copyPre = (name, value) =>
-  `<div class="cl-file"><div class="cl-file__head"><span>${esc(name)}</span><button class="cl-btn cl-btn--sm" type="button" data-copy="${esc(value)}">Copy</button></div>` +
+  `<div class="cl-file"><div class="cl-file__head"><span>${esc(name)}</span><button class="cl-btn cl-btn--sm" type="button" data-copy="${esc(value)}" aria-label="Copy ${esc(name)}">Copy</button></div>` +
   `<pre><code>${esc(value)}</code></pre></div>`;
 export const LEGAL = "Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok are trademarks of their respective owners. None of them endorse Clyde. Not available in the EU, EEA, UK, Switzerland, or Quebec.";
 const footer = `<footer class="foot"><div class="wrap"><span class="brand">${MARK(22)}clyde · a boring memory system</span>
@@ -244,17 +263,21 @@ export function statePage(data, nonce, id = "") {
   const state = data?.state;
   const app = (fallback = "your app") => data?.client ? `<strong>${esc(data.client)}</strong>` : fallback;
   const date = today();
-  let mark, h1, lead, extra = "", title, kind = "Sign-in";
+  const validId = /^[A-Za-z0-9_-]{8,100}$/.test(id);
+  const checkNow = validId
+    ? `<a class="cl-btn cl-btn--sm retry" href="/oauth/wait?authorization_id=${esc(encodeURIComponent(id))}">Check now</a>`
+    : "";
+  let mark, h1, lead, extra = "", title, kind = "Sign-in", script = "";
   switch (state) {
     case "check_email":
       mark = `<div class="badge">${ICON.mail}</div>`; h1 = "Check your email"; title = "Check your email";
       lead = `We sent a sign-in link to ${data.email ? `<strong>${esc(data.email)}</strong>` : "your inbox"}. Open it on any device.`;
-      extra = live("This page updates after you click the link.");
+      extra = live("This page updates after you click the link.") + checkNow;
       break;
     case "waiting":
       mark = `<div class="badge">${ICON.wait}</div>`; h1 = "Waiting for confirmation"; title = "Waiting for confirmation";
       lead = "Click the email link to finish connecting. If it isn't in your inbox, check spam.";
-      extra = live("Checking automatically.");
+      extra = live("Checking automatically.") + checkNow;
       break;
     case "connected":
       mark = stamp("ok", "Approved", date); h1 = "Connected"; title = "Connected";
@@ -284,6 +307,7 @@ export function statePage(data, nonce, id = "") {
 <input type="hidden" name="decision_token" value="${esc(String(data?.decision_token ?? ""))}">
 <button class="cl-btn cl-btn--primary cl-btn--lg cl-btn--block" type="submit" name="decision" value="allow">Allow ${esc(data?.client || "app")}</button>
 <button class="cl-btn cl-btn--ghost cl-btn--lg cl-btn--block" type="submit" name="decision" value="deny">Deny</button></form>`;
+      script = ALLOW_JS;
       break;
     }
     case "ask_email": {
@@ -299,15 +323,17 @@ export function statePage(data, nonce, id = "") {
       // locks again if the token expires or errors. A password sign-in needs no token. A failed try comes back here with
       // the address kept and the reason above the form.
       const human = Boolean(data?.turnstile_site_key);
+      const hasErr = Boolean(data?.error);
       const typed = typeof data?.email === "string" ? ` value="${esc(data.email)}"` : "";
       extra = `${social}<form class="ask" id="ask" method="post" action="/oauth/consent?authorization_id=${esc(encodeURIComponent(id))}">
-${data?.error ? `<p class="cl-error" role="alert">${esc(data.error)}</p>` : ""}
-<div class="cl-field"><label for="email">Email</label><input class="cl-input" id="email" type="email" name="email" autocomplete="email" required autofocus placeholder="you@example.com"${typed}></div>
-<details class="cl-field"><summary>Have a password?</summary><label for="password">Password</label><input class="cl-input" id="password" type="password" name="password" autocomplete="current-password"></details>
+${hasErr ? `<p class="cl-error" id="ask-error" role="alert" tabindex="-1">${esc(data.error)}</p>` : ""}
+<div class="cl-field${hasErr ? " is-error" : ""}"><label for="email">Email</label><input class="cl-input" id="email" type="email" name="email" autocomplete="email" required${hasErr ? ' aria-describedby="ask-error" aria-invalid="true"' : " autofocus"} placeholder="you@example.com"${typed}></div>
+<details class="cl-field"><summary>Have a password?</summary><div class="cl-field"><label for="password">Password</label><div class="cl-pw-wrap"><input class="cl-input" id="password" type="password" name="password" autocomplete="current-password"><button type="button" class="cl-btn cl-btn--sm" id="toggle-pw" aria-pressed="false" aria-label="Show password">Show</button></div></div></details>
 ${human ? `<div class="cf-turnstile" data-sitekey="${esc(data.turnstile_site_key)}" data-callback="clydeHuman" data-expired-callback="clydeNotYet" data-error-callback="clydeCheckFailed" data-refresh-expired="auto"></div>
 <p class="human" id="human" role="status" aria-live="polite">Checking you're a person…</p>` : ""}
 <button class="cl-btn cl-btn--primary cl-btn--lg cl-btn--block" id="send" type="submit"${human ? " disabled" : ""}>Send sign-in link</button></form>${human
-        ? `<script nonce="${nonce}">${HUMAN_JS}</script><script nonce="${nonce}" src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>` : ""}`;
+        ? `<script nonce="${nonce}" src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>` : ""}`;
+      script = ASK_JS;
       break;
     }
     case "closed":
@@ -342,13 +368,15 @@ ${human ? `<div class="cf-turnstile" data-sitekey="${esc(data.turnstile_site_key
       lead = esc(sentence(data?.message));
   }
   // A provider sign-in that failed or was cancelled goes back to this request's own sign-in page, never anywhere else.
-  if (data?.retry === true && /^[A-Za-z0-9_-]{8,100}$/.test(id)) {
+  if (data?.retry === true && validId) {
     extra += `<a class="cl-btn cl-btn--lg retry" href="/oauth/consent?authorization_id=${esc(encodeURIComponent(id))}">Back to sign-in</a>`;
+  } else if ((state === "refused" || state === "expired") && data?.retry !== true) {
+    extra += `<a class="cl-btn cl-btn--ghost retry" href="https://heyclyde.me/docs">Open setup docs</a>`;
   }
-  const body = `<header class="bar center wrap">${WORDMARK}</header>
-<main class="sign"><section class="cl-sheet ticket"><div class="ticket-head"><span class="cl-label">${kind}</span><span class="cl-label">memory.heyclyde.me</span></div>
+  const body = `<a class="cl-skip" href="#main">Skip to content</a><header class="bar center wrap">${WORDMARK}</header>
+<main id="main" tabindex="-1" class="sign"><section class="cl-sheet ticket"><div class="ticket-head"><span class="cl-label">${kind}</span><span class="cl-label">memory.heyclyde.me</span></div>
 <div class="ticket-body">${mark}<h1 class="cl-title-1">${h1}</h1><p class="cl-lead">${lead}</p>${extra}</div></section></main>${footer}`;
-  return shell({ nonce, title: `${title} · Clyde`, css: SIGN_CSS + AUTH_CSS, body });
+  return shell({ nonce, title: `${title} · Clyde`, css: SIGN_CSS + AUTH_CSS, body, script });
 }
 
 // ---- Connect your apps ----
@@ -490,8 +518,8 @@ ${hookCfg("Antigravity", ".agents/hooks.json")}`,
 
 /** Apps nobody has connected to Clyde yet (no sessions from them as of 16 Nov 2026). They show a red asterisk. */
 export const SOON = new Set(["gemini", "grok", "chatgpt"]);
-const soon = (slug) => SOON.has(slug) ? '<span class="soon" aria-label="work in progress">*</span>' : "";
-export const SOON_NOTE = `<p class="soon-note"><span class="soon">*</span> WIP, Clyde's still workin' on it</p>`;
+export const soon = (slug) => SOON.has(slug) ? '<span class="soon" aria-hidden="true">*</span><span class="cl-sr-only"> (work in progress)</span>' : "";
+export const SOON_NOTE = `<p class="soon-note"><span class="soon" aria-hidden="true">*</span> Work in progress: Clyde is still finishing this integration.</p>`;
 export const WORKS = [["claude", "Claude"], ["claude-code", "Claude Code"], ["codex", "Codex"], ["gemini", "Gemini"], ["antigravity", "Antigravity"], ["grok", "Grok"], ["chatgpt", "ChatGPT"]];
 
 export const SCENE = `<div class="scene" aria-label="The same Clyde note showing up in Claude and in Gemini">
@@ -517,9 +545,9 @@ export const appCards = () => APPS.map((a) => `<article class="${a.sticky ? "cl-
 export function homePage(nonce) {
   const cards = appCards();
   const works = WORKS.map(([slug, name]) => `<li>${APP_LOGO[slug] ? appLogo(slug, 20) : ""}${name}${soon(slug)}</li>`).join("");
-  const body = `<header class="bar wrap">${WORDMARK}<nav class="topnav"><a href="https://heyclyde.me/">Home</a><a href="#apps">Apps</a><a href="https://heyclyde.me/docs#hooks">Hooks</a><a href="#how">How it works</a></nav>
-<span class="cl-status" id="status" role="status">Checking</span></header>
-<main>
+  const body = `<a class="cl-skip" href="#main">Skip to content</a><header class="bar wrap">${WORDMARK}<nav class="topnav"><a href="https://heyclyde.me/">Home</a><a href="#apps">Apps</a><a href="https://heyclyde.me/docs#hooks">Hooks</a><a href="#how">How it works</a></nav>
+<span class="cl-status" id="status" role="status" aria-atomic="true">Checking</span></header>
+<main id="main" tabindex="-1">
 <section class="hero wrap"><div class="hero-text"><span class="cl-label">Get Clyde</span>
 <h1 class="cl-display">Connect your <em class="cl-scribble">apps</em></h1>
 <p class="cl-lead">Add one MCP URL to each app, then sign in with the link Clyde emails you.</p>

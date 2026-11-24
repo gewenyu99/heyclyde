@@ -10,7 +10,7 @@ button,input,textarea{font:inherit;color:inherit}
 .c-head .cl-wordmark,.c-toggle,.c-fold{flex:none}
 .c-what{flex:1;min-width:0;color:var(--cl-ink-3);font:var(--cl-text-small);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .c-head .cl-agent{flex:none;max-width:38%}
-.c-toggle{height:24px;padding:0 8px;font-size:12px;gap:4px}
+.c-toggle{min-height:28px;height:auto;padding:4px 8px;font-size:12px;gap:4px}
 .c-toggle[aria-expanded=true] .c-i,.c-fold .c-i{transform:rotate(180deg)}
 .c-desk{display:grid;gap:6px;padding:8px var(--cl-space-3);background:var(--cl-paper-0)}
 .c-recall-scroll{max-height:420px;overflow-y:auto;overscroll-behavior-y:contain;scrollbar-gutter:stable}
@@ -20,7 +20,8 @@ button,input,textarea{font:inherit;color:inherit}
 .cl-memory.is-compact:hover,.cl-quest.is-compact:hover{border-color:var(--cl-rule-strong)}
 button.c-sum,button.c-qsum{appearance:none;display:flex;align-items:center;gap:8px;width:100%;min-width:0;padding:0;border:0;background:none;text-align:left;cursor:pointer}
 button.c-qsum{padding:8px 12px}
-button.c-sum:focus-visible,button.c-qsum:focus-visible{outline:none;box-shadow:var(--cl-focus);border-radius:var(--cl-radius-sm)}
+button.c-sum:focus-visible,button.c-qsum:focus-visible,.c-toggle:focus-visible,.c-fold:focus-visible,.c-more:focus-visible{outline:none;box-shadow:var(--cl-focus);border-radius:var(--cl-radius-sm)}
+.c-toggle,.c-fold,.c-more,button.c-sum,button.c-qsum{touch-action:manipulation}
 .c-sum__title{flex:1;min-width:0;font:600 13.5px/19px var(--cl-font-sans);color:var(--cl-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cl-memory.is-superseded .c-sum__title{text-decoration:line-through;color:var(--cl-ink-3)}
 .cl-quest.is-done .c-sum__title{color:var(--cl-ink-2)}
@@ -30,11 +31,11 @@ button.c-sum:focus-visible,button.c-qsum:focus-visible{outline:none;box-shadow:v
 .c-full{display:grid;gap:8px;min-width:0}
 .cl-memory__top{flex-wrap:wrap;row-gap:6px}
 .cl-memory__conf{white-space:nowrap}
-.c-fold{height:22px;padding:0 6px;font-size:11.5px;gap:4px}
+.c-fold{min-height:28px;height:auto;padding:4px 8px;font-size:11.5px;gap:4px}
 .cl-quest.is-compact{display:block}
 .c-qno{flex:none;padding:2px 6px;border-radius:var(--cl-radius-xs);background:var(--cl-sticky);border:1px solid var(--cl-sticky-edge);font:700 11px/1.2 var(--cl-font-mono);color:var(--cl-ink)}
 .cl-quest.is-done .c-qno{background:var(--cl-paper-2);border-color:var(--cl-rule-strong);color:var(--cl-ink-3)}
-.c-more{justify-self:start;height:26px;padding:0 10px;font-size:12px}
+.c-more{justify-self:start;min-height:28px;height:auto;padding:4px 10px;font-size:12px}
 .c-foot{display:flex;flex-wrap:wrap;align-items:center;gap:var(--cl-space-2);padding:10px var(--cl-space-3);border-top:1px solid var(--cl-rule)}
 .c-foot .c-note{flex:1;min-width:150px;color:var(--cl-ink-3);font:var(--cl-text-small)}
 .c-say{margin:0;padding:0 var(--cl-space-3) 10px;font:var(--cl-text-small)}
@@ -45,10 +46,11 @@ button.c-sum:focus-visible,button.c-qsum:focus-visible{outline:none;box-shadow:v
 .c-quote{margin:0;padding:6px 10px;border-left:2px solid var(--cl-carbon);background:var(--cl-carbon-wash);color:var(--cl-carbon-ink);border-radius:0 var(--cl-radius-sm) var(--cl-radius-sm) 0;font:var(--cl-text-small);overflow-wrap:anywhere}
 .c-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0}
 .c-row .c-sp{flex:1}
-.c-art{appearance:none;display:inline-flex;align-items:center;gap:6px;max-width:100%;height:24px;padding:0 8px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-sm);background:var(--cl-paper-1);color:var(--cl-ink-2);font:var(--cl-text-mono);font-size:11.5px}
+.c-art{appearance:none;display:inline-flex;align-items:center;gap:6px;max-width:100%;min-height:28px;height:auto;padding:4px 8px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-sm);background:var(--cl-paper-1);color:var(--cl-ink-2);font:var(--cl-text-mono);font-size:11.5px;touch-action:manipulation}
 .c-art span,.c-links li span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 button.c-art{cursor:pointer}button.c-art:hover{border-color:var(--cl-carbon);color:var(--cl-ink)}
 button.c-art:focus-visible{outline:none;box-shadow:var(--cl-focus)}
+.cl-file__head .c-row>span{min-width:0;overflow-wrap:anywhere}
 .c-i{width:14px;height:14px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .cl-btn.c-wrong[aria-pressed=true]{color:var(--cl-bad);border-color:var(--cl-bad);background:var(--cl-bad-wash);transform:none;box-shadow:none;opacity:1}
 .cl-btn.c-used[aria-pressed=true]{color:var(--cl-ok);border-color:var(--cl-ok);background:var(--cl-ok-wash);transform:none;box-shadow:none;opacity:1}

@@ -22,7 +22,7 @@ export const CARD_OF: Record<string, string> = {
 };
 
 const SITE_ONLY_CSS =
-  /\.(?:cl-(?:sticky|nav|tabs|toast|mascot|scribble|doodle|ill|display|title-[123]|lead|kbd|copy|well|status|check|sheet|card--lift|btn--(?:lg|block|danger)))\b[^{}]*\{[^{}]*\}|@keyframes cl-rise\{(?:[^{}]*\{[^{}]*\})*\}/g;
+  /\.(?:cl-(?:skip|sticky|nav|tabs|toast|mascot|scribble|doodle|ill|display|title-[123]|lead|kbd|copy|well|status|check|sheet|card--lift|btn--(?:lg|block|danger)))\b[^{}]*\{[^{}]*\}|@keyframes cl-rise\{(?:[^{}]*\{[^{}]*\})*\}/g;
 
 const minCss = (css: string) =>
   css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s*([{}:;,>])\s*/g, "$1").replace(/;}/g, "}").replace(/\n+/g, "").trim();

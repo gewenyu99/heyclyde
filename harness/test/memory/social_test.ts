@@ -136,3 +136,13 @@ Deno.test('the page after sign-in is a workspace path on this origin, never anot
   t.store.set('clyde_social_v1', JSON.stringify({ ...pending(t.store), next: '//evil.example' }))
   assert.equal((await t.client.finish(search)).next, '/memories')
 })
+
+Deno.test('begin throws a plain user-friendly error when storage or WebCrypto is blocked', async () => {
+  const blockedStorage = fakeWindow()
+  blockedStorage.win.sessionStorage.setItem = () => { throw new Error('QuotaExceededError') }
+  await assert.rejects(() => blockedStorage.client.begin('google', '/memories'), /blocked temporary sign-in storage/)
+
+  const noCrypto = fakeWindow()
+  ;(noCrypto.win as any).crypto = undefined
+  await assert.rejects(() => noCrypto.client.begin('github', '/memories'), /blocked temporary sign-in storage/)
+})

@@ -196,6 +196,46 @@ function memoryParts(m, full) {
 function say(el, text, tone) {
   el.textContent = text; el.className = "c-say " + (tone === "muted" ? "is-muted" : tone ? "is-ok" : "is-bad"); el.hidden = false; resized();
 }
+var copyLive = null;
+function announceCardCopy(msg) {
+  if (!copyLive) {
+    copyLive = h("span", { class: "cl-sr-only", role: "status", "aria-live": "polite", "aria-atomic": "true" });
+    document.body.appendChild(copyLive);
+  }
+  copyLive.textContent = "";
+  setTimeout(function () { copyLive.textContent = msg; }, 10);
+}
+function copyIdBtn(id) {
+  var timer = null;
+  var btn = h("button", { class: GH + "c-copy-id", type: "button", "aria-label": "Copy note id " + id, onclick: function () {
+    function show(txt, ok) {
+      clearTimeout(timer);
+      btn.textContent = txt;
+      btn.classList.toggle("is-done", !!ok);
+      announceCardCopy(txt);
+      timer = setTimeout(function () { btn.textContent = "Copy id"; btn.classList.remove("is-done"); }, 1600);
+    }
+    function fb() {
+      var ta = document.createElement("textarea");
+      ta.value = id; ta.className = "cl-sr-only"; ta.setAttribute("readonly", "");
+      document.body.appendChild(ta); ta.select();
+      var ok = false; try { ok = !!document.execCommand("copy"); } catch (e) { ok = false; }
+      ta.remove(); return ok;
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(id).then(function () { show("Copied", true); }, function () { var ok = fb(); show(ok ? "Copied" : "Copy failed", ok); });
+    } else {
+      var ok = fb(); show(ok ? "Copied" : "Copy failed", ok);
+    }
+  } }, "Copy id");
+  return btn;
+}
+function openClydeBtn(id) {
+  if (!id) return null;
+  return h("button", { class: GH + "c-ext", type: "button", onclick: function () {
+    openLink("https:" + "//heyclyde.me/entries/" + encodeURIComponent(id));
+  } }, "Open in Clyde", icon("open"));
+}
 
 // ---------- open: get_entry and get_blob inside a card ----------
 function entryDetail(e, openable) {
@@ -212,7 +252,9 @@ function entryDetail(e, openable) {
 function openLocal(btn, m, holder, card) {
   holder.hidden = false; btn.setAttribute("aria-expanded", "true");
   var body = card.querySelector(".cl-memory__body"); if (body) body.className = "cl-memory__body is-open";
-  add(holder, entryDetail(m, false)); resized();
+  add(holder, entryDetail(m, false));
+  if (m.id) add(holder, h("div", { class: "c-row" }, copyIdBtn(m.id), openClydeBtn(m.id)));
+  resized();
 }
 function openEntry(btn, m, holder, card) {
   if (holder.firstChild) { holder.hidden = !holder.hidden; btn.setAttribute("aria-expanded", String(!holder.hidden)); resized(); return; }
@@ -224,6 +266,7 @@ function openEntry(btn, m, holder, card) {
     if (d && d.entry) {
       var body = card.querySelector(".cl-memory__body"); if (body) { body.textContent = d.entry.body; body.className = "cl-memory__body is-open"; }
       add(holder, entryDetail(d.entry, true));
+      if (d.entry.id) add(holder, h("div", { class: "c-row" }, copyIdBtn(d.entry.id), openClydeBtn(d.entry.id)));
     } else add(holder, h("p", { class: "c-text", text: textOf(r) }));
     resized();
   }, function (e) {
@@ -297,7 +340,11 @@ function memoryItem(m, opts) {
   if (opts.extra) add(full, opts.extra(card, fold));
   if (opts.detail) {
     full.appendChild(h("div", { class: "c-detail" }, entryDetail(m, true)));
-    if (!opts.saved) full.appendChild(h("div", { class: "c-row" }, h("span", { class: "c-sp" }), fold));
+    full.appendChild(h("div", { class: "c-row" },
+      m.id ? copyIdBtn(m.id) : null,
+      m.id ? openClydeBtn(m.id) : null,
+      h("span", { class: "c-sp" }),
+      !opts.saved ? fold : null));
   }
   card.appendChild(sum); card.appendChild(full);
   function setOpen(v, moveFocus) {
@@ -332,7 +379,15 @@ function recallCard(d) {
   }) : null;
   var s = sheet((d.page === "more" ? "more for " : "recall · ") + "“" + (d.query || "") + "”" + (items.length ? " · " + items.length : ""), d.badge, toggle), dk = desk();
   dk.classList.add("c-recall-scroll");
-  if (d.degraded) dk.appendChild(h("p", { class: "c-text" }, h("span", { class: "cl-chip cl-chip--warn", text: "degraded" }), " ", d.degraded));
+  if (d.degraded) {
+    var deg = String(d.degraded), hasEmbed = /embed/i.test(deg), hasFilter = /filter/i.test(deg);
+    var chip = hasEmbed ? "Keyword-only" : (hasFilter ? "Unfiltered" : "Partial ranking");
+    var msg = hasEmbed && hasFilter ? "Keyword search fallback active, and relevance filtering was skipped."
+      : hasEmbed ? "Keyword search fallback active."
+      : hasFilter ? "Relevance filter failed, so results are unfiltered."
+      : "Some ranking signals failed, so results use partial scoring.";
+    dk.appendChild(h("p", { class: "c-text" }, h("span", { class: "cl-chip cl-chip--warn", text: chip }), " ", msg));
+  }
   if (!items.length) {
     dk.appendChild(h("div", { class: "cl-empty" }, h("p", { class: "cl-empty__title", text: "Nothing in Clyde matches that yet." }),
       h("p", { class: "cl-empty__text", text: "Either nobody wrote it down, or it was phrased differently. Ask for more results, or tell your agent to remember it." })));

@@ -44,10 +44,23 @@ const APP_CSS = `
 .meter-list{display:grid;gap:12px}
 .meter-row{display:grid;gap:8px;padding:16px}
 .meter-top{display:flex;justify-content:space-between;gap:12px;align-items:baseline;flex-wrap:wrap}
+.meter-num{font-variant-numeric:tabular-nums}
 .meter-bar{width:100%;height:10px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-pill);background:var(--cl-paper-2);overflow:hidden;appearance:none}
 .meter-bar::-webkit-progress-bar{background:var(--cl-paper-2)}
 .meter-bar::-webkit-progress-value{background:var(--cl-carbon);border-radius:var(--cl-radius-pill)}
 .meter-bar::-moz-progress-bar{background:var(--cl-carbon);border-radius:var(--cl-radius-pill)}
+.meter-bar--warn::-webkit-progress-value{background:var(--cl-warn)}
+.meter-bar--warn::-moz-progress-bar{background:var(--cl-warn)}
+.meter-bar--bad::-webkit-progress-value{background:var(--cl-bad)}
+.meter-bar--bad::-moz-progress-bar{background:var(--cl-bad)}
+.sign-prov-skel{display:grid;gap:10px;min-height:96px;align-content:start}
+.sign-prov-skel .cl-skel{height:44px;border-radius:var(--cl-radius-md)}
+.app-crumb-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.app-crumb{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:var(--cl-text-small);color:var(--cl-ink-3);min-width:0}
+.app-crumb ol{display:flex;align-items:center;gap:8px;flex-wrap:wrap;list-style:none;margin:0;padding:0;min-width:0}
+.app-crumb li{display:inline-flex;align-items:center;gap:8px;min-width:0}
+.app-crumb li+li::before{content:"/";color:var(--cl-rule-strong)}
+.app-crumb__cur{color:var(--cl-ink);font-weight:600;overflow-wrap:anywhere}
 .mcp-box{display:grid;gap:10px;padding:16px 18px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-lg);background:var(--cl-paper-1)}
 .mcp-box--sticky{background:var(--cl-sticky);border-color:var(--cl-sticky-edge)}
 .mcp-box__head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
@@ -171,6 +184,14 @@ const APP_CSS = `
 .app-qcol{display:grid;gap:12px}
 .app-qcol-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-bottom:6px;border-bottom:1px dashed var(--cl-rule-strong)}
 .agent-card{display:grid;gap:12px;padding:18px}
+.onb-tab,.gr-chip-btn,.gr-ins-link{touch-action:manipulation}
+.onb-tab:focus-visible,.gr-chip-btn:focus-visible,.gr-ins-link:focus-visible{outline:none;box-shadow:var(--cl-focus)}
+@media (max-width:720px),(pointer:coarse){
+  .app-nav .cl-nav__item{min-height:40px;padding:8px 12px}
+  .app-bar-user .cl-btn--sm,.app-head-acts .cl-btn--sm,.onb-tab,.gr-chip-btn,.gr-res-btn{min-height:40px;height:auto;padding-block:8px}
+  .app-form .cl-btn,.signin-box .cl-btn[type="submit"],.app-filters .cl-btn[type="submit"]{min-height:44px;height:auto}
+  .cl-pw-wrap .cl-btn{min-height:44px}
+}
 `;
 
 const PAGE_SPEC = {
@@ -222,33 +243,118 @@ function esc(s) {
   });
 }
 
+var copyLiveEl = null;
+function announceCopy(msg) {
+  if (typeof document.createElement !== 'function' || !document.body) return;
+  if (!copyLiveEl) {
+    copyLiveEl = document.createElement('span');
+    copyLiveEl.className = 'sr-only';
+    copyLiveEl.setAttribute('role', 'status');
+    copyLiveEl.setAttribute('aria-live', 'polite');
+    copyLiveEl.setAttribute('aria-atomic', 'true');
+    document.body.appendChild(copyLiveEl);
+  }
+  copyLiveEl.textContent = '';
+  setTimeout(function() { copyLiveEl.textContent = msg; }, 10);
+}
+
 function copyText(text, btn) {
-  var done = function() {
+  var show = function(label, ok) {
+    announceCopy(label);
     if (!btn) return;
     var old = btn.getAttribute('data-label') || btn.textContent;
     btn.setAttribute('data-label', old);
-    btn.textContent = 'Copied';
-    setTimeout(function() { btn.textContent = old; }, 1600);
+    if (btn._copyTimer) clearTimeout(btn._copyTimer);
+    btn.textContent = label;
+    if (btn.classList) btn.classList.toggle('is-done', Boolean(ok));
+    btn._copyTimer = setTimeout(function() {
+      btn.textContent = old;
+      if (btn.classList) btn.classList.remove('is-done');
+    }, 1600);
   };
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).then(done).catch(function() {
-      fallbackCopy(text);
-      done();
+  if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function() {
+      show('Copied', true);
+    }).catch(function() {
+      var ok = fallbackCopy(text);
+      show(ok ? 'Copied' : 'Copy failed', ok);
     });
   } else {
-    fallbackCopy(text);
-    done();
+    var ok = fallbackCopy(text);
+    show(ok ? 'Copied' : 'Copy failed', ok);
   }
 }
 
 function fallbackCopy(text) {
+  if (typeof document.createElement !== 'function' || !document.body) return false;
   var ta = document.createElement('textarea');
   ta.value = text;
   ta.className = 'sr-only';
+  ta.setAttribute('readonly', '');
   document.body.appendChild(ta);
   ta.select();
-  try { document.execCommand('copy'); } catch (e) {}
+  var ok = false;
+  try { ok = Boolean(document.execCommand && document.execCommand('copy')); } catch (e) { ok = false; }
   ta.remove();
+  return ok;
+}
+
+function setBusy(btn, busy, busyLabel) {
+  if (!btn) return;
+  if (busy) {
+    if (typeof btn.getAttribute === 'function' && !btn.getAttribute('data-idle')) {
+      btn.setAttribute('data-idle', btn.textContent || '');
+    }
+    btn.disabled = true;
+    if (typeof btn.setAttribute === 'function') btn.setAttribute('aria-busy', 'true');
+    if (busyLabel) btn.textContent = busyLabel;
+  } else {
+    btn.disabled = false;
+    if (typeof btn.removeAttribute === 'function') btn.removeAttribute('aria-busy');
+    var idle = typeof btn.getAttribute === 'function' ? btn.getAttribute('data-idle') : '';
+    if (idle) btn.textContent = idle;
+  }
+}
+
+function cleanOtp(v) {
+  return String(v || '').replace(/[\s-]+/g, '').trim();
+}
+
+function wireOtpInput(el) {
+  if (!el || typeof el.addEventListener !== 'function') return;
+  el.addEventListener('input', function() {
+    var cleaned = cleanOtp(el.value);
+    if (el.value !== cleaned) el.value = cleaned;
+  });
+}
+
+function wirePwToggle(btnId, inputId) {
+  var b = document.getElementById(btnId), inp = document.getElementById(inputId);
+  if (!b || !inp || typeof b.addEventListener !== 'function') return;
+  b.addEventListener('click', function() {
+    var show = inp.type === 'password';
+    inp.type = show ? 'text' : 'password';
+    b.textContent = show ? 'Hide' : 'Show';
+    if (typeof b.setAttribute === 'function') {
+      b.setAttribute('aria-pressed', String(show));
+      b.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+    }
+  });
+}
+
+function isAuthFlowErr(err) {
+  return Boolean(err && (err.message === 'Unauthorized' || err.message === 'Sign in required.'));
+}
+
+function renderRetryError(el, msg, onRetry) {
+  if (!el) return;
+  el.innerHTML =
+    '<div class="cl-card app-grid" role="alert">' +
+      '<div class="app-banner app-banner--bad">' + esc(msg || "Couldn't load this view. Try again.") + '</div>' +
+      '<div class="app-actions"><button type="button" class="cl-btn cl-btn--sm" data-retry="1">Retry</button></div>' +
+    '</div>';
+  var btn = typeof el.querySelector === 'function' ? el.querySelector('[data-retry]') : null;
+  if (btn && typeof btn.addEventListener === 'function') btn.addEventListener('click', onRetry);
 }
 
 if (document.addEventListener) document.addEventListener('click', function(ev) {
@@ -402,19 +508,24 @@ function renderSignIn(msg) {
       '<h2 class="cl-title-2">Sign in to Clyde</h2>' +
       '<p class="cl-hint">Enter your email for a sign-in link or code, or use a password if your account has one. New here? <a class="cl-link" href="/invite">Create an account</a>.</p>' +
       '<div id="sign-msg" class="' + bannerClass + '">' + esc(bannerText) + '</div>' +
-      '<div id="sign-providers" class="is-hidden"></div>' +
+      '<div id="sign-providers" class="app-grid" aria-busy="true"><div class="sign-prov-skel" aria-hidden="true"><span class="cl-skel"></span><span class="cl-skel"></span></div></div>' +
       '<form id="otp-req" class="app-grid">' +
         '<div class="cl-field"><label for="s-email">Email</label><input id="s-email" class="cl-input" type="email" required placeholder="you@example.com" autocomplete="email"></div>' +
         '<div class="app-actions"><button type="submit" class="cl-btn cl-btn--primary" id="btn-send-code">Send sign-in email</button>' +
-        '<button type="button" class="cl-btn cl-btn--ghost" id="btn-toggle-pw">Use password instead</button></div>' +
+        '<button type="button" class="cl-btn cl-btn--ghost" id="btn-toggle-pw" aria-expanded="false" aria-controls="pw-form">Use password instead</button></div>' +
       '</form>' +
       '<form id="otp-verify" class="app-grid is-hidden">' +
         '<div class="cl-field"><label for="s-code">One-time code</label><input id="s-code" class="cl-input" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456"></div>' +
-        '<button type="submit" class="cl-btn cl-btn--primary">Verify code</button>' +
+        '<button type="submit" class="cl-btn cl-btn--primary" id="btn-verify-code">Verify code</button>' +
       '</form>' +
       '<form id="pw-form" class="app-grid is-hidden">' +
-        '<div class="cl-field"><label for="s-pw">Password</label><input id="s-pw" class="cl-input" type="password" autocomplete="current-password"></div>' +
-        '<button type="submit" class="cl-btn cl-btn--primary">Sign in with password</button>' +
+        '<div class="cl-field"><label for="s-pw">Password</label>' +
+          '<div class="cl-pw-wrap">' +
+            '<input id="s-pw" class="cl-input" type="password" autocomplete="current-password">' +
+            '<button type="button" class="cl-btn cl-btn--sm" id="btn-s-pw-vis" aria-pressed="false" aria-label="Show password">Show</button>' +
+          '</div>' +
+        '</div>' +
+        '<button type="submit" class="cl-btn cl-btn--primary" id="btn-pw-submit">Sign in with password</button>' +
       '</form>' +
     '</section>';
   var banner = document.getElementById('sign-msg');
@@ -422,15 +533,24 @@ function renderSignIn(msg) {
   showProviders(document.getElementById('sign-providers'), banner);
   var otpVerify = document.getElementById('otp-verify');
   var pwForm = document.getElementById('pw-form');
+  var togglePwBtn = document.getElementById('btn-toggle-pw');
+  var sendBtn = document.getElementById('btn-send-code');
+  var verifyBtn = document.getElementById('btn-verify-code');
+  var pwBtn = document.getElementById('btn-pw-submit');
+  wireOtpInput(document.getElementById('s-code'));
+  wirePwToggle('btn-s-pw-vis', 's-pw');
 
-  document.getElementById('btn-toggle-pw').addEventListener('click', function() {
-    pwForm.classList.toggle('is-hidden');
+  if (togglePwBtn && togglePwBtn.addEventListener) togglePwBtn.addEventListener('click', function() {
+    var hidden = pwForm.classList.toggle('is-hidden');
+    if (typeof togglePwBtn.setAttribute === 'function') togglePwBtn.setAttribute('aria-expanded', String(!hidden));
   });
 
   document.getElementById('otp-req').addEventListener('submit', async function(e) {
     e.preventDefault();
+    if (sendBtn && sendBtn.disabled) return;
     clearNotice(banner);
     var email = emailEl.value.trim();
+    setBusy(sendBtn, true, 'Sending…');
     try {
       var targetUrl = location.origin + nextTarget;
       var r = await fetch('/auth/v1/otp?redirect_to=' + encodeURIComponent(targetUrl), {
@@ -444,14 +564,18 @@ function renderSignIn(msg) {
       notice(banner, 'ok', 'Sign-in email sent. Click the link in your inbox, or paste the 6-digit code below if included.');
     } catch (err) {
       notice(banner, 'bad', err.message);
+    } finally {
+      setBusy(sendBtn, false);
     }
   });
 
   otpVerify.addEventListener('submit', async function(e) {
     e.preventDefault();
+    if (verifyBtn && verifyBtn.disabled) return;
     clearNotice(banner);
     var email = emailEl.value.trim();
-    var token = document.getElementById('s-code').value.trim();
+    var token = cleanOtp(document.getElementById('s-code').value);
+    setBusy(verifyBtn, true, 'Verifying…');
     try {
       var r = await fetch('/auth/v1/verify', {
         method: 'POST',
@@ -464,14 +588,18 @@ function renderSignIn(msg) {
       start();
     } catch (err) {
       notice(banner, 'bad', err.message);
+    } finally {
+      setBusy(verifyBtn, false);
     }
   });
 
   pwForm.addEventListener('submit', async function(e) {
     e.preventDefault();
+    if (pwBtn && pwBtn.disabled) return;
     clearNotice(banner);
     var email = emailEl.value.trim();
     var password = document.getElementById('s-pw').value;
+    setBusy(pwBtn, true, 'Signing in…');
     try {
       var r = await fetch('/auth/v1/token?grant_type=password', {
         method: 'POST',
@@ -484,6 +612,8 @@ function renderSignIn(msg) {
       start();
     } catch (err) {
       notice(banner, 'bad', err.message);
+    } finally {
+      setBusy(pwBtn, false);
     }
   });
 }
@@ -641,14 +771,14 @@ async function renderInvite() {
           '<h2 class="cl-title-2">' + (isPartner ? 'Claim your partner pass' : 'Create your account') + '</h2>' +
           '<p class="cl-hint">Sign up with Google, GitHub, or email. Next, you\\'ll connect your first agent and test it with one prompt.</p>' +
           '<div id="inv-msg" class="is-hidden"></div>' +
-          '<div id="inv-providers" class="is-hidden"></div>' +
+          '<div id="inv-providers" class="app-grid" aria-busy="true"><div class="sign-prov-skel" aria-hidden="true"><span class="cl-skel"></span><span class="cl-skel"></span></div></div>' +
           '<form id="inv-email-form" class="app-grid">' +
             '<div class="cl-field"><label for="inv-email">Email</label><input id="inv-email" class="cl-input" type="email" required placeholder="you@example.com" autocomplete="email"></div>' +
             '<button type="submit" class="cl-btn cl-btn--primary" id="btn-inv-send">Send sign-up link</button>' +
           '</form>' +
           '<form id="inv-otp-form" class="app-grid is-hidden">' +
             '<div class="cl-field"><label for="inv-code">One-time code</label><input id="inv-code" class="cl-input" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456"></div>' +
-            '<button type="submit" class="cl-btn cl-btn--primary">Verify code and continue</button>' +
+            '<button type="submit" class="cl-btn cl-btn--primary" id="btn-inv-verify">Verify code and continue</button>' +
           '</form>' +
           '<p class="cl-hint">Already have an account? <a class="cl-link" href="' + (validCode ? ('/memories?invite=' + encodeURIComponent(validCode)) : '/memories') + '">Sign in instead</a>.</p>' +
         '</section>' +
@@ -667,15 +797,18 @@ async function renderInvite() {
   var banner = document.getElementById('inv-msg');
   var emailEl = document.getElementById('inv-email');
   var otpForm = document.getElementById('inv-otp-form');
+  var invVerifyBtn = document.getElementById('btn-inv-verify');
+  wireOtpInput(document.getElementById('inv-code'));
   afterSignIn = redeemUrl;
   showProviders(document.getElementById('inv-providers'), banner);
 
   document.getElementById('inv-email-form').addEventListener('submit', async function(e) {
     e.preventDefault();
+    var btn = document.getElementById('btn-inv-send');
+    if (btn && btn.disabled) return;
     clearNotice(banner);
     var email = emailEl.value.trim();
-    var btn = document.getElementById('btn-inv-send');
-    btn.disabled = true;
+    setBusy(btn, true, 'Sending…');
     try {
       var payload = { email: email };
       if (validCode) payload.code = validCode;
@@ -691,15 +824,17 @@ async function renderInvite() {
     } catch (err) {
       notice(banner, 'bad', err.message);
     } finally {
-      btn.disabled = false;
+      setBusy(btn, false);
     }
   });
 
   otpForm.addEventListener('submit', async function(e) {
     e.preventDefault();
+    if (invVerifyBtn && invVerifyBtn.disabled) return;
     clearNotice(banner);
     var email = emailEl.value.trim();
-    var token = document.getElementById('inv-code').value.trim();
+    var token = cleanOtp(document.getElementById('inv-code').value);
+    setBusy(invVerifyBtn, true, 'Verifying…');
     try {
       var r = await fetch('/auth/v1/verify', {
         method: 'POST',
@@ -712,6 +847,8 @@ async function renderInvite() {
       location.replace(redeemUrl);
     } catch (err) {
       notice(banner, 'bad', err.message);
+    } finally {
+      setBusy(invVerifyBtn, false);
     }
   });
 }
@@ -727,11 +864,18 @@ async function showProviders(box, banner) {
     var d = r.ok ? await r.json() : {};
     on = Object.keys(PROVIDER_BUTTONS).filter(function(p) { return d && d.external && d.external[p] === true; });
   } catch (e) { on = []; }
-  if (!box || !on.length) return;
+  if (!box) return;
+  if (typeof box.removeAttribute === 'function') box.removeAttribute('aria-busy');
+  if (!on.length) {
+    box.className = 'is-hidden';
+    box.innerHTML = '';
+    return;
+  }
   box.className = 'app-grid';
   box.innerHTML = '<div class="cl-auth-providers">' + on.map(function(p) { return PROVIDER_BUTTONS[p]; }).join('') + '</div>' + OR_RULE;
-  box.querySelectorAll('[data-provider]').forEach(function(b) {
+  if (typeof box.querySelectorAll === 'function') box.querySelectorAll('[data-provider]').forEach(function(b) {
     b.addEventListener('click', async function() {
+      if (b.getAttribute('aria-busy') === 'true') return;
       clearNotice(banner);
       b.setAttribute('aria-busy', 'true');
       try { await social.begin(b.getAttribute('data-provider'), afterSignIn); }
@@ -803,14 +947,20 @@ function buildOnboardingHtml(ob, activeTab) {
       mcpCard('1. Add Claude custom connector', 'Paste into Claude Settings / Connectors.', 'OAuth URL', MCP_ENDPOINT, false, 'Copy URL');
   }
 
+  var onbTabList = [
+    ['antigravity', 'Antigravity', CLIENT_ICONS.antigravity],
+    ['claude-code', 'Claude Code', CLIENT_ICONS['claude-code']],
+    ['claude-web', 'Claude (Web / Desktop)', CLIENT_ICONS.claude],
+    ['chatgpt', 'ChatGPT / Codex', CLIENT_ICONS.chatgpt]
+  ];
   var setupBody =
-    '<div class="onb-tabs" role="tablist" aria-label="Choose your client">' +
-      '<button type="button" class="onb-tab' + (tab === 'antigravity' ? ' is-active' : '') + '" data-onb-tab="antigravity">' + CLIENT_ICONS.antigravity + 'Antigravity</button>' +
-      '<button type="button" class="onb-tab' + (tab === 'claude-code' ? ' is-active' : '') + '" data-onb-tab="claude-code">' + CLIENT_ICONS['claude-code'] + 'Claude Code</button>' +
-      '<button type="button" class="onb-tab' + (tab === 'claude-web' ? ' is-active' : '') + '" data-onb-tab="claude-web">' + CLIENT_ICONS.claude + 'Claude (Web / Desktop)</button>' +
-      '<button type="button" class="onb-tab' + (tab === 'chatgpt' ? ' is-active' : '') + '" data-onb-tab="chatgpt">' + CLIENT_ICONS.chatgpt + 'ChatGPT / Codex</button>' +
+    '<div class="onb-tabs" id="onb-tabs" role="tablist" aria-label="Choose your client">' +
+      onbTabList.map(function(it) {
+        var act = tab === it[0];
+        return '<button type="button" class="onb-tab' + (act ? ' is-active' : '') + '" id="onb-tab-' + it[0] + '" role="tab" aria-selected="' + act + '" aria-controls="onb-panel" tabindex="' + (act ? '0' : '-1') + '" data-onb-tab="' + it[0] + '">' + it[2] + it[1] + '</button>';
+      }).join('') +
     '</div>' +
-    '<div class="onb-panel">' +
+    '<div class="onb-panel" id="onb-panel" role="tabpanel" aria-labelledby="onb-tab-' + esc(tab) + '">' +
       connectBlock +
       mcpCard(
         '2. Run all 3 checks in one prompt',
@@ -861,26 +1011,53 @@ function buildOnboardingHtml(ob, activeTab) {
 
 async function mountOnboarding(container, forceShow, onRefresh) {
   var activeTab = 'antigravity';
+  var cachedOb = null;
+  function paint(ob, focusTab) {
+    if (!container || !ob) return;
+    var needs = ob.agents === 0 || ob.entries === 0 || ob.recalls === 0;
+    if (!forceShow && !needs) {
+      container.innerHTML = '';
+      return;
+    }
+    container.innerHTML = buildOnboardingHtml(ob, activeTab);
+    var tabs = Array.prototype.slice.call(container.querySelectorAll('[data-onb-tab]'));
+    tabs.forEach(function(btn, idx) {
+      btn.addEventListener('click', function() {
+        activeTab = btn.getAttribute('data-onb-tab') || 'antigravity';
+        paint(cachedOb, activeTab);
+      });
+      btn.addEventListener('keydown', function(ev) {
+        var nextIdx = -1;
+        if (ev.key === 'ArrowRight') nextIdx = (idx + 1) % tabs.length;
+        else if (ev.key === 'ArrowLeft') nextIdx = (idx - 1 + tabs.length) % tabs.length;
+        else if (ev.key === 'Home') nextIdx = 0;
+        else if (ev.key === 'End') nextIdx = tabs.length - 1;
+        if (nextIdx >= 0) {
+          ev.preventDefault();
+          activeTab = tabs[nextIdx].getAttribute('data-onb-tab') || 'antigravity';
+          paint(cachedOb, activeTab);
+        }
+      });
+    });
+    if (focusTab) {
+      var activeEl = container.querySelector('[data-onb-tab="' + focusTab + '"]');
+      if (activeEl && typeof activeEl.focus === 'function') activeEl.focus();
+    }
+    var ref = document.getElementById('onb-refresh');
+    if (ref) ref.addEventListener('click', async function() {
+      setBusy(ref, true, 'Checking…');
+      try {
+        await draw();
+        if (onRefresh) await onRefresh();
+      } finally {
+        setBusy(ref, false);
+      }
+    });
+  }
   async function draw() {
     try {
-      var ob = await api('/me/onboarding');
-      var needs = ob.agents === 0 || ob.entries === 0 || ob.recalls === 0;
-      if (!forceShow && !needs) {
-        container.innerHTML = '';
-        return;
-      }
-      container.innerHTML = buildOnboardingHtml(ob, activeTab);
-      container.querySelectorAll('[data-onb-tab]').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-          activeTab = btn.getAttribute('data-onb-tab') || 'antigravity';
-          draw();
-        });
-      });
-      var ref = document.getElementById('onb-refresh');
-      if (ref) ref.addEventListener('click', function() {
-        draw();
-        if (onRefresh) onRefresh();
-      });
+      cachedOb = await api('/me/onboarding');
+      paint(cachedOb, null);
     } catch (e) {}
   }
   await draw();
@@ -906,9 +1083,9 @@ async function renderEntries() {
       '<div class="cl-field"><label for="ctx-in">Context</label><select id="ctx-in" name="context" class="cl-select"><option value="">All</option><option value="general">general</option><option value="work">work</option><option value="home">home</option><option value="hobby">hobby</option><option value="personal">personal</option></select></div>' +
       '<div class="cl-field"><label for="agent-in">Agent</label><input id="agent-in" name="agent" class="cl-input" value="' + esc(sp.get('agent') || '') + '" placeholder="Agent name"></div>' +
       '<div class="cl-field"><label for="state-in">State</label><select id="state-in" name="state" class="cl-select"><option value="active">active</option><option value="pruned">pruned</option><option value="superseded">superseded</option><option value="all">all</option></select></div>' +
-      '<button type="submit" class="cl-btn cl-btn--primary">Filter notes</button>' +
+      '<button type="submit" class="cl-btn cl-btn--primary" id="btn-f-entries">Filter notes</button>' +
     '</form>' +
-    '<div id="entries-status" class="cl-hint">Loading notes...</div>' +
+    '<div id="entries-status" class="cl-hint" role="status" aria-live="polite">Loading notes...</div>' +
     '<div id="entries-list" class="app-grid"></div>';
 
   ['kind', 'context', 'state'].forEach(function(k) {
@@ -923,16 +1100,21 @@ async function renderEntries() {
       if (el && el.value.trim()) qs.set(k, el.value.trim());
     });
     var url = '/me/entries' + (qs.toString() ? '?' + qs.toString() : '');
+    var fBtn = document.getElementById('btn-f-entries');
+    var status = document.getElementById('entries-status');
+    var list = document.getElementById('entries-list');
+    setBusy(fBtn, true, 'Loading…');
     try {
       var d = await api(url);
-      var status = document.getElementById('entries-status');
-      var list = document.getElementById('entries-list');
-      status.textContent = d.total.toLocaleString('en-US') + ' ' + (d.total === 1 ? 'note' : 'notes') + (d.total >= 1000 ? ' (showing newest 1,000)' : '');
+      if (status) {
+        status.className = 'cl-hint';
+        status.textContent = d.total.toLocaleString('en-US') + ' ' + (d.total === 1 ? 'note' : 'notes') + (d.total >= 1000 ? ' (showing newest 1,000)' : '');
+      }
       if (!d.entries.length) {
-        list.innerHTML = '<div class="cl-empty"><p class="cl-empty__title">No matching notes</p><p class="cl-empty__text">Nothing matches those filters. Connect an agent above and save your first note over MCP, or switch State to all.</p></div>';
+        if (list) list.innerHTML = '<div class="cl-empty"><p class="cl-empty__title">No matching notes</p><p class="cl-empty__text">Nothing matches those filters. Connect an agent above and save your first note over MCP, or switch State to all.</p></div>';
         return;
       }
-      list.innerHTML = d.entries.map(function(n) {
+      if (list) list.innerHTML = d.entries.map(function(n) {
         var cls = 'cl-card cl-card--lift cl-memory' + (n.superseded_by ? ' is-superseded' : '') + (Number(n.confidence) < 0.15 ? ' is-dormant' : '');
         return '<a class="' + cls + '" href="/entries/' + encodeURIComponent(n.id) + '">' +
           '<div class="cl-memory__top"><span class="cl-chip">' + esc(n.pattern || n.kind) + '</span>' +
@@ -944,8 +1126,11 @@ async function renderEntries() {
         '</a>';
       }).join('');
     } catch (err) {
-      var st = document.getElementById('entries-status');
-      if (st) notice(st, 'bad', err.message);
+      if (isAuthFlowErr(err)) return;
+      if (status) { status.className = 'cl-hint'; status.textContent = "Couldn't load notes."; }
+      renderRetryError(list, err.message, load);
+    } finally {
+      setBusy(fBtn, false);
     }
   }
 
@@ -990,9 +1175,17 @@ async function renderEntryDetail() {
     var linkPrompt = 'In Clyde, save a related note using remember with links: [{"type": "relates", "to": "' + e.id + '"}] and evidence.';
     var inspectPrompt = 'In Clyde, call get_entry with id "' + e.id + '" and read any attached artifacts using get_blob.';
 
+    var crumbTitle = String(e.title || e.id || 'Note');
+    if (crumbTitle.length > 64) crumbTitle = crumbTitle.slice(0, 63) + '…';
+
     root.innerHTML =
-      '<div class="app-actions"><a class="cl-btn cl-btn--sm" href="/memories">Back to notes</a>' +
-      '<a class="cl-btn cl-btn--sm" href="/graph?center=' + encodeURIComponent(e.id) + '">Open in graph</a></div>' +
+      '<div class="app-crumb-bar">' +
+        '<nav class="app-crumb" aria-label="Breadcrumb"><ol>' +
+          '<li><a class="cl-link" href="/memories">Notes</a></li>' +
+          '<li aria-current="page"><span class="app-crumb__cur">' + esc(crumbTitle) + '</span></li>' +
+        '</ol></nav>' +
+        '<div class="app-actions"><a class="cl-btn cl-btn--sm" href="/graph?center=' + encodeURIComponent(e.id) + '">Open in graph</a></div>' +
+      '</div>' +
       '<article class="cl-card app-grid">' +
         '<div class="app-meta"><span class="cl-chip">' + esc(e.pattern || e.kind) + '</span>' + stateBadge(d) +
         (e.project ? '<span class="cl-chip cl-chip--carbon">' + esc(e.project) + '</span>' : '') +
@@ -1017,7 +1210,8 @@ async function renderEntryDetail() {
         mcpCard('Load full note and artifacts in chat', 'Pull this exact note and its attached files into Claude or Antigravity.', 'get_entry + get_blob', inspectPrompt, false) +
       '</section>';
   } catch (err) {
-    root.innerHTML = '<div class="app-banner app-banner--bad">' + esc(err.message) + '</div>';
+    if (isAuthFlowErr(err)) return;
+    renderRetryError(root, err.message, renderEntryDetail);
   }
 }
 
@@ -1422,7 +1616,10 @@ async function renderGraph() {
       runLayout(state.data.nodes || [], state.data.edges || [], state.data.center);
       draw();
     } catch (err) {
-      document.getElementById('g-status').textContent = err.message;
+      if (isAuthFlowErr(err)) return;
+      var st = document.getElementById('g-status');
+      if (st) st.textContent = "Couldn't load graph.";
+      renderRetryError(document.getElementById('g-canvas'), err.message, load);
     }
   }
 
@@ -1505,41 +1702,46 @@ async function renderQuests() {
       '<section class="app-qcol"><div class="app-qcol-head"><h2 class="cl-title-3">Done</h2><span class="cl-chip" id="cnt-done">0</span></div><div id="col-done" class="app-grid"></div></section>' +
     '</div>';
 
-  var results = await Promise.all([api('/me/quests'), api('/me/agents')]);
-  var qData = results[0], aData = results[1];
-  var nickByAgent = {};
-  (aData.agents || []).forEach(function(a) {
-    nickByAgent[a.name] = a.nickname || a.name;
-  });
-  var groups = { open: [], claimed: [], done: [] };
-  (qData.quests || []).forEach(function(q) {
-    if (q.state === 'open') groups.open.push(q);
-    else if (q.state === 'claimed') groups.claimed.push(q);
-    else groups.done.push(q);
-  });
-  ['open', 'claimed', 'done'].forEach(function(col) {
-    document.getElementById('cnt-' + col).textContent = String(groups[col].length);
-    var el = document.getElementById('col-' + col);
-    el.innerHTML = groups[col].length ? groups[col].map(function(q) {
-      var claimant = q.claimed_by ? (nickByAgent[q.claimed_by] || q.claimed_by) : '';
-      var claimPrompt = 'Call Clyde claim_quest with id ' + q.id + ', complete the task, save the result with remember, then call complete_quest.';
-      return '<article class="cl-quest' + (col === 'done' ? ' is-done' : '') + '">' +
-        '<div class="cl-quest__stub"><span class="cl-quest__no">#' + esc(q.id) + '</span><span class="cl-quest__pri' + (['urgent', 'high'].includes(q.priority) ? ' is-high' : '') + '">' + esc(q.priority) + '</span></div>' +
-        '<div class="cl-quest__main">' +
-          '<div class="cl-quest__head"><h3 class="cl-quest__title">' + esc(q.title) + '</h3>' +
-          (q.unmatched ? '<span class="cl-chip cl-chip--warn">No matching agent</span>' : '') +
-          '<span class="cl-stamp">' + esc(q.state) + '</span></div>' +
-          '<p class="cl-quest__brief">' + esc(q.brief) + '</p>' +
-          '<div class="cl-quest__done"><strong>Done when:</strong> ' + esc(q.done_when) + '</div>' +
-          '<div class="cl-quest__for">' +
-            (claimant ? 'Claimed by <b>' + esc(claimant) + '</b>' : 'For <b>' + esc(q.assignee || 'any') + '</b>') +
-            (q.project ? ' · ' + esc(q.project) : '') +
+  try {
+    var results = await Promise.all([api('/me/quests'), api('/me/agents')]);
+    var qData = results[0], aData = results[1];
+    var nickByAgent = {};
+    (aData.agents || []).forEach(function(a) {
+      nickByAgent[a.name] = a.nickname || a.name;
+    });
+    var groups = { open: [], claimed: [], done: [] };
+    (qData.quests || []).forEach(function(q) {
+      if (q.state === 'open') groups.open.push(q);
+      else if (q.state === 'claimed') groups.claimed.push(q);
+      else groups.done.push(q);
+    });
+    ['open', 'claimed', 'done'].forEach(function(col) {
+      document.getElementById('cnt-' + col).textContent = String(groups[col].length);
+      var el = document.getElementById('col-' + col);
+      el.innerHTML = groups[col].length ? groups[col].map(function(q) {
+        var claimant = q.claimed_by ? (nickByAgent[q.claimed_by] || q.claimed_by) : '';
+        var claimPrompt = 'Call Clyde claim_quest with id ' + q.id + ', complete the task, save the result with remember, then call complete_quest.';
+        return '<article class="cl-quest' + (col === 'done' ? ' is-done' : '') + '">' +
+          '<div class="cl-quest__stub"><span class="cl-quest__no">#' + esc(q.id) + '</span><span class="cl-quest__pri' + (['urgent', 'high'].includes(q.priority) ? ' is-high' : '') + '">' + esc(q.priority) + '</span></div>' +
+          '<div class="cl-quest__main">' +
+            '<div class="cl-quest__head"><h3 class="cl-quest__title">' + esc(q.title) + '</h3>' +
+            (q.unmatched ? '<span class="cl-chip cl-chip--warn">No matching agent</span>' : '') +
+            '<span class="cl-stamp">' + esc(q.state) + '</span></div>' +
+            '<p class="cl-quest__brief">' + esc(q.brief) + '</p>' +
+            '<div class="cl-quest__done"><strong>Done when:</strong> ' + esc(q.done_when) + '</div>' +
+            '<div class="cl-quest__for">' +
+              (claimant ? 'Claimed by <b>' + esc(claimant) + '</b>' : 'For <b>' + esc(q.assignee || 'any') + '</b>') +
+              (q.project ? ' · ' + esc(q.project) : '') +
+            '</div>' +
+            (col === 'open' ? '<div class="app-actions"><button type="button" class="cl-btn cl-btn--sm" data-copy="' + esc(claimPrompt) + '">Copy claim prompt</button></div>' : '') +
           '</div>' +
-          (col === 'open' ? '<div class="app-actions"><button type="button" class="cl-btn cl-btn--sm" data-copy="' + esc(claimPrompt) + '">Copy claim prompt</button></div>' : '') +
-        '</div>' +
-      '</article>';
-    }).join('') : '<p class="cl-hint">No ' + col + ' quests.</p>';
-  });
+        '</article>';
+      }).join('') : '<p class="cl-hint">No ' + col + ' quests.</p>';
+    });
+  } catch (err) {
+    if (isAuthFlowErr(err)) return;
+    renderRetryError(document.getElementById('q-board') || root, err.message, renderQuests);
+  }
 }
 
 async function renderAgents() {
@@ -1550,35 +1752,40 @@ async function renderAgents() {
     '<section class="app-grid"><h2 class="cl-title-2">Registered agents</h2><div id="ag-list" class="app-grid"></div></section>' +
     '<section class="app-grid"><h2 class="cl-title-2">Connected devices</h2><div id="dev-list" class="app-grid"></div></section>';
 
-  var results = await Promise.all([
-    mountOnboarding(document.getElementById('ag-onb'), connectMode),
-    api('/me/agents'),
-    api('/me/devices')
-  ]);
-  var agents = results[1].agents || [], devices = results[2].devices || [];
-  document.getElementById('ag-list').innerHTML = agents.length ? agents.map(function(a) {
-    var updatePrompt = 'Call Clyde register_agent with name "' + a.name + '", context "' + (a.context || 'both') + '", surface "' + (a.surface || 'Antigravity') +
-      '", description "' + (a.description || 'Coding and ops agent') + '", and update my nickname, type, harness, or repos as needed.';
-    return '<article class="cl-card agent-card">' +
-      '<div class="app-meta"><strong>' + esc(a.name) + '</strong>' +
-      (a.nickname ? '<span class="cl-chip cl-chip--carbon">@' + esc(a.nickname) + '</span>' : '') +
-      (a.type ? '<span class="cl-chip">' + esc(a.type) + '</span>' : '') +
-      (a.surface ? '<span class="cl-chip">' + esc(a.surface) + '</span>' : '') +
-      (a.harness && (!a.surface || a.harness.toLowerCase() !== a.surface.toLowerCase()) ? '<span class="cl-chip">' + esc(a.harness) + '</span>' : '') +
-      (a.device ? '<span class="cl-chip">Device: ' + esc(a.device) + '</span>' : '') +
-      '</div>' +
-      (a.description ? '<p class="cl-hint">' + esc(a.description) + '</p>' : '') +
-      ((a.repos && a.repos.length) ? '<div class="app-meta"><span class="cl-label">Repos</span>' + a.repos.map(function(r) { return '<span class="cl-chip">' + esc(r) + '</span>'; }).join('') + '</div>' : '') +
-      '<div class="app-actions"><button type="button" class="cl-btn cl-btn--sm" data-copy="' + esc(updatePrompt) + '">Copy MCP update prompt</button></div>' +
-    '</article>';
-  }).join('') : '<p class="cl-hint">No agents registered yet. Follow Step 1 above to connect Claude or Antigravity.</p>';
+  try {
+    var results = await Promise.all([
+      mountOnboarding(document.getElementById('ag-onb'), connectMode),
+      api('/me/agents'),
+      api('/me/devices')
+    ]);
+    var agents = results[1].agents || [], devices = results[2].devices || [];
+    document.getElementById('ag-list').innerHTML = agents.length ? agents.map(function(a) {
+      var updatePrompt = 'Call Clyde register_agent with name "' + a.name + '", context "' + (a.context || 'both') + '", surface "' + (a.surface || 'Antigravity') +
+        '", description "' + (a.description || 'Coding and ops agent') + '", and update my nickname, type, harness, or repos as needed.';
+      return '<article class="cl-card agent-card">' +
+        '<div class="app-meta"><strong>' + esc(a.name) + '</strong>' +
+        (a.nickname ? '<span class="cl-chip cl-chip--carbon">@' + esc(a.nickname) + '</span>' : '') +
+        (a.type ? '<span class="cl-chip">' + esc(a.type) + '</span>' : '') +
+        (a.surface ? '<span class="cl-chip">' + esc(a.surface) + '</span>' : '') +
+        (a.harness && (!a.surface || a.harness.toLowerCase() !== a.surface.toLowerCase()) ? '<span class="cl-chip">' + esc(a.harness) + '</span>' : '') +
+        (a.device ? '<span class="cl-chip">Device: ' + esc(a.device) + '</span>' : '') +
+        '</div>' +
+        (a.description ? '<p class="cl-hint">' + esc(a.description) + '</p>' : '') +
+        ((a.repos && a.repos.length) ? '<div class="app-meta"><span class="cl-label">Repos</span>' + a.repos.map(function(r) { return '<span class="cl-chip">' + esc(r) + '</span>'; }).join('') + '</div>' : '') +
+        '<div class="app-actions"><button type="button" class="cl-btn cl-btn--sm" data-copy="' + esc(updatePrompt) + '">Copy MCP update prompt</button></div>' +
+      '</article>';
+    }).join('') : '<p class="cl-hint">No agents registered yet. Follow Step 1 above to connect Claude or Antigravity.</p>';
 
-  document.getElementById('dev-list').innerHTML = devices.length ? devices.map(function(dv) {
-    return '<div class="cl-card app-actions"><strong>' + esc(dv.name) + '</strong>' +
-      '<span class="cl-chip">Hooks: ' + esc(dv.hooks || 'full') + '</span>' +
-      (dv.revoked_at ? '<span class="cl-chip cl-chip--bad">Revoked</span>' : '<span class="cl-state cl-state--settled">Active</span>') +
-    '</div>';
-  }).join('') : '<p class="cl-hint">No connected devices yet. Run the installer on a computer to add one.</p>';
+    document.getElementById('dev-list').innerHTML = devices.length ? devices.map(function(dv) {
+      return '<div class="cl-card app-actions"><strong>' + esc(dv.name) + '</strong>' +
+        '<span class="cl-chip">Hooks: ' + esc(dv.hooks || 'full') + '</span>' +
+        (dv.revoked_at ? '<span class="cl-chip cl-chip--bad">Revoked</span>' : '<span class="cl-state cl-state--settled">Active</span>') +
+      '</div>';
+    }).join('') : '<p class="cl-hint">No connected devices yet. Run the installer on a computer to add one.</p>';
+  } catch (err) {
+    if (isAuthFlowErr(err)) return;
+    renderRetryError(root, err.message, renderAgents);
+  }
 }
 
 async function renderApps() {
@@ -1592,56 +1799,101 @@ async function renderApps() {
       false,
       'Copy URL'
     );
-  var d = await api('/me/apps');
-  var list = d.apps || [];
-  document.getElementById('apps-list').innerHTML = list.length ? list.map(function(a) {
-    return '<div class="cl-card app-actions"><div><strong>' + esc(a.name || a.id) + '</strong> <span class="cl-mono">(' + esc(a.id) + ')</span></div>' +
-      '<span class="cl-state cl-state--settled">Connected</span></div>';
-  }).join('') : '<div class="cl-empty"><p class="cl-empty__title">No connected apps</p><p class="cl-empty__text">Approve Clyde inside Claude, ChatGPT, Gemini, Grok, or Antigravity to see OAuth grants here.</p></div>';
+  try {
+    var d = await api('/me/apps');
+    var list = d.apps || [];
+    document.getElementById('apps-list').innerHTML = list.length ? list.map(function(a) {
+      return '<div class="cl-card app-actions"><div><strong>' + esc(a.name || a.id) + '</strong> <span class="cl-mono">(' + esc(a.id) + ')</span></div>' +
+        '<span class="cl-state cl-state--settled">Connected</span></div>';
+    }).join('') : '<div class="cl-empty"><p class="cl-empty__title">No connected apps</p><p class="cl-empty__text">Approve Clyde inside Claude, ChatGPT, Gemini, Grok, or Antigravity to see OAuth grants here.</p></div>';
+  } catch (err) {
+    if (isAuthFlowErr(err)) return;
+    renderRetryError(document.getElementById('apps-list'), err.message, renderApps);
+  }
 }
 
 var METER_LABEL = {
   ai: 'AI tokens (embeddings and judge)',
   storage_gb_hours: 'Storage (GB-hours)',
-  egress_bytes: 'Network egress (bytes)',
+  egress_bytes: 'Network egress',
   requests: 'Requests',
-  db_bytes: 'Database storage (bytes)'
+  db_bytes: 'Database storage'
 };
+
+function formatBytes(b) {
+  b = Number(b) || 0;
+  if (b < 1024) return b.toLocaleString('en-US') + ' B';
+  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
+  return (b / 1073741824).toFixed(2) + ' GB';
+}
+
+function formatMeterVal(kind, val) {
+  if (kind === 'egress_bytes' || kind === 'db_bytes') return formatBytes(val);
+  if (kind === 'storage_gb_hours') {
+    var n = Number(val) || 0;
+    return (n > 0 && n < 10 ? n.toFixed(2) : n.toLocaleString('en-US')) + ' GB-h';
+  }
+  return Number(val || 0).toLocaleString('en-US');
+}
 
 async function renderUsage() {
   root.innerHTML = '<div id="u-summary" class="cl-card app-grid"></div><div id="u-meters" class="meter-list"></div>';
   var PLAN_NAME = { free: 'Free', starter: 'Starter', clyde: 'Clyde', partner: 'Partner', owner: 'Owner', none: 'None' };
   var STATE_NAME = { paid: 'Paid', past_due: 'Past due', comp: 'Comp', lapsed: 'Lapsed', refunded: 'Refunded', blocked: 'Blocked' };
-  var d = await api('/me/usage');
-  var limitDollars = d.spend_limit_cents == null ? 0 : (Number(d.spend_limit_cents) / 100);
-  var statusText = d.state === 'paid' && d.cancel_at_period_end
-    ? 'Canceling at period end'
-    : (d.plan === 'partner' ? 'Partner unlimited' : (STATE_NAME[d.state] || d.state || (d.plan === 'free' ? 'Free seat' : 'No active plan')));
-  var capChip = (d.plan === 'owner' || d.plan === 'partner')
-    ? '<span class="cl-chip">Limits: unlimited</span>'
-    : d.plan === 'none'
-    ? '<span class="cl-chip">Access: subscription required</span>'
-    : d.overage
-    ? '<span class="cl-chip">Spend limit: $' + limitDollars.toFixed(2) + '</span>'
-    : '<span class="cl-chip">Caps: hard limits (no overage)</span>';
-  document.getElementById('u-summary').innerHTML =
-    '<div class="app-meta"><span class="cl-chip cl-chip--carbon">Plan: ' + esc(PLAN_NAME[d.plan] || d.plan) + '</span>' +
-    '<span class="cl-chip">Status: ' + esc(statusText) + '</span>' +
-    '<span class="cl-chip">Period: ' + esc(d.period) + '</span>' +
-    capChip +
-    '</div>';
+  try {
+    var d = await api('/me/usage');
+    var limitDollars = d.spend_limit_cents == null ? 0 : (Number(d.spend_limit_cents) / 100);
+    var statusText = d.state === 'paid' && d.cancel_at_period_end
+      ? 'Canceling at period end'
+      : (d.plan === 'partner' ? 'Partner unlimited' : (STATE_NAME[d.state] || d.state || (d.plan === 'free' ? 'Free seat' : 'No active plan')));
+    var capChip = (d.plan === 'owner' || d.plan === 'partner')
+      ? '<span class="cl-chip">Limits: unlimited</span>'
+      : d.plan === 'none'
+      ? '<span class="cl-chip">Access: subscription required</span>'
+      : d.overage
+      ? '<span class="cl-chip">Spend limit: $' + limitDollars.toFixed(2) + '</span>'
+      : '<span class="cl-chip">Caps: hard limits (no overage)</span>';
+    document.getElementById('u-summary').innerHTML =
+      '<div class="app-meta"><span class="cl-chip cl-chip--carbon">Plan: ' + esc(PLAN_NAME[d.plan] || d.plan) + '</span>' +
+      '<span class="cl-chip">Status: ' + esc(statusText) + '</span>' +
+      '<span class="cl-chip">Period: ' + esc(d.period) + '</span>' +
+      capChip +
+      '</div>';
 
-  document.getElementById('u-meters').innerHTML = (d.meters || []).map(function(m) {
-    var inc = m.included == null ? 0 : Number(m.included);
-    var used = Number(m.used || 0);
-    var pct = inc > 0 ? Math.min(100, Math.round((used / inc) * 100)) : 0;
-    return '<div class="cl-card meter-row">' +
-      '<div class="meter-top"><strong>' + esc(METER_LABEL[m.kind] || m.kind) + '</strong>' +
-      '<span class="cl-mono">' + used.toLocaleString('en-US') + (m.included != null ? ' / ' + inc.toLocaleString('en-US') : ' (no limit)') +
-      (d.overage ? ' · Overage: $' + (Number(m.overage_cents || 0) / 100).toFixed(2) : '') + '</span></div>' +
-      '<progress class="meter-bar" max="100" value="' + pct + '"></progress>' +
-    '</div>';
-  }).join('');
+    document.getElementById('u-meters').innerHTML = (d.meters || []).map(function(m) {
+      var inc = m.included == null ? 0 : Number(m.included);
+      var used = Number(m.used || 0);
+      var unMeteredCap = inc === 0 && (m.kind === 'egress_bytes' || m.kind === 'db_bytes');
+      var unlimitedPlan = d.plan === 'owner' || d.plan === 'partner';
+      var rawPct = inc > 0 ? Math.round((used / inc) * 100) : 0;
+      var pct = inc > 0 ? Math.min(100, rawPct) : 0;
+      var atOrOver = inc > 0 && used >= inc;
+      var over = inc > 0 && used > inc;
+      var toneCls = atOrOver ? ' meter-bar--bad' : (inc > 0 && rawPct >= 80) ? ' meter-bar--warn' : '';
+      var statusChip = over
+        ? '<span class="cl-chip cl-chip--bad">' + (d.overage ? 'Over included' : 'Over limit') + '</span>'
+        : atOrOver
+        ? '<span class="cl-chip cl-chip--bad">' + (d.overage ? 'Included used' : 'At limit') + '</span>'
+        : (inc > 0 && rawPct >= 80)
+        ? '<span class="cl-chip cl-chip--warn">Near limit</span>'
+        : '';
+      var limitStr = (m.included == null || (unlimitedPlan && unMeteredCap))
+        ? ' (no limit)'
+        : unMeteredCap
+        ? ' (no separate cap)'
+        : (inc > 0 ? ' / ' + esc(formatMeterVal(m.kind, inc)) + ' (' + rawPct + '%)' : ' / 0 (not included)');
+      return '<div class="cl-card meter-row">' +
+        '<div class="meter-top"><div class="app-meta"><strong>' + esc(METER_LABEL[m.kind] || m.kind) + '</strong>' + statusChip + '</div>' +
+        '<span class="cl-mono meter-num">' + esc(formatMeterVal(m.kind, used)) + limitStr +
+        (d.overage ? ' · Overage: $' + (Number(m.overage_cents || 0) / 100).toFixed(2) : '') + '</span></div>' +
+        '<progress class="meter-bar' + toneCls + '" max="100" value="' + pct + '" aria-label="' + esc((METER_LABEL[m.kind] || m.kind) + ' usage') + '"></progress>' +
+      '</div>';
+    }).join('');
+  } catch (err) {
+    if (isAuthFlowErr(err)) return;
+    renderRetryError(root, err.message, renderUsage);
+  }
 }
 
 async function renderSettings() {
@@ -1752,7 +2004,7 @@ export function appPage(path, nonce) {
     ? ""
     : `<div class="app-head-acts"><a class="cl-btn cl-btn--primary cl-btn--sm" href="/agents?connect=1">Connect new agent</a><a class="cl-btn cl-btn--sm" href="/agents">View agents</a></div>`;
 
-  const main = `<main class="wrap app-wrap">` +
+  const main = `<main id="main" tabindex="-1" class="wrap app-wrap">` +
     `<div class="app-head"><div><span class="cl-label">${view === "invite" ? "Clyde invite" : "Clyde workspace"}</span><h1 class="cl-title-1">${esc(spec.heading)}</h1>` +
     `<p class="cl-hint">${esc(spec.sub)}</p></div>${headActs}</div>` +
     `<div id="app-root" class="app-grid" data-view="${view}" data-id="${esc(id)}"><noscript><p class="cl-error">Turn on JavaScript to use your Clyde workspace.</p></noscript></div>` +
@@ -1765,6 +2017,6 @@ export function appPage(path, nonce) {
   return {
     status: 200,
     cacheControl: "no-store",
-    html: shell({ nonce, title: spec.title, css: APP_CSS + AUTH_CSS, body: header + main + footer, script: APP_JS, noindex: true }),
+    html: shell({ nonce, title: spec.title, css: APP_CSS + AUTH_CSS, body: `<a class="cl-skip" href="#main">Skip to content</a>` + header + main + footer, script: APP_JS, noindex: true }),
   };
 }

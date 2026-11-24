@@ -252,3 +252,29 @@ test('ChatGPT hybrid host with window.openai still completes MCP Apps handshake 
     { frame: 'chatgpt-hybrid', name: 'feedback' },
   ])
 })
+
+test('Round 1B: MCP card button targets, degraded fallback copy, Copy id, and Open in Clyde', { skip: NO_CHROME }, () => {
+  for (const sel of ['.c-toggle', '.c-fold', '.c-more', '.c-art']) {
+    assert.match(CARD_CSS, new RegExp(`\\${sel}\\{[^}]*min-height:28px`), `CARD_CSS includes ${sel} min-height:28px`)
+  }
+  assert.ok(CARD_CSS.includes('touch-action:manipulation'), 'touch-action in CARD_CSS')
+  const degradedRecall = structuredClone(FIXTURES.recall) as any
+  degradedRecall._meta['clyde/card'].degraded = 'embed_timeout'
+  const degradedFilter = structuredClone(FIXTURES.recall) as any
+  degradedFilter._meta['clyde/card'].degraded = 'filter_failed'
+  const report = run([
+    { id: 'recall-deg', card: 'recall', html: cardHtml('recall'), theme: 'light', result: degradedRecall, width: 375, clicks: ['article[data-id="e-1"] button.c-open'] },
+    { id: 'recall-filter', card: 'recall', html: cardHtml('recall'), theme: 'light', result: degradedFilter, width: 375 },
+    { id: 'entry-open', card: 'entry', html: cardHtml('entry'), theme: 'dark', result: FIXTURES.entry, width: 375, clicks: ['button.c-ext'] },
+    { id: 'rem-card', card: 'remembered', html: cardHtml('remembered'), theme: 'light', result: FIXTURES.remembered, width: 375 },
+  ])
+  assert.ok(report.frames['recall-deg'].text.includes('Keyword search fallback active.'), 'plain-English degraded banner')
+  assert.ok(!report.frames['recall-deg'].text.includes('embed_timeout'), 'raw degraded code kept out of visible text')
+  assert.ok(report.frames['recall-filter'].text.includes('Relevance filter failed, so results are unfiltered.'), 'filter degraded banner explains unfiltered results')
+  assert.ok(!report.frames['recall-filter'].text.includes('filter_failed'), 'raw filter_failed code kept out of visible text')
+  assert.ok(report.frames['recall-deg'].buttons.includes('Copy id') && report.frames['recall-deg'].buttons.includes('Open in Clyde'), 'expanded recall detail shows Copy id and Open in Clyde')
+  assert.ok(report.frames['entry-open'].buttons.includes('Copy id') && report.frames['entry-open'].buttons.includes('Open in Clyde'), 'entry card shows Copy id and Open in Clyde')
+  assert.ok(report.frames['rem-card'].buttons.includes('Copy id') && report.frames['rem-card'].buttons.includes('Open in Clyde'), 'remembered card shows Copy id and Open in Clyde')
+  for (const id of ['recall-deg', 'entry-open', 'rem-card'] as const) assert.equal(report.frames[id].overflow, false, `${id} zero horizontal overflow at 375px`)
+  assert.ok(report.requests.some((r: any) => r.frame === 'entry-open' && r.method === 'ui/open-link' && r.params?.url === 'https://heyclyde.me/entries/e-4'), 'Open in Clyde opens entry URL via ui/open-link')
+})

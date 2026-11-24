@@ -8,3 +8,5 @@
 .cl-btn--provider[aria-busy="true"] { opacity: 0.6; cursor: progress; }
 .cl-or-rule { display: flex; align-items: center; gap: 12px; margin: 2px 0; color: var(--cl-ink-3); font: var(--cl-text-label); letter-spacing: var(--cl-track-label); text-transform: uppercase; }
 .cl-or-rule::before, .cl-or-rule::after { content: ""; flex: 1; height: 1px; background: var(--cl-rule); }
+.cl-pw-wrap { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cl-pw-wrap .cl-input { flex: 1; min-width: 0; }

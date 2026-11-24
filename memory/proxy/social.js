@@ -62,9 +62,16 @@ export function socialClient(win) {
 
   async function begin(provider, nextPath) {
     if (PROVIDERS.indexOf(provider) < 0) throw new Error("That sign-in provider isn't supported.");
-    var verifier = random(32), state = random(16);
-    var challenge = await challengeOf(verifier);
-    win.sessionStorage.setItem(KEY, JSON.stringify({ state: state, verifier: verifier, provider: provider, next: next(nextPath), at: Date.now() }));
+    var verifier, state, challenge;
+    try {
+      if (!win.crypto || !win.crypto.getRandomValues || !win.crypto.subtle) throw new Error("no crypto");
+      verifier = random(32);
+      state = random(16);
+      challenge = await challengeOf(verifier);
+      win.sessionStorage.setItem(KEY, JSON.stringify({ state: state, verifier: verifier, provider: provider, next: next(nextPath), at: Date.now() }));
+    } catch (e) {
+      throw new Error("This browser blocked temporary sign-in storage or security features. Allow site storage, or enter your email below.");
+    }
     var redirect = win.location.origin + "/auth/callback?state=" + encodeURIComponent(state);
     var url = "/auth/v1/authorize?provider=" + encodeURIComponent(provider) + "&redirect_to=" + encodeURIComponent(redirect) +
       "&code_challenge=" + encodeURIComponent(challenge) + "&code_challenge_method=s256";

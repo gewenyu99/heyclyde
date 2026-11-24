@@ -27,7 +27,7 @@ async function get(url: string) {
 const BASE = ['/', '/docs', '/how-it-works', '/faq', '/privacy', '/terms']
 const INDEXED = [...BASE, '/guides', ...GUIDES.map((g) => g.path)]
 // Pages the site dropped when it shrank, and where each one went.
-const REDIRECTS: Record<string, string> = { '/research': '/how-it-works', '/support': '/docs#support', '/docs/grok': '/docs#grok', '/signin': '/docs' }
+const REDIRECTS: Record<string, string> = { '/research': '/how-it-works', '/support': '/docs#support', '/docs/grok': '/docs#grok', '/signin': '/memories' }
 const SUPPORT = 'support@heyclyde.me'
 // No page has a byte cap (R79, like-vincent #84). Wen, 2026-11-17: the size of the site doesn't matter.
 const h1s = (html: string) => [...html.matchAll(/<h1[^>]*>([\s\S]*?)<\/h1>/g)].map((m) => m[1].replace(/<[^>]+>/g, '').trim())
@@ -113,7 +113,7 @@ Deno.test('the home page has an app picker, a recall carousel and one bottom but
   assert.ok(/<div class="rc-nav" hidden>/.test(built), 'step controls stay hidden without script')
   assert.deepEqual(attr(built, /<button class="rc-pill"[^>]*data-go="(\d+)"/g), ['0', '1', '2', '3', '4', '5'], 'a pill button for each walkthrough')
   assert.equal((built.match(/<button[^>]*data-dir="-?1"[^>]*aria-label="[^"]+"/g) ?? []).length, 2, 'a labelled prev and next button')
-  assert.ok(/<span class="rc-count">1 \/ 6<\/span>/.test(built), 'a walkthrough count')
+  assert.ok(/<span class="rc-count"[^>]*>1 \/ 6<\/span>/.test(built), 'a walkthrough count')
   assert.ok(built.includes('href="/how-it-works#built"'), 'a link to /how-it-works#built')
   assert.ok(/<script nonce="[A-Za-z0-9]{16,}">[^<]*getElementById\('rc'\)/.test(html), 'the walkthrough script carries the nonce')
   assert.ok(!html.includes('built-nums') && !html.includes('rc-works'), 'the old text blocks are gone')
@@ -612,6 +612,25 @@ Deno.test('mobile nav, workspace accessibility, and accurate docs hook claims', 
   assert.ok(graph.includes('/auth/v1/logout?scope=local'), 'browser sign-out uses local scope so MCP sessions stay active')
   assert.ok(graph.includes("el.setAttribute('aria-live'"), 'workspace notices announce via aria-live')
   assert.ok(graph.includes('<nav aria-label="Footer">'), 'workspace footer nav has accessible label')
+})
+
+Deno.test('Round 1B: skip links, Sign in header CTA, dark/light theme-color, /docs wrap, and carousel keys', async () => {
+  for (const path of [...INDEXED, '/nope']) {
+    const { html } = await get(`https://heyclyde.me${path}`)
+    assert.ok(html.includes('<a class="cl-skip" href="#main">Skip to content</a>'), `${path}: skip link`)
+    assert.ok(/<main id="main" tabindex="-1"/.test(html), `${path}: main landmark target`)
+    assert.ok(html.includes('<meta name="theme-color" content="#f4f4f1" media="(prefers-color-scheme: light)">'), `${path}: light theme-color`)
+    assert.ok(html.includes('<meta name="theme-color" content="#121311" media="(prefers-color-scheme: dark)">'), `${path}: dark theme-color`)
+    assert.ok(!html.includes('content="#f3f1ea"'), `${path}: no stale theme-color`)
+    assert.ok(html.includes('<span class="acts"><a class="cl-btn acts-signin" href="/memories">Sign in</a><a class="cl-btn cl-btn--primary" href="/docs">Get Clyde</a></span>'), `${path}: Sign in button before Get Clyde`)
+  }
+  const home = (await get('https://heyclyde.me/')).html
+  assert.ok(home.includes('<span class="rc-count" aria-live="polite">1 / 6</span>'), 'carousel count is polite live region')
+  assert.ok(home.includes("e.key==='ArrowLeft'") && home.includes("e.key==='ArrowRight'"), 'carousel track wires Left/Right arrow keys')
+  assert.ok(home.includes('Work in progress: Clyde is still finishing this integration.'), 'clarified SOON_NOTE copy')
+  const docs = (await get('https://heyclyde.me/docs')).html
+  assert.ok(docs.includes('grid-template-columns:minmax(0,1fr)') && docs.includes('.doc>*{min-width:0;max-width:100%}'), '/docs grid prevents mobile overflow')
+  assert.ok(docs.includes('.cl-file__head>span{min-width:0;overflow-wrap:anywhere;}'), 'long file headings wrap cleanly')
 })
 
 // R79 (like-vincent #84), Wen 2026-11-17: "memory, message board, agent coordination, all the keywords". Each phrase someone

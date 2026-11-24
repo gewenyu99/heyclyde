@@ -5,7 +5,7 @@
 import { appPage } from "./app.js";
 import { ANTIGRAVITY_HOOKS_JSON, ANTIGRAVITY_RULE, CLAUDE_HOOKS_JSON, CLYDE_GATE_SH, CLYDE_HOOK_SH, CLYDE_RULE, CODEX_CONFIG_TOML, CODEX_HOOKS_JSON, GATE_URL, GEMINI_HOOKS_JSON, HOOK_APPS, HOOK_INSTALL, HOOK_PATH, HOOK_URL, hookSetupText, REGISTER_STEP } from "./hook.js";
 import { GUIDES, GUIDES_UPDATED } from "./guides.js";
-import { SOON, SOON_NOTE, APP_STEPS_CSS, appCards, appLogo, appSteps, APP_LOGO, CONNECT_CSS, COPY_JS, copyBox, copyPre, DESIGN_URL, esc, HERO_CSS, INSTALL, LEGAL, LOGO, MARK, MASCOT, MCP_URL, SCENE, SCENE_CSS, SCENE_IMG, shell, SITE, WORKS } from "./pages.js";
+import { SOON, soon, SOON_NOTE, APP_STEPS_CSS, appCards, appLogo, appSteps, APP_LOGO, CONNECT_CSS, COPY_JS, copyBox, copyPre, DESIGN_URL, esc, HERO_CSS, INSTALL, LEGAL, LOGO, MARK, MASCOT, MCP_URL, SCENE, SCENE_CSS, SCENE_IMG, shell, SITE, WORKS } from "./pages.js";
 
 const CONNECT = "/docs";
 const MCP = MCP_URL;
@@ -16,6 +16,7 @@ const MAIL = `<a href="mailto:${SUPPORT}">${SUPPORT}</a>`;
 
 const BASE_CSS = `
 .bar .acts{display:flex;align-items:center;gap:10px}
+@media (max-width:480px){.bar .acts{gap:8px}.bar .acts .cl-btn{padding:0 10px;font-size:13px}}
 .topnav{margin-left:auto}
 @media (max-width:860px){.bar .acts .cl-btn--ghost{display:none}}
 .mascot-caption{padding:11px 14px;max-width:220px;font:var(--cl-text-mono);font-size:11.5px;line-height:1.45}
@@ -67,7 +68,8 @@ const SITE_HOME_CSS = `
 `;
 
 const DOC_CSS = `
-.doc{flex:1;max-width:820px;display:grid;gap:18px;padding-block:20px 56px;align-content:start}
+.doc{flex:1;max-width:820px;display:grid;grid-template-columns:minmax(0,1fr);gap:18px;padding-block:20px 56px;align-content:start}
+.doc>*{min-width:0;max-width:100%}
 .doc--wide{max-width:var(--cl-page-max)}
 .doc .apps{margin-bottom:6px}
 .doc h1{margin:0}.doc h1 em{font-style:normal;color:var(--cl-carbon)}
@@ -76,7 +78,8 @@ const DOC_CSS = `
 .doc h3{margin:8px 0 0;font:var(--cl-text-title-3)}
 .doc ul,.doc ol{margin:0;padding-left:22px;display:grid;gap:8px;font:var(--cl-text-body);color:var(--cl-ink-2);max-width:64ch}
 .doc .cl-stamp,.doc .cl-btn{justify-self:start}
-.doc .cl-copy,.doc .cl-file,.doc .tools,.doc .tbl-wrap{max-width:720px}
+.doc .cl-copy,.doc .cl-file,.doc .tools,.doc .tbl-wrap{max-width:720px;width:100%;min-width:0}
+.doc .hook-src{width:100%;min-width:0}
 .doc .cl-file pre{white-space:pre-wrap}
 .doc .hook-src pre{max-height:320px;overflow:auto;white-space:pre}
 .doc .tbl-wrap{overflow-x:auto;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-lg);background:var(--cl-paper-1)}
@@ -91,7 +94,9 @@ const DOC_CSS = `
 .doc-art img:not([src*="relay"]){transform:scaleX(-1)}
 @media (max-width:720px){.doc-hero{grid-template-columns:minmax(0,1fr)}.doc-art img{height:132px}}
 .note{padding:16px 20px;max-width:640px}.note p{font:var(--cl-text-body)}
-.toc{display:flex;gap:8px 18px;flex-wrap:wrap;font:var(--cl-text-mono);font-size:12.5px}
+.toc{display:flex;gap:6px 18px;flex-wrap:wrap;font:var(--cl-text-mono);font-size:12.5px}
+.toc a,.related a{display:inline-flex;align-items:center;min-height:24px}
+@media (max-width:720px),(pointer:coarse){.toc a,.related a{min-height:40px;padding:6px 4px}}
 .tools{display:grid;margin:0;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-lg);background:var(--cl-paper-1);overflow:hidden}
 .tools div{display:grid;grid-template-columns:minmax(0,180px) minmax(0,1fr);gap:4px 16px;padding:11px 16px;border-top:1px dashed var(--cl-rule)}
 .tools div:first-child{border-top:0}
@@ -118,7 +123,7 @@ const ARROW_SVG = `<svg class="doodle-arrow" viewBox="0 0 120 36" fill="none" st
 
 const header = `<header class="bar wrap"><a class="logo" href="/" aria-label="clyde home">${LOGO()}</a>
 <nav class="topnav" aria-label="Primary"><a href="/docs">Docs</a><a href="/how-it-works">How it works</a><a href="/guides">Guides</a><a href="/faq">FAQ</a></nav>
-<span class="acts"><a class="cl-btn cl-btn--primary" href="${CONNECT}">Get Clyde</a></span></header>`;
+<span class="acts"><a class="cl-btn acts-signin" href="/memories">Sign in</a><a class="cl-btn cl-btn--primary" href="${CONNECT}">Get Clyde</a></span></header>`;
 
 const footer = `<footer class="foot"><div class="wrap"><span class="brand">${MARK(22)}clyde · a boring memory system</span>
 <nav aria-label="Footer"><a href="/docs">Docs</a><a href="/how-it-works">How it works</a><a href="/guides">Guides</a><a href="/faq">FAQ</a><a href="mailto:${SUPPORT}">${SUPPORT}</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="${DESIGN_URL}">Design system</a></nav>
@@ -143,7 +148,7 @@ const ld = (path, extra = []) => [...(path === "/" ? [SITE_LD, ORG_LD] : [crumbs
 const page = (nonce, { title, description, path, type = "website", css = "", main, status = 200, jsonld, script = "" }) => ({
   status,
   html: shell({
-    nonce, title, css: BASE_CSS + css, body: `${header}${main}${footer}`, script: COPY_JS + script, noindex: !description,
+    nonce, title, css: BASE_CSS + css, body: `<a class="cl-skip" href="#main">Skip to content</a>${header}${main}${footer}`, script: COPY_JS + script, noindex: !description,
     seo: description ? { description, path, type, jsonld: ld(path, jsonld) } : null,
   }),
 });
@@ -219,7 +224,8 @@ const RECALL_CSS = `
 .rc-nav{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 14px;margin:0 4px 14px}
 .rc-nav[hidden]{display:none}
 .rc-steps{display:flex;flex-wrap:wrap;gap:7px}
-.rc-pill{appearance:none;height:32px;padding:0 12px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-pill);background:var(--cl-paper-1);color:var(--cl-ink-2);font:600 12.5px/1 var(--cl-font-sans);cursor:pointer}
+.rc-pill{appearance:none;height:32px;padding:0 12px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-pill);background:var(--cl-paper-1);color:var(--cl-ink-2);font:600 12.5px/1 var(--cl-font-sans);cursor:pointer;touch-action:manipulation}
+@media (max-width:720px),(pointer:coarse){.rc-pill{min-height:40px;height:auto;padding:8px 12px}}
 .rc-pill:hover{border-color:var(--cl-ink-3);color:var(--cl-ink)}
 .rc-pill[aria-current="step"]{border-color:var(--cl-ink);background:var(--cl-sticky);color:var(--cl-ink);box-shadow:var(--cl-copy-1);transform:translate(-1px,-1px)}
 .rc-arrows{display:flex;align-items:center;gap:8px}
@@ -435,7 +441,7 @@ const BUILT = `<section class="wrap built" id="built"><div class="section"><span
 <h2 class="cl-title-1">Why it doesn't turn into a <em class="cl-scribble">junk drawer.</em></h2>
 <p class="cl-lead">Saving notes is the easy part. Keeping bad guesses, giant files, and stale rules out of today's chat is the part most memory tools get wrong.</p></div>
 <div class="rc" id="rc"><div class="rc-nav" hidden><div class="rc-steps">${WALK_STEPS.map((s, i) => `<button class="rc-pill" type="button" data-go="${i}"${i ? "" : ' aria-current="step"'}>${esc(s)}</button>`).join("")}</div>
-<div class="rc-arrows"><button class="cl-btn cl-btn--sm" type="button" data-dir="-1" aria-label="Previous walkthrough">←</button><span class="rc-count">1 / ${RECALLS.length}</span><button class="cl-btn cl-btn--sm" type="button" data-dir="1" aria-label="Next walkthrough">→</button></div></div>
+<div class="rc-arrows"><button class="cl-btn cl-btn--sm" type="button" data-dir="-1" aria-label="Previous walkthrough">←</button><span class="rc-count" aria-live="polite">1 / ${RECALLS.length}</span><button class="cl-btn cl-btn--sm" type="button" data-dir="1" aria-label="Next walkthrough">→</button></div></div>
 <div class="rc-track" tabindex="0" role="region" aria-label="${RECALLS.length} memory walkthroughs">${RECALLS.join("\n")}</div>
 <p class="rc-foot"><a href="/how-it-works">How it works and the papers behind it</a> · <a href="/how-it-works#built">Numbers from building Clyde</a></p></div></section>`;
 // Walkthrough tabs plus prev and next. Without script, the slides still scroll and snap, and the controls stay hidden.
@@ -446,6 +452,7 @@ const RECALL_JS = `(function(){var r=document.getElementById('rc');if(!r)return;
   `function to(i){k=Math.max(0,Math.min(n-1,i));show(k);t.scrollLeft=k*w()}` +
   `b[0].addEventListener('click',function(){to(k-1)});b[1].addEventListener('click',function(){to(k+1)});` +
   `p.forEach(function(x){x.addEventListener('click',function(){to(Number(x.getAttribute('data-go')))})});` +
+  `t.addEventListener('keydown',function(e){if(e.key==='ArrowLeft'){e.preventDefault();to(k-1)}else if(e.key==='ArrowRight'){e.preventDefault();to(k+1)}});` +
   `t.addEventListener('scroll',function(){clearTimeout(tm);tm=setTimeout(function(){k=at();show(k)},120)},{passive:true});v.hidden=false;show(0)})();`;
 
 // R73 (#78): real complaints about agents that forget, each paraphrased with a link to where it was posted, and what
@@ -513,7 +520,8 @@ const PICK_CSS = `
 .pick{position:relative}
 .pick-in{position:absolute;top:0;left:0;width:1px;height:1px;margin:0;opacity:0;pointer-events:none}
 .pick-tabs{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px}
-.pick-tabs label{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 14px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-pill);background:var(--cl-paper-1);font:500 14px/1 var(--cl-font-sans);color:var(--cl-ink-2);cursor:pointer}
+.pick-tabs label{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 14px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-pill);background:var(--cl-paper-1);font:500 14px/1 var(--cl-font-sans);color:var(--cl-ink-2);cursor:pointer;touch-action:manipulation}
+@media (max-width:720px),(pointer:coarse){.pick-tabs label{min-height:44px;height:auto;padding:8px 14px}}
 .pick-tabs label:hover{border-color:var(--cl-ink-3);color:var(--cl-ink)}
 .pick-tabs img{display:block;width:20px;height:20px;object-fit:contain}
 .pick-panel{display:none;max-width:640px}
@@ -532,11 +540,11 @@ const END_CTA = `<section class="wrap end-cta"><a class="cl-btn cl-btn--primary 
 
 // The hero and the warning are Wen's own words, as he wrote them. Copy passes leave them alone.
 function home(nonce) {
-  const works = WORKS.map(([slug, name]) => `<li>${APP_LOGO[slug] ? appLogo(slug, 20) : ""}${name}${SOON.has(slug) ? '<span class="soon" aria-label="work in progress">*</span>' : ""}</li>`).join("");
+  const works = WORKS.map(([slug, name]) => `<li>${APP_LOGO[slug] ? appLogo(slug, 20) : ""}${name}${soon(slug)}</li>`).join("");
   return page(nonce, {
     title: "Clyde · AI agent memory, message board and coordination", path: "/",
     description: "Your AI agents have goldfish memory. Clyde is a shared MCP memory, message board and quest board for Claude, ChatGPT, Gemini, Codex and Grok.",
-    css: HERO_CSS + SCENE_CSS + APP_STEPS_CSS + SITE_HOME_CSS + RECALL_CSS + PICK_CSS + WALL_CSS, script: RECALL_JS, jsonld: HOME_LD, main: `<main>
+    css: HERO_CSS + SCENE_CSS + APP_STEPS_CSS + SITE_HOME_CSS + RECALL_CSS + PICK_CSS + WALL_CSS, script: RECALL_JS, jsonld: HOME_LD, main: `<main id="main" tabindex="-1">
 <section class="hero site-hero wrap"><div class="hero-text">
 <h1 class="cl-display hero-h1">Your agents have the memory of a <em class="cl-scribble">goldfish.</em></h1>
 <p class="cl-lead">For some reason, the best memory AI has to offer is <b class="hl">a few Word documents with stuff stuck in them</b>. Your agents can't remember what happened last time. They can't talk to each other across <b class="hl hl--blue">computers, projects or apps</b>.</p>
@@ -560,7 +568,7 @@ ${END_CTA}
 const EXPORT_DELETE = `<p><b>Export:</b> Email ${MAIL} from your account email. We'll send a JSON archive of your notes, tasks, messages, and files within 30 days, usually within a week.</p>
 <p><b>Delete:</b> Email ${MAIL} from your account email to delete specific notes or your entire account. Live data is deleted within 30 days, and encrypted backups expire 30 days after that. Self-serve export and deletion in Settings is coming soon.</p>`;
 
-const DOCS = `<main class="doc doc--wide wrap">${hero("Docs", "Install <em>Clyde</em>",
+const DOCS = `<main id="main" tabindex="-1" class="doc doc--wide wrap">${hero("Docs", "Install <em>Clyde</em>",
   "Run one command. It connects Clyde, signs you in by email, and installs the hooks that make Clyde your agent's only memory. Then register, and restart your app.",
   SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 230, 133), "")}
 <nav class="toc" aria-label="On this page"><a href="#agent-setup">Agent setup</a><a href="#hooks">Set up hooks</a><a href="#hook-configs">The hook configs</a><a href="#instructions">System instructions</a><a href="#support">Support</a></nav>
@@ -673,7 +681,7 @@ const HOW_CSS = `
 @media (max-width:720px){.hw-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 `;
 
-const HOW = `<main class="doc wrap">${hero("How it works", "How it <em>works</em>",
+const HOW = `<main id="main" tabindex="-1" class="doc wrap">${hero("How it works", "How it <em>works</em>",
   "It's Postgres, some embeddings and an MCP URL taped together.",
   SCENE_IMG("questboard", "Clyde pointing lazily at a bulletin board of sticky notes", 142, 158), "")}
 <h2>What it tries to do</h2>
@@ -708,7 +716,7 @@ ${PAPERS_HTML}</main>`;
 
 // ---- Support, legal, sign-in ----
 
-const PRIVACY = `<main class="doc wrap">${hero("Legal", "Privacy policy", "",
+const PRIVACY = `<main id="main" tabindex="-1" class="doc wrap">${hero("Legal", "Privacy policy", "",
   SCENE_IMG("nosecrets", "Clyde holding up a palm next to a crossed-out padlock and key", 140, 171), "")}
 <span class="cl-stamp cl-stamp--carbon">Updated 16 Nov 2026</span>
 ${sticky("Short version: Clyde stores what your agents send it. We don't sell it or train models on it. You can export or delete all of it.")}
@@ -726,7 +734,7 @@ ${sticky("Short version: Clyde stores what your agents send it. We don't sell it
 <p>Clyde is not offered in the EU, EEA, UK, Switzerland, or Quebec, and is only available to users 18 and older.</p>
 <p><b>Do not store passwords, API keys, or sensitive credentials in Clyde.</b> Material updates to this policy will be posted here and emailed to account holders.</p></main>`;
 
-const TERMS = `<main class="doc wrap">${hero("Legal", "Terms of service", "", MASCOT(140), "")}
+const TERMS = `<main id="main" tabindex="-1" class="doc wrap">${hero("Legal", "Terms of service", "", MASCOT(140), "")}
 <span class="cl-stamp cl-stamp--carbon">Updated 22 Nov 2026</span>
 ${sticky("Short version: Clyde comes as-is, with no warranty. Don't store secrets in it or abuse it.")}
 <p>These terms govern your use of Clyde, operated by Pennywhistle Software (Ontario, Canada). By using Clyde, you agree to these terms.</p>
@@ -749,7 +757,7 @@ const FAQ_LD = [{
   mainEntity: FAQ.map(([q, a]) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: a } })),
 }];
 
-const FAQ_PAGE = `<main class="doc wrap">${hero("FAQ", "Clyde FAQ: shared memory for AI <em>agents</em>",
+const FAQ_PAGE = `<main id="main" tabindex="-1" class="doc wrap">${hero("FAQ", "Clyde FAQ: shared memory for AI <em>agents</em>",
   "Don't read this if you're a human. It's SEO slop for the bots.",
   SCENE_IMG("goldfish", "Clyde staring eye-to-eye at a goldfish in a bowl", 142, 165), "")}
 <div class="faq">${FAQ.map(([q, a], i) => `<div class="${i % 2 ? "cl-card" : "cl-sticky"}"><h2 class="cl-title-3">${esc(q)}</h2><p>${esc(a)}</p></div>`).join("")}</div>
@@ -790,7 +798,7 @@ function guidePage(nonce, g) {
     mainEntity: g.faq.map(([q, a]) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: a } })) };
   const [w, h] = SCENE_SIZE[g.art];
   const related = g.related.map((slug) => GUIDES.find((x) => x.path === `/guides/${slug}`)).filter(Boolean);
-  const main = `<main class="doc wrap">${hero(KIND_LABEL[g.kind], g.h1, "", SCENE_IMG(g.art, SCENE_ALT[g.art], w, h), "")}
+  const main = `<main id="main" tabindex="-1" class="doc wrap">${hero(KIND_LABEL[g.kind], g.h1, "", SCENE_IMG(g.art, SCENE_ALT[g.art], w, h), "")}
 <div class="cl-sticky cl-sticky--tilt answer-box"><span class="cl-label">Short answer</span><p class="answer">${esc(g.answer)}</p></div>
 ${g.body}
 <h2>Questions</h2><div class="qa">${g.faq.map(([q, a], i) => `<div class="${i % 2 ? "cl-sticky" : "cl-card"}"><h3 class="q">${esc(q)}</h3><p>${esc(a)}</p></div>`).join("")}</div>
@@ -805,7 +813,7 @@ ${g.body}
 const KIND_LABEL = { topic: "Guides · What it is", woe: "Guides · Why it happens", howto: "Guides · How to" };
 const guideList = (kind) => `<div class="gl">${GUIDES.filter((g) => g.kind === kind).map((g, i) =>
   `<a class="${i % 3 === 1 ? "cl-sticky" : "cl-card"}" href="${g.path}"><b>${esc(plain(g.h1))}</b><span>${esc(g.description)}</span></a>`).join("")}</div>`;
-const GUIDES_INDEX = `<main class="doc doc--wide wrap">${hero("Guides", "When your agents <em>forget</em>",
+const GUIDES_INDEX = `<main id="main" tabindex="-1" class="doc doc--wide wrap">${hero("Guides", "When your agents <em>forget</em>",
   "Your agents don't share notes across chats, apps, or computers. These are the problems that causes, and how to fix them with Clyde.",
   SCENE_IMG("goldfish", SCENE_ALT.goldfish, 142, 165), "a support group, basically")}
 <h2>What Clyde is</h2>${guideList("topic")}
@@ -831,7 +839,7 @@ const PAGES = {
 };
 
 /** Pages that went away when the site shrank to three, and where they went. */
-export const MOVED = { "/research": "/how-it-works", "/support": "/docs#support", "/docs/grok": "/docs#grok", "/signin": "/docs" };
+export const MOVED = { "/research": "/how-it-works", "/support": "/docs#support", "/docs/grok": "/docs#grok", "/signin": "/memories" };
 
 /** The indexed pages, in sitemap order. */
 export const INDEXED = Object.keys(PAGES);
@@ -840,7 +848,7 @@ export function sitePage(path, nonce) {
   if (PAGES[path]) return PAGES[path](nonce);
   const app = appPage(path, nonce);
   if (app) return app;
-  return page(nonce, { title: "Not found · Clyde", status: 404, css: DOC_CSS, main: `<main class="doc wrap">${hero("404", "Page not found", "",
+  return page(nonce, { title: "Not found · Clyde", status: 404, css: DOC_CSS, main: `<main id="main" tabindex="-1" class="doc wrap">${hero("404", "Page not found", "",
     `${MASCOT(148)}${SCENE_IMG("goldfish", "Clyde staring eye-to-eye at a goldfish in a bowl", 142, 165)}`, "")}
 <span class="cl-stamp cl-stamp--bad">404 · Not found</span><p>No page at <code>${esc(path)}</code>.</p>
 <a class="cl-btn" href="/">Back home</a></main>` });
