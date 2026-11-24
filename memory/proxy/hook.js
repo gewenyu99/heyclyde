@@ -57,11 +57,9 @@ canon = CANON.get(event, "")
 DEBT_TTL = 1200
 INSTALL = "curl -fsSL https://heyclyde.me/install | sh"
 SCOPE = "Call Clyde recall before acting when the request changes scope or you need information that memory could supply, even after a recent recall. Skip it only when the same task continues unchanged."
-SAVE = "Before your final reply, call Clyde remember with the decisions and results of this turn and their evidence."
-# Stop blocks a turn that ended without remember. The reply is already on screen, so the agent saves and adds one line.
-STOP_SAVE = "Clyde: this turn ended without Clyde remember. Your reply is already on screen, so do not repeat or summarize it. Call Clyde remember now with the decisions and results of this turn and their evidence, then end with one short line naming what you saved."
-# Antigravity folds the text written before a Stop block into the thought process, so there the reply is written again.
-STOP_SAVE_AGY = "Clyde: this turn ended without Clyde remember. Call Clyde remember now with the decisions and results of this turn and their evidence, then write your reply again, because Antigravity hides the text written before this check."
+SAVE = "Before writing your final reply, call Clyde remember with the decisions and results of this turn and their evidence (Stop blocks the turn if you reply without saving)."
+# Stop blocks a turn that ended without remember. Every client shows the pre-Stop reply on screen, so save and confirm without repeating.
+STOP_SAVE = "Clyde: this turn ended without Clyde remember. Your full reply is already on screen, so do not repeat or summarize it. Call Clyde remember now with the decisions and results of this turn and their evidence, then end with one short line (Saved to Clyde.) and nothing else."
 REGISTER = "register_agent (name, context, surface, description, computer, type, projects)"
 
 def emit(msg="", raw_json=""):
@@ -253,7 +251,7 @@ if canon == "PostToolUse" and not is_clyde_tool(tname, *CLYDE_TOOLS):
 
 phash = sha(prompt.strip()) if prompt.strip() else ""
 
-if canon == "UserPromptSubmit" and (data.get("stop_hook_active") or prompt.strip() in (SAVE, STOP_SAVE, STOP_SAVE_AGY)):
+if canon == "UserPromptSubmit" and (data.get("stop_hook_active") or prompt.strip() in (SAVE, STOP_SAVE)):
     emit()
 if client == "antigravity":
     if state.get("subagent"):
@@ -491,7 +489,7 @@ if canon == "Stop" and state.pop("check_before_reply", False):
     if not down and not data.get("stop_hook_active") and not state.get("subagent"):
         decision = {"antigravity": "continue", "gemini": "deny"}.get(client, "block")
         receipt("held")
-        emit(raw_json=json.dumps({"decision": decision, "reason": STOP_SAVE_AGY if client == "antigravity" else STOP_SAVE}))
+        emit(raw_json=json.dumps({"decision": decision, "reason": STOP_SAVE}))
 
 parts = []
 owes_recall = False

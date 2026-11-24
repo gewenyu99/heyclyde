@@ -66,7 +66,7 @@ def legal_pages(errs):
 
 # Support and the Grok guide live on /docs (at #support and #grok), and the papers on /how-it-works. The old addresses
 # answer 301 to them.
-MOVED = {"/research": "/how-it-works", "/support": "/docs#support", "/docs/grok": "/docs#grok", "/signin": "/docs"}
+MOVED = {"/research": "/how-it-works", "/support": "/docs#support", "/docs/grok": "/docs#grok", "/signin": "/memories"}
 PAPERS = ["arxiv.org/abs/2607.13591", "alphaxiv.org/abs/2602.22406", "PMC3069643", "NBK3905", "arxiv.org/pdf/2604.27283",
           "arxiv.org/html/2604.00131", "taatgenLebiereAnderson.pdf"]
 

@@ -1,7 +1,7 @@
 // The memory console: login, shell, router and the overview. Other views live in entries.js, logs.js and charts.js.
 import {
   api, auth, onUnauthorized, forgetMeta, readHash, href, leave, onLeave, h, note, loading, failed, pageHead, card,
-  num, when, toDate, ago, dl, table, flash, plural, ApiError, armsRevealed, revealArms,
+  num, when, toDate, ago, dl, table, flash, plural, ApiError, armsRevealed, revealArms, confirmButton,
 } from './lib.js';
 import { entriesView, entryView, newEntryView } from './entries.js';
 import { sessionsView, sessionView, eventsView, recallsView, recallView, feedbackView, messagesView, auditView, playgroundView } from './logs.js';
@@ -31,28 +31,62 @@ const ROUTES = {
 
 const app = document.getElementById('app');
 let shell = null;
+let lastToken = '';
+let shellAc = null;
 
 // ---------------------------------------------------------------- login
-function showLogin(message = '') {
+function showLogin(message = '', tokenValue = lastToken) {
   leave();
+  if (shellAc) { shellAc.abort(); shellAc = null; }
   shell = null;
   auth.clear();
   forgetMeta();
   resetPalette();
-  const input = h('input', { type: 'password', name: 'token', autocomplete: 'current-password', spellcheck: 'false', required: true });
-  const msg = h('p', { class: 'flash error', role: 'alert' }, message);
+  const input = h('input', {
+    type: 'password',
+    name: 'token',
+    value: tokenValue,
+    autocomplete: 'current-password',
+    spellcheck: 'false',
+    required: true,
+    'aria-describedby': 'login-error',
+    'aria-invalid': message ? 'true' : 'false',
+  });
+  const toggle = h('button', {
+    type: 'button',
+    class: 'small',
+    'aria-pressed': 'false',
+    'aria-label': 'Show admin token',
+  }, 'Show');
+  toggle.addEventListener('click', () => {
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    toggle.setAttribute('aria-pressed', String(show));
+    toggle.setAttribute('aria-label', show ? 'Hide admin token' : 'Show admin token');
+    toggle.textContent = show ? 'Hide' : 'Show';
+  });
+  const msg = h('p', { id: 'login-error', class: 'flash error', role: 'alert' }, message);
   const button = h('button', { type: 'submit', class: 'primary' }, 'Sign in');
-  const form = h('form', { class: 'login-card' },
+  const form = h('form', { class: 'login-card', novalidate: true },
     h('h1', null, 'memory'),
     h('p', { class: 'muted' }, "Wen's memory console."),
-    h('label', { class: 'field' }, h('span', { class: 'label' }, 'Admin token'), input,
+    h('label', { class: 'field' }, h('span', { class: 'label' }, 'Admin token'),
+      h('div', { class: 'pw-row' }, input, toggle),
       h('span', { class: 'hint' }, "KB_ADMIN_TOKEN. The agents' token won't open it.")),
     msg, button);
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const token = input.value.trim();
-    if (!token) { msg.textContent = 'Enter the admin token.'; return; }
+    lastToken = token;
+    if (!token) {
+      msg.textContent = 'Enter the admin token.';
+      input.setAttribute('aria-invalid', 'true');
+      input.focus();
+      return;
+    }
+    input.setAttribute('aria-invalid', 'false');
     button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
     msg.textContent = '';
     auth.token = token;
     try {
@@ -65,6 +99,7 @@ function showLogin(message = '') {
         auth.token = '';
         msg.textContent = err.message;
         button.disabled = false;
+        button.removeAttribute('aria-busy');
       }
     }
   });
@@ -77,19 +112,36 @@ onUnauthorized(() => showLogin('Wrong token.'));
 
 // ---------------------------------------------------------------- shell and router
 function buildShell() {
+  if (shellAc) shellAc.abort();
+  shellAc = new AbortController();
   const links = NAV.map(([key, label]) => h('li', null, h('a', { href: href(key), 'data-key': key }, label)));
   const menu = h('button', { type: 'button', class: 'menu', 'aria-expanded': 'false', 'aria-controls': 'nav-list' }, 'Menu');
+  const armsBtn = armsRevealed()
+    ? h('button', { type: 'button', class: 'link', onclick: () => { revealArms(false); location.reload(); } }, 'Hide arms')
+    : confirmButton('Reveal arms', 'Confirm reveal?', () => { revealArms(true); location.reload(); }, { class: 'link' });
   const nav = h('nav', { class: 'side', 'aria-label': 'Sections' },
     h('div', { class: 'brand' }, h('a', { href: href('overview') }, h('strong', null, 'memory'), h('span', null, 'console')), menu),
     h('div', { class: 'nav-body', id: 'nav-list' },
       h('ul', null, links),
-      h('button', { type: 'button', class: 'link logout', onclick: () => { revealArms(!armsRevealed()); location.reload(); } },
-        armsRevealed() ? 'Hide arms' : 'Reveal arms'),
-      h('button', { type: 'button', class: 'link logout', onclick: () => showLogin() }, 'Log out')));
+      h('div', { class: 'nav-actions' },
+        armsBtn,
+        h('button', { type: 'button', class: 'link logout', onclick: () => { lastToken = ''; showLogin('', ''); } }, 'Log out'))));
+  const closeMenu = (restoreFocus) => {
+    if (!nav.classList.contains('open')) return;
+    nav.classList.remove('open');
+    menu.setAttribute('aria-expanded', 'false');
+    if (restoreFocus) menu.focus();
+  };
   menu.addEventListener('click', () => {
     const open = nav.classList.toggle('open');
     menu.setAttribute('aria-expanded', String(open));
   });
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeMenu(true);
+  }, { signal: shellAc.signal });
+  document.addEventListener('click', (e) => {
+    if (!nav.contains(e.target)) closeMenu(false);
+  }, { signal: shellAc.signal });
   const main = h('main', { id: 'main', tabindex: '-1' });
   app.replaceChildren(h('a', { class: 'skip', href: '#main', onclick: (e) => { e.preventDefault(); main.focus(); } }, 'Skip to content'),
     h('div', { class: 'shell' }, nav, main));
@@ -112,6 +164,7 @@ function route() {
   // Each route renders into a fresh node. A slow response for an old route lands in a detached node and is never seen.
   const root = h('div', { class: 'view' });
   shell.main.replaceChildren(root);
+  shell.main.focus({ preventScroll: true });
   window.scrollTo(0, 0);
   Promise.resolve()
     .then(() => view(root, rest, params))
@@ -194,14 +247,25 @@ function embeddingsCard(e, sync, refresh) {
   const button = h('button', { type: 'button', disabled: !!sync?.running }, sync?.running ? 'Syncing' : 'Sync embeddings');
   button.addEventListener('click', async () => {
     button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
     out.clear();
     try {
       await api('/embeddings/sync', { method: 'POST' });
     } catch (err) {
       // A 409 means one is running already. The refresh below shows it.
-      if (err.status !== 409) { out.show(err.message, 'error'); button.disabled = false; return; }
+      if (err.status !== 409) {
+        out.show(err.message, 'error');
+        button.disabled = false;
+        button.removeAttribute('aria-busy');
+        return;
+      }
     }
-    refresh();
+    const ok = await refresh();
+    if (!ok) {
+      out.show("Couldn't refresh sync status. Reload the page to check.", 'error');
+      button.disabled = false;
+      button.removeAttribute('aria-busy');
+    }
   });
   return card('Embeddings',
     h('div', { class: 'meter', role: 'meter', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct), 'aria-label': 'Embedding coverage' },
@@ -219,39 +283,51 @@ function lastCard(last) {
   ]));
 }
 
-function activitySection(promise) {
-  const chart = h('div', { class: 'chart' }, loading());
-  const agents = h('div', null, loading());
-  const byType = h('div', null, loading());
-  const clients = h('div', null, loading());
-  promise.then((a) => {
-    activityChart(chart, a.days || []);
-    const ag = a.agents || [];
-    agents.replaceChildren(ag.length ? table([
-      { label: 'Agent', render: (r) => (r.agent === 'unknown' ? h('span', { class: 'muted' }, 'not named') : r.agent) },
-      { label: 'Hook events', class: 'num', render: (r) => num(r.events) },
-      { label: 'Sessions', class: 'num', render: (r) => num(r.sessions) },
-      { label: 'Last', render: (r) => when(r.last) },
-    ], ag, { rowLink: (r) => href('events', r.agent === 'unknown' ? {} : { agent: r.agent }) })
-      : note('No hooks fired in these 14 days.', 'empty'));
-    const types = a.events_by_type || [];
-    const max = Math.max(1, ...types.map((t) => t.count));
-    byType.replaceChildren(types.length ? table([
-      { label: 'Event', render: (t) => h('span', { class: 'mono' }, t.event) },
-      { label: 'Count', class: 'num bar-cell', render: (t) => [h('span', { class: 'inline-bar', 'data-w': t.count / max }), num(t.count)] },
-      { label: 'Last', render: (t) => when(t.last) },
-    ], types, { rowLink: (t) => href('events', { event: t.event }) }) : note('No hook events yet.', 'empty'));
-    const cl = a.clients || [];
-    clients.replaceChildren(cl.length ? table([
-      { label: 'Client', render: (c) => c.client || h('span', { class: 'muted' }, 'unknown') },
-      { label: 'Sessions', class: 'num', render: (c) => num(c.sessions) },
-      { label: 'Recalls', class: 'num', render: (c) => num(c.recalls) },
-      { label: 'Last', render: (c) => when(c.last) },
-    ], cl, { rowLink: (c) => href('sessions', { client: c.client && c.client !== 'unknown' ? c.client : '' }) }) : note('No clients yet.', 'empty'));
-    sizeBars(byType);
-  }, (err) => {
-    for (const el of [chart, agents, byType, clients]) el.replaceChildren(failed(err, () => location.reload()));
-  });
+function activitySection(fetchActivity) {
+  const chart = h('div', { class: 'chart' });
+  const agents = h('div');
+  const byType = h('div');
+  const clients = h('div');
+  const load = () => {
+    for (const el of [chart, agents, byType, clients]) el.replaceChildren(loading());
+    fetchActivity().then((a) => {
+      activityChart(chart, a.days || []);
+      const ag = a.agents || [];
+      agents.replaceChildren(ag.length ? table([
+        {
+          label: 'Agent',
+          render: (r) => h('a', { href: href('events', r.agent === 'unknown' ? {} : { agent: r.agent }) },
+            r.agent === 'unknown' ? h('span', { class: 'muted' }, 'not named') : r.agent),
+        },
+        { label: 'Hook events', class: 'num', render: (r) => num(r.events) },
+        { label: 'Sessions', class: 'num', render: (r) => num(r.sessions) },
+        { label: 'Last', render: (r) => when(r.last) },
+      ], ag, { rowLink: (r) => href('events', r.agent === 'unknown' ? {} : { agent: r.agent }) })
+        : note('No hooks fired in these 14 days.', 'empty'));
+      const types = a.events_by_type || [];
+      const max = Math.max(1, ...types.map((t) => t.count));
+      byType.replaceChildren(types.length ? table([
+        { label: 'Event', render: (t) => h('a', { class: 'mono', href: href('events', { event: t.event }) }, t.event) },
+        { label: 'Count', class: 'num bar-cell', render: (t) => [h('span', { class: 'inline-bar', 'data-w': t.count / max }), num(t.count)] },
+        { label: 'Last', render: (t) => when(t.last) },
+      ], types, { rowLink: (t) => href('events', { event: t.event }) }) : note('No hook events yet.', 'empty'));
+      const cl = a.clients || [];
+      clients.replaceChildren(cl.length ? table([
+        {
+          label: 'Client',
+          render: (c) => h('a', { href: href('sessions', { client: c.client && c.client !== 'unknown' ? c.client : '' }) },
+            c.client || h('span', { class: 'muted' }, 'unknown')),
+        },
+        { label: 'Sessions', class: 'num', render: (c) => num(c.sessions) },
+        { label: 'Recalls', class: 'num', render: (c) => num(c.recalls) },
+        { label: 'Last', render: (c) => when(c.last) },
+      ], cl, { rowLink: (c) => href('sessions', { client: c.client && c.client !== 'unknown' ? c.client : '' }) }) : note('No clients yet.', 'empty'));
+      sizeBars(byType);
+    }, (err) => {
+      for (const el of [chart, agents, byType, clients]) el.replaceChildren(failed(err, load));
+    });
+  };
+  load();
   return [
     card('Last 14 days', chart),
     h('div', { class: 'grid-2' },
@@ -273,9 +349,8 @@ async function overview(root) {
   root.append(pageHead('Overview', live), top);
   // Days follow this browser's time zone, so the chart's dates match the local calendar. A zone the database doesn't
   // know gets a 400, and the chart falls back to UTC days.
-  const activity = api('/activity', { params: { days: 14, tz: localZone() } })
+  const fetchActivity = () => api('/activity', { params: { days: 14, tz: localZone() } })
     .catch((err) => (err.status === 400 ? api('/activity', { params: { days: 14 } }) : Promise.reject(err)));
-  activity.catch(() => {});
 
   // While a sync runs, check every 3 s, so its end shows without a reload.
   let soon = null;
@@ -284,7 +359,10 @@ async function overview(root) {
     try {
       const o = await api('/overview');
       if (root.isConnected) paint(o);
-    } catch { /* The next tick tries again. */ }
+      return true;
+    } catch {
+      return false;
+    }
   };
   const paint = (o) => {
     live.replaceChildren(liveIndicator(o.last?.hook));
@@ -295,7 +373,7 @@ async function overview(root) {
     if (o.health?.sync?.running) soon = setTimeout(refresh, 3000);
   };
   paint(await api('/overview'));
-  root.append(...activitySection(activity));
+  root.append(...activitySection(fetchActivity));
 
   // Keep the live indicator and counts honest while the page stays open.
   const timer = setInterval(refresh, 60000);

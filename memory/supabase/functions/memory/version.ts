@@ -12,8 +12,8 @@
 // Each is pinned to the hash of its surface: version.test.ts fails unless the surface on disk hashes to the entry for the
 // current version, no two versions share a hash, and no entry that main already has changed. After a bump, add an entry
 // with the hash the failing test prints. deploy.sh runs that guard before it deploys.
-export const CLIENT_VERSION = "20261122.2";
-export const SERVER_VERSION = "20261123.2";
+export const CLIENT_VERSION = "20261123.1";
+export const SERVER_VERSION = "20261123.3";
 
 /** Every client version that was released, oldest first, with the day it was. A client is expired only when it is behind
  * a version released more than the cutoff ago, so a new release can never expire a client on the day it ships.
@@ -31,10 +31,12 @@ export const CLIENT_RELEASES: { version: string; released: string }[] = [
   { version: "20261119.1", released: "2026-11-19" },
   { version: "20261122.1", released: "2026-11-22" },
   { version: "20261122.2", released: "2026-11-22" },
+  { version: "20261123.1", released: "2026-11-23" },
 ];
 
 /** SHA-256 of the client files at each client version: `{ "20261102.1": "<hash>" }`. Entries are never edited or removed. */
 export const CLIENT_SURFACE_HASHES: Record<string, string> = {
+  "20261123.1": "27df932790a4307f1ca15329bdd942c0245dcc2142ae661eb915bf2e59c4a642",
   "20261122.2": "ff3ad485dbb8cc79a194c6a145103102909759b4ad35184b6578cc7583126323",
   "20261122.1": "6b0a1c5b805ad4a528c5fc70ca3daa5f88dfcb235c43e9de9f40d6b64f691bd9",
   "20261119.1": "de5c63e72988407a38aa121773c3f920d72820699d2f7390696237c2b036332e",
@@ -51,6 +53,7 @@ export const CLIENT_SURFACE_HASHES: Record<string, string> = {
 
 /** SHA-256 of the MCP tools and server instructions at each server version. Entries are never edited or removed. */
 export const SERVER_SURFACE_HASHES: Record<string, string> = {
+  "20261123.3": "0881ac1d40b9a2135ee442c56037071ffcca7f7dd0ab332a81aa7f73939f7a25",
   "20261123.2": "ac7d1497a9347dfbd4bfeafa198efb1e893f5b61f94b536bd9065feba753bca0",
   "20261123.1": "ab58efcc1f48537ae97aa1739357b277a1cec659afaf83c3e59c5efce9317d6a",
   "20261122.3": "84e99b55093fede431921b3920feaf56744d9add1a5f0269ea81fd6b9f25399b",

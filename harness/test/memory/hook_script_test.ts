@@ -113,14 +113,15 @@ Deno.test('Antigravity lifecycle: deduplicates mid-turn PreInvocation, skips fol
     }, 1010))
     assert.deepEqual(post, {})
 
-    // 5. A turn that ended without remember gets one check; Antigravity hides the earlier text, so it replies again.
+    // 5. A turn that ended without remember gets one Stop check telling it not to repeat the reply.
     const stop = JSON.parse(h.run('antigravity', 'Stop', {
       conversationId: 'conv-1',
       workspacePaths: ['/work/billing'],
       fullyIdle: true,
     }, 1020))
     assert.equal(stop.decision, 'continue')
-    assert.match(stop.reason, /without Clyde remember.*write your reply again/)
+    assert.match(stop.reason, /without Clyde remember.*do not repeat or summarize it/i)
+    assert.doesNotMatch(stop.reason, /write your reply again|hides the text/i)
 
     // 6. Quick follow-ups ("push it", "fix line 12 and show me a screenshot") skip recall but get the save reminder.
     for (const [i, follow] of ['push it', 'fix line 12 and show me a screenshot'].entries()) {

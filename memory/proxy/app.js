@@ -53,8 +53,19 @@ const APP_CSS = `
 .meter-bar--warn::-moz-progress-bar{background:var(--cl-warn)}
 .meter-bar--bad::-webkit-progress-value{background:var(--cl-bad)}
 .meter-bar--bad::-moz-progress-bar{background:var(--cl-bad)}
-.sign-prov-skel{display:grid;gap:10px;min-height:96px;align-content:start}
-.sign-prov-skel .cl-skel{height:44px;border-radius:var(--cl-radius-md)}
+.sign-prov-skel{display:grid;gap:16px}
+.sign-prov-skel .cl-skel{height:46px;border-radius:var(--cl-radius-md)}
+.sign-prov-skel .sign-or-skel{width:96px;height:14px}
+.skel-short{width:38%}.skel-mid{width:68%}
+.app-filters-extra{display:contents}
+.app-filter-toggle{display:none}
+.app-pager{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-top:4px}
+.app-pager-acts{display:flex;align-items:center;gap:8px}
+@media (max-width:720px){
+  .app-filter-toggle{display:inline-flex}
+  .app-filters-extra{display:none;grid-column:1 / -1;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .app-filters-extra.is-open{display:grid}
+}
 .app-crumb-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .app-crumb{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:var(--cl-text-small);color:var(--cl-ink-3);min-width:0}
 .app-crumb ol{display:flex;align-items:center;gap:8px;flex-wrap:wrap;list-style:none;margin:0;padding:0;min-width:0}
@@ -67,7 +78,7 @@ const APP_CSS = `
 .mcp-box__title{margin:0;font:var(--cl-text-title-3)}
 .mcp-box__pre{margin:0;padding:11px 13px;border:1px dashed var(--cl-rule-strong);border-radius:var(--cl-radius-md);background:var(--cl-paper-0);font:var(--cl-text-mono);font-size:12.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:var(--cl-ink)}
 .mcp-list{display:grid;gap:12px}
-.onb-card{display:grid;gap:16px;padding:20px;border:1.5px solid var(--cl-ink);border-radius:var(--cl-radius-xl);background:var(--cl-paper-1);box-shadow:var(--cl-copy-2)}
+.onb-card{display:grid;gap:16px;padding:20px;border:1px solid var(--cl-carbon);border-radius:var(--cl-radius-xl);background:var(--cl-paper-1);background-clip:padding-box;box-shadow:var(--cl-copy-2)}
 .onb-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap}
 .onb-head h2{margin:4px 0 0}
 .onb-track{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
@@ -82,8 +93,8 @@ const APP_CSS = `
 .onb-tab.is-active{border-color:var(--cl-ink);background:var(--cl-sticky);color:var(--cl-ink);box-shadow:var(--cl-copy-1)}
 .onb-panel{display:grid;gap:12px}
 .inv-stage{display:grid;gap:18px;align-content:start}
-.inv-pass{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:16px 20px;border:1.5px solid var(--cl-ink);border-radius:var(--cl-radius-xl);background:var(--cl-paper-1);box-shadow:var(--cl-copy-1)}
-.inv-pass--partner{background:var(--cl-sticky);border-color:var(--cl-ink);box-shadow:var(--cl-copy-2)}
+.inv-pass{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:16px 20px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-xl);background:var(--cl-paper-1);background-clip:padding-box;box-shadow:var(--cl-shadow-1)}
+.inv-pass--partner{background:var(--cl-sticky);border-color:var(--cl-sticky-edge);box-shadow:var(--cl-sticky-shadow)}
 .inv-pass__copy{display:grid;gap:6px;min-width:0;flex:1 1 280px}
 .inv-pass__copy h2{margin:0;font:var(--cl-text-title-2)}
 .inv-pass__copy p{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2)}
@@ -96,7 +107,7 @@ const APP_CSS = `
 .inv-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:0;padding:0;list-style:none}
 @media (max-width:900px){.inv-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:460px){.inv-tiles{grid-template-columns:minmax(0,1fr)}}
-.inv-tile{display:grid;grid-template-rows:1fr auto;gap:10px;padding:14px;border:1.5px solid var(--cl-rule-strong);border-radius:var(--cl-radius-xl);background:var(--cl-paper-1);aspect-ratio:1 / 1}
+.inv-tile{display:grid;grid-template-rows:1fr auto;gap:10px;padding:14px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-xl);background:var(--cl-paper-1);background-clip:padding-box;aspect-ratio:1 / 1}
 .inv-tile:nth-child(2){background:var(--cl-sticky);border-color:var(--cl-sticky-edge)}
 .inv-tile__art{position:relative;display:flex;align-items:center;justify-content:center;padding:8px;border:1px dashed var(--cl-rule-strong);border-radius:var(--cl-radius-md);background:var(--cl-paper-0);min-height:116px;overflow:hidden}
 .inv-tile__art picture{display:flex;align-items:center;justify-content:center;width:100%;height:108px}
@@ -113,7 +124,7 @@ const APP_CSS = `
 .inv-signup-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,440px);gap:24px;align-items:center}
 @media (max-width:860px){.inv-signup-grid{grid-template-columns:minmax(0,1fr)}}
 .inv-scene{display:grid;gap:16px;padding:24px;border:1.5px dashed var(--cl-rule-strong);border-radius:var(--cl-radius-xl);background:var(--cl-paper-1)}
-.inv-scene--partner{border-style:solid;border-color:var(--cl-ink);background:var(--cl-sticky);box-shadow:var(--cl-copy-2)}
+.inv-scene--partner{border-style:solid;border-color:var(--cl-sticky-edge);background:var(--cl-sticky);background-clip:padding-box;box-shadow:var(--cl-sticky-shadow)}
 .inv-scene__stage{display:flex;align-items:center;justify-content:center;gap:14px;padding:12px 8px;border:1px dashed var(--cl-rule-strong);border-radius:var(--cl-radius-lg);background:var(--cl-paper-0)}
 .inv-scene__stage picture{display:flex;align-items:center;justify-content:center}
 .inv-scene__stage img{display:block;height:132px;width:auto;max-width:100%;object-fit:contain}
@@ -168,7 +179,24 @@ const APP_CSS = `
 .gr-node.is-dim{opacity:.16}
 .gr-node.is-hi text{display:block}
 .gr-inspector{display:grid;gap:14px;padding:18px;align-content:start}
-.gr-inspector h3{margin:0;font:var(--cl-text-title-3)}
+.gr-inspector h2,.gr-inspector h3{margin:0;font:var(--cl-text-title-3)}
+.gr-view-toggle{display:inline-flex;gap:4px}
+.gr-view-toggle .cl-btn[aria-pressed="true"]{background:var(--cl-ink);border-color:var(--cl-ink);color:var(--cl-on-ink)}
+.gr-legend{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font:var(--cl-text-mono);font-size:11px;color:var(--cl-ink-3);padding:2px 4px}
+.gr-leg-item{display:inline-flex;align-items:center;gap:5px}
+.gr-leg-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
+.gr-leg-dot--decisions{background:var(--cl-pen-blue)}.gr-leg-dot--projects{background:var(--cl-pen-violet)}.gr-leg-dot--preferences{background:var(--cl-pen-amber)}.gr-leg-dot--observations{background:var(--cl-pen-teal)}.gr-leg-dot--references{background:var(--cl-pen-green)}.gr-leg-dot--recommendations{background:var(--cl-pen-green)}.gr-leg-dot--reactions{background:var(--cl-pen-red)}.gr-leg-dot--other{background:var(--cl-pen-graphite)}
+.gr-leg-dot--center{border:2px solid var(--cl-ink);background:var(--cl-paper-1)}
+.gr-leg-dot--dormant{border:1.5px dashed var(--cl-ink-3);background:transparent;opacity:.65}
+.gr-list{padding:12px;display:grid;gap:8px}
+.gr-list-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-md);background:var(--cl-paper-1)}
+.gr-list-row.is-selected{border-color:var(--cl-carbon);background:var(--cl-carbon-wash)}
+.gr-list-btn{appearance:none;border:0;background:none;padding:0;text-align:left;cursor:pointer;font:600 13.5px/1.3 var(--cl-font-sans);color:var(--cl-ink);touch-action:manipulation}
+.gr-list-btn:focus-visible{outline:none;box-shadow:var(--cl-focus);border-radius:var(--cl-radius-xs)}
+.gr-svg:focus-visible{outline:none;box-shadow:inset 0 0 0 2px var(--cl-carbon)}
+.gr-node:focus-visible{outline:none}.gr-node:focus-visible circle.gr-vis{stroke:var(--cl-carbon);stroke-width:3.5}
+.gr-skel{padding:16px}
+@media (max-width:720px){.gr-svg{height:min(420px,60vh);height:min(420px,60dvh)}}
 .gr-ins-body{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2);white-space:pre-wrap;max-height:220px;overflow:auto}
 .gr-ins-links{display:grid;gap:6px;max-height:200px;overflow:auto}
 .gr-ins-link{appearance:none;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-sm);background:var(--cl-paper-0);padding:6px 9px;text-align:left;cursor:pointer;font:var(--cl-text-small);color:var(--cl-ink);display:flex;justify-content:space-between;gap:8px;align-items:center}
@@ -187,8 +215,8 @@ const APP_CSS = `
 .onb-tab,.gr-chip-btn,.gr-ins-link{touch-action:manipulation}
 .onb-tab:focus-visible,.gr-chip-btn:focus-visible,.gr-ins-link:focus-visible{outline:none;box-shadow:var(--cl-focus)}
 @media (max-width:720px),(pointer:coarse){
-  .app-nav .cl-nav__item{min-height:40px;padding:8px 12px}
-  .app-bar-user .cl-btn--sm,.app-head-acts .cl-btn--sm,.onb-tab,.gr-chip-btn,.gr-res-btn{min-height:40px;height:auto;padding-block:8px}
+  .app-nav .cl-nav__item{min-height:44px;padding:8px 12px}
+  .app-bar-user .cl-btn--sm,.app-head-acts .cl-btn--sm,.onb-tab,.gr-chip-btn,.gr-res-btn,.gr-ins-link,.gr-list-btn{min-height:44px;height:auto;padding-block:8px}
   .app-form .cl-btn,.signin-box .cl-btn[type="submit"],.app-filters .cl-btn[type="submit"]{min-height:44px;height:auto}
   .cl-pw-wrap .cl-btn{min-height:44px}
 }
@@ -287,16 +315,59 @@ function copyText(text, btn) {
 
 function fallbackCopy(text) {
   if (typeof document.createElement !== 'function' || !document.body) return false;
+  var prev = document.activeElement;
   var ta = document.createElement('textarea');
   ta.value = text;
   ta.className = 'sr-only';
+  if (ta.style) { ta.style.position = 'fixed'; ta.style.top = '0'; ta.style.left = '0'; }
   ta.setAttribute('readonly', '');
   document.body.appendChild(ta);
   ta.select();
   var ok = false;
   try { ok = Boolean(document.execCommand && document.execCommand('copy')); } catch (e) { ok = false; }
   ta.remove();
+  if (prev && typeof prev.focus === 'function') {
+    try { prev.focus({ preventScroll: true }); } catch (e) { prev.focus(); }
+  }
   return ok;
+}
+
+function replaceUrl(u) {
+  if (typeof history !== 'undefined' && history && typeof history.replaceState === 'function') {
+    history.replaceState(null, '', u);
+  }
+}
+
+function pushUrl(u) {
+  if (typeof history !== 'undefined' && history && typeof history.pushState === 'function') {
+    history.pushState(null, '', u);
+  }
+}
+
+function setBusyAttr(el, busy) {
+  if (!el) return;
+  if (busy && typeof el.setAttribute === 'function') el.setAttribute('aria-busy', 'true');
+  else if (!busy && typeof el.removeAttribute === 'function') el.removeAttribute('aria-busy');
+}
+
+function skelCards(count, lines) {
+  var out = '';
+  for (var c = 0; c < (count || 2); c++) {
+    var bars = '';
+    for (var i = 0; i < (lines || 3); i++) {
+      bars += '<span class="cl-skel' + (i === 0 ? ' skel-short' : (i === (lines || 3) - 1 ? ' skel-mid' : '')) + '"></span>';
+    }
+    out += '<div class="cl-card app-grid" aria-hidden="true">' + bars + '</div>';
+  }
+  return out;
+}
+
+function formatTime(ts) {
+  if (!ts) return '';
+  var d = new Date(ts);
+  if (isNaN(d.getTime())) return esc(String(ts));
+  var txt = d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return '<time datetime="' + esc(d.toISOString()) + '">' + esc(txt) + '</time>';
 }
 
 function setBusy(btn, busy, busyLabel) {
@@ -363,15 +434,31 @@ if (document.addEventListener) document.addEventListener('click', function(ev) {
   copyText(btn.getAttribute('data-copy') || '', btn);
 });
 
-function mcpCard(title, hint, tool, prompt, sticky, btnLabel) {
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('pageshow', function() {
+    if (typeof document.querySelectorAll === 'function') {
+      document.querySelectorAll('[data-provider]').forEach(function(b) {
+        if (typeof b.removeAttribute === 'function') b.removeAttribute('aria-busy');
+      });
+    }
+    ['btn-send-code', 'btn-verify-code', 'btn-pw-submit', 'btn-inv-send', 'btn-inv-verify'].forEach(function(id) {
+      var btn = document.getElementById(id);
+      if (btn) setBusy(btn, false);
+    });
+  });
+}
+
+function mcpCard(title, hint, tool, prompt, sticky, btnLabel, headingTag) {
+  var hTag = headingTag || 'h2';
+  var copyLbl = btnLabel || 'Copy prompt';
   return '<section class="mcp-box' + (sticky ? ' mcp-box--sticky' : '') + '">' +
     '<div class="mcp-box__head">' +
-      '<div class="app-meta"><h3 class="mcp-box__title">' + esc(title) + '</h3>' +
+      '<div class="app-meta"><' + hTag + ' class="mcp-box__title">' + esc(title) + '</' + hTag + '>' +
       (tool ? '<span class="cl-chip cl-chip--carbon">MCP: ' + esc(tool) + '</span>' : '') + '</div>' +
-      '<button type="button" class="cl-btn cl-btn--sm" data-copy="' + esc(prompt) + '">' + esc(btnLabel || 'Copy prompt') + '</button>' +
+      '<button type="button" class="cl-btn cl-btn--sm" data-copy="' + esc(prompt) + '" aria-label="' + esc(copyLbl + ': ' + title) + '">' + esc(copyLbl) + '</button>' +
     '</div>' +
     (hint ? '<p class="cl-hint">' + esc(hint) + '</p>' : '') +
-    '<pre class="mcp-box__pre">' + esc(prompt) + '</pre>' +
+    '<pre class="mcp-box__pre" tabindex="0">' + esc(prompt) + '</pre>' +
   '</section>';
 }
 
@@ -434,7 +521,7 @@ function parseCallbackHash() {
     refresh_token: p.get('refresh_token') || '',
     expires_in: Number(p.get('expires_in') || 3600)
   });
-  history.replaceState(null, '', location.pathname + location.search);
+  replaceUrl(location.pathname + location.search);
   return true;
 }
 
@@ -494,6 +581,8 @@ function clearNotice(el) {
   el.textContent = '';
 }
 
+var PROV_SKEL = '<div class="sign-prov-skel" aria-hidden="true"><div class="cl-auth-providers"><span class="cl-skel"></span><span class="cl-skel"></span></div><div class="cl-or-rule"><span class="cl-skel sign-or-skel"></span></div></div>';
+
 function renderSignIn(msg) {
   var pend = readPendingInvite();
   var nextTarget = afterSignIn || '/memories';
@@ -508,20 +597,20 @@ function renderSignIn(msg) {
       '<h2 class="cl-title-2">Sign in to Clyde</h2>' +
       '<p class="cl-hint">Enter your email for a sign-in link or code, or use a password if your account has one. New here? <a class="cl-link" href="/invite">Create an account</a>.</p>' +
       '<div id="sign-msg" class="' + bannerClass + '">' + esc(bannerText) + '</div>' +
-      '<div id="sign-providers" class="app-grid" aria-busy="true"><div class="sign-prov-skel" aria-hidden="true"><span class="cl-skel"></span><span class="cl-skel"></span></div></div>' +
+      '<div id="sign-providers" class="app-grid" aria-busy="true">' + PROV_SKEL + '</div>' +
       '<form id="otp-req" class="app-grid">' +
         '<div class="cl-field"><label for="s-email">Email</label><input id="s-email" class="cl-input" type="email" required placeholder="you@example.com" autocomplete="email"></div>' +
         '<div class="app-actions"><button type="submit" class="cl-btn cl-btn--primary" id="btn-send-code">Send sign-in email</button>' +
         '<button type="button" class="cl-btn cl-btn--ghost" id="btn-toggle-pw" aria-expanded="false" aria-controls="pw-form">Use password instead</button></div>' +
       '</form>' +
       '<form id="otp-verify" class="app-grid is-hidden">' +
-        '<div class="cl-field"><label for="s-code">One-time code</label><input id="s-code" class="cl-input" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456"></div>' +
+        '<div class="cl-field"><label for="s-code">One-time code</label><input id="s-code" class="cl-input" type="text" inputmode="numeric" autocomplete="one-time-code" required placeholder="123456"></div>' +
         '<button type="submit" class="cl-btn cl-btn--primary" id="btn-verify-code">Verify code</button>' +
       '</form>' +
       '<form id="pw-form" class="app-grid is-hidden">' +
         '<div class="cl-field"><label for="s-pw">Password</label>' +
           '<div class="cl-pw-wrap">' +
-            '<input id="s-pw" class="cl-input" type="password" autocomplete="current-password">' +
+            '<input id="s-pw" class="cl-input" type="password" required autocomplete="current-password">' +
             '<button type="button" class="cl-btn cl-btn--sm" id="btn-s-pw-vis" aria-pressed="false" aria-label="Show password">Show</button>' +
           '</div>' +
         '</div>' +
@@ -543,6 +632,8 @@ function renderSignIn(msg) {
   if (togglePwBtn && togglePwBtn.addEventListener) togglePwBtn.addEventListener('click', function() {
     var hidden = pwForm.classList.toggle('is-hidden');
     if (typeof togglePwBtn.setAttribute === 'function') togglePwBtn.setAttribute('aria-expanded', String(!hidden));
+    var pwIn = document.getElementById('s-pw');
+    if (!hidden && pwIn && typeof pwIn.focus === 'function') pwIn.focus();
   });
 
   document.getElementById('otp-req').addEventListener('submit', async function(e) {
@@ -562,6 +653,8 @@ function renderSignIn(msg) {
       if (!r.ok) throw new Error(d.error_description || d.msg || d.error || "Couldn't send the sign-in email. Check your address and try again.");
       otpVerify.classList.remove('is-hidden');
       notice(banner, 'ok', 'Sign-in email sent. Click the link in your inbox, or paste the 6-digit code below if included.');
+      var sCode = document.getElementById('s-code');
+      if (sCode && typeof sCode.focus === 'function') sCode.focus();
     } catch (err) {
       notice(banner, 'bad', err.message);
     } finally {
@@ -597,7 +690,17 @@ function renderSignIn(msg) {
     e.preventDefault();
     if (pwBtn && pwBtn.disabled) return;
     clearNotice(banner);
-    var email = emailEl.value.trim();
+    var email = emailEl && emailEl.value ? emailEl.value.trim() : '';
+    if (!email) {
+      notice(banner, 'bad', 'Enter your email address in the Email field above, then sign in.');
+      if (emailEl && typeof emailEl.focus === 'function') emailEl.focus();
+      return;
+    }
+    if (emailEl && typeof emailEl.checkValidity === 'function' && !emailEl.checkValidity()) {
+      notice(banner, 'bad', 'Enter a valid email address like you@example.com above, then try again.');
+      if (emailEl && typeof emailEl.focus === 'function') emailEl.focus();
+      return;
+    }
     var password = document.getElementById('s-pw').value;
     setBusy(pwBtn, true, 'Signing in…');
     try {
@@ -621,6 +724,7 @@ function renderSignIn(msg) {
 var INV_CACHE = {};
 var INV_PENDING_KEY = 'clyde_pending_invite_v1';
 var INV_BANNER_MSG = '';
+var INV_BANNER_KIND = 'ok';
 var INV_ARROW = '<svg class="inv-scene__arrow" viewBox="0 0 120 36" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 20 C36 14 72 23 108 17"/><path d="M95 8 C102 12 108 15 113 17 C107 21 101 25 96 30"/></svg>';
 
 function savePendingInvite(code) {
@@ -647,7 +751,7 @@ async function loadInviteInfo(code) {
   }
 }
 
-async function renderInvite() {
+async function renderInvite(focusId) {
   var s = readSession();
   var sp = new URLSearchParams(location.search);
   var code = (sp.get('code') || '').trim();
@@ -698,6 +802,7 @@ async function renderInvite() {
       alreadyBanner + badCodeBanner +
       '<div class="inv-stage">' +
         passBanner +
+        '<h2 class="cl-sr-only">How Clyde works</h2>' +
         '<ol class="inv-tiles">' +
           '<li class="inv-tile inv-tile--flip">' +
             '<div class="inv-tile__art"><span class="inv-tile__num">1</span>' + INVITE_ART.standing + '</div>' +
@@ -730,9 +835,13 @@ async function renderInvite() {
       }
       var nextQs = new URLSearchParams(location.search);
       nextQs.set('step', 'signup');
-      history.pushState(null, '', '/invite?' + nextQs.toString());
-      renderInvite();
+      pushUrl('/invite?' + nextQs.toString());
+      renderInvite('btn-inv-back');
     });
+    if (focusId) {
+      var fEl = document.getElementById(focusId);
+      if (fEl && typeof fEl.focus === 'function') fEl.focus();
+    }
     return;
   }
 
@@ -771,13 +880,13 @@ async function renderInvite() {
           '<h2 class="cl-title-2">' + (isPartner ? 'Claim your partner pass' : 'Create your account') + '</h2>' +
           '<p class="cl-hint">Sign up with Google, GitHub, or email. Next, you\\'ll connect your first agent and test it with one prompt.</p>' +
           '<div id="inv-msg" class="is-hidden"></div>' +
-          '<div id="inv-providers" class="app-grid" aria-busy="true"><div class="sign-prov-skel" aria-hidden="true"><span class="cl-skel"></span><span class="cl-skel"></span></div></div>' +
+          '<div id="inv-providers" class="app-grid" aria-busy="true">' + PROV_SKEL + '</div>' +
           '<form id="inv-email-form" class="app-grid">' +
             '<div class="cl-field"><label for="inv-email">Email</label><input id="inv-email" class="cl-input" type="email" required placeholder="you@example.com" autocomplete="email"></div>' +
             '<button type="submit" class="cl-btn cl-btn--primary" id="btn-inv-send">Send sign-up link</button>' +
           '</form>' +
           '<form id="inv-otp-form" class="app-grid is-hidden">' +
-            '<div class="cl-field"><label for="inv-code">One-time code</label><input id="inv-code" class="cl-input" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456"></div>' +
+            '<div class="cl-field"><label for="inv-code">One-time code</label><input id="inv-code" class="cl-input" type="text" inputmode="numeric" autocomplete="one-time-code" required placeholder="123456"></div>' +
             '<button type="submit" class="cl-btn cl-btn--primary" id="btn-inv-verify">Verify code and continue</button>' +
           '</form>' +
           '<p class="cl-hint">Already have an account? <a class="cl-link" href="' + (validCode ? ('/memories?invite=' + encodeURIComponent(validCode)) : '/memories') + '">Sign in instead</a>.</p>' +
@@ -790,9 +899,13 @@ async function renderInvite() {
     var backQs = new URLSearchParams(location.search);
     backQs.delete('step');
     var q = backQs.toString();
-    history.pushState(null, '', '/invite' + (q ? '?' + q : ''));
-    renderInvite();
+    pushUrl('/invite' + (q ? '?' + q : ''));
+    renderInvite('btn-inv-start');
   });
+  if (focusId) {
+    var sEl = document.getElementById(focusId);
+    if (sEl && typeof sEl.focus === 'function') sEl.focus();
+  }
 
   var banner = document.getElementById('inv-msg');
   var emailEl = document.getElementById('inv-email');
@@ -821,6 +934,8 @@ async function renderInvite() {
       if (!r.ok) throw new Error(d.error || "Couldn't send the sign-up link. Check your email and try again.");
       otpForm.classList.remove('is-hidden');
       notice(banner, 'ok', 'Sign-up link sent to ' + email + '. Click the link in your inbox, or enter the 6-digit code below.');
+      var invCodeEl = document.getElementById('inv-code');
+      if (invCodeEl && typeof invCodeEl.focus === 'function') invCodeEl.focus();
     } catch (err) {
       notice(banner, 'bad', err.message);
     } finally {
@@ -886,7 +1001,7 @@ async function showProviders(box, banner) {
 
 async function finishProviderSignIn() {
   var search = location.search;
-  history.replaceState(null, '', '/auth/callback');
+  replaceUrl('/auth/callback');
   root.innerHTML = '<p class="cl-hint" role="status">Finishing sign-in...</p>';
   var res = await social.finish(search);
   if (!res.ok) {
@@ -909,7 +1024,7 @@ function stateBadge(n) {
   return '<span class="cl-state cl-state--settled">Active</span>';
 }
 
-function buildOnboardingHtml(ob, activeTab) {
+function buildOnboardingHtml(ob, activeTab, detailsOpen) {
   var s1 = ob.agents > 0;
   var s2 = ob.entries > 0;
   var s3 = ob.recalls > 0;
@@ -930,21 +1045,21 @@ function buildOnboardingHtml(ob, activeTab) {
   if (tab === 'antigravity') {
     connectBlock =
       '<p class="cl-hint">Run this in your terminal, then restart Antigravity and sign in when asked. It adds Clyde MCP to <code>~/.gemini/config/mcp_config.json</code>, installs hooks in <code>~/.gemini/config/hooks.json</code>, and adds the Clyde rule to <code>~/.gemini/GEMINI.md</code>.</p>' +
-      mcpCard('1. Install Antigravity MCP + hooks', 'Adds Clyde MCP, hooks, and the Clyde rule for Antigravity.', '', INSTALL_CMD, false, 'Copy command');
+      mcpCard('1. Install Antigravity MCP + hooks', 'Adds Clyde MCP, hooks, and the Clyde rule for Antigravity.', '', INSTALL_CMD, false, 'Copy command', 'h3');
   } else if (tab === 'claude-code') {
     connectBlock =
       '<p class="cl-hint">Run this in your terminal, then restart Claude Code. It adds Clyde MCP to <code>~/.claude.json</code>, installs hooks in <code>~/.claude/settings.json</code>, and adds the Clyde rule to <code>~/.claude/CLAUDE.md</code>.</p>' +
-      mcpCard('1. Install Claude Code MCP + hooks', 'Sets up MCP, hooks, and device sign-in in one command.', '', INSTALL_CMD, false, 'Copy command');
+      mcpCard('1. Install Claude Code MCP + hooks', 'Sets up MCP, hooks, and device sign-in in one command.', '', INSTALL_CMD, false, 'Copy command', 'h3');
   } else if (tab === 'chatgpt') {
     connectBlock =
       '<p class="cl-hint">For <strong>ChatGPT desktop (Work tab)</strong> and <strong>Codex CLI</strong>, run the command below. In ChatGPT desktop, open <strong>Settings / Coding / Hooks / User config</strong> and click <strong>Trust all</strong> (or run <code>/hooks</code> in Codex CLI). When ChatGPT asks <strong>Allow ChatGPT to use clyde?</strong>, click <strong>Always allow</strong>.</p>' +
-      mcpCard('1. Install ChatGPT Work / Codex MCP + hooks', 'Adds Clyde to ~/.codex/config.toml, ~/.codex/hooks.json, and ~/.codex/AGENTS.md, and turns off built-in Codex notes.', '', INSTALL_CMD, false, 'Copy command') +
+      mcpCard('1. Install ChatGPT Work / Codex MCP + hooks', 'Adds Clyde to ~/.codex/config.toml, ~/.codex/hooks.json, and ~/.codex/AGENTS.md, and turns off built-in Codex notes.', '', INSTALL_CMD, false, 'Copy command', 'h3') +
       '<p class="cl-hint">Without hooks, connect over OAuth: in ChatGPT desktop, open <strong>Settings / Integrations / Plugins / MCPs</strong>, click <strong>Add</strong>, then <strong>Add MCP server (Streamable HTTP)</strong> (or run <code>codex mcp add clyde --url https://heyclyde.me/mcp &amp;&amp; codex mcp login clyde</code>). For <strong>ChatGPT Chat mode</strong> on <code>chatgpt.com</code>, turn on Developer mode in <strong>Settings / Apps &amp; Connectors</strong> and add the URL below.</p>' +
-      mcpCard('Or connect ChatGPT over OAuth', 'Streamable HTTP MCP endpoint for ChatGPT Chat mode, desktop Plugins / MCPs, or Codex CLI.', 'OAuth URL', MCP_ENDPOINT, false, 'Copy URL');
+      mcpCard('Or connect ChatGPT over OAuth', 'Streamable HTTP MCP endpoint for ChatGPT Chat mode, desktop Plugins / MCPs, or Codex CLI.', 'OAuth URL', MCP_ENDPOINT, false, 'Copy URL', 'h3');
   } else {
     connectBlock =
       '<p class="cl-hint">In Claude (web, desktop, or mobile), open <strong>Settings / Connectors / Add custom connector</strong>, paste the URL below, click Add, then click Connect and sign in with the same account.</p>' +
-      mcpCard('1. Add Claude custom connector', 'Paste into Claude Settings / Connectors.', 'OAuth URL', MCP_ENDPOINT, false, 'Copy URL');
+      mcpCard('1. Add Claude custom connector', 'Paste into Claude Settings / Connectors.', 'OAuth URL', MCP_ENDPOINT, false, 'Copy URL', 'h3');
   }
 
   var onbTabList = [
@@ -968,7 +1083,8 @@ function buildOnboardingHtml(ob, activeTab) {
         'register_agent + remember + recall',
         allInOnePrompt,
         !allDone,
-        'Copy all 3 steps'
+        'Copy all 3 steps',
+        'h3'
       ) +
     '</div>';
 
@@ -989,6 +1105,7 @@ function buildOnboardingHtml(ob, activeTab) {
         (allDone ? '<a class="cl-btn cl-btn--primary cl-btn--sm" href="/graph">Open graph</a>' : '') +
       '</div>' +
     '</div>' +
+    '<div id="onb-msg" class="is-hidden" role="alert"></div>' +
     '<div class="onb-track">' +
       '<div class="onb-pill' + (s1 ? ' is-done' : '') + '">' +
         '<div class="onb-pill__top"><span>1. Connect agent</span>' + (s1 ? '<span class="cl-stamp cl-stamp--ok">Done</span>' : '<span class="cl-chip">Waiting</span>') + '</div>' +
@@ -1004,7 +1121,7 @@ function buildOnboardingHtml(ob, activeTab) {
       '</div>' +
     '</div>' +
     (allDone
-      ? '<details><summary class="cl-hint">Show setup instructions and all-in-one prompt</summary>' + setupBody + '</details>'
+      ? '<details' + (detailsOpen ? ' open' : '') + '><summary class="cl-hint">Setup instructions and all-in-one prompt</summary>' + setupBody + '</details>'
       : setupBody) +
   '</section>';
 }
@@ -1012,19 +1129,82 @@ function buildOnboardingHtml(ob, activeTab) {
 async function mountOnboarding(container, forceShow, onRefresh) {
   var activeTab = 'antigravity';
   var cachedOb = null;
-  function paint(ob, focusTab) {
+  var onbSeq = 0;
+  var pollTimer = null;
+  var lastSig = '';
+  var visWired = false;
+
+  function obSig(ob) {
+    if (!ob) return '';
+    return [ob.agents, ob.devices, ob.entries, ob.recalls, ob.latest_agent && ob.latest_agent.name, ob.latest_entry && ob.latest_entry.id].join(':');
+  }
+
+  function clearPoll() {
+    if (pollTimer && typeof clearTimeout === 'function') { clearTimeout(pollTimer); pollTimer = null; }
+  }
+
+  function isMounted() {
+    return Boolean(container && container.isConnected && document.getElementById('onb-box'));
+  }
+
+  function schedulePoll(ob) {
+    clearPoll();
+    if (!ob || (ob.agents > 0 && ob.entries > 0 && ob.recalls > 0)) return;
+    if (typeof document.addEventListener !== 'function' || !container || !container.isConnected) return;
+    if (!visWired) {
+      visWired = true;
+      document.addEventListener('visibilitychange', function onVis() {
+        if (!container || !container.isConnected) {
+          clearPoll();
+          if (typeof document.removeEventListener === 'function') document.removeEventListener('visibilitychange', onVis);
+          return;
+        }
+        if (typeof document.visibilityState === 'string' && document.visibilityState === 'hidden') {
+          clearPoll();
+        } else if (cachedOb && (cachedOb.agents === 0 || cachedOb.entries === 0 || cachedOb.recalls === 0)) {
+          pollTick();
+        }
+      });
+    }
+    if (typeof document.visibilityState === 'string' && document.visibilityState === 'hidden') return;
+    if (typeof setTimeout === 'function') {
+      pollTimer = setTimeout(pollTick, 4000);
+    }
+  }
+
+  async function pollTick() {
+    pollTimer = null;
+    if (!isMounted()) return;
+    if (typeof document.visibilityState === 'string' && document.visibilityState === 'hidden') return;
+    var prevSig = lastSig;
+    var prevAgents = cachedOb ? Number(cachedOb.agents || 0) : 0;
+    var prevDevices = cachedOb ? Number(cachedOb.devices || 0) : 0;
+    try {
+      await draw({ forcePaint: false });
+      if (cachedOb && lastSig !== prevSig && onRefresh && (Number(cachedOb.agents || 0) !== prevAgents || Number(cachedOb.devices || 0) !== prevDevices || lastSig !== prevSig)) {
+        await onRefresh(cachedOb);
+      }
+    } catch (e) {
+      if (isAuthFlowErr(e)) return;
+    }
+    if (cachedOb && isMounted()) schedulePoll(cachedOb);
+  }
+
+  function paint(ob, focusTab, focusRefresh) {
     if (!container || !ob) return;
     var needs = ob.agents === 0 || ob.entries === 0 || ob.recalls === 0;
     if (!forceShow && !needs) {
       container.innerHTML = '';
       return;
     }
-    container.innerHTML = buildOnboardingHtml(ob, activeTab);
-    var tabs = Array.prototype.slice.call(container.querySelectorAll('[data-onb-tab]'));
+    var det = typeof container.querySelector === 'function' ? container.querySelector('#onb-box details') : null;
+    var detailsOpen = Boolean(det && det.open);
+    container.innerHTML = buildOnboardingHtml(ob, activeTab, detailsOpen);
+    var tabs = typeof container.querySelectorAll === 'function' ? Array.prototype.slice.call(container.querySelectorAll('[data-onb-tab]')) : [];
     tabs.forEach(function(btn, idx) {
       btn.addEventListener('click', function() {
         activeTab = btn.getAttribute('data-onb-tab') || 'antigravity';
-        paint(cachedOb, activeTab);
+        paint(cachedOb, activeTab, false);
       });
       btn.addEventListener('keydown', function(ev) {
         var nextIdx = -1;
@@ -1035,39 +1215,66 @@ async function mountOnboarding(container, forceShow, onRefresh) {
         if (nextIdx >= 0) {
           ev.preventDefault();
           activeTab = tabs[nextIdx].getAttribute('data-onb-tab') || 'antigravity';
-          paint(cachedOb, activeTab);
+          paint(cachedOb, activeTab, false);
         }
       });
     });
-    if (focusTab) {
+    if (focusTab && typeof container.querySelector === 'function') {
       var activeEl = container.querySelector('[data-onb-tab="' + focusTab + '"]');
       if (activeEl && typeof activeEl.focus === 'function') activeEl.focus();
     }
     var ref = document.getElementById('onb-refresh');
-    if (ref) ref.addEventListener('click', async function() {
+    if (focusRefresh && ref && typeof ref.focus === 'function') ref.focus();
+    if (ref && typeof ref.addEventListener === 'function') ref.addEventListener('click', async function() {
+      var msgEl = document.getElementById('onb-msg');
+      clearNotice(msgEl);
       setBusy(ref, true, 'Checking…');
       try {
-        await draw();
-        if (onRefresh) await onRefresh();
+        await draw({ forcePaint: true, focusRefresh: true, rethrow: true });
+        if (onRefresh) await onRefresh(cachedOb);
+      } catch (err) {
+        if (isAuthFlowErr(err)) return;
+        var errEl = document.getElementById('onb-msg');
+        if (errEl) notice(errEl, 'bad', err.message || "Couldn't check setup progress. Wait a moment and click Check progress again.");
       } finally {
-        setBusy(ref, false);
+        var refEnd = document.getElementById('onb-refresh');
+        if (refEnd) setBusy(refEnd, false);
       }
     });
   }
-  async function draw() {
+
+  async function draw(opts) {
+    opts = opts || {};
+    var mySeq = ++onbSeq;
     try {
-      cachedOb = await api('/me/onboarding');
-      paint(cachedOb, null);
-    } catch (e) {}
+      var ob = await api('/me/onboarding');
+      if (mySeq !== onbSeq) return;
+      var sig = obSig(ob);
+      var changed = sig !== lastSig;
+      lastSig = sig;
+      cachedOb = ob;
+      if (opts.forcePaint || changed || !document.getElementById('onb-box')) {
+        paint(cachedOb, null, opts.focusRefresh);
+      }
+      schedulePoll(cachedOb);
+    } catch (e) {
+      if (isAuthFlowErr(e) || opts.rethrow) throw e;
+    }
   }
-  await draw();
+  await draw({ forcePaint: true });
 }
 
 async function renderEntries() {
   var sp = new URLSearchParams(location.search);
   var forceOnb = sp.get('onboarding') === '1';
+  var PAGE_SIZE = 50;
+  var curOffset = Math.max(0, parseInt(sp.get('offset') || '0', 10) || 0);
+  var entriesSeq = 0;
+  var hasExtraInit = Boolean(sp.get('kind') || sp.get('project') || sp.get('context') || sp.get('agent') || (sp.get('state') && sp.get('state') !== 'active'));
+  var invCls = INV_BANNER_KIND === 'bad' ? 'app-banner app-banner--bad' : 'app-banner app-banner--ok';
+  var invRole = INV_BANNER_KIND === 'bad' ? 'alert' : 'status';
   root.innerHTML =
-    (INV_BANNER_MSG ? '<div class="app-banner app-banner--ok" role="status">' + esc(INV_BANNER_MSG) + '</div>' : '') +
+    (INV_BANNER_MSG ? '<div class="' + invCls + '" role="' + invRole + '">' + esc(INV_BANNER_MSG) + '</div>' : '') +
     '<div id="onb-slot" class="app-grid"></div>' +
     mcpCard(
       'Save a note through your agent',
@@ -1076,98 +1283,236 @@ async function renderEntries() {
       'Save a note to Clyde using remember: pattern "decisions", title "<short title>", body "<under 500 chars>", evidence "<source or command output>".',
       false
     ) +
-    '<form id="f-entries" class="cl-card app-filters">' +
-      '<div class="cl-field"><label for="q-in">Search</label><input id="q-in" name="q" class="cl-input" value="' + esc(sp.get('q') || '') + '" placeholder="Title or text"></div>' +
-      '<div class="cl-field"><label for="kind-in">Kind</label><select id="kind-in" name="kind" class="cl-select"><option value="">All</option><option value="decisions">decisions</option><option value="fact">fact</option><option value="preferences">preferences</option><option value="projects">projects</option><option value="observations">observations</option><option value="recommendations">recommendations</option><option value="references">references</option><option value="reactions">reactions</option><option value="wen">wen</option><option value="plan">plan</option></select></div>' +
-      '<div class="cl-field"><label for="proj-in">Project</label><input id="proj-in" name="project" class="cl-input" value="' + esc(sp.get('project') || '') + '" placeholder="e.g. clyde"></div>' +
-      '<div class="cl-field"><label for="ctx-in">Context</label><select id="ctx-in" name="context" class="cl-select"><option value="">All</option><option value="general">general</option><option value="work">work</option><option value="home">home</option><option value="hobby">hobby</option><option value="personal">personal</option></select></div>' +
-      '<div class="cl-field"><label for="agent-in">Agent</label><input id="agent-in" name="agent" class="cl-input" value="' + esc(sp.get('agent') || '') + '" placeholder="Agent name"></div>' +
-      '<div class="cl-field"><label for="state-in">State</label><select id="state-in" name="state" class="cl-select"><option value="active">active</option><option value="pruned">pruned</option><option value="superseded">superseded</option><option value="all">all</option></select></div>' +
-      '<button type="submit" class="cl-btn cl-btn--primary" id="btn-f-entries">Filter notes</button>' +
-    '</form>' +
-    '<div id="entries-status" class="cl-hint" role="status" aria-live="polite">Loading notes...</div>' +
-    '<div id="entries-list" class="app-grid"></div>';
+    '<section class="app-grid">' +
+      '<h2 class="cl-sr-only">Saved notes</h2>' +
+      '<form id="f-entries" class="cl-card app-filters">' +
+        '<div class="cl-field"><label for="q-in">Search</label><input id="q-in" name="q" class="cl-input" value="' + esc(sp.get('q') || '') + '" placeholder="ID, title, or text"></div>' +
+        '<div id="f-extra" class="app-filters-extra' + (hasExtraInit ? ' is-open' : '') + '">' +
+          '<div class="cl-field"><label for="kind-in">Kind</label><select id="kind-in" name="kind" class="cl-select"><option value="">All</option><option value="decisions">decisions</option><option value="fact">fact</option><option value="preferences">preferences</option><option value="projects">projects</option><option value="observations">observations</option><option value="recommendations">recommendations</option><option value="references">references</option><option value="reactions">reactions</option><option value="wen">wen</option><option value="plan">plan</option></select></div>' +
+          '<div class="cl-field"><label for="proj-in">Project</label><input id="proj-in" name="project" class="cl-input" value="' + esc(sp.get('project') || '') + '" placeholder="e.g. clyde"></div>' +
+          '<div class="cl-field"><label for="ctx-in">Context</label><select id="ctx-in" name="context" class="cl-select"><option value="">All</option><option value="general">general</option><option value="work">work</option><option value="home">home</option><option value="hobby">hobby</option><option value="personal">personal</option></select></div>' +
+          '<div class="cl-field"><label for="agent-in">Agent</label><input id="agent-in" name="agent" class="cl-input" value="' + esc(sp.get('agent') || '') + '" placeholder="Agent name"></div>' +
+          '<div class="cl-field"><label for="state-in">State</label><select id="state-in" name="state" class="cl-select"><option value="active">active</option><option value="pruned">pruned</option><option value="superseded">superseded</option><option value="all">all</option></select></div>' +
+        '</div>' +
+        '<div class="app-actions">' +
+          '<button type="submit" class="cl-btn cl-btn--primary" id="btn-f-entries">Filter notes</button>' +
+          '<button type="button" class="cl-btn cl-btn--sm app-filter-toggle" id="btn-filter-toggle" aria-expanded="' + String(hasExtraInit) + '" aria-controls="f-extra">Filters</button>' +
+          '<button type="button" class="cl-btn cl-btn--sm cl-btn--ghost is-hidden" id="btn-f-clear">Clear filters</button>' +
+        '</div>' +
+      '</form>' +
+      '<div id="entries-status" class="cl-hint" role="status" aria-live="polite">Loading notes...</div>' +
+      '<div id="entries-list" class="app-grid" aria-busy="true">' + skelCards(3, 3) + '</div>' +
+      '<nav id="entries-pager" class="app-pager is-hidden" aria-label="Notes pages"></nav>' +
+    '</section>';
 
-  ['kind', 'context', 'state'].forEach(function(k) {
-    var v = sp.get(k);
-    if (v) { var sel = document.querySelector('[name="' + k + '"]'); if (sel) sel.value = v; }
-  });
+  var qIn = document.getElementById('q-in');
+  var kindIn = document.getElementById('kind-in');
+  var projIn = document.getElementById('proj-in');
+  var ctxIn = document.getElementById('ctx-in');
+  var agentIn = document.getElementById('agent-in');
+  var stateIn = document.getElementById('state-in');
+  var clearBtn = document.getElementById('btn-f-clear');
+  var toggleBtn = document.getElementById('btn-filter-toggle');
+  var extraBox = document.getElementById('f-extra');
 
-  async function load() {
-    var qs = new URLSearchParams();
-    ['q', 'kind', 'project', 'context', 'agent', 'state'].forEach(function(k) {
-      var el = document.querySelector('[name="' + k + '"]');
-      if (el && el.value.trim()) qs.set(k, el.value.trim());
+  if (kindIn && sp.get('kind')) kindIn.value = sp.get('kind');
+  if (ctxIn && sp.get('context')) ctxIn.value = sp.get('context');
+  if (stateIn && sp.get('state')) stateIn.value = sp.get('state');
+
+  function getFilters() {
+    return {
+      q: qIn && qIn.value ? qIn.value.trim() : '',
+      kind: kindIn && kindIn.value ? kindIn.value.trim() : '',
+      project: projIn && projIn.value ? projIn.value.trim() : '',
+      context: ctxIn && ctxIn.value ? ctxIn.value.trim() : '',
+      agent: agentIn && agentIn.value ? agentIn.value.trim() : '',
+      state: stateIn && stateIn.value ? stateIn.value.trim() : 'active'
+    };
+  }
+
+  function syncFilterUi(f) {
+    var filtered = Boolean(f.q || f.kind || f.project || f.context || f.agent || (f.state && f.state !== 'active'));
+    if (clearBtn && clearBtn.classList) clearBtn.classList.toggle('is-hidden', !filtered);
+    var uq = new URLSearchParams();
+    if (forceOnb) uq.set('onboarding', '1');
+    if (f.q) uq.set('q', f.q);
+    if (f.kind) uq.set('kind', f.kind);
+    if (f.project) uq.set('project', f.project);
+    if (f.context) uq.set('context', f.context);
+    if (f.agent) uq.set('agent', f.agent);
+    if (f.state && f.state !== 'active') uq.set('state', f.state);
+    if (curOffset > 0) uq.set('offset', String(curOffset));
+    replaceUrl(location.pathname + (uq.toString() ? '?' + uq.toString() : ''));
+  }
+
+  function renderPager(total, countOnPage, hasMore) {
+    var pager = document.getElementById('entries-pager');
+    if (!pager) return;
+    if (!total || (total <= PAGE_SIZE && curOffset === 0)) {
+      if (pager.classList) pager.classList.add('is-hidden');
+      pager.innerHTML = '';
+      return;
+    }
+    var startN = curOffset + 1;
+    var endN = curOffset + countOnPage;
+    if (pager.classList) pager.classList.remove('is-hidden');
+    pager.innerHTML =
+      '<span class="cl-hint">Showing ' + startN.toLocaleString('en-US') + ' to ' + endN.toLocaleString('en-US') + ' of ' + total.toLocaleString('en-US') + ' notes</span>' +
+      '<div class="app-pager-acts">' +
+        '<button type="button" class="cl-btn cl-btn--sm" id="btn-pg-prev"' + (curOffset <= 0 ? ' disabled' : '') + '>Previous</button>' +
+        '<button type="button" class="cl-btn cl-btn--sm" id="btn-pg-next"' + (!hasMore ? ' disabled' : '') + '>Next</button>' +
+      '</div>';
+    var prevBtn = document.getElementById('btn-pg-prev');
+    var nextBtn = document.getElementById('btn-pg-next');
+    if (prevBtn && prevBtn.addEventListener) prevBtn.addEventListener('click', function() {
+      curOffset = Math.max(0, curOffset - PAGE_SIZE);
+      load({ scroll: true });
     });
-    var url = '/me/entries' + (qs.toString() ? '?' + qs.toString() : '');
+    if (nextBtn && nextBtn.addEventListener) nextBtn.addEventListener('click', function() {
+      curOffset = curOffset + PAGE_SIZE;
+      load({ scroll: true });
+    });
+  }
+
+  async function load(opts) {
+    opts = opts || {};
+    var mySeq = ++entriesSeq;
+    var f = getFilters();
+    syncFilterUi(f);
+    var qs = new URLSearchParams();
+    if (f.q) qs.set('q', f.q);
+    if (f.kind) qs.set('kind', f.kind);
+    if (f.project) qs.set('project', f.project);
+    if (f.context) qs.set('context', f.context);
+    if (f.agent) qs.set('agent', f.agent);
+    if (f.state) qs.set('state', f.state);
+    qs.set('limit', String(PAGE_SIZE));
+    qs.set('offset', String(curOffset));
+    var url = '/me/entries?' + qs.toString();
     var fBtn = document.getElementById('btn-f-entries');
     var status = document.getElementById('entries-status');
     var list = document.getElementById('entries-list');
     setBusy(fBtn, true, 'Loading…');
+    setBusyAttr(list, true);
+    if (list && !list.innerHTML) list.innerHTML = skelCards(3, 3);
     try {
       var d = await api(url);
+      if (mySeq !== entriesSeq) return;
+      var entries = d.entries || [];
+      var total = typeof d.total === 'number' ? d.total : entries.length;
+      var hasMore = typeof d.has_more === 'boolean' ? d.has_more : (curOffset + entries.length < total);
       if (status) {
         status.className = 'cl-hint';
-        status.textContent = d.total.toLocaleString('en-US') + ' ' + (d.total === 1 ? 'note' : 'notes') + (d.total >= 1000 ? ' (showing newest 1,000)' : '');
+        if (!total) status.textContent = '0 notes';
+        else if (total > PAGE_SIZE || curOffset > 0) status.textContent = 'Showing ' + (curOffset + 1).toLocaleString('en-US') + ' to ' + (curOffset + entries.length).toLocaleString('en-US') + ' of ' + total.toLocaleString('en-US') + ' notes';
+        else status.textContent = total.toLocaleString('en-US') + ' ' + (total === 1 ? 'note' : 'notes');
       }
-      if (!d.entries.length) {
+      if (!entries.length) {
         if (list) list.innerHTML = '<div class="cl-empty"><p class="cl-empty__title">No matching notes</p><p class="cl-empty__text">Nothing matches those filters. Connect an agent above and save your first note over MCP, or switch State to all.</p></div>';
+        renderPager(0, 0, false);
         return;
       }
-      if (list) list.innerHTML = d.entries.map(function(n) {
+      if (list) list.innerHTML = entries.map(function(n) {
         var cls = 'cl-card cl-card--lift cl-memory' + (n.superseded_by ? ' is-superseded' : '') + (Number(n.confidence) < 0.15 ? ' is-dormant' : '');
+        var sensChip = n.sensitivity === 'confidential'
+          ? '<span class="cl-chip cl-chip--bad">Confidential</span>'
+          : (n.sensitivity === 'private' ? '<span class="cl-chip cl-chip--warn">Private</span>' : '');
         return '<a class="' + cls + '" href="/entries/' + encodeURIComponent(n.id) + '">' +
           '<div class="cl-memory__top"><span class="cl-chip">' + esc(n.pattern || n.kind) + '</span>' +
           (n.project ? '<span class="cl-chip cl-chip--carbon">' + esc(n.project) + '</span>' : '') +
-          stateBadge(n) + '<span class="cl-memory__conf">' + confText(n.confidence) + '</span></div>' +
+          sensChip + stateBadge(n) + '<span class="cl-memory__conf">' + confText(n.confidence) + '</span></div>' +
           '<h3 class="cl-memory__title">' + esc(n.title) + '</h3>' +
           '<p class="cl-memory__body">' + esc(n.body) + '</p>' +
           '<div class="cl-memory__foot"><span>id: ' + esc(n.id) + '</span><span>' + esc(n.context || 'general') + '</span><span>' + esc(n.authority || 'draft') + '</span></div>' +
         '</a>';
       }).join('');
+      renderPager(total, entries.length, hasMore);
+      if (opts.scroll && status && typeof status.scrollIntoView === 'function') {
+        status.scrollIntoView({ block: 'nearest' });
+      }
     } catch (err) {
-      if (isAuthFlowErr(err)) return;
+      if (mySeq !== entriesSeq || isAuthFlowErr(err)) return;
       if (status) { status.className = 'cl-hint'; status.textContent = "Couldn't load notes."; }
+      renderPager(0, 0, false);
       renderRetryError(list, err.message, load);
     } finally {
-      setBusy(fBtn, false);
+      if (mySeq === entriesSeq) {
+        setBusy(fBtn, false);
+        setBusyAttr(list, false);
+      }
     }
   }
 
-  document.getElementById('f-entries').addEventListener('submit', function(e) {
+  var debTimer = null;
+  function queueSearch() {
+    if (debTimer && typeof clearTimeout === 'function') clearTimeout(debTimer);
+    curOffset = 0;
+    if (typeof setTimeout === 'function') debTimer = setTimeout(function() { load(); }, 250);
+    else load();
+  }
+  [qIn, projIn, agentIn].forEach(function(el) {
+    if (el && typeof el.addEventListener === 'function') el.addEventListener('input', queueSearch);
+  });
+  [kindIn, ctxIn, stateIn].forEach(function(el) {
+    if (el && typeof el.addEventListener === 'function') el.addEventListener('change', function() { curOffset = 0; load(); });
+  });
+  if (toggleBtn && extraBox && typeof toggleBtn.addEventListener === 'function') {
+    toggleBtn.addEventListener('click', function() {
+      var open = extraBox.classList.toggle('is-open');
+      if (typeof toggleBtn.setAttribute === 'function') toggleBtn.setAttribute('aria-expanded', String(open));
+    });
+  }
+  if (clearBtn && typeof clearBtn.addEventListener === 'function') {
+    clearBtn.addEventListener('click', function() {
+      if (qIn) qIn.value = '';
+      if (kindIn) kindIn.value = '';
+      if (projIn) projIn.value = '';
+      if (ctxIn) ctxIn.value = '';
+      if (agentIn) agentIn.value = '';
+      if (stateIn) stateIn.value = 'active';
+      curOffset = 0;
+      load();
+    });
+  }
+
+  var formEl = document.getElementById('f-entries');
+  if (formEl && typeof formEl.addEventListener === 'function') formEl.addEventListener('submit', function(e) {
     e.preventDefault();
+    if (debTimer && typeof clearTimeout === 'function') clearTimeout(debTimer);
+    curOffset = 0;
     load();
   });
-  await Promise.all([mountOnboarding(document.getElementById('onb-slot'), forceOnb, load), load()]);
+  await Promise.all([mountOnboarding(document.getElementById('onb-slot'), forceOnb, function() { curOffset = 0; return load(); }), load()]);
 }
 
 async function renderEntryDetail() {
   if (!entryId) { renderEntries(); return; }
-  root.innerHTML = '<div id="detail-status" class="cl-hint">Loading note...</div>';
+  root.innerHTML = '<div id="detail-status" class="app-grid" aria-busy="true"><span class="cl-sr-only" role="status">Loading note...</span>' + skelCards(2, 4) + '</div>';
   try {
     var d = await api('/me/entries/' + encodeURIComponent(entryId));
     var e = d.entry || d;
     var artifactsHtml = (d.artifacts || []).length
       ? '<ul class="app-grid">' + d.artifacts.map(function(a) {
-          return '<li><code>' + esc(a.name) + '</code> · ' + esc(a.kind) + ' · ' + esc(a.size) + ' bytes · <code>' + esc(String(a.sha256).slice(0, 12)) + '</code></li>';
+          return '<li><code>' + esc(a.name) + '</code> · ' + esc(a.kind) + ' · ' + esc(formatBytes(a.size)) + ' · <code>' + esc(String(a.sha256).slice(0, 12)) + '</code></li>';
         }).join('') + '</ul>'
       : '<p class="cl-hint">No artifacts attached.</p>';
     var linksHtml = (d.links || []).length
       ? '<ul class="app-grid">' + d.links.map(function(l) {
           var other = l.src === e.id ? l.dst : l.src;
           var dir = l.src === e.id ? '->' : '<-';
-          return '<li><code>' + esc(l.type) + '</code> ' + dir + ' <a class="cl-link" href="/entries/' + encodeURIComponent(other) + '">' + esc(other) + '</a></li>';
+          var titlePart = l.title ? esc(l.title) + ' <span class="cl-mono cl-muted">(' + esc(other) + ')</span>' : esc(other);
+          return '<li><code>' + esc(l.type) + '</code> ' + dir + ' <a class="cl-link" href="/entries/' + encodeURIComponent(other) + '">' + titlePart + '</a></li>';
         }).join('') + '</ul>'
       : '<p class="cl-hint">No linked notes.</p>';
     var prov = d.provenance;
     var provHtml = prov
       ? '<div class="cl-prov"><span class="cl-prov__who">' + esc(prov.agent) + '</span> on ' + esc(prov.device) +
-        (prov.repo ? ' · repo ' + esc(prov.repo) : '') + (prov.cwd ? ' · ' + esc(prov.cwd) : '') + ' · ' + esc(String(prov.created_at || '').slice(0, 19)) + '</div>'
+        (prov.repo ? ' · repo ' + esc(prov.repo) : '') + (prov.cwd ? ' · ' + esc(prov.cwd) : '') + (prov.created_at ? ' · ' + formatTime(prov.created_at) : '') + '</div>'
       : '<p class="cl-hint">No provenance recorded.</p>';
     var histHtml = (d.confidence_history || []).length
-      ? '<div class="app-table-wrap"><table class="app-table"><thead><tr><th>When</th><th>Before</th><th>After</th><th>Reason</th></tr></thead><tbody>' +
+      ? '<div class="app-table-wrap" tabindex="0"><table class="app-table"><thead><tr><th>When</th><th>Before</th><th>After</th><th>Reason</th></tr></thead><tbody>' +
         d.confidence_history.map(function(h) {
-          return '<tr><td>' + esc(String(h.at || '').slice(0, 19)) + '</td><td>' + esc(h.before) + '</td><td>' + esc(h.after) + '</td><td>' + esc(h.reason || '') + '</td></tr>';
+          return '<tr><td>' + formatTime(h.at) + '</td><td>' + esc(confText(h.before)) + '</td><td>' + esc(confText(h.after)) + '</td><td>' + esc(h.reason || '') + '</td></tr>';
         }).join('') + '</tbody></table></div>'
       : '<p class="cl-hint">No confidence changes yet.</p>';
 
@@ -1177,6 +1522,10 @@ async function renderEntryDetail() {
 
     var crumbTitle = String(e.title || e.id || 'Note');
     if (crumbTitle.length > 64) crumbTitle = crumbTitle.slice(0, 63) + '…';
+    var badgeState = stateBadge({ superseded_by: d.superseded_by || e.superseded_by, confidence: e.confidence });
+    var sensBadge = e.sensitivity === 'confidential'
+      ? '<span class="cl-chip cl-chip--bad">Confidential</span>'
+      : (e.sensitivity === 'private' ? '<span class="cl-chip cl-chip--warn">Private</span>' : '');
 
     root.innerHTML =
       '<div class="app-crumb-bar">' +
@@ -1187,7 +1536,7 @@ async function renderEntryDetail() {
         '<div class="app-actions"><a class="cl-btn cl-btn--sm" href="/graph?center=' + encodeURIComponent(e.id) + '">Open in graph</a></div>' +
       '</div>' +
       '<article class="cl-card app-grid">' +
-        '<div class="app-meta"><span class="cl-chip">' + esc(e.pattern || e.kind) + '</span>' + stateBadge(d) +
+        '<div class="app-meta"><span class="cl-chip">' + esc(e.pattern || e.kind) + '</span>' + badgeState + sensBadge +
         (e.project ? '<span class="cl-chip cl-chip--carbon">' + esc(e.project) + '</span>' : '') +
         (d.superseded_by ? '<a class="cl-chip cl-chip--warn" href="/entries/' + encodeURIComponent(d.superseded_by) + '">Replaced by ' + esc(d.superseded_by) + '</a>' : '') +
         '<span class="cl-memory__conf">Confidence ' + confText(e.confidence) + '</span></div>' +
@@ -1197,17 +1546,17 @@ async function renderEntryDetail() {
         provHtml +
       '</article>' +
       '<section class="app-cols-2">' +
-        '<div class="cl-card app-grid"><h3 class="cl-title-3">Artifacts</h3>' + artifactsHtml + '</div>' +
-        '<div class="cl-card app-grid"><h3 class="cl-title-3">Links</h3>' + linksHtml + '</div>' +
+        '<div class="cl-card app-grid"><h2 class="cl-title-3">Artifacts</h2>' + artifactsHtml + '</div>' +
+        '<div class="cl-card app-grid"><h2 class="cl-title-3">Links</h2>' + linksHtml + '</div>' +
       '</section>' +
-      '<section class="cl-card app-grid"><h3 class="cl-title-3">Confidence history</h3>' + histHtml + '</section>' +
+      '<section class="cl-card app-grid"><h2 class="cl-title-3">Confidence history</h2>' + histHtml + '</section>' +
       '<section class="app-grid">' +
-        '<h3 class="cl-title-3">Manage this note via MCP</h3>' +
+        '<h2 class="cl-title-3">Manage this note via MCP</h2>' +
         '<div class="app-cols-2">' +
-          mcpCard('Replace or update this note', 'Write a replacement note with supersedes so history stays intact.', 'remember', replacePrompt, true) +
-          mcpCard('Link another note to this one', 'Connect decisions, evidence, or follow-ups in the graph.', 'remember', linkPrompt, false) +
+          mcpCard('Replace or update this note', 'Write a replacement note with supersedes so history stays intact.', 'remember', replacePrompt, true, 'Copy prompt', 'h3') +
+          mcpCard('Link another note to this one', 'Connect decisions, evidence, or follow-ups in the graph.', 'remember', linkPrompt, false, 'Copy prompt', 'h3') +
         '</div>' +
-        mcpCard('Load full note and artifacts in chat', 'Pull this exact note and its attached files into Claude or Antigravity.', 'get_entry + get_blob', inspectPrompt, false) +
+        mcpCard('Load full note and artifacts in chat', 'Pull this exact note and its attached files into Claude or Antigravity.', 'get_entry + get_blob', inspectPrompt, false, 'Copy prompt', 'h3') +
       '</section>';
   } catch (err) {
     if (isAuthFlowErr(err)) return;
@@ -1218,13 +1567,16 @@ async function renderEntryDetail() {
 async function renderGraph() {
   var sp = new URLSearchParams(location.search);
   var EDGE_TYPES = ['relates', 'supports', 'contradicts', 'supersedes', 'part_of', 'derived_from', 'co_used'];
+  var PATTERN_LIST = ['decisions', 'projects', 'preferences', 'observations', 'references', 'recommendations', 'reactions', 'other'];
   var activeEdges = {};
   EDGE_TYPES.forEach(function(t) { activeEdges[t] = true; });
+  var rawDepth = sp.get('depth') || '2';
   var state = {
     center: sp.get('center') || '',
-    depth: sp.get('depth') || '2',
-    pattern: '',
-    showPruned: false,
+    depth: ['1', '2', '3'].indexOf(rawDepth) >= 0 ? rawDepth : '2',
+    pattern: sp.get('pattern') || '',
+    showPruned: sp.get('pruned') === '1',
+    viewMode: sp.get('view') === 'list' ? 'list' : 'graph',
     data: null,
     pos: {},
     deg: {},
@@ -1232,47 +1584,96 @@ async function renderGraph() {
     hovered: null,
     viewBox: { x: 0, y: 0, w: 960, h: 580 }
   };
+  var graphSeq = 0;
+  var searchSeq = 0;
+
+  var legendHtml =
+    '<div class="gr-legend" aria-label="Node pattern legend">' +
+      '<span class="cl-label">Nodes</span>' +
+      PATTERN_LIST.map(function(p) {
+        return '<span class="gr-leg-item"><span class="gr-leg-dot gr-leg-dot--' + p + '"></span>' + p + '</span>';
+      }).join('') +
+      '<span class="gr-leg-item"><span class="gr-leg-dot gr-leg-dot--center"></span>center</span>' +
+      '<span class="gr-leg-item"><span class="gr-leg-dot gr-leg-dot--dormant"></span>pruned</span>' +
+    '</div>';
 
   root.innerHTML =
     '<section class="cl-card gr-toolbar">' +
       '<div class="gr-toolbar-top">' +
         '<div class="cl-field gr-search-wrap"><label for="g-search">Find or jump to note</label>' +
-          '<input id="g-search" class="cl-input" autocomplete="off" placeholder="Search by title or id...">' +
-          '<div id="g-results" class="gr-results is-hidden"></div>' +
+          '<input id="g-search" class="cl-input" autocomplete="off" placeholder="Search by title or id..." role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="g-results">' +
+          '<div id="g-results" class="gr-results is-hidden" role="listbox"></div>' +
         '</div>' +
         '<div class="cl-field"><label for="g-depth">Depth</label><select id="g-depth" class="cl-select"><option value="1">1 hop</option><option value="2">2 hops</option><option value="3">3 hops</option></select></div>' +
         '<div class="cl-field"><label for="g-pattern">Pattern</label><select id="g-pattern" class="cl-select"><option value="">All patterns</option><option value="decisions">decisions</option><option value="projects">projects</option><option value="preferences">preferences</option><option value="observations">observations</option><option value="references">references</option><option value="recommendations">recommendations</option><option value="reactions">reactions</option></select></div>' +
-        '<label class="gr-chip-btn is-on" for="g-pruned"><input id="g-pruned" type="checkbox"> Show pruned</label>' +
+        '<label id="g-pruned-lbl" class="gr-chip-btn' + (state.showPruned ? ' is-on' : '') + '" for="g-pruned"><input id="g-pruned" type="checkbox"' + (state.showPruned ? ' checked' : '') + '> Show pruned</label>' +
+        '<div class="gr-view-toggle" role="group" aria-label="View mode">' +
+          '<button type="button" class="cl-btn cl-btn--sm" id="g-mode-graph" aria-pressed="' + (state.viewMode === 'graph' ? 'true' : 'false') + '">Graph</button>' +
+          '<button type="button" class="cl-btn cl-btn--sm" id="g-mode-list" aria-pressed="' + (state.viewMode === 'list' ? 'true' : 'false') + '">List</button>' +
+        '</div>' +
       '</div>' +
       '<div class="gr-filters" id="g-edge-filters">' +
         '<span class="cl-label">Links</span>' +
         EDGE_TYPES.map(function(t) {
-          return '<button type="button" class="gr-chip-btn is-on" data-edge-type="' + t + '"><span class="gr-dot gr-dot--' + t + '"></span>' + t + '</button>';
+          return '<button type="button" class="gr-chip-btn is-on" data-edge-type="' + t + '" aria-pressed="true"><span class="gr-dot gr-dot--' + t + '"></span>' + t + '</button>';
         }).join('') +
       '</div>' +
+      legendHtml +
     '</section>' +
     '<div id="g-status" class="cl-hint" role="status" aria-live="polite">Loading graph...</div>' +
     '<div class="gr-shell">' +
       '<div class="gr-wrap" id="g-canvas-wrap">' +
-        '<div class="gr-zoom">' +
+        '<div id="g-zoom" class="gr-zoom' + (state.viewMode === 'list' ? ' is-hidden' : '') + '">' +
           '<button type="button" class="cl-btn cl-btn--sm" id="g-zin" aria-label="Zoom in">+</button>' +
           '<button type="button" class="cl-btn cl-btn--sm" id="g-zout" aria-label="Zoom out">-</button>' +
           '<button type="button" class="cl-btn cl-btn--sm" id="g-fit">Fit</button>' +
         '</div>' +
-        '<div id="g-canvas"></div>' +
+        '<div id="g-canvas" aria-busy="true"><div class="gr-skel app-grid">' + skelCards(3, 3) + '</div></div>' +
       '</div>' +
-      '<aside class="cl-card gr-inspector" id="g-inspector"><p class="cl-hint">Select a node to inspect its full text, links, and MCP prompt.</p></aside>' +
+      '<aside class="cl-card gr-inspector" id="g-inspector" aria-label="Selected note details"><p class="cl-hint">Select a note to inspect its full text, links, and MCP prompt.</p></aside>' +
     '</div>';
 
   var depthEl = document.getElementById('g-depth');
   depthEl.value = state.depth;
   var patEl = document.getElementById('g-pattern');
+  patEl.value = state.pattern;
   var prunedEl = document.getElementById('g-pruned');
+  prunedEl.checked = state.showPruned;
+  var prunedLbl = document.getElementById('g-pruned-lbl');
   var searchEl = document.getElementById('g-search');
   var resultsEl = document.getElementById('g-results');
+  var modeGraphEl = document.getElementById('g-mode-graph');
+  var modeListEl = document.getElementById('g-mode-list');
+  var zoomWrapEl = document.getElementById('g-zoom');
+
+  function syncGraphUrl() {
+    var qs = new URLSearchParams();
+    if (state.center) qs.set('center', state.center);
+    if (state.depth && state.depth !== '2') qs.set('depth', state.depth);
+    if (state.pattern) qs.set('pattern', state.pattern);
+    if (state.showPruned) qs.set('pruned', '1');
+    if (state.viewMode === 'list') qs.set('view', 'list');
+    var s = qs.toString();
+    replaceUrl('/graph' + (s ? '?' + s : ''));
+  }
+
+  function setSearchExpanded(open) {
+    if (searchEl && typeof searchEl.setAttribute === 'function') {
+      searchEl.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    if (resultsEl && resultsEl.classList) {
+      resultsEl.classList.toggle('is-hidden', !open);
+    }
+  }
+
+  function setPressed(el, pressed) {
+    if (el && typeof el.setAttribute === 'function') {
+      el.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+    }
+  }
 
   function visibleGraph() {
-    if (!state.data) return { nodes: [], edges: [], adj: {} };
+    if (!state.data) return { nodes: [], edges: [], adj: {}, byId: {} };
     var nodes = state.data.nodes.filter(function(n) {
       if (!state.showPruned && Number(n.confidence) < 0.15 && n.id !== state.data.center) return false;
       if (state.pattern && (n.pattern || n.kind) !== state.pattern && n.id !== state.data.center) return false;
@@ -1372,6 +1773,10 @@ async function renderGraph() {
       if (p.x > maxX) maxX = p.x;
       if (p.y > maxY) maxY = p.y;
     });
+    if (minX === Infinity) {
+      state.viewBox = { x: 0, y: 0, w: 960, h: 580 };
+      return;
+    }
     var pad = 75;
     var w = Math.max(320, (maxX - minX) + pad * 2);
     var h = Math.max(210, (maxY - minY) + pad * 2);
@@ -1386,8 +1791,13 @@ async function renderGraph() {
     };
   }
 
-  function renderInspector(vg) {
+  function renderInspector(vg, focusTitle) {
     var box = document.getElementById('g-inspector');
+    if (!box) return;
+    if (!state.data) {
+      box.innerHTML = '<p class="cl-hint">Select a note to inspect its full text, links, and MCP prompt.</p>';
+      return;
+    }
     var n = vg.byId[state.selected] || vg.byId[state.data && state.data.center] || vg.nodes[0];
     if (!n) {
       box.innerHTML = '<p class="cl-hint">No visible nodes match these filters.</p>';
@@ -1403,33 +1813,38 @@ async function renderGraph() {
         }).join('') + '</div>'
       : '<p class="cl-hint">No visible links on this node.</p>';
     var mcpPrompt = 'In Clyde, call get_entry with id "' + n.id + '", or link a new note to it via remember with links: [{"type": "relates", "to": "' + n.id + '"}].';
+    var titleText = n.title || n.id;
     box.innerHTML =
       '<div class="app-meta">' +
         '<span class="cl-chip">' + esc(n.pattern || n.kind) + '</span>' +
         (n.project ? '<span class="cl-chip cl-chip--carbon">' + esc(n.project) + '</span>' : '') +
         '<span class="cl-memory__conf">' + confText(n.confidence) + '</span>' +
       '</div>' +
-      '<h3>' + esc(n.title || n.id) + '</h3>' +
+      '<h2 id="g-ins-title" class="cl-title-3" tabindex="-1">' + esc(titleText) + '</h2>' +
       (n.body ? '<p class="gr-ins-body">' + esc(n.body) + '</p>' : '') +
       '<div class="app-actions">' +
-        (n.id !== state.data.center ? '<button type="button" class="cl-btn cl-btn--primary cl-btn--sm" id="g-recenter">Re-center here</button>' : '') +
+        (n.id !== (state.data && state.data.center) ? '<button type="button" class="cl-btn cl-btn--primary cl-btn--sm" id="g-recenter">Re-center here</button>' : '') +
         '<a class="cl-btn cl-btn--sm" href="/entries/' + encodeURIComponent(n.id) + '">Open full note</a>' +
-        '<button type="button" class="cl-btn cl-btn--sm" data-copy="' + esc(mcpPrompt) + '">Copy MCP prompt</button>' +
+        '<button type="button" class="cl-btn cl-btn--sm" data-copy="' + esc(mcpPrompt) + '" aria-label="' + esc('Copy MCP prompt for ' + titleText) + '">Copy MCP prompt</button>' +
       '</div>' +
       '<div><span class="cl-label">Connected notes (' + links.length + ')</span>' + linksHtml + '</div>';
 
     var rec = document.getElementById('g-recenter');
     if (rec) rec.addEventListener('click', function() {
       state.center = n.id;
-      history.replaceState(null, '', '/graph?center=' + encodeURIComponent(n.id) + '&depth=' + encodeURIComponent(state.depth));
+      syncGraphUrl();
       load();
     });
     box.querySelectorAll('[data-pick]').forEach(function(btn) {
       btn.addEventListener('click', function() {
         state.selected = btn.getAttribute('data-pick');
-        draw();
+        updateSelection(visibleGraph(), true);
       });
     });
+    if (focusTitle) {
+      var h2 = document.getElementById('g-ins-title');
+      if (h2 && typeof h2.focus === 'function') h2.focus({ preventScroll: true });
+    }
   }
 
   function applySpotlight(svg, vg) {
@@ -1452,17 +1867,110 @@ async function renderGraph() {
     });
   }
 
+  function syncLabels(svg, vg) {
+    var zoomedIn = state.viewBox.w < 720;
+    var nodeCount = vg.nodes.length;
+    svg.querySelectorAll('.gr-node').forEach(function(el) {
+      var id = el.getAttribute('data-node');
+      var deg = (vg.adj[id] || []).length;
+      var isCenter = state.data && id === state.data.center;
+      var isSel = id === state.selected;
+      var showLbl = isCenter || isSel || zoomedIn || nodeCount <= 28 || deg >= 4;
+      if (el.classList) el.classList.toggle('is-label-hide', !showLbl);
+    });
+  }
+
+  function updateViewBox() {
+    if (!state.data) return;
+    var svg = document.getElementById('g-svg');
+    if (!svg || typeof svg.setAttribute !== 'function') return;
+    var vb = state.viewBox;
+    svg.setAttribute('viewBox', vb.x.toFixed(1) + ' ' + vb.y.toFixed(1) + ' ' + vb.w.toFixed(1) + ' ' + vb.h.toFixed(1));
+    syncLabels(svg, visibleGraph());
+  }
+
+  function updateSelection(vg, focusInspector) {
+    if (!state.data) return;
+    renderInspector(vg, focusInspector);
+    var svg = document.getElementById('g-svg');
+    if (svg) {
+      svg.querySelectorAll('.gr-node').forEach(function(el) {
+        var id = el.getAttribute('data-node');
+        if (el.classList) el.classList.toggle('is-selected', id === state.selected);
+      });
+      syncLabels(svg, vg);
+    }
+    var listEl = document.getElementById('g-list');
+    if (listEl) {
+      listEl.querySelectorAll('[data-list-node]').forEach(function(row) {
+        var id = row.getAttribute('data-list-node');
+        if (row.classList) row.classList.toggle('is-selected', id === state.selected);
+        var btn = row.querySelector ? row.querySelector('[data-pick-list]') : null;
+        if (btn && typeof btn.setAttribute === 'function') btn.setAttribute('aria-current', id === state.selected ? 'true' : 'false');
+      });
+    }
+  }
+
+  function zoomBy(factor) {
+    if (!state.data || state.viewMode !== 'graph') return;
+    var cx = state.viewBox.x + state.viewBox.w / 2;
+    var cy = state.viewBox.y + state.viewBox.h / 2;
+    var nw = Math.max(180, Math.min(4800, state.viewBox.w * factor));
+    var nh = nw * (580 / 960);
+    state.viewBox = { x: cx - nw / 2, y: cy - nh / 2, w: nw, h: nh };
+    updateViewBox();
+  }
+
   function draw() {
+    if (!state.data) return;
     var vg = visibleGraph();
     var canvas = document.getElementById('g-canvas');
     var st = document.getElementById('g-status');
+    setBusyAttr(canvas, false);
+    if (zoomWrapEl && zoomWrapEl.classList) {
+      zoomWrapEl.classList.toggle('is-hidden', state.viewMode === 'list' || !vg.nodes.length);
+    }
     var total = state.data ? (state.data.total_notes || state.data.nodes.length) : 0;
-    st.textContent = vg.nodes.length + ' of ' + total + (total === 1 ? ' note, ' : ' notes, ') + vg.edges.length + (vg.edges.length === 1 ? ' link' : ' links') +
-      (state.data && state.data.nodes.length >= 300 ? ' (300-node cap)' : '') + ' · Drag background to pan, scroll to zoom, drag any node to rearrange.';
+    if (st) {
+      st.textContent = vg.nodes.length + ' of ' + total + (total === 1 ? ' note, ' : ' notes, ') + vg.edges.length + (vg.edges.length === 1 ? ' link' : ' links') +
+        (state.data && state.data.nodes.length >= 300 ? ' (300-node cap)' : '') +
+        (state.viewMode === 'list' ? ' · Select a note to inspect it.' : ' · Drag background to pan, scroll to zoom, or use arrow keys on the graph.');
+    }
 
     if (!vg.nodes.length) {
       canvas.innerHTML = '<div class="cl-empty"><p class="cl-empty__title">No notes in the graph yet</p><p class="cl-empty__text">Once your agents save notes over MCP, they appear here.</p></div>';
-      renderInspector(vg);
+      renderInspector(vg, false);
+      return;
+    }
+
+    renderInspector(vg, false);
+
+    if (state.viewMode === 'list') {
+      var sorted = vg.nodes.slice().sort(function(a, b) {
+        if (a.id === state.data.center) return -1;
+        if (b.id === state.data.center) return 1;
+        return ((vg.adj[b.id] || []).length - (vg.adj[a.id] || []).length) || String(a.title || a.id).localeCompare(String(b.title || b.id));
+      });
+      canvas.innerHTML = '<div id="g-list" class="gr-list">' + sorted.map(function(n) {
+        var isCenter = n.id === state.data.center;
+        var isSel = n.id === state.selected;
+        var deg = (vg.adj[n.id] || []).length;
+        return '<div class="gr-list-row' + (isSel ? ' is-selected' : '') + '" data-list-node="' + esc(n.id) + '">' +
+          '<button type="button" class="gr-list-btn" data-pick-list="' + esc(n.id) + '"' + (isSel ? ' aria-current="true"' : '') + '>' + esc(n.title || n.id) + '</button>' +
+          '<div class="app-meta">' +
+            (isCenter ? '<span class="cl-chip cl-chip--carbon">Center</span>' : '') +
+            '<span class="cl-chip">' + esc(n.pattern || n.kind) + '</span>' +
+            '<span class="cl-chip">' + deg + (deg === 1 ? ' link' : ' links') + '</span>' +
+            '<span class="cl-memory__conf">' + confText(n.confidence) + '</span>' +
+          '</div>' +
+        '</div>';
+      }).join('') + '</div>';
+      canvas.querySelectorAll('[data-pick-list]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          state.selected = btn.getAttribute('data-pick-list');
+          updateSelection(visibleGraph(), false);
+        });
+      });
       return;
     }
 
@@ -1495,10 +2003,11 @@ async function renderGraph() {
 
     var vb = state.viewBox;
     canvas.innerHTML =
-      '<svg class="gr-svg" id="g-svg" viewBox="' + vb.x.toFixed(1) + ' ' + vb.y.toFixed(1) + ' ' + vb.w.toFixed(1) + ' ' + vb.h.toFixed(1) +
-      '" role="group" aria-label="Note neighborhood graph"><title>Note neighborhood graph</title>' + edgesSvg + nodesSvg + '</svg>';
+      '<svg class="gr-svg" id="g-svg" tabindex="0" viewBox="' + vb.x.toFixed(1) + ' ' + vb.y.toFixed(1) + ' ' + vb.w.toFixed(1) + ' ' + vb.h.toFixed(1) +
+      '" role="group" aria-label="Note neighborhood graph" aria-describedby="g-svg-desc"><title>Note neighborhood graph</title><desc id="g-svg-desc">Use arrow keys to pan, plus and minus to zoom, 0 to fit.</desc>' + edgesSvg + nodesSvg + '</svg>';
 
     var svg = document.getElementById('g-svg');
+    if (!svg || typeof svg.addEventListener !== 'function') return;
     var dragNode = null, panning = false, startPt = null, startVb = null, moved = false;
 
     function toSvgPoint(ev) {
@@ -1509,31 +2018,53 @@ async function renderGraph() {
       };
     }
 
-    function setVb() {
-      svg.setAttribute('viewBox', state.viewBox.x.toFixed(1) + ' ' + state.viewBox.y.toFixed(1) + ' ' + state.viewBox.w.toFixed(1) + ' ' + state.viewBox.h.toFixed(1));
+    function endPointer(ev, applyClick) {
+      if (svg.hasPointerCapture && ev && ev.pointerId != null) {
+        try { if (svg.hasPointerCapture(ev.pointerId)) svg.releasePointerCapture(ev.pointerId); } catch (e) {}
+      }
+      if (applyClick && dragNode && !moved) {
+        state.selected = dragNode;
+        updateSelection(visibleGraph(), false);
+      }
+      dragNode = null;
+      panning = false;
+      startPt = null;
+      startVb = null;
+      if (svg.classList) svg.classList.remove('is-panning');
     }
 
     svg.addEventListener('pointerdown', function(ev) {
+      if (ev.button !== undefined && ev.button !== 0) return;
       var g = ev.target && ev.target.closest ? ev.target.closest('.gr-node') : null;
       moved = false;
+      startPt = { x: ev.clientX, y: ev.clientY };
       if (g) {
         dragNode = g.getAttribute('data-node');
-        svg.setPointerCapture(ev.pointerId);
+        if (typeof svg.setPointerCapture === 'function') {
+          try { svg.setPointerCapture(ev.pointerId); } catch (e) {}
+        }
       } else {
         panning = true;
-        startPt = { x: ev.clientX, y: ev.clientY };
         startVb = { x: state.viewBox.x, y: state.viewBox.y, w: state.viewBox.w, h: state.viewBox.h };
-        svg.classList.add('is-panning');
-        svg.setPointerCapture(ev.pointerId);
+        if (svg.classList) svg.classList.add('is-panning');
+        if (typeof svg.setPointerCapture === 'function') {
+          try { svg.setPointerCapture(ev.pointerId); } catch (e) {}
+        }
       }
     });
 
     svg.addEventListener('pointermove', function(ev) {
-      if (dragNode) {
+      if (!startPt) return;
+      if (!moved) {
+        var pxDist = Math.hypot(ev.clientX - startPt.x, ev.clientY - startPt.y);
+        if (pxDist < 4) return;
         moved = true;
+      }
+      if (dragNode) {
         var pt = toSvgPoint(ev);
         state.pos[dragNode] = { x: pt.x, y: pt.y };
-        var g = svg.querySelector('.gr-node[data-node="' + CSS.escape(dragNode) + '"]');
+        var safeNode = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(dragNode) : dragNode.replace(/"/g, '\\"');
+        var g = svg.querySelector('.gr-node[data-node="' + safeNode + '"]');
         if (g) {
           var hit = g.querySelector('.gr-hit'), c = g.querySelector('.gr-vis'), tx = g.querySelector('text');
           var r = Number((c && c.getAttribute('r')) || 7);
@@ -1551,26 +2082,18 @@ async function renderGraph() {
             line.setAttribute('y2', pt.y.toFixed(1));
           }
         });
-      } else if (panning && startPt && startVb) {
+      } else if (panning && startVb) {
         var rect = svg.getBoundingClientRect();
         var dx = ((ev.clientX - startPt.x) / rect.width) * startVb.w;
         var dy = ((ev.clientY - startPt.y) / rect.height) * startVb.h;
-        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) moved = true;
         state.viewBox.x = startVb.x - dx;
         state.viewBox.y = startVb.y - dy;
-        setVb();
+        updateViewBox();
       }
     });
 
-    svg.addEventListener('pointerup', function(ev) {
-      if (dragNode && !moved) {
-        state.selected = dragNode;
-        draw();
-      }
-      dragNode = null;
-      panning = false;
-      svg.classList.remove('is-panning');
-    });
+    svg.addEventListener('pointerup', function(ev) { endPointer(ev, true); });
+    svg.addEventListener('pointercancel', function(ev) { endPointer(ev, false); });
 
     svg.addEventListener('wheel', function(ev) {
       ev.preventDefault();
@@ -1582,8 +2105,19 @@ async function renderGraph() {
       state.viewBox.y = pt.y - (pt.y - state.viewBox.y) * (nh / state.viewBox.h);
       state.viewBox.w = nw;
       state.viewBox.h = nh;
-      setVb();
+      updateViewBox();
     }, { passive: false });
+
+    svg.addEventListener('keydown', function(ev) {
+      if (ev.target !== svg) return;
+      if (ev.key === 'ArrowLeft') { ev.preventDefault(); state.viewBox.x -= state.viewBox.w * 0.1; updateViewBox(); }
+      else if (ev.key === 'ArrowRight') { ev.preventDefault(); state.viewBox.x += state.viewBox.w * 0.1; updateViewBox(); }
+      else if (ev.key === 'ArrowUp') { ev.preventDefault(); state.viewBox.y -= state.viewBox.h * 0.1; updateViewBox(); }
+      else if (ev.key === 'ArrowDown') { ev.preventDefault(); state.viewBox.y += state.viewBox.h * 0.1; updateViewBox(); }
+      else if (ev.key === '+' || ev.key === '=') { ev.preventDefault(); zoomBy(0.78); }
+      else if (ev.key === '-' || ev.key === '_') { ev.preventDefault(); zoomBy(1.28); }
+      else if (ev.key === '0') { ev.preventDefault(); if (state.data) { fitView(visibleGraph().nodes); updateViewBox(); } }
+    });
 
     svg.querySelectorAll('.gr-node').forEach(function(el) {
       el.addEventListener('pointerenter', function() {
@@ -1594,97 +2128,212 @@ async function renderGraph() {
         state.hovered = null;
         applySpotlight(svg, vg);
       });
+      el.addEventListener('focus', function() {
+        state.hovered = el.getAttribute('data-node');
+        applySpotlight(svg, vg);
+      });
+      el.addEventListener('blur', function() {
+        if (state.hovered === el.getAttribute('data-node')) {
+          state.hovered = null;
+          applySpotlight(svg, vg);
+        }
+      });
       el.addEventListener('keydown', function(ev) {
         if (ev.key === 'Enter' || ev.key === ' ') {
           ev.preventDefault();
           state.selected = el.getAttribute('data-node');
-          draw();
+          updateSelection(visibleGraph(), false);
         }
       });
     });
-
-    renderInspector(vg);
   }
 
   async function load() {
+    var reqId = ++graphSeq;
+    var canvas = document.getElementById('g-canvas');
+    var st = document.getElementById('g-status');
+    setBusyAttr(canvas, true);
+    if (canvas) canvas.innerHTML = '<div class="gr-skel app-grid">' + skelCards(3, 3) + '</div>';
+    if (st) st.textContent = 'Loading graph...';
+    if (zoomWrapEl && zoomWrapEl.classList) zoomWrapEl.classList.add('is-hidden');
     var qs = new URLSearchParams();
     if (state.center) qs.set('center', state.center);
     qs.set('depth', state.depth || '2');
     try {
-      state.data = await api('/me/graph?' + qs.toString());
-      state.selected = state.data.center;
-      runLayout(state.data.nodes || [], state.data.edges || [], state.data.center);
+      var data = await api('/me/graph?' + qs.toString());
+      if (reqId !== graphSeq) return;
+      state.data = data;
+      state.selected = data.center;
+      runLayout(data.nodes || [], data.edges || [], data.center);
       draw();
     } catch (err) {
-      if (isAuthFlowErr(err)) return;
-      var st = document.getElementById('g-status');
+      if (isAuthFlowErr(err) || reqId !== graphSeq) return;
+      state.data = null;
+      setBusyAttr(canvas, false);
       if (st) st.textContent = "Couldn't load graph.";
-      renderRetryError(document.getElementById('g-canvas'), err.message, load);
+      renderRetryError(canvas, err.message, load);
+      if (state.center && canvas && typeof canvas.querySelector === 'function') {
+        var acts = canvas.querySelector('.app-actions');
+        if (acts) {
+          acts.insertAdjacentHTML('beforeend', '<a class="cl-btn cl-btn--sm" href="/graph">Open default graph</a>');
+        }
+      }
+      renderInspector(visibleGraph(), false);
     }
   }
 
-  depthEl.addEventListener('change', function() { state.depth = depthEl.value; load(); });
-  patEl.addEventListener('change', function() { state.pattern = patEl.value; draw(); });
-  prunedEl.addEventListener('change', function() { state.showPruned = prunedEl.checked; draw(); });
+  depthEl.addEventListener('change', function() {
+    state.depth = depthEl.value;
+    syncGraphUrl();
+    load();
+  });
+  patEl.addEventListener('change', function() {
+    state.pattern = patEl.value;
+    syncGraphUrl();
+    if (state.data) draw();
+  });
+  prunedEl.addEventListener('change', function() {
+    state.showPruned = prunedEl.checked;
+    if (prunedLbl && prunedLbl.classList) prunedLbl.classList.toggle('is-on', state.showPruned);
+    syncGraphUrl();
+    if (state.data) draw();
+  });
+  function setViewMode(mode) {
+    state.viewMode = mode;
+    setPressed(modeGraphEl, mode === 'graph');
+    setPressed(modeListEl, mode === 'list');
+    syncGraphUrl();
+    if (state.data) draw();
+  }
+  if (modeGraphEl) modeGraphEl.addEventListener('click', function() { setViewMode('graph'); });
+  if (modeListEl) modeListEl.addEventListener('click', function() { setViewMode('list'); });
+
   document.querySelectorAll('[data-edge-type]').forEach(function(btn) {
     btn.addEventListener('click', function() {
       var t = btn.getAttribute('data-edge-type');
       activeEdges[t] = !activeEdges[t];
-      btn.classList.toggle('is-on', activeEdges[t]);
-      draw();
+      if (btn.classList) btn.classList.toggle('is-on', activeEdges[t]);
+      setPressed(btn, activeEdges[t]);
+      if (state.data) draw();
     });
   });
 
-  function zoomBy(factor) {
-    var cx = state.viewBox.x + state.viewBox.w / 2;
-    var cy = state.viewBox.y + state.viewBox.h / 2;
-    var nw = Math.max(180, Math.min(4800, state.viewBox.w * factor));
-    var nh = nw * (580 / 960);
-    state.viewBox = { x: cx - nw / 2, y: cy - nh / 2, w: nw, h: nh };
-    draw();
-  }
   document.getElementById('g-zin').addEventListener('click', function() { zoomBy(0.78); });
   document.getElementById('g-zout').addEventListener('click', function() { zoomBy(1.28); });
   document.getElementById('g-fit').addEventListener('click', function() {
+    if (!state.data || state.viewMode !== 'graph') return;
     fitView(visibleGraph().nodes);
-    draw();
+    updateViewBox();
   });
 
   var searchTimer = null;
   searchEl.addEventListener('input', function() {
     clearTimeout(searchTimer);
     var q = searchEl.value.trim();
-    if (!q) { resultsEl.classList.add('is-hidden'); resultsEl.innerHTML = ''; return; }
+    if (!q) {
+      ++searchSeq;
+      resultsEl.innerHTML = '';
+      setSearchExpanded(false);
+      return;
+    }
     searchTimer = setTimeout(async function() {
+      var reqId = ++searchSeq;
       try {
-        var d = await api('/me/entries?q=' + encodeURIComponent(q) + '&state=all');
+        var d = await api('/me/entries?q=' + encodeURIComponent(q) + '&state=all&limit=8');
+        if (reqId !== searchSeq) return;
         var hits = (d.entries || []).slice(0, 8);
         if (!hits.length) {
-          resultsEl.innerHTML = '<div class="gr-res-btn"><span>No matching notes</span></div>';
+          resultsEl.innerHTML = '<div class="gr-res-btn" role="option" aria-disabled="true"><span>No matching notes</span></div>';
         } else {
           resultsEl.innerHTML = hits.map(function(n) {
-            return '<button type="button" class="gr-res-btn" data-jump="' + esc(n.id) + '"><span>' + esc(n.title || n.id) + '</span>' +
+            return '<button type="button" class="gr-res-btn" role="option" tabindex="-1" data-jump="' + esc(n.id) + '"><span>' + esc(n.title || n.id) + '</span>' +
               '<span class="gr-res-meta">' + esc(n.pattern || n.kind) + ' · ' + confText(n.confidence) + '</span></button>';
           }).join('');
         }
-        resultsEl.classList.remove('is-hidden');
+        setSearchExpanded(true);
         resultsEl.querySelectorAll('[data-jump]').forEach(function(btn) {
           btn.addEventListener('click', function() {
             state.center = btn.getAttribute('data-jump');
             searchEl.value = '';
-            resultsEl.classList.add('is-hidden');
-            history.replaceState(null, '', '/graph?center=' + encodeURIComponent(state.center) + '&depth=' + encodeURIComponent(state.depth));
+            setSearchExpanded(false);
+            syncGraphUrl();
             load();
           });
         });
-      } catch (e) {}
+      } catch (e) {
+        if (isAuthFlowErr(e) || reqId !== searchSeq) return;
+        resultsEl.innerHTML = '<div class="gr-res-btn" role="alert">' + "<span>Couldn't search notes. Try typing again.</span>" + '</div>';
+        setSearchExpanded(true);
+      }
     }, 180);
   });
+
+  searchEl.addEventListener('keydown', function(ev) {
+    if (ev.key === 'Escape') {
+      setSearchExpanded(false);
+      return;
+    }
+    if (ev.key === 'ArrowDown') {
+      var first = resultsEl.querySelector ? resultsEl.querySelector('[data-jump]') : null;
+      if (first && typeof first.focus === 'function') {
+        ev.preventDefault();
+        setSearchExpanded(true);
+        first.focus();
+      }
+    }
+  });
+
+  resultsEl.addEventListener('keydown', function(ev) {
+    var opts = Array.prototype.slice.call(resultsEl.querySelectorAll('[data-jump]'));
+    var idx = opts.indexOf(document.activeElement);
+    if (ev.key === 'Escape') {
+      ev.preventDefault();
+      setSearchExpanded(false);
+      if (typeof searchEl.focus === 'function') searchEl.focus();
+    } else if (ev.key === 'ArrowDown' && opts.length) {
+      ev.preventDefault();
+      var next = opts[(idx + 1) % opts.length];
+      if (next && typeof next.focus === 'function') next.focus();
+    } else if (ev.key === 'ArrowUp' && opts.length) {
+      ev.preventDefault();
+      if (idx <= 0) {
+        if (typeof searchEl.focus === 'function') searchEl.focus();
+      } else {
+        var prev = opts[idx - 1];
+        if (prev && typeof prev.focus === 'function') prev.focus();
+      }
+    } else if (ev.key === 'Home' && opts.length) {
+      ev.preventDefault();
+      if (typeof opts[0].focus === 'function') opts[0].focus();
+    } else if (ev.key === 'End' && opts.length) {
+      ev.preventDefault();
+      var last = opts[opts.length - 1];
+      if (typeof last.focus === 'function') last.focus();
+    }
+  });
+
   if (document.addEventListener) document.addEventListener('click', function(ev) {
-    if (!searchEl.contains(ev.target) && !resultsEl.contains(ev.target)) resultsEl.classList.add('is-hidden');
+    if (!searchEl.contains(ev.target) && !resultsEl.contains(ev.target)) setSearchExpanded(false);
   });
 
   await load();
+}
+
+function questEvidenceText(ev) {
+  if (!ev) return '';
+  if (typeof ev === 'string') return ev;
+  if (Array.isArray(ev)) return ev.map(questEvidenceText).filter(Boolean).join(', ');
+  if (typeof ev === 'object') {
+    var vals = [];
+    if (ev.summary) vals.push(String(ev.summary));
+    if (ev.note) vals.push(String(ev.note));
+    if (ev.entry_id) vals.push('note ' + String(ev.entry_id));
+    if (ev.note_id) vals.push('note ' + String(ev.note_id));
+    if (ev.url) vals.push(String(ev.url));
+    if (vals.length) return vals.join(' · ');
+    return JSON.stringify(ev);
+  }
+  return String(ev);
 }
 
 async function renderQuests() {
@@ -1694,12 +2343,14 @@ async function renderQuests() {
       'Agents post, claim, update, and finish quests over MCP so every handoff keeps its evidence.',
       'post_quest',
       'Call Clyde post_quest with title "<short task>", brief "<what to do and why>", done_when "<check that proves completion>", priority "normal", context "both".',
-      true
+      true,
+      undefined,
+      'h2'
     ) +
     '<div id="q-board" class="app-cols-3">' +
-      '<section class="app-qcol"><div class="app-qcol-head"><h2 class="cl-title-3">Open</h2><span class="cl-chip" id="cnt-open">0</span></div><div id="col-open" class="app-grid"></div></section>' +
-      '<section class="app-qcol"><div class="app-qcol-head"><h2 class="cl-title-3">Claimed</h2><span class="cl-chip" id="cnt-claimed">0</span></div><div id="col-claimed" class="app-grid"></div></section>' +
-      '<section class="app-qcol"><div class="app-qcol-head"><h2 class="cl-title-3">Done</h2><span class="cl-chip" id="cnt-done">0</span></div><div id="col-done" class="app-grid"></div></section>' +
+      '<section class="app-qcol"><div class="app-qcol-head"><h2 class="cl-title-3">Open</h2><span class="cl-chip" id="cnt-open">0</span></div><div id="col-open" class="app-grid" aria-busy="true">' + skelCards(2, 3) + '</div></section>' +
+      '<section class="app-qcol"><div class="app-qcol-head"><h2 class="cl-title-3">Claimed</h2><span class="cl-chip" id="cnt-claimed">0</span></div><div id="col-claimed" class="app-grid" aria-busy="true">' + skelCards(2, 3) + '</div></section>' +
+      '<section class="app-qcol"><div class="app-qcol-head"><h2 class="cl-title-3">Done</h2><span class="cl-chip" id="cnt-done">0</span></div><div id="col-done" class="app-grid" aria-busy="true">' + skelCards(2, 3) + '</div></section>' +
     '</div>';
 
   try {
@@ -1716,31 +2367,45 @@ async function renderQuests() {
       else groups.done.push(q);
     });
     ['open', 'claimed', 'done'].forEach(function(col) {
-      document.getElementById('cnt-' + col).textContent = String(groups[col].length);
+      var cntEl = document.getElementById('cnt-' + col);
       var el = document.getElementById('col-' + col);
+      if (cntEl) cntEl.textContent = String(groups[col].length);
+      if (!el) return;
+      setBusyAttr(el, false);
       el.innerHTML = groups[col].length ? groups[col].map(function(q) {
         var claimant = q.claimed_by ? (nickByAgent[q.claimed_by] || q.claimed_by) : '';
         var claimPrompt = 'Call Clyde claim_quest with id ' + q.id + ', complete the task, save the result with remember, then call complete_quest.';
+        var stampCls = col === 'open' ? 'cl-stamp--carbon' : col === 'claimed' ? 'cl-stamp--warn' : q.state === 'done' ? 'cl-stamp--ok' : 'cl-stamp--bad';
+        var tagsHtml = (Array.isArray(q.tags) && q.tags.length)
+          ? '<div class="app-meta">' + q.tags.map(function(t) { return '<span class="cl-chip">' + esc(t) + '</span>'; }).join('') + '</div>'
+          : '';
+        var evText = questEvidenceText(q.evidence);
         return '<article class="cl-quest' + (col === 'done' ? ' is-done' : '') + '">' +
           '<div class="cl-quest__stub"><span class="cl-quest__no">#' + esc(q.id) + '</span><span class="cl-quest__pri' + (['urgent', 'high'].includes(q.priority) ? ' is-high' : '') + '">' + esc(q.priority) + '</span></div>' +
           '<div class="cl-quest__main">' +
             '<div class="cl-quest__head"><h3 class="cl-quest__title">' + esc(q.title) + '</h3>' +
             (q.unmatched ? '<span class="cl-chip cl-chip--warn">No matching agent</span>' : '') +
-            '<span class="cl-stamp">' + esc(q.state) + '</span></div>' +
+            '<span class="cl-stamp ' + stampCls + '">' + esc(q.state) + '</span></div>' +
             '<p class="cl-quest__brief">' + esc(q.brief) + '</p>' +
             '<div class="cl-quest__done"><strong>Done when:</strong> ' + esc(q.done_when) + '</div>' +
+            (evText ? '<div class="cl-quest__done"><strong>Evidence:</strong> ' + esc(evText) + '</div>' : '') +
+            tagsHtml +
             '<div class="cl-quest__for">' +
               (claimant ? 'Claimed by <b>' + esc(claimant) + '</b>' : 'For <b>' + esc(q.assignee || 'any') + '</b>') +
               (q.project ? ' · ' + esc(q.project) : '') +
+              (col === 'claimed' && q.lease_until ? ' · Lease until ' + formatTime(q.lease_until) : '') +
+              (col === 'done' && q.closed_at ? ' · Closed ' + formatTime(q.closed_at) : '') +
             '</div>' +
-            (col === 'open' ? '<div class="app-actions"><button type="button" class="cl-btn cl-btn--sm" data-copy="' + esc(claimPrompt) + '">Copy claim prompt</button></div>' : '') +
+            (col === 'open' ? '<div class="app-actions"><button type="button" class="cl-btn cl-btn--sm" data-copy="' + esc(claimPrompt) + '" aria-label="' + esc('Copy claim prompt for quest #' + q.id + ': ' + q.title) + '">Copy claim prompt</button></div>' : '') +
           '</div>' +
         '</article>';
       }).join('') : '<p class="cl-hint">No ' + col + ' quests.</p>';
     });
   } catch (err) {
     if (isAuthFlowErr(err)) return;
-    renderRetryError(document.getElementById('q-board') || root, err.message, renderQuests);
+    var qb = document.getElementById('q-board');
+    if (qb) qb.className = 'app-grid';
+    renderRetryError(qb || root, err.message, renderQuests);
   }
 }
 
@@ -1749,39 +2414,57 @@ async function renderAgents() {
   var connectMode = sp.get('connect') === '1';
   root.innerHTML =
     '<div id="ag-onb" class="app-grid"></div>' +
-    '<section class="app-grid"><h2 class="cl-title-2">Registered agents</h2><div id="ag-list" class="app-grid"></div></section>' +
-    '<section class="app-grid"><h2 class="cl-title-2">Connected devices</h2><div id="dev-list" class="app-grid"></div></section>';
+    '<section class="app-grid"><h2 class="cl-title-2">Registered agents</h2><div id="ag-list" class="app-grid" aria-busy="true">' + skelCards(2, 2) + '</div></section>' +
+    '<section class="app-grid"><h2 class="cl-title-2">Connected devices</h2><div id="dev-list" class="app-grid" aria-busy="true">' + skelCards(2, 1) + '</div></section>';
 
-  try {
-    var results = await Promise.all([
-      mountOnboarding(document.getElementById('ag-onb'), connectMode),
-      api('/me/agents'),
-      api('/me/devices')
-    ]);
-    var agents = results[1].agents || [], devices = results[2].devices || [];
-    document.getElementById('ag-list').innerHTML = agents.length ? agents.map(function(a) {
+  function paintAgentsAndDevices(agents, devices) {
+    var agList = document.getElementById('ag-list');
+    var devList = document.getElementById('dev-list');
+    if (!agList || !devList) return;
+    setBusyAttr(agList, false);
+    setBusyAttr(devList, false);
+    agList.innerHTML = agents.length ? agents.map(function(a) {
       var updatePrompt = 'Call Clyde register_agent with name "' + a.name + '", context "' + (a.context || 'both') + '", surface "' + (a.surface || 'Antigravity') +
         '", description "' + (a.description || 'Coding and ops agent') + '", and update my nickname, type, harness, or repos as needed.';
       return '<article class="cl-card agent-card">' +
         '<div class="app-meta"><strong>' + esc(a.name) + '</strong>' +
         (a.nickname ? '<span class="cl-chip cl-chip--carbon">@' + esc(a.nickname) + '</span>' : '') +
         (a.type ? '<span class="cl-chip">' + esc(a.type) + '</span>' : '') +
+        (a.context ? '<span class="cl-chip">Context: ' + esc(a.context) + '</span>' : '') +
         (a.surface ? '<span class="cl-chip">' + esc(a.surface) + '</span>' : '') +
         (a.harness && (!a.surface || a.harness.toLowerCase() !== a.surface.toLowerCase()) ? '<span class="cl-chip">' + esc(a.harness) + '</span>' : '') +
         (a.device ? '<span class="cl-chip">Device: ' + esc(a.device) + '</span>' : '') +
+        (a.computer ? '<span class="cl-chip">Host: ' + esc(a.computer) + '</span>' : '') +
+        (a.last_seen ? '<span class="cl-chip">Seen ' + formatTime(a.last_seen) + '</span>' : '') +
         '</div>' +
         (a.description ? '<p class="cl-hint">' + esc(a.description) + '</p>' : '') +
         ((a.repos && a.repos.length) ? '<div class="app-meta"><span class="cl-label">Repos</span>' + a.repos.map(function(r) { return '<span class="cl-chip">' + esc(r) + '</span>'; }).join('') + '</div>' : '') +
-        '<div class="app-actions"><button type="button" class="cl-btn cl-btn--sm" data-copy="' + esc(updatePrompt) + '">Copy MCP update prompt</button></div>' +
+        '<div class="app-actions"><button type="button" class="cl-btn cl-btn--sm" data-copy="' + esc(updatePrompt) + '" aria-label="' + esc('Copy MCP update prompt for ' + a.name) + '">Copy MCP update prompt</button></div>' +
       '</article>';
     }).join('') : '<p class="cl-hint">No agents registered yet. Follow Step 1 above to connect Claude or Antigravity.</p>';
 
-    document.getElementById('dev-list').innerHTML = devices.length ? devices.map(function(dv) {
+    devList.innerHTML = devices.length ? devices.map(function(dv) {
       return '<div class="cl-card app-actions"><strong>' + esc(dv.name) + '</strong>' +
         '<span class="cl-chip">Hooks: ' + esc(dv.hooks || 'full') + '</span>' +
+        (dv.client_version ? '<span class="cl-chip">v' + esc(dv.client_version) + '</span>' : '') +
+        (dv.last_seen ? '<span class="cl-chip">Seen ' + formatTime(dv.last_seen) + '</span>' : '') +
         (dv.revoked_at ? '<span class="cl-chip cl-chip--bad">Revoked</span>' : '<span class="cl-state cl-state--settled">Active</span>') +
       '</div>';
     }).join('') : '<p class="cl-hint">No connected devices yet. Run the installer on a computer to add one.</p>';
+  }
+
+  async function refreshLists() {
+    var listRes = await Promise.all([api('/me/agents'), api('/me/devices')]);
+    paintAgentsAndDevices(listRes[0].agents || [], listRes[1].devices || []);
+  }
+
+  try {
+    var results = await Promise.all([
+      mountOnboarding(document.getElementById('ag-onb'), connectMode, refreshLists),
+      api('/me/agents'),
+      api('/me/devices')
+    ]);
+    paintAgentsAndDevices(results[1].agents || [], results[2].devices || []);
   } catch (err) {
     if (isAuthFlowErr(err)) return;
     renderRetryError(root, err.message, renderAgents);
@@ -1790,25 +2473,31 @@ async function renderAgents() {
 
 async function renderApps() {
   root.innerHTML =
-    '<div id="apps-list" class="app-grid"></div>' +
+    '<div id="apps-list" class="app-grid" aria-busy="true">' + skelCards(2, 2) + '</div>' +
     mcpCard(
       'Connect another app',
       'Add Clyde as a custom MCP connector in Claude, ChatGPT, Gemini, Grok, or Antigravity using this URL.',
       'MCP server URL',
       MCP_ENDPOINT,
       false,
-      'Copy URL'
+      'Copy URL',
+      'h2'
     );
   try {
     var d = await api('/me/apps');
     var list = d.apps || [];
-    document.getElementById('apps-list').innerHTML = list.length ? list.map(function(a) {
+    var box = document.getElementById('apps-list');
+    if (!box) return;
+    setBusyAttr(box, false);
+    box.innerHTML = list.length ? list.map(function(a) {
       return '<div class="cl-card app-actions"><div><strong>' + esc(a.name || a.id) + '</strong> <span class="cl-mono">(' + esc(a.id) + ')</span></div>' +
         '<span class="cl-state cl-state--settled">Connected</span></div>';
     }).join('') : '<div class="cl-empty"><p class="cl-empty__title">No connected apps</p><p class="cl-empty__text">Approve Clyde inside Claude, ChatGPT, Gemini, Grok, or Antigravity to see OAuth grants here.</p></div>';
   } catch (err) {
     if (isAuthFlowErr(err)) return;
-    renderRetryError(document.getElementById('apps-list'), err.message, renderApps);
+    var errBox = document.getElementById('apps-list');
+    setBusyAttr(errBox, false);
+    renderRetryError(errBox || root, err.message, renderApps);
   }
 }
 
@@ -1838,11 +2527,18 @@ function formatMeterVal(kind, val) {
 }
 
 async function renderUsage() {
-  root.innerHTML = '<div id="u-summary" class="cl-card app-grid"></div><div id="u-meters" class="meter-list"></div>';
+  root.innerHTML =
+    '<div id="u-summary" class="cl-card app-grid" aria-busy="true">' + skelCards(1, 2) + '</div>' +
+    '<div id="u-meters" class="meter-list" aria-busy="true">' + skelCards(3, 2) + '</div>';
   var PLAN_NAME = { free: 'Free', starter: 'Starter', clyde: 'Clyde', partner: 'Partner', owner: 'Owner', none: 'None' };
   var STATE_NAME = { paid: 'Paid', past_due: 'Past due', comp: 'Comp', lapsed: 'Lapsed', refunded: 'Refunded', blocked: 'Blocked' };
   try {
     var d = await api('/me/usage');
+    var sumEl = document.getElementById('u-summary');
+    var metEl = document.getElementById('u-meters');
+    if (!sumEl || !metEl) return;
+    setBusyAttr(sumEl, false);
+    setBusyAttr(metEl, false);
     var limitDollars = d.spend_limit_cents == null ? 0 : (Number(d.spend_limit_cents) / 100);
     var statusText = d.state === 'paid' && d.cancel_at_period_end
       ? 'Canceling at period end'
@@ -1854,14 +2550,14 @@ async function renderUsage() {
       : d.overage
       ? '<span class="cl-chip">Spend limit: $' + limitDollars.toFixed(2) + '</span>'
       : '<span class="cl-chip">Caps: hard limits (no overage)</span>';
-    document.getElementById('u-summary').innerHTML =
+    sumEl.innerHTML =
       '<div class="app-meta"><span class="cl-chip cl-chip--carbon">Plan: ' + esc(PLAN_NAME[d.plan] || d.plan) + '</span>' +
       '<span class="cl-chip">Status: ' + esc(statusText) + '</span>' +
       '<span class="cl-chip">Period: ' + esc(d.period) + '</span>' +
       capChip +
       '</div>';
 
-    document.getElementById('u-meters').innerHTML = (d.meters || []).map(function(m) {
+    metEl.innerHTML = (d.meters || []).map(function(m) {
       var inc = m.included == null ? 0 : Number(m.included);
       var used = Number(m.used || 0);
       var unMeteredCap = inc === 0 && (m.kind === 'egress_bytes' || m.kind === 'db_bytes');
@@ -1939,16 +2635,20 @@ async function start() {
       var red = await api('/me/invite/redeem', { method: 'POST', body: JSON.stringify({ code: pendingInvite }) });
       savePendingInvite('');
       if (red && red.unlimited) {
+        INV_BANNER_KIND = 'ok';
         INV_BANNER_MSG = 'Partner pass active (' + (red.label || 'Partner') + '): unlimited notes, files, recalls, and connected agents, plus the quest board.';
       }
       if (sp0.has('invite') || sp0.has('code')) {
         sp0.delete('invite');
         sp0.delete('code');
         var cleanQs = sp0.toString();
-        history.replaceState(null, '', location.pathname + (cleanQs ? '?' + cleanQs : ''));
+        replaceUrl(location.pathname + (cleanQs ? '?' + cleanQs : ''));
       }
     } catch (e) {
       savePendingInvite('');
+      if (isAuthFlowErr(e)) return;
+      INV_BANNER_KIND = 'bad';
+      INV_BANNER_MSG = (e && e.message) ? ("Couldn't apply invite code: " + e.message) : "Couldn't apply invite code. Open your invite link again or contact support.";
     }
   }
   if (view === 'entries') return renderEntries();
@@ -1992,7 +2692,7 @@ export function appPage(path, nonce) {
 
   const spec = PAGE_SPEC[view];
   const nav = APP_ROUTES.map(([href, label]) => {
-    const active = (view === "entry" && href === "/memories") || path === href;
+    const active = ((view === "entries" || view === "entry") && href === "/memories") || path === href;
     return `<a class="cl-nav__item${active ? " is-current" : ""}" href="${href}"${active ? ' aria-current="page"' : ""}>${label}</a>`;
   }).join("");
 
@@ -2002,7 +2702,7 @@ export function appPage(path, nonce) {
 
   const headActs = view === "invite" || view === "callback"
     ? ""
-    : `<div class="app-head-acts"><a class="cl-btn cl-btn--primary cl-btn--sm" href="/agents?connect=1">Connect new agent</a><a class="cl-btn cl-btn--sm" href="/agents">View agents</a></div>`;
+    : `<div class="app-head-acts"><a class="cl-btn cl-btn--primary cl-btn--sm" href="/agents?connect=1">Connect new agent</a>${view === "agents" ? "" : '<a class="cl-btn cl-btn--sm" href="/agents">View agents</a>'}</div>`;
 
   const main = `<main id="main" tabindex="-1" class="wrap app-wrap">` +
     `<div class="app-head"><div><span class="cl-label">${view === "invite" ? "Clyde invite" : "Clyde workspace"}</span><h1 class="cl-title-1">${esc(spec.heading)}</h1>` +

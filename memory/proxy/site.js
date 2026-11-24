@@ -18,6 +18,7 @@ const BASE_CSS = `
 .bar .acts{display:flex;align-items:center;gap:10px}
 @media (max-width:480px){.bar .acts{gap:8px}.bar .acts .cl-btn{padding:0 10px;font-size:13px}}
 .topnav{margin-left:auto}
+.topnav a[aria-current="page"],.foot nav a[aria-current="page"]{color:var(--cl-ink);font-weight:650}
 @media (max-width:860px){.bar .acts .cl-btn--ghost{display:none}}
 .mascot-caption{padding:11px 14px;max-width:220px;font:var(--cl-text-mono);font-size:11.5px;line-height:1.45}
 .foot .legal{max-width:90ch}
@@ -57,7 +58,7 @@ const SITE_HOME_CSS = `
 .plans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;max-width:1120px;margin-bottom:24px;align-items:start}
 @media (max-width:920px){.plans{grid-template-columns:minmax(0,1fr)}}
 .plan{display:grid;gap:18px;align-content:start;padding:28px}
-.plan.pick{border-color:var(--cl-ink);box-shadow:var(--cl-copy-2)}
+.plan.pick{border-color:var(--cl-carbon);background-clip:padding-box;box-shadow:var(--cl-copy-2)}
 .price{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
 .price b{font:760 52px/1 var(--cl-font-display);letter-spacing:-.04em}
 .price span{color:var(--cl-ink-3);font:var(--cl-text-small)}
@@ -96,7 +97,7 @@ const DOC_CSS = `
 .note{padding:16px 20px;max-width:640px}.note p{font:var(--cl-text-body)}
 .toc{display:flex;gap:6px 18px;flex-wrap:wrap;font:var(--cl-text-mono);font-size:12.5px}
 .toc a,.related a{display:inline-flex;align-items:center;min-height:24px}
-@media (max-width:720px),(pointer:coarse){.toc a,.related a{min-height:40px;padding:6px 4px}}
+@media (max-width:720px),(pointer:coarse){.toc a,.related a{min-height:44px;padding:6px 4px}}
 .tools{display:grid;margin:0;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-lg);background:var(--cl-paper-1);overflow:hidden}
 .tools div{display:grid;grid-template-columns:minmax(0,180px) minmax(0,1fr);gap:4px 16px;padding:11px 16px;border-top:1px dashed var(--cl-rule)}
 .tools div:first-child{border-top:0}
@@ -121,12 +122,13 @@ const FAQ_CSS = `
 
 const ARROW_SVG = `<svg class="doodle-arrow" viewBox="0 0 120 36" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 20 C36 14 72 23 108 17"/><path d="M95 8 C102 12 108 15 113 17 C107 21 101 25 96 30"/></svg>`;
 
-const header = `<header class="bar wrap"><a class="logo" href="/" aria-label="clyde home">${LOGO()}</a>
-<nav class="topnav" aria-label="Primary"><a href="/docs">Docs</a><a href="/how-it-works">How it works</a><a href="/guides">Guides</a><a href="/faq">FAQ</a></nav>
+const navA = (href, label, cur) => `<a href="${href}"${cur === href ? ' aria-current="page"' : ""}>${label}</a>`;
+const headerFor = (path) => `<header class="bar wrap"><a class="logo" href="/" aria-label="clyde home">${LOGO()}</a>
+<nav class="topnav" aria-label="Primary">${navA("/docs", "Docs", path)}${navA("/how-it-works", "How it works", path)}${navA("/guides", "Guides", path)}${navA("/faq", "FAQ", path)}</nav>
 <span class="acts"><a class="cl-btn acts-signin" href="/memories">Sign in</a><a class="cl-btn cl-btn--primary" href="${CONNECT}">Get Clyde</a></span></header>`;
 
-const footer = `<footer class="foot"><div class="wrap"><span class="brand">${MARK(22)}clyde · a boring memory system</span>
-<nav aria-label="Footer"><a href="/docs">Docs</a><a href="/how-it-works">How it works</a><a href="/guides">Guides</a><a href="/faq">FAQ</a><a href="mailto:${SUPPORT}">${SUPPORT}</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="${DESIGN_URL}">Design system</a></nav>
+const footerFor = (path) => `<footer class="foot"><div class="wrap"><span class="brand">${MARK(22)}clyde · a boring memory system</span>
+<nav aria-label="Footer">${navA("/docs", "Docs", path)}${navA("/how-it-works", "How it works", path)}${navA("/guides", "Guides", path)}${navA("/faq", "FAQ", path)}<a href="mailto:${SUPPORT}">${SUPPORT}</a>${navA("/privacy", "Privacy", path)}${navA("/terms", "Terms", path)}<a href="${DESIGN_URL}">Design system</a></nav>
 <span class="legal">${LEGAL}</span></div></footer>`;
 
 /** One page. A page with a description is indexed, gets its search tags, and is in the sitemap. */
@@ -145,10 +147,10 @@ const crumbs = (path) => ({ "@context": "https://schema.org", "@type": "Breadcru
     .map(([name, item], i) => ({ "@type": "ListItem", position: i + 1, name, item })) });
 const ld = (path, extra = []) => [...(path === "/" ? [SITE_LD, ORG_LD] : [crumbs(path)]), ...extra];
 
-const page = (nonce, { title, description, path, type = "website", css = "", main, status = 200, jsonld, script = "" }) => ({
+const page = (nonce, { title, description, path = "", type = "website", css = "", main, status = 200, jsonld, script = "" }) => ({
   status,
   html: shell({
-    nonce, title, css: BASE_CSS + css, body: `<a class="cl-skip" href="#main">Skip to content</a>${header}${main}${footer}`, script: COPY_JS + script, noindex: !description,
+    nonce, title, css: BASE_CSS + css, body: `<a class="cl-skip" href="#main">Skip to content</a>${headerFor(path)}${main}${footerFor(path)}`, script: COPY_JS + script, noindex: !description,
     seo: description ? { description, path, type, jsonld: ld(path, jsonld) } : null,
   }),
 });
@@ -225,7 +227,7 @@ const RECALL_CSS = `
 .rc-nav[hidden]{display:none}
 .rc-steps{display:flex;flex-wrap:wrap;gap:7px}
 .rc-pill{appearance:none;height:32px;padding:0 12px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-pill);background:var(--cl-paper-1);color:var(--cl-ink-2);font:600 12.5px/1 var(--cl-font-sans);cursor:pointer;touch-action:manipulation}
-@media (max-width:720px),(pointer:coarse){.rc-pill{min-height:40px;height:auto;padding:8px 12px}}
+@media (max-width:720px),(pointer:coarse){.rc-pill{min-height:44px;height:auto;padding:8px 12px}}
 .rc-pill:hover{border-color:var(--cl-ink-3);color:var(--cl-ink)}
 .rc-pill[aria-current="step"]{border-color:var(--cl-ink);background:var(--cl-sticky);color:var(--cl-ink);box-shadow:var(--cl-copy-1);transform:translate(-1px,-1px)}
 .rc-arrows{display:flex;align-items:center;gap:8px}
@@ -446,14 +448,14 @@ const BUILT = `<section class="wrap built" id="built"><div class="section"><span
 <p class="rc-foot"><a href="/how-it-works">How it works and the papers behind it</a> · <a href="/how-it-works#built">Numbers from building Clyde</a></p></div></section>`;
 // Walkthrough tabs plus prev and next. Without script, the slides still scroll and snap, and the controls stay hidden.
 const RECALL_JS = `(function(){var r=document.getElementById('rc');if(!r)return;var t=r.querySelector('.rc-track'),s=t.children,n=s.length,v=r.querySelector('.rc-nav'),` +
-  `c=v.querySelector('.rc-count'),p=v.querySelectorAll('[data-go]'),b=v.querySelectorAll('[data-dir]'),k=0,tm;function w(){return n>1?s[1].offsetLeft-s[0].offsetLeft:1}` +
+  `c=v.querySelector('.rc-count'),p=v.querySelectorAll('[data-go]'),b=v.querySelectorAll('[data-dir]'),k=0,tm,lk=0;function w(){return n>1?s[1].offsetLeft-s[0].offsetLeft:1}` +
   `function at(){return Math.max(0,Math.min(n-1,Math.round(t.scrollLeft/w())))}` +
   `function show(i){c.textContent=(i+1)+' / '+n;b[0].setAttribute('aria-disabled',i===0);b[1].setAttribute('aria-disabled',i===n-1);p.forEach(function(x,j){if(j===i)x.setAttribute('aria-current','step');else x.removeAttribute('aria-current')})}` +
-  `function to(i){k=Math.max(0,Math.min(n-1,i));show(k);t.scrollLeft=k*w()}` +
+  `function to(i){k=Math.max(0,Math.min(n-1,i));show(k);lk=1;clearTimeout(tm);t.scrollLeft=k*w();tm=setTimeout(function(){lk=0},650)}` +
   `b[0].addEventListener('click',function(){to(k-1)});b[1].addEventListener('click',function(){to(k+1)});` +
   `p.forEach(function(x){x.addEventListener('click',function(){to(Number(x.getAttribute('data-go')))})});` +
-  `t.addEventListener('keydown',function(e){if(e.key==='ArrowLeft'){e.preventDefault();to(k-1)}else if(e.key==='ArrowRight'){e.preventDefault();to(k+1)}});` +
-  `t.addEventListener('scroll',function(){clearTimeout(tm);tm=setTimeout(function(){k=at();show(k)},120)},{passive:true});v.hidden=false;show(0)})();`;
+  `t.addEventListener('keydown',function(e){if(e.key==='ArrowLeft'){e.preventDefault();to(k-1)}else if(e.key==='ArrowRight'){e.preventDefault();to(k+1)}else if(e.key==='Home'){e.preventDefault();to(0)}else if(e.key==='End'){e.preventDefault();to(n-1)}});` +
+  `t.addEventListener('scroll',function(){clearTimeout(tm);if(lk){tm=setTimeout(function(){lk=0;if(Math.abs(t.scrollLeft-k*w())>=4){k=at();show(k)}},180);return}tm=setTimeout(function(){k=at();show(k)},120)},{passive:true});v.hidden=false;show(0)})();`;
 
 // R73 (#78): real complaints about agents that forget, each paraphrased with a link to where it was posted, and what
 // Clyde does about it. Then two made-up ones in the same spirit. listing_check.py "complaint sources" checks every src.
@@ -484,6 +486,8 @@ const WALL_CSS = `
 .cm-q{padding:14px 16px;transform:rotate(-1deg)}.cm-wall>:nth-child(even) .cm-q{transform:rotate(1.2deg)}
 .cm-q p{margin:0 0 6px;font:var(--cl-text-body);color:var(--cl-ink)}
 .cm-q a,.cm-made{font:var(--cl-text-mono);font-size:11px;color:var(--cl-ink-3)}
+.cm-q a{display:inline-flex;align-items:center;min-height:24px}
+@media (max-width:720px),(pointer:coarse){.cm-q a{min-height:44px;padding:6px 0}}
 .clyde-says{padding:12px 14px;font:var(--cl-text-small);color:var(--cl-ink-2)}
 .clyde-says b{display:block;font:var(--cl-text-label);letter-spacing:.06em;text-transform:uppercase;color:var(--cl-carbon);margin-bottom:4px}
 `;
@@ -531,8 +535,8 @@ ${PICK.map(({ id }) => `#pick-${id}:checked~.pick-panels [data-pick="${id}"]`).j
 .end-cta{display:flex;justify-content:center;padding-block:32px 64px}
 `;
 const SETUP = `<section class="wrap" id="how"><div class="section"><span class="cl-label">Setup</span><h2 class="cl-title-1">Pick your app.</h2></div>
-<div class="pick" role="radiogroup" aria-label="App">${PICK.map(({ id }, i) => `<input class="pick-in" type="radio" name="pick" id="pick-${id}"${i ? "" : " checked"}>`).join("")}
-<div class="pick-tabs">${PICK.map(({ id, logo, name }) => `<label for="pick-${id}">${appLogo(logo, 20)}${name}</label>`).join("")}</div>
+<div class="pick">${PICK.map(({ id }, i) => `<input class="pick-in" type="radio" name="pick" id="pick-${id}"${i ? "" : " checked"}>`).join("")}
+<div class="pick-tabs" role="radiogroup" aria-label="App" aria-owns="${PICK.map(({ id }) => `pick-${id}`).join(" ")}">${PICK.map(({ id, logo, name }) => `<label for="pick-${id}">${appLogo(logo, 20)}${name}</label>`).join("")}</div>
 <div class="pick-panels">${PICK.map(({ id, body }) => `<div class="cl-card app pick-panel" data-pick="${id}">${body}</div>`).join("\n")}</div></div>
 <p class="pick-more">After connecting, <a href="/docs#hooks">set up hooks</a> where supported and <a href="/docs#instructions">paste the Clyde rule</a> into your app's instructions.</p>
 ${SOON_NOTE}</section>`;
@@ -573,9 +577,9 @@ const DOCS = `<main id="main" tabindex="-1" class="doc doc--wide wrap">${hero("D
   SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 230, 133), "")}
 <nav class="toc" aria-label="On this page"><a href="#agent-setup">Agent setup</a><a href="#hooks">Set up hooks</a><a href="#hook-configs">The hook configs</a><a href="#instructions">System instructions</a><a href="#support">Support</a></nav>
 <p><b>Coding apps, one command.</b> Claude Code, Codex, Gemini CLI, and Antigravity: run this, click the sign-in link, restart. It connects Clyde as <code>clyde</code>, removes old <code>memory</code> and <code>kb</code> entries, installs the hooks, and turns off each app's own memory. Rerun it any time. It changes nothing the second time.</p>
-${copyBox(INSTALL)}
+${copyBox(INSTALL, "Copy installer command")}
 <p><b>Register first, everywhere.</b> The first Clyde call in any app is <code>register_agent</code> (name, context, surface, description, computer, type, projects). In coding apps the hooks refuse every other tool until it happens.</p>
-${copyBox(MCP)}
+${copyBox(MCP, "Copy MCP server URL")}
 <div class="apps">${appCards()}</div>${SOON_NOTE}
 <h2 id="hooks">Set up hooks</h2>
 <p>The hooks are required, not optional. Rules ask nicely. Hooks don't. Without them your agent goes back to its own memory and forgets the rest. The installer wires them in Antigravity, Claude Code, Codex, and Gemini CLI, and each card above shows its app's exact config.</p>
@@ -585,14 +589,14 @@ ${copyBox(MCP)}
 <li><b>The gate (<code>PreToolUse</code>, <code>BeforeTool</code>, every tool).</b> While a registration or recall is owed, every tool but <code>register_agent</code>, <code>recall</code>, <code>recall_more</code>, and <code>ToolSearch</code> is refused, with the reason. A debt expires after 20 minutes, so an outage never locks a session. Writes to the app's own memory files (Claude Code's auto memory, Codex memories, Antigravity knowledge, Gemini's <code>save_memory</code>) are always refused.</li>
 <li><b>Subagent guard (<code>PreToolUse</code> on <code>invoke_subagent</code>).</b> Antigravity runs hooks inside subagents too, so the hook records spawned prompts and keeps subagents quiet and ungated.</li>
 <li><b>After MCP tool (<code>PostToolUse</code>, <code>AfterTool</code>).</b> Acts on Clyde's tools only. A <code>recall</code> pays the debt, a <code>register_agent</code> marks the app registered, and writes get tagged with your git repo and computer.</li>
-<li><b>Turn end (<code>Stop</code>, <code>AfterAgent</code>).</b> Every prompt asks the agent to save the decisions and results of the turn with <code>remember</code> before its final reply. Stop blocks a turn that ended without <code>remember</code>: the agent saves then and adds one line naming what it saved, without repeating its reply. With a device token, forwards the turn summary to <code>/hooks</code> so Clyde catches pushback on your next prompt.</li>
+<li><b>Turn end (<code>Stop</code>, <code>AfterAgent</code>).</b> Every prompt asks the agent to save the decisions and results of the turn with <code>remember</code> before its final reply. Stop blocks a turn that ended without <code>remember</code>: the agent saves and ends with one short line (<code>Saved to Clyde.</code>), without repeating its reply. With a device token, forwards the turn summary to <code>/hooks</code> so Clyde catches pushback on your next prompt.</li>
 <li><b>Fail open and work machines.</b> Always exits <code>0</code> under 3 seconds, and gates locally even with OAuth and no device token. Run <code>MEMORY_HOOKS=metadata ${INSTALL}</code> on work machines to send session IDs and folder names without prompt text.</li></ul>
 <h2 id="hook-configs">The hook configs</h2>
 <p>The installer (<code>${INSTALL}</code>) writes all of this. To do it by hand, install the shared hook script at <code>${HOOK_PATH}</code>, then merge each app's config. The script holds the nudge, the gate, and the memory-file guard. <code>${GATE_URL}</code> is a shim for settings that still name the old gate script.</p>
-${copyBox(HOOK_INSTALL)}
+${copyBox(HOOK_INSTALL, "Copy hook script install command")}
 <div class="hook-src">${copyPre(HOOK_PATH, CLYDE_HOOK_SH)}</div>
 <p>Wire that script into each hook-capable app on your machine:</p>
-<div class="tbl-wrap"><table><thead><tr><th>App</th><th>Global config</th><th>Workspace config</th><th>Reload or trust step</th></tr></thead><tbody>
+<div class="tbl-wrap" tabindex="0"><table><thead><tr><th>App</th><th>Global config</th><th>Workspace config</th><th>Reload or trust step</th></tr></thead><tbody>
 <tr><td>Antigravity</td><td><code>~/.gemini/config/hooks.json</code></td><td><code>.agents/hooks.json</code></td><td>Check <b>Customizations → Hooks</b> (or <code>/hooks</code> in Antigravity CLI).</td></tr>
 <tr><td>Claude Code</td><td><code>~/.claude/settings.json</code></td><td><code>.claude/settings.json</code></td><td>Restart Claude Code. In the marketplace plugin, set <code>hook_mode</code> to <code>full</code> or <code>metadata</code>. The same file sets <code>autoMemoryEnabled</code> to <code>false</code>.</td></tr>
 <tr><td>ChatGPT Work / Codex</td><td><code>~/.codex/hooks.json</code></td><td><code>.codex/hooks.json</code></td><td>In ChatGPT desktop, open <b>Settings → Coding → Hooks → User config</b> and click <b>Trust all</b> (or run <code>/hooks</code> once in Codex CLI). Turns off Codex memories under <code>[features]</code> and <code>[memories]</code> in <code>~/.codex/config.toml</code>.</td></tr>
@@ -611,7 +615,7 @@ ${copyPre("~/.gemini/extensions/clyde/hooks/hooks.json", GEMINI_HOOKS_JSON)}
 <p>The hooks do the enforcing. This rule is the backup: the installer adds it to <code>~/.claude/CLAUDE.md</code>, <code>~/.codex/AGENTS.md</code>, and <code>~/.gemini/GEMINI.md</code>. Web chat apps run no hooks, so there Clyde's server instructions carry it, and the rule is an optional extra.</p>
 ${copyPre("Clyde rule", CLYDE_RULE)}
 <p>Put that rule where each app stores persistent instructions:</p>
-<div class="tbl-wrap"><table><thead><tr><th>Platform</th><th>Where to add it</th><th>Notes</th></tr></thead><tbody>
+<div class="tbl-wrap" tabindex="0"><table><thead><tr><th>Platform</th><th>Where to add it</th><th>Notes</th></tr></thead><tbody>
 <tr><td>Claude</td><td><b>Settings → Profile → Personal preferences</b></td><td>Also works in a Project's instructions on web, desktop, Cowork, and mobile.</td></tr>
 <tr><td>Claude Code</td><td><code>~/.claude/CLAUDE.md</code> or <code>./CLAUDE.md</code></td><td>Backs up the <code>~/.claude/settings.json</code> hooks above.</td></tr>
 <tr><td>Codex</td><td><code>~/.codex/AGENTS.md</code> or <code>./AGENTS.md</code></td><td>Backs up <code>~/.codex/hooks.json</code> above.</td></tr>

@@ -1,7 +1,7 @@
 // What the agents did: sessions, hook events, recalls, feedback, the message board, the audit log and the recall playground.
 import {
   api, enc, getMeta, href, replaceHash, h, fill, entryLink, link, num, score, when, authority, verdict, badge, arm, armsRevealed, note, loading,
-  failed, pageHead, card, field, group, select, dl, json, table, listPage, flash, submit,
+  failed, pageHead, card, field, group, select, dl, json, table, listPage, flash, submit, copyButton, setAreaBusy,
 } from './lib.js';
 import { ID_RE } from './entries.js';
 
@@ -61,9 +61,19 @@ function timeline(items) {
       it.kind === 'recall' && link('Open recall', 'recall', it.id),
       it.kind === 'feedback' && it.retrieval_id && link('Open recall', 'recall', it.retrieval_id),
       it.entry_id && !opened && entryLink(it.entry_id),
-      (it.kind === 'event' || it.kind === 'get_entry') && h('button', { type: 'button', class: 'small', onclick: () => {
-        if (detail.firstChild) detail.replaceChildren(); else detail.replaceChildren(payloadView(it.id));
-      } }, 'Payload'),
+      (it.kind === 'event' || it.kind === 'get_entry') && (() => {
+        const btn = h('button', { type: 'button', class: 'small', 'aria-expanded': 'false' }, 'Payload');
+        btn.addEventListener('click', () => {
+          if (detail.firstChild) {
+            detail.replaceChildren();
+            btn.setAttribute('aria-expanded', 'false');
+          } else {
+            detail.replaceChildren(payloadView(it.id));
+            btn.setAttribute('aria-expanded', 'true');
+          }
+        });
+        return btn;
+      })(),
     ].filter(Boolean);
     return h('li', { class: `tl tl-${it.kind}` },
       h('div', { class: 'tl-head' }, when(it.at), badge(it.kind === 'get_entry' ? 'opened' : it.kind, KIND[it.kind] ?? ''), tlFacts(it)),
@@ -229,7 +239,7 @@ export async function recallView(root, id, message = '') {
       ])),
       card('Feedback', feedbackTable(d.feedback || []), h('h3', null, 'Add feedback'), feedbackForm(r.id ?? id, cands, refresh))),
     card('Packet the agent read', r.packet
-      ? h('div', { class: 'json-wrap' }, h('pre', { class: 'json' }, r.packet))
+      ? h('div', { class: 'json-wrap' }, copyButton(() => r.packet, 'Copy packet'), h('pre', { class: 'json', tabindex: 0 }, r.packet))
       : note('Recalls before this column existed did not store their packet.', 'empty')),
     card(`Ranked candidates (${num(cands.length)})`,
       cands.some((c) => c.superseded_by?.length)
@@ -283,7 +293,9 @@ export function messagesView(root) {
     field('To', to),
     field('Message', body, 'They see it at their next prompt or check. Reading here marks nothing read.'),
     h('div', { class: 'row' }, button, h('span', { class: 'muted small' }, 'Ctrl or Cmd and Enter posts.'), out));
-  body.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) form.requestSubmit(); });
+  body.addEventListener('keydown', (e) => {
+    if (!e.isComposing && e.keyCode !== 229 && e.key === 'Enter' && (e.metaKey || e.ctrlKey)) form.requestSubmit();
+  });
   // A reply goes to that agent alone, so it never lands in the other one's context.
   const reply = (m) => {
     to.value = m.sender;
@@ -369,7 +381,7 @@ function armColumn(a) {
       a.degraded ? badge(a.degraded, 'warn') : ''),
     h('p', { class: 'packet' }, h('span', { class: 'muted' }, `Packet (${packet.length}): `),
       packet.length ? packet.map((id) => entryLink(id, 'mono chip')) : muted('empty')),
-    a.text && h('details', { class: 'packet-text' }, h('summary', null, 'What the agent reads'), h('pre', { class: 'json' }, a.text)),
+    a.text && h('details', { class: 'packet-text' }, h('summary', null, 'What the agent reads'), h('pre', { class: 'json', tabindex: 0 }, a.text)),
     ranked.length ? h('ol', { class: 'ranked' }, ranked.map((r) => h('li', { class: r.in_packet ? 'hit' : '', 'data-id': r.id },
       h('span', { class: 'rank num' }, r.rank),
       h('div', { class: 'ranked-main' }, entryLink(r.id), r.in_packet ? [' ', badge('packet', 'accent')] : '',
@@ -391,29 +403,36 @@ export async function playgroundView(root, params) {
   const out = flash();
   const button = h('button', { type: 'submit', class: 'primary' }, 'Run');
   const results = h('div', { class: 'arms-grid' });
-  const form = h('form', { class: 'card form' },
+  const form = h('form', { class: 'card form', novalidate: true },
     h('div', { class: 'form-grid' }, field('Query', query), field('Task', task, 'Optional.')),
     group('Arms', arms),
     h('div', { class: 'row' }, button, h('span', { class: 'muted small' }, 'Previews every chosen arm. It writes no recall and no session.'), out));
 
-  // Hovering an entry in one arm marks it in every arm, so rank differences jump out.
-  results.addEventListener('mouseover', (e) => {
-    const id = e.target.closest('[data-id]')?.dataset.id;
+  // Hovering or focusing an entry in one arm marks it in every arm, so rank differences jump out.
+  const markSame = (id) => {
     for (const li of results.querySelectorAll('li.same')) li.classList.remove('same');
     if (id) for (const li of results.querySelectorAll(`li[data-id="${CSS.escape(id)}"]`)) li.classList.add('same');
+  };
+  results.addEventListener('mouseover', (e) => markSame(e.target.closest('[data-id]')?.dataset.id));
+  results.addEventListener('mouseleave', () => markSame(null));
+  results.addEventListener('focusin', (e) => markSame(e.target.closest('[data-id]')?.dataset.id));
+  results.addEventListener('focusout', (e) => {
+    if (!results.contains(e.relatedTarget)) markSame(null);
   });
-  results.addEventListener('mouseleave', () => { for (const li of results.querySelectorAll('li.same')) li.classList.remove('same'); });
 
+  let seq = 0;
   async function run() {
     const q = query.value.trim();
     const t = task.value.trim();
     const sel = [...form.querySelectorAll('[name=arms]:checked')].map((i) => i.value);
-    if (!q) { out.show('Type a query.', 'error'); return; }
-    if (!sel.length) { out.show('Pick at least one arm.', 'error'); return; }
+    if (!q) { out.show('Type a query.', 'error'); query.focus(); return; }
+    if (!sel.length) { out.show('Pick at least one arm.', 'error'); arms.querySelector('input')?.focus(); return; }
+    const my = ++seq;
     replaceHash('playground', { q, task: t, arms: sel.length === all.length ? '' : sel.join(',') });
-    if (results.firstChild) results.classList.add('busy'); else results.replaceChildren(loading());
+    if (results.firstChild) setAreaBusy(results, true); else results.replaceChildren(loading());
     const res = await submit(button, out, () => api('/recall/preview', { method: 'POST', body: { query: q, task: t || undefined, arms: sel } }));
-    results.classList.remove('busy');
+    if (my !== seq) return;
+    setAreaBusy(results, false);
     if (!res) { if (results.querySelector('.loading')) results.replaceChildren(); return; }
     const cols = res.arms || [];
     results.replaceChildren(...(cols.length ? cols.map(armColumn) : [note('No arm answered.', 'empty')]));

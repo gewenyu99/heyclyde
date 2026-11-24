@@ -655,3 +655,18 @@ Deno.test('keywords', async () => {
   const title = attr(home, /<title>([^<]*)<\/title>/g)[0].toLowerCase()
   for (const k of ['memory', 'message board', 'coordination']) assert.ok(title.includes(k), `the home title says ${k}`)
 })
+
+Deno.test('Phase B: docs inline code wrap, descriptive copyBox labels, aria-current, carousel keys, radiogroup, and agent CTA', async () => {
+  const docs = (await get('https://heyclyde.me/docs')).html
+  assert.ok(docs.includes('code{font-family:var(--cl-font-mono);font-size:.9em;overflow-wrap:anywhere}pre code{overflow-wrap:normal}'), '/docs wraps long inline code while keeping pre code scrollable')
+  assert.ok(docs.includes('<pre tabindex="0">') && docs.includes('<div class="tbl-wrap" tabindex="0">'), '/docs makes scrollable code and table blocks keyboard focusable')
+  assert.ok(docs.includes('aria-current="page"') && docs.includes('aria-label="Copy MCP server URL"') && docs.includes('aria-label="Copy installer command"'), '/docs marks active nav link and descriptive copy buttons')
+
+  const home = (await get('https://heyclyde.me/')).html
+  assert.ok(home.includes("e.key==='Home'") && home.includes("e.key==='End'"), 'carousel track supports Home and End keys')
+  assert.ok(home.includes('<div class="pick-tabs" role="radiogroup" aria-label="App"'), 'home app picker scopes radiogroup to tabs')
+  assert.ok(home.includes('aria-label="Copy Antigravity installer command"'), 'home app card copy box has descriptive aria-label')
+
+  const agents = (await get('https://heyclyde.me/agents')).html
+  assert.ok(agents.includes('href="/agents?connect=1">Connect new agent</a>') && !agents.includes('href="/agents">View agents</a>'), '/agents omits redundant View agents button')
+})

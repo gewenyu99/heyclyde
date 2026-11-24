@@ -48,23 +48,24 @@ img{max-width:100%}
 .foot nav a{display:inline-flex;align-items:center;min-height:24px;padding:4px 2px}
 .foot a{color:var(--cl-ink-2)}
 .foot .legal{flex-basis:100%;line-height:1.5}
-@media (max-width:720px),(pointer:coarse){.topnav a,.foot nav a{min-height:40px;padding:8px 6px}}
-code{font-family:var(--cl-font-mono);font-size:.9em}
+@media (max-width:720px),(pointer:coarse){.topnav a,.foot nav a{min-height:44px;padding:8px 6px}}
+code{font-family:var(--cl-font-mono);font-size:.9em;overflow-wrap:anywhere}pre code{overflow-wrap:normal}
 `;
 
 // R80: the sign-in form's Turnstile, password toggle, submit lock, provider double-click guard, and bfcache reset.
-const ASK_JS = `(function(){var f=document.getElementById('ask'),b=document.getElementById('send'),s=document.getElementById('human'),` +
+const ASK_JS = `(function(){var ae=document.getElementById('ask-error');if(ae&&typeof ae.focus==='function')ae.focus();` +
+  `var f=document.getElementById('ask'),b=document.getElementById('send'),s=document.getElementById('human'),` +
   `p=document.getElementById('password'),tp=document.getElementById('toggle-pw'),ok=!s,busy=false;` +
   `function label(){return p&&p.value.length>0?'Sign in':'Send sign-in link'}` +
   `function sync(){if(!b)return;if(!busy){b.disabled=!(ok||(p&&p.value.length>0));b.textContent=label();b.removeAttribute('aria-busy')}}` +
-  `window.clydeHuman=function(){ok=true;if(s)s.textContent='Ready.';sync()};` +
+  `window.clydeHuman=function(){ok=true;if(b)b.classList.remove('is-failed');if(s)s.textContent='Ready.';sync()};` +
   `window.clydeNotYet=function(){ok=false;if(s)s.textContent='Checking again\\u2026';sync()};` +
-  `window.clydeCheckFailed=function(){ok=false;if(s)s.textContent="The check didn't load. Reload the page, or turn off a blocker for challenges.cloudflare.com.";sync()};` +
+  `window.clydeCheckFailed=function(){ok=false;if(b)b.classList.add('is-failed');if(s)s.textContent="The check didn't load. Reload the page, or turn off a blocker for challenges.cloudflare.com.";sync()};` +
   `if(tp&&p)tp.addEventListener('click',function(){var show=p.type==='password';p.type=show?'text':'password';tp.textContent=show?'Hide':'Show';tp.setAttribute('aria-pressed',String(show));tp.setAttribute('aria-label',show?'Hide password':'Show password')});` +
   `if(p)p.addEventListener('input',sync);` +
   `if(f&&b)f.addEventListener('submit',function(e){if(busy||b.disabled){e.preventDefault();return}busy=true;setTimeout(function(){b.disabled=true;b.setAttribute('aria-busy','true');b.textContent=p&&p.value.length>0?'Signing in\\u2026':'Sending\\u2026'},0)});` +
-  `document.querySelectorAll('.cl-auth-providers a.cl-btn--provider').forEach(function(a){a.addEventListener('click',function(e){if(a.getAttribute('aria-busy')==='true'){e.preventDefault();return}a.setAttribute('aria-busy','true')})});` +
-  `window.addEventListener('pageshow',function(){busy=false;sync();document.querySelectorAll('.cl-auth-providers a.cl-btn--provider').forEach(function(a){a.removeAttribute('aria-busy')})});` +
+  `document.querySelectorAll('.cl-auth-providers a.cl-btn--provider').forEach(function(a){a.addEventListener('click',function(e){if(e.metaKey||e.ctrlKey||e.shiftKey||e.altKey||e.button!==0)return;if(a.getAttribute('aria-busy')==='true'){e.preventDefault();return}a.setAttribute('aria-busy','true')})});` +
+  `window.addEventListener('pageshow',function(e){busy=false;if(e&&e.persisted&&window.turnstile&&window.turnstile.reset){ok=!s;if(b)b.classList.remove('is-failed');if(s)s.textContent="Checking you're a person\\u2026";window.turnstile.reset()}sync();document.querySelectorAll('.cl-auth-providers a.cl-btn--provider').forEach(function(a){a.removeAttribute('aria-busy')})});` +
   `sync()})();`;
 
 const ALLOW_JS = `(function(){var f=document.getElementById('allow'),busy=false;if(!f)return;` +
@@ -75,7 +76,7 @@ const ALLOW_JS = `(function(){var f=document.getElementById('allow'),busy=false;
 const SIGN_CSS = `
 main.sign{flex:1;display:flex;align-items:center;justify-content:center;padding:max(8px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(40px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
 .ticket{width:100%;max-width:460px;overflow:hidden}
-.ticket-head{display:flex;justify-content:space-between;gap:12px;padding:12px 20px;border-bottom:1.5px dashed var(--cl-rule-strong);background:var(--cl-paper-1)}
+.ticket-head{display:flex;justify-content:space-between;gap:12px;padding:12px 20px;border-bottom:1.5px dashed var(--cl-rule-strong);background:transparent}
 .ticket-body{display:grid;gap:14px;padding:28px 28px 30px;grid-template-columns:minmax(0,1fr)}
 @media (max-width:480px){.ticket-body{padding:24px 20px 26px}}
 .ticket h1{margin:4px 0 0}
@@ -93,9 +94,10 @@ main.sign{flex:1;display:flex;align-items:center;justify-content:center;padding:
 form.ask{display:grid;gap:14px;margin-top:4px}
 details.cl-field summary{cursor:pointer;font:var(--cl-text-small);color:var(--cl-ink-2);list-style-position:inside;min-height:24px;padding:4px 0}
 details.cl-field[open] summary{margin-bottom:4px}
-@media (max-width:720px),(pointer:coarse){details.cl-field summary{min-height:40px;padding:10px 0}.cl-pw-wrap .cl-btn{min-height:44px}}
+@media (max-width:720px),(pointer:coarse){details.cl-field summary{min-height:44px;padding:10px 0}.cl-pw-wrap .cl-btn{min-height:44px}}
 .human{margin:0;font:var(--cl-text-small);color:var(--cl-ink-3)}
 form.ask .cl-btn[disabled]{opacity:.55;cursor:progress}
+form.ask .cl-btn[disabled].is-failed{cursor:not-allowed}
 .retry{justify-self:start;text-decoration:none}
 `;
 
@@ -136,7 +138,7 @@ export const APP_STEPS_CSS = `
 .app-fold{border-top:1px dashed var(--cl-rule-strong);padding-top:10px}
 .app-fold summary{cursor:pointer;font:var(--cl-text-mono);font-size:12px;color:var(--cl-ink-2);list-style-position:inside;min-height:24px;padding:4px 0}
 .app-fold[open] summary{margin-bottom:10px}
-@media (max-width:720px),(pointer:coarse){.app-fold summary{min-height:40px;padding:10px 0}}
+@media (max-width:720px),(pointer:coarse){.app-fold summary{min-height:44px;padding:10px 0}}
 @media (max-width:480px){.app .cl-copy code{font-size:12px}}
 ol.steps{margin:0;padding:0;list-style:none;counter-reset:s;display:grid;gap:8px;font:var(--cl-text-body);color:var(--cl-ink-2)}
 ol.steps li{counter-increment:s;display:grid;grid-template-columns:22px minmax(0,1fr);gap:8px;align-items:baseline}
@@ -188,9 +190,9 @@ export const SCENE_CSS = `
 `;
 
 export const COPY_JS = `(function(){var lr=null;function say(m){if(!lr){lr=document.createElement('span');lr.className='cl-sr-only';lr.setAttribute('role','status');lr.setAttribute('aria-live','polite');lr.setAttribute('aria-atomic','true');document.body.appendChild(lr)}lr.textContent='';setTimeout(function(){lr.textContent=m},10)}` +
-  `function fb(t){var a=document.createElement('textarea');a.value=t;a.className='cl-sr-only';a.setAttribute('readonly','');document.body.appendChild(a);a.select();var c=false;try{c=Boolean(document.execCommand&&document.execCommand('copy'))}catch(e){c=false}a.remove();return c}` +
-  `document.querySelectorAll('[data-copy]').forEach(function(b){b.addEventListener('click',function(){var t=b.getAttribute('data-copy')||'';` +
-  `function show(lbl,done){clearTimeout(b._ct);b.textContent=lbl;b.classList.toggle('is-done',!!done);say(lbl);b._ct=setTimeout(function(){b.textContent='Copy';b.classList.remove('is-done')},1600)}` +
+  `function fb(t){var p=document.activeElement,a=document.createElement('textarea');a.value=t;a.className='cl-sr-only';a.style.position='fixed';a.style.top='0';a.style.left='0';a.setAttribute('readonly','');document.body.appendChild(a);a.select();var c=false;try{c=Boolean(document.execCommand&&document.execCommand('copy'))}catch(e){c=false}a.remove();if(p&&p.focus)try{p.focus({preventScroll:true})}catch(e){p.focus()}return c}` +
+  `document.querySelectorAll('[data-copy]').forEach(function(b){b.addEventListener('click',function(){var t=b.getAttribute('data-copy')||'',orig=b.getAttribute('data-label');if(orig===null){orig=b.textContent;b.setAttribute('data-label',orig)}` +
+  `function show(lbl,done){clearTimeout(b._ct);b.textContent=lbl;b.classList.toggle('is-done',!!done);say(lbl);b._ct=setTimeout(function(){b.textContent=b.getAttribute('data-label')||orig;b.classList.remove('is-done')},1600)}` +
   `if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(function(){show('Copied',true)},function(){var ok=fb(t);show(ok?'Copied':'Copy failed',ok)})}` +
   `else{var ok=fb(t);show(ok?'Copied':'Copy failed',ok)}})})})();`;
 
@@ -232,7 +234,7 @@ export const copyBox = (value, label = "Copy") =>
   `<div class="cl-copy"><code>${esc(value)}</code><button class="cl-btn cl-btn--sm" type="button" data-copy="${esc(value)}" aria-label="${esc(label)}">Copy</button></div>`;
 export const copyPre = (name, value) =>
   `<div class="cl-file"><div class="cl-file__head"><span>${esc(name)}</span><button class="cl-btn cl-btn--sm" type="button" data-copy="${esc(value)}" aria-label="Copy ${esc(name)}">Copy</button></div>` +
-  `<pre><code>${esc(value)}</code></pre></div>`;
+  `<pre tabindex="0"><code>${esc(value)}</code></pre></div>`;
 export const LEGAL = "Claude, ChatGPT, Codex, Gemini, Antigravity, and Grok are trademarks of their respective owners. None of them endorse Clyde. Not available in the EU, EEA, UK, Switzerland, or Quebec.";
 const footer = `<footer class="foot"><div class="wrap"><span class="brand">${MARK(22)}clyde · a boring memory system</span>
 <nav aria-label="Footer"><a href="https://heyclyde.me/privacy">Privacy</a><a href="https://heyclyde.me/terms">Terms</a><a href="${DESIGN_URL}">Design system</a><a href="/healthz">Status</a></nav>
@@ -436,7 +438,7 @@ ${CARD_HOOKS["agent-setup"].map((a) => hookCfg(a)).join("\n")}
 <li><span><span class="k">Login:</span> Click <span class="k">Add</span>, click <span class="k">Connect</span>, and open the sign-in link in your email.</span></li>
 ${NO_HOOKS("Claude on the web")} into <span class="k">Settings → Profile → Personal preferences</span>.</span></li>
 <li><span><span class="k">Confirm:</span> Ask Claude to save a first note with <code>remember</code> so a note ID returns.</span></li>
-<li><span><span class="k">Restart:</span> Open a new chat so Clyde loads.</span></li></ol>${copyBox(MCP_URL)}`,
+<li><span><span class="k">Restart:</span> Open a new chat so Clyde loads.</span></li></ol>${copyBox(MCP_URL, "Copy Claude MCP server URL")}`,
   },
   {
     id: "antigravity", logo: "antigravity", name: "Antigravity", sub: "Desktop App, IDE, and CLI", tag: "MCP + hooks",
@@ -446,7 +448,7 @@ ${NO_HOOKS("Claude on the web")} into <span class="k">Settings → Profile → P
 <li><span><span class="k">Hooks (required):</span> These exact entries, once each. By hand: install the script with the second command and merge them yourself, removing any hard per-step hook.</span></li>
 <li><span><span class="k">Confirm:</span> After the restart, the agent registers, calls <code>recall</code>, and saves a first note with <code>remember</code> so a note ID returns.</span></li>
 <li><span><span class="k">Restart:</span> Restart Antigravity (or check <span class="k">Customizations → Hooks</span>) so the hooks take over.</span></li></ol>
-${copyBox(INSTALL)}${copyBox(HOOK_INSTALL)}
+${copyBox(INSTALL, "Copy Antigravity installer command")}${copyBox(HOOK_INSTALL, "Copy hook script install command")}
 ${copyPre("~/.gemini/config/mcp_config.json", JSON.stringify({ mcpServers: { clyde: { serverUrl: MCP_URL } } }, null, 2))}
 ${hookCfg("Antigravity")}`,
   },
@@ -457,7 +459,7 @@ ${hookCfg("Antigravity")}`,
 <li><span><span class="k">Login:</span> Click <span class="k">Connect</span> and open the sign-in link in your email.</span></li>
 ${NO_HOOKS("Grok")} into <span class="k">Customize Grok</span>.</span></li>
 <li><span><span class="k">Confirm:</span> Ask Grok to save a first note with <code>remember</code> so a note ID returns.</span></li>
-<li><span><span class="k">Restart:</span> Open a new Grok chat so Clyde loads.</span></li></ol>${copyBox(MCP_URL)}`,
+<li><span><span class="k">Restart:</span> Open a new Grok chat so Clyde loads.</span></li></ol>${copyBox(MCP_URL, "Copy Grok MCP server URL")}`,
   },
   {
     id: "other", logo: "other", name: "Other agents", sub: "Anything that speaks MCP", tag: "Remote MCP",
@@ -468,7 +470,7 @@ ${NO_HOOKS("Grok")} into <span class="k">Customize Grok</span>.</span></li>
 <li><span><span class="k">Confirm:</span> Call <code>recall</code> and save a first note with <code>remember</code> to confirm a note ID returns.</span></li>
 <li><span><span class="k">Restart:</span> Restart your client so MCP and hooks load.</span></li></ol>
 ${copyPre("mcp.json", JSON.stringify({ mcpServers: { clyde: { url: MCP_URL } } }, null, 2))}
-${copyBox(HOOK_INSTALL)}
+${copyBox(HOOK_INSTALL, "Copy hook script install command")}
 ${hookCfg("Claude Code", "Your client's hook config (Claude Code format)")}`,
   },
   {
@@ -479,7 +481,7 @@ ${hookCfg("Claude Code", "Your client's hook config (Claude Code format)")}`,
 <li><span><span class="k">Gate:</span> On a new task every tool but <code>recall</code> is refused until the agent calls it, and writes to the app's own memory files are always refused.</span></li>
 <li><span><span class="k">Confirm:</span> After the restart, the agent registers, calls <code>recall</code>, and saves a first note with <code>remember</code> so a note ID returns.</span></li>
 <li><span><span class="k">Restart:</span> Restart Claude Code. In ChatGPT desktop open <span class="k">Settings → Coding → Hooks → User config</span> and click <span class="k">Trust all</span> (or run <code>/hooks</code> once in Codex CLI).</span></li></ol>
-${copyBox(INSTALL)}${copyBox(HOOK_INSTALL)}
+${copyBox(INSTALL, "Copy Claude Code and Codex installer command")}${copyBox(HOOK_INSTALL, "Copy hook script install command")}
 ${hookCfg("Claude Code")}
 ${hookCfg("Codex")}`,
   },
@@ -491,7 +493,7 @@ ${hookCfg("Codex")}`,
 <li><span><span class="k">Hooks:</span> Gemini on the web has no hook system, so Clyde's server instructions carry it there. Gemini CLI's hooks are required: these exact entries, in the extension or in <code>~/.gemini/settings.json</code>, never both.</span></li>
 <li><span><span class="k">Confirm:</span> Ask Gemini to call <code>recall</code> and save a first note with <code>remember</code> so a note ID returns.</span></li>
 <li><span><span class="k">Restart:</span> Restart Gemini CLI (or open a new web chat) so hooks load.</span></li></ol>
-${copyBox(MCP_URL)}${copyBox(INSTALL)}${copyBox(HOOK_INSTALL)}
+${copyBox(MCP_URL, "Copy Gemini MCP server URL")}${copyBox(INSTALL, "Copy Gemini CLI installer command")}${copyBox(HOOK_INSTALL, "Copy hook script install command")}
 ${hookCfg("Gemini CLI")}`,
   },
   {
@@ -501,7 +503,7 @@ ${hookCfg("Gemini CLI")}`,
 <li><span><span class="k">Login:</span> Connect and click the sign-in link in your email.</span></li>
 ${NO_HOOKS("ChatGPT")} into <span class="k">Settings → Personalization → Custom instructions</span>.</span></li>
 <li><span><span class="k">Confirm:</span> Ask ChatGPT to save a first note with <code>remember</code>.</span></li>
-<li><span><span class="k">Restart:</span> Start a new chat so Clyde loads.</span></li></ol>${copyBox(MCP_URL)}`,
+<li><span><span class="k">Restart:</span> Start a new chat so Clyde loads.</span></li></ol>${copyBox(MCP_URL, "Copy ChatGPT MCP server URL")}`,
   },
   {
     id: "antigravity-cloud", logo: "antigravity", name: "Antigravity cloud", sub: "Headless cloud environments", tag: "Token + hooks",
@@ -511,7 +513,7 @@ ${NO_HOOKS("ChatGPT")} into <span class="k">Settings → Personalization → Cus
 <li><span><span class="k">Confirm:</span> The cloud agent calls <code>recall</code> and saves a first note with <code>remember</code> to confirm the token works.</span></li>
 <li><span><span class="k">Restart:</span> Start a fresh cloud session so MCP and the workspace hooks load together.</span></li></ol>
 ${copyPre("mcp_config.json", JSON.stringify({ mcpServers: { clyde: { serverUrl: MCP_URL, headers: { Authorization: "Bearer <your device token>" } } } }, null, 2))}
-${copyBox(HOOK_INSTALL)}
+${copyBox(HOOK_INSTALL, "Copy hook script install command")}
 ${hookCfg("Antigravity", ".agents/hooks.json")}`,
   },
 ];
@@ -545,7 +547,7 @@ export const appCards = () => APPS.map((a) => `<article class="${a.sticky ? "cl-
 export function homePage(nonce) {
   const cards = appCards();
   const works = WORKS.map(([slug, name]) => `<li>${APP_LOGO[slug] ? appLogo(slug, 20) : ""}${name}${soon(slug)}</li>`).join("");
-  const body = `<a class="cl-skip" href="#main">Skip to content</a><header class="bar wrap">${WORDMARK}<nav class="topnav"><a href="https://heyclyde.me/">Home</a><a href="#apps">Apps</a><a href="https://heyclyde.me/docs#hooks">Hooks</a><a href="#how">How it works</a></nav>
+  const body = `<a class="cl-skip" href="#main">Skip to content</a><header class="bar wrap">${WORDMARK}<nav class="topnav" aria-label="Primary"><a href="https://heyclyde.me/">Home</a><a href="#apps">Apps</a><a href="https://heyclyde.me/docs#hooks">Hooks</a><a href="#how">How it works</a></nav>
 <span class="cl-status" id="status" role="status" aria-atomic="true">Checking</span></header>
 <main id="main" tabindex="-1">
 <section class="hero wrap"><div class="hero-text"><span class="cl-label">Get Clyde</span>
@@ -556,7 +558,7 @@ export function homePage(nonce) {
 <div class="works"><span class="cl-label">Connects to</span><ul>${works}</ul>${SOON_NOTE}</div></div><div class="hero-art">${SCENE_IMG("relay", "Clyde passing a sticky note from a chat window to a terminal", 484, 280)}</div></section>
 <section class="wrap" id="apps"><div class="apps-head"><div class="section"><span class="cl-label">Connect</span><h2 class="cl-title-1">Pick your app</h2>
 <p class="cl-lead">Every supported app takes the same URL or one terminal installer.</p></div>
-<div class="cl-field"><span class="cl-field__label">Server URL</span>${copyBox(MCP_URL)}</div></div>
+<div class="cl-field"><span class="cl-field__label">Server URL</span>${copyBox(MCP_URL, "Copy MCP server URL")}</div></div>
 <div class="apps">${cards}</div></section>
 <section class="wrap" id="how"><div class="section"><span class="cl-label">Authentication</span><h2 class="cl-title-1">OAuth + magic link</h2></div>
 <ol class="how">

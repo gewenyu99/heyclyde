@@ -226,7 +226,12 @@ export const arm = (a) => (!a ? '' : armsRevealed() ? badge(a)
   : h('span', { class: 'muted', title: 'Hidden so the experiment stays blind. Reveal arms in the menu.' }, 'hidden'));
 
 export const note = (text, kind = '') => h('div', { class: `state ${kind}`, role: kind === 'error' ? 'alert' : null }, text);
-export const loading = () => note('Loading…', 'loading');
+export const loading = (label = 'Loading…') => h('div', { class: 'state loading', role: 'status', 'aria-busy': 'true' },
+  h('span', { class: 'sr-only' }, label),
+  h('div', { class: 'skel-stack', 'aria-hidden': 'true' },
+    h('div', { class: 'skel w40' }),
+    h('div', { class: 'skel w70' }),
+    h('div', { class: 'skel tall' })));
 
 export function failed(err, retry) {
   return h('div', { class: 'state error', role: 'alert' },
@@ -282,33 +287,81 @@ export function entryPicker(name, attrs = {}) {
 }
 
 // Two clicks for small reversible deletes. The first arms it, the second acts.
-export function confirmButton(label, armed, action) {
+export function confirmButton(label, armed, action, attrs = {}) {
   let timer;
-  const b = h('button', { type: 'button', class: 'small' }, label);
+  const baseAria = attrs['aria-label'];
+  const b = h('button', { type: 'button', class: 'small', ...attrs }, label);
   b.addEventListener('click', async () => {
     if (!b.classList.contains('armed')) {
       b.classList.add('armed', 'danger');
       b.textContent = armed;
-      timer = setTimeout(() => { b.classList.remove('armed', 'danger'); b.textContent = label; }, 4000);
+      if (baseAria) b.setAttribute('aria-label', `${armed} (${baseAria})`);
+      timer = setTimeout(() => {
+        b.classList.remove('armed', 'danger');
+        b.textContent = label;
+        if (baseAria) b.setAttribute('aria-label', baseAria);
+      }, 4000);
       return;
     }
     clearTimeout(timer);
     b.disabled = true;
-    try { await action(); } finally { b.disabled = false; }
+    try {
+      await action();
+    } finally {
+      b.disabled = false;
+      b.classList.remove('armed', 'danger');
+      b.textContent = label;
+      if (baseAria) b.setAttribute('aria-label', baseAria);
+    }
   });
   return b;
 }
 
-export function copyButton(getText) {
-  const b = h('button', { type: 'button', class: 'small' }, 'Copy');
+function announceCopy(text) {
+  let live = document.getElementById('copy-live');
+  if (!live) {
+    live = h('span', { id: 'copy-live', class: 'sr-only', 'aria-live': 'polite' });
+    document.body.append(live);
+  }
+  live.textContent = text;
+}
+
+function fallbackCopyText(text) {
+  const prev = document.activeElement;
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.top = '0';
+  ta.style.left = '0';
+  ta.style.opacity = '0';
+  document.body.append(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch { ok = false; }
+  ta.remove();
+  if (prev && typeof prev.focus === 'function') prev.focus({ preventScroll: true });
+  return ok;
+}
+
+export function copyButton(getText, label = 'Copy', attrs = {}) {
+  let timer;
+  const baseLabel = label || 'Copy';
+  const b = h('button', { type: 'button', class: 'small', 'aria-label': baseLabel, ...attrs }, baseLabel === 'Copy' ? 'Copy' : baseLabel);
+  const idleText = b.textContent;
   b.addEventListener('click', async () => {
+    clearTimeout(timer);
+    const val = String(getText() ?? '');
+    let ok = false;
     try {
-      await navigator.clipboard.writeText(getText());
-      b.textContent = 'Copied';
+      await navigator.clipboard.writeText(val);
+      ok = true;
     } catch {
-      b.textContent = 'Copy failed';
+      ok = fallbackCopyText(val);
     }
-    setTimeout(() => { b.textContent = 'Copy'; }, 1500);
+    b.textContent = ok ? 'Copied' : 'Copy failed';
+    announceCopy(ok ? `${baseLabel}: copied` : `${baseLabel}: copy failed`);
+    timer = setTimeout(() => { b.textContent = idleText; }, 1500);
   });
   return b;
 }
@@ -321,7 +374,7 @@ export function dl(rows) {
 
 export function json(value) {
   const text = JSON.stringify(value, null, 2) ?? 'null';
-  return h('div', { class: 'json-wrap' }, copyButton(() => text), h('pre', { class: 'json' }, text));
+  return h('div', { class: 'json-wrap' }, copyButton(() => text, 'Copy JSON'), h('pre', { class: 'json', tabindex: 0 }, text));
 }
 
 // ---------------------------------------------------------------- tables and paged lists
@@ -336,15 +389,24 @@ export function table(cols, rows, { rowLink, rowClass, expand, sort, onSort } = 
   }));
   const body = h('tbody');
   for (const r of rows) {
-    const tr = h('tr', { class: [rowClass?.(r), (rowLink || expand) && 'click'].filter(Boolean).join(' ') || null },
-      cols.map((c) => h('td', { class: c.class }, c.render ? c.render(r) : r[c.key] ?? '')));
+    const tr = h('tr', {
+      class: [rowClass?.(r), (rowLink || expand) && 'click'].filter(Boolean).join(' ') || null,
+      'aria-expanded': expand ? 'false' : null,
+    },
+    cols.map((c) => h('td', { class: c.class }, c.render ? c.render(r) : r[c.key] ?? '')));
     if (rowLink || expand) {
       tr.addEventListener('click', (e) => {
         if (e.target.closest('a, button, input, select, textarea, label') || getSelection().toString()) return;
         if (rowLink) { const to = rowLink(r); if (to) location.hash = to; return; }
         const next = tr.nextElementSibling;
-        if (next?.classList.contains('detail')) { next.remove(); tr.classList.remove('open'); return; }
+        if (next?.classList.contains('detail')) {
+          next.remove();
+          tr.classList.remove('open');
+          tr.setAttribute('aria-expanded', 'false');
+          return;
+        }
         tr.classList.add('open');
+        tr.setAttribute('aria-expanded', 'true');
         tr.after(h('tr', { class: 'detail' }, h('td', { colspan: cols.length }, expand(r))));
       });
     }
@@ -354,18 +416,28 @@ export function table(cols, rows, { rowLink, rowClass, expand, sort, onSort } = 
       tr.addEventListener('keydown', (e) => {
         if (e.target === tr && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); tr.click(); }
       });
+    } else if (rowLink && !tr.querySelector('a')) {
+      tr.tabIndex = 0;
+      tr.setAttribute('role', 'link');
+      tr.addEventListener('keydown', (e) => {
+        if (e.target === tr && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          const to = rowLink(r);
+          if (to) location.hash = to;
+        }
+      });
     }
     body.append(tr);
   }
-  return h('div', { class: 'table-wrap' }, h('table', null, h('thead', null, head), body));
+  return h('div', { class: 'table-wrap', tabindex: 0 }, h('table', null, h('thead', null, head), body));
 }
 
 export function pager({ total, limit, offset }, go) {
   const end = Math.min(offset + limit, total);
   return h('nav', { class: 'pager', 'aria-label': 'Pages' },
     h('span', { class: 'muted' }, total ? `${num(offset + 1)}–${num(end)} of ${num(total)}` : 'None'),
-    h('button', { type: 'button', class: 'small', disabled: offset <= 0, onclick: () => go(Math.max(0, offset - limit)) }, 'Previous'),
-    h('button', { type: 'button', class: 'small', disabled: end >= total, onclick: () => go(offset + limit) }, 'Next'));
+    h('button', { type: 'button', class: 'small', 'data-pager': 'prev', disabled: offset <= 0, onclick: () => go(Math.max(0, offset - limit), 'prev') }, 'Previous'),
+    h('button', { type: 'button', class: 'small', 'data-pager': 'next', disabled: end >= total, onclick: () => go(offset + limit, 'next') }, 'Next'));
 }
 
 function control(f, value, set) {
@@ -388,6 +460,18 @@ function control(f, value, set) {
   return list ? h('span', null, el, list) : el;
 }
 
+export function setAreaBusy(el, on) {
+  if (!el) return;
+  el.classList.toggle('busy', Boolean(on));
+  if (on) {
+    el.setAttribute('aria-busy', 'true');
+    el.inert = true;
+  } else {
+    el.removeAttribute('aria-busy');
+    el.inert = false;
+  }
+}
+
 // A filtered, sorted, paged list whose state lives in the hash. Refetches keep the old rows at reduced opacity.
 export function listPage(root, { route, title, path, cols, filters = [], rowLink, rowClass, expand, render, sort,
   empty = 'Nothing here yet.', limit = 50, head = [], before = null }) {
@@ -395,6 +479,7 @@ export function listPage(root, { route, title, path, cols, filters = [], rowLink
   const count = h('span', { class: 'count muted' });
   const area = h('div', { class: 'list-area' }, loading());
   let seq = 0;
+  let focusPager = null;
 
   let form = null;
   // A debounced filter can fire after the route changed. It must not rewrite the new route's address.
@@ -407,7 +492,7 @@ export function listPage(root, { route, title, path, cols, filters = [], rowLink
 
   async function load() {
     const my = ++seq;
-    if (area.querySelector('.table-wrap, .cards')) area.classList.add('busy');
+    if (area.querySelector('.table-wrap, .cards')) setAreaBusy(area, true);
     else area.replaceChildren(loading());
     try {
       const data = await api(path, { params: { ...st, limit, offset: st.offset || 0 } });
@@ -427,17 +512,26 @@ export function listPage(root, { route, title, path, cols, filters = [], rowLink
                                  if (el) el.value = st.sort || sort;
                                  go();
                                }) });
-      area.replaceChildren(body, items.length || page.offset ? pager(page, (off) => {
+      area.replaceChildren(body, items.length || page.offset ? pager(page, (off, which) => {
+        focusPager = which || null;
         if (off) st.offset = off; else delete st.offset;
         go();
         root.scrollIntoView({ block: 'start' });
       }) : '');
+      setAreaBusy(area, false);
+      if (focusPager) {
+        const alt = focusPager === 'prev' ? 'next' : 'prev';
+        const btn = area.querySelector(`[data-pager="${focusPager}"]:not([disabled])`)
+          || area.querySelector(`[data-pager="${alt}"]:not([disabled])`);
+        focusPager = null;
+        if (btn && typeof btn.focus === 'function') btn.focus({ preventScroll: true });
+      }
     } catch (err) {
       if (my !== seq) return;
       count.textContent = '';
       area.replaceChildren(failed(err, load));
     } finally {
-      if (my === seq) area.classList.remove('busy');
+      if (my === seq) setAreaBusy(area, false);
     }
   }
 
@@ -451,8 +545,18 @@ export function listPage(root, { route, title, path, cols, filters = [], rowLink
 // Inline form status: errors in red, confirmations in green.
 export function flash() {
   const el = h('p', { class: 'flash', role: 'status', 'aria-live': 'polite' });
-  el.show = (text, kind = 'ok') => { el.className = `flash ${kind}`; el.textContent = text; };
-  el.clear = () => { el.className = 'flash'; el.textContent = ''; };
+  el.show = (text, kind = 'ok') => {
+    el.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+    el.setAttribute('aria-live', kind === 'error' ? 'assertive' : 'polite');
+    el.className = `flash ${kind}`;
+    el.textContent = text;
+  };
+  el.clear = () => {
+    el.setAttribute('role', 'status');
+    el.setAttribute('aria-live', 'polite');
+    el.className = 'flash';
+    el.textContent = '';
+  };
   return el;
 }
 

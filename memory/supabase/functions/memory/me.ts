@@ -269,7 +269,7 @@ export async function handle(req: Request, path: string, owner: string): Promise
     const clauses: any[] = [];
     if (q) {
       const lp = likePattern(q);
-      clauses.push(sql`(e.title ilike ${lp} or e.body ilike ${lp} or coalesce(e.search_text, '') ilike ${lp})`);
+      clauses.push(sql`(e.id ilike ${lp} or e.title ilike ${lp} or e.body ilike ${lp} or coalesce(e.search_text, '') ilike ${lp})`);
     }
     if (kindParam && kindParam !== "all") {
       clauses.push(sql`(lower(e.kind) = ${kindParam} or lower(e.pattern) = ${kindParam} or lower(e.pattern) = ${kindParam + "s"})`);
@@ -374,8 +374,16 @@ export async function handle(req: Request, path: string, owner: string): Promise
     const artifacts = await sql`select x.name, x.sha256, x.kind, b.media_type, b.size
       from memory.entry_blob x join memory.blob b on b.owner_id = x.owner_id and b.sha256 = x.sha256
       where x.entry_id = ${id} order by x.name`;
-    const linksOut = await sql`select src, dst, type, weight from memory.link where src = ${id} order by type, dst`;
-    const linksIn = await sql`select src, dst, type, weight from memory.link where dst = ${id} order by type, src`;
+    const linksOut = await sql`select l.src, l.dst, l.type, l.weight, d.title
+      from memory.link l
+      left join memory.entry d on d.owner_id = l.owner_id and d.id = l.dst
+      where l.src = ${id}
+      order by l.type, l.dst`;
+    const linksIn = await sql`select l.src, l.dst, l.type, l.weight, s.title
+      from memory.link l
+      left join memory.entry s on s.owner_id = l.owner_id and s.id = l.src
+      where l.dst = ${id}
+      order by l.type, l.src`;
     const [provenance] = await sql`select device, agent, agent_context, session, cwd, repo, created_at
       from memory.entry_provenance where entry_id = ${id}`;
     const confidenceHistory = await sql`select id, at, before, after, reason, retrieval_id, event_id
@@ -560,22 +568,37 @@ export async function handle(req: Request, path: string, owner: string): Promise
       if (!ID.test(center)) return json({ error: "That isn't an entry id." }, 400);
       const [hit] = await sql`select id from memory.entry where id = ${center}`;
       if (!hit) return json({ error: `No entry ${center}.` }, 404);
-    } else {
-      const [top] = await sql`select e.id from memory.entry e
-        order by (select count(*) from memory.link l where l.src = e.id or l.dst = e.id) desc, e.created_at desc, e.id
-        limit 1`;
-      if (!top) return json({ center: null, depth, nodes: [], edges: [] });
-      center = top.id;
     }
 
     const links = await sql`select src, dst, type, weight from memory.link order by weight desc nulls last, type, src, dst`;
     const adj = new Map<string, string[]>();
+    const deg = new Map<string, number>();
     for (const l of links) {
       const s = String(l.src), d = String(l.dst);
       if (!adj.has(s)) adj.set(s, []);
       if (!adj.has(d)) adj.set(d, []);
       adj.get(s)!.push(d);
       adj.get(d)!.push(s);
+      deg.set(s, (deg.get(s) ?? 0) + 1);
+      if (s !== d) deg.set(d, (deg.get(d) ?? 0) + 1);
+    }
+
+    if (!center) {
+      let top: { id: string } | undefined;
+      if (links.length > 0 && deg.size > 0) {
+        let maxDeg = 0;
+        for (const c of deg.values()) if (c > maxDeg) maxDeg = c;
+        const tied = [...deg.entries()].filter(([, c]) => c === maxDeg).map(([id]) => id);
+        if (tied.length) {
+          [top] = await sql`select id from memory.entry where id = any(${tied}::text[])
+            order by created_at desc nulls last, id limit 1`;
+        }
+      }
+      if (!top) {
+        [top] = await sql`select id from memory.entry order by created_at desc nulls last, id limit 1`;
+      }
+      if (!top) return json({ center: null, depth, nodes: [], edges: [] });
+      center = top.id;
     }
 
     const MAX_NODES = 300;

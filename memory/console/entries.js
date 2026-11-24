@@ -1,6 +1,6 @@
 // Entries: the filtered list, one entry's page with its edit, link, supersede and delete forms, and the new entry form.
 import {
-  api, enc, getMeta, forgetMeta, href, h, fill, lock, entryLink, safeUrl, num, when, authority, verdict, badge, note,
+  api, enc, getMeta, forgetMeta, href, onLeave, h, fill, lock, entryLink, safeUrl, num, when, authority, verdict, badge, note,
   loading, failed, pageHead, card, field, select, datalist, entryPicker, confirmButton, dl, table, listPage, flash, submit, plural, isoDay,
 } from './lib.js';
 
@@ -132,12 +132,29 @@ export async function newEntryView(root, params) {
   };
 
   const button = h('button', { type: 'submit', class: 'primary' }, 'Create entry');
+  let dirty = false;
+  let submitted = false;
+  const cancelLink = h('a', { href: href('entries') }, 'Cancel');
+  const allLink = h('a', { href: href('entries') }, 'All entries');
   const form = h('form', { class: 'card form', novalidate: true },
     entryFields(meta, { project: params.project || '' },
       { isNew: true, idField: h('label', { class: 'field' }, h('span', { class: 'label' }, 'ID'), id, idHint) }),
     h('fieldset', null, h('legend', null, 'Links'), linkRows, tlist,
-      h('button', { type: 'button', class: 'small', onclick: () => addLinkRow() }, 'Add a link')),
-    h('div', { class: 'row' }, button, h('a', { href: href('entries') }, 'Cancel'), out));
+      h('button', { type: 'button', class: 'small', onclick: () => { dirty = true; addLinkRow(); } }, 'Add a link')),
+    h('div', { class: 'row' }, button, cancelLink, out));
+
+  form.addEventListener('input', () => { dirty = true; });
+  form.addEventListener('change', () => { dirty = true; });
+  const confirmLeave = (e) => {
+    if (dirty && !submitted && !confirm('Discard unsaved changes?')) e.preventDefault();
+  };
+  cancelLink.addEventListener('click', confirmLeave);
+  allLink.addEventListener('click', confirmLeave);
+  const onBeforeUnload = (e) => {
+    if (dirty && !submitted) { e.preventDefault(); e.returnValue = ''; }
+  };
+  window.addEventListener('beforeunload', onBeforeUnload);
+  onLeave(() => window.removeEventListener('beforeunload', onBeforeUnload));
 
   form.elements.namedItem('title').addEventListener('input', (e) => {
     if (!idTouched) { id.value = slug(e.target.value); checkId(); }
@@ -146,7 +163,10 @@ export async function newEntryView(root, params) {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     checkId();
-    if (!form.reportValidity()) return;
+    if (!form.reportValidity()) {
+      form.querySelector(':invalid')?.focus();
+      return;
+    }
     const body = { id: id.value.trim(), ...readFields(form) };
     for (const k of Object.keys(body)) if (body[k] === null) delete body[k];
     const links = [...linkRows.querySelectorAll('.link-row')].map((r) => ({
@@ -159,11 +179,14 @@ export async function newEntryView(root, params) {
     if (links.length) body.links = links;
     const res = await submit(button, out, () => api('/entries', { method: 'POST', body }));
     if (!res) return;
+    submitted = true;
+    dirty = false;
+    window.removeEventListener('beforeunload', onBeforeUnload);
     forgetMeta();
     location.hash = href('entry', res.entry?.id || body.id);
   });
 
-  root.replaceChildren(pageHead('New entry', h('a', { href: href('entries') }, 'All entries')), form);
+  root.replaceChildren(pageHead('New entry', allLink), form);
   form.elements.namedItem('title').focus();
 }
 
@@ -203,12 +226,47 @@ function renderEntry(root, d, meta, message = '') {
   if (message) { top.show(message); window.scrollTo(0, 0); }
   document.title = `${e.title || id} · memory`;
 
-  const open = (make) => {
+  let activeBtn = null;
+  let panelCleanup = null;
+  let checkDirty = () => false;
+  const editBtn = h('button', { type: 'button', 'aria-expanded': 'false' }, 'Edit');
+  const supBtn = h('button', { type: 'button', 'aria-expanded': 'false' }, 'Supersede');
+  const delBtn = h('button', { type: 'button', class: 'danger-outline', 'aria-expanded': 'false' }, 'Delete');
+  const panelBtns = [editBtn, supBtn, delBtn];
+
+  const closePanel = (restoreFocus = false) => {
+    if (panelCleanup) { panelCleanup(); panelCleanup = null; }
+    checkDirty = () => false;
+    panel.replaceChildren();
+    for (const b of panelBtns) b.setAttribute('aria-expanded', 'false');
+    if (restoreFocus && activeBtn && typeof activeBtn.focus === 'function') activeBtn.focus();
+    activeBtn = null;
+  };
+
+  const open = (make, triggerBtn) => {
     top.clear();
     const showing = panel.firstChild?.dataset?.kind === make.name;
-    panel.replaceChildren(showing ? '' : make(root, d, meta, () => panel.replaceChildren()));
+    if (checkDirty() && !confirm('Discard unsaved changes?')) return;
+    if (showing) {
+      closePanel(true);
+      return;
+    }
+    closePanel(false);
+    activeBtn = triggerBtn;
+    triggerBtn.setAttribute('aria-expanded', 'true');
+    const node = make(root, d, meta, () => {
+      if (checkDirty() && !confirm('Discard unsaved changes?')) return;
+      closePanel(true);
+    }, (fn, cleanup) => {
+      checkDirty = fn;
+      panelCleanup = cleanup || null;
+    });
+    panel.replaceChildren(node);
     panel.firstChild?.querySelector?.('input, textarea, select, button')?.focus();
   };
+  editBtn.addEventListener('click', () => open(editPanel, editBtn));
+  supBtn.addEventListener('click', () => open(supersedePanel, supBtn));
+  delBtn.addEventListener('click', () => open(deletePanel, delBtn));
 
   const linkRow = (dir) => (l) => {
     const other = dir === 'out' ? l.dst : l.src;
@@ -218,7 +276,7 @@ function renderEntry(root, d, meta, message = '') {
         await api(`/entries/${enc(src)}/links/${enc(l.type)}/${enc(dst)}`, { method: 'DELETE' });
         await reload(root, id, `Removed ${src} ${l.type} ${dst}.`);
       } catch (err) { top.show(err.message, 'error'); }
-    }) };
+    }, { 'aria-label': `Remove ${l.type} link ${dir === 'out' ? 'to' : 'from'} ${other}` }) };
   };
   const linkTable = (rows, dir) => (rows.length ? table([
     { label: 'Type', render: (l) => h('span', { class: 'mono' }, l.type) },
@@ -238,9 +296,7 @@ function renderEntry(root, d, meta, message = '') {
   fill(root,
     pageHead(e.title || id, h('div', { class: 'head-actions' },
       e.pattern === 'projects' && h('a', { class: 'button', href: href('entries', 'new', { project: id }) }, 'New entry here'),
-      h('button', { type: 'button', onclick: () => open(editPanel) }, 'Edit'),
-      h('button', { type: 'button', onclick: () => open(supersedePanel) }, 'Supersede'),
-      h('button', { type: 'button', class: 'danger-outline', onclick: () => open(deletePanel) }, 'Delete'))),
+      editBtn, supBtn, delBtn)),
     h('p', { class: 'entry-sub' }, h('span', { class: 'mono' }, id), ' ', authority(e.authority), ' ', badge(e.pattern || 'no pattern'),
       e.sensitivity === 'private' ? [' ', badge([lock(), ' private'], 'private')] : '',
       d.current ? '' : [' ', badge('superseded', 'warn')]),
@@ -276,7 +332,12 @@ function renderEntry(root, d, meta, message = '') {
 function feedbackList(items) {
   if (!items.length) return note('No feedback on this entry.', 'empty');
   return table([
-    { label: 'Verdict', render: (f) => verdict(f.verdict) },
+    {
+      label: 'Verdict',
+      render: (f) => (f.retrieval_id
+        ? h('a', { href: href('recall', f.retrieval_id) }, verdict(f.verdict))
+        : verdict(f.verdict)),
+    },
     { label: 'From', key: 'source' },
     { label: 'Note', class: 'wide', render: (f) => f.note || '' },
     { label: 'When', render: (f) => when(f.created_at) },
@@ -304,13 +365,26 @@ function addLinkForm(root, d, meta) {
   return form;
 }
 
-function editPanel(root, d, meta, close) {
+function editPanel(root, d, meta, close, registerDirty) {
   const e = d.entry;
   const out = flash();
   const button = h('button', { type: 'submit', class: 'primary' }, 'Save changes');
   const form = h('form', { class: 'card form', 'data-kind': 'editPanel' },
     h('h2', null, 'Edit entry'), entryFields(meta, e),
     h('div', { class: 'row' }, button, h('button', { type: 'button', onclick: close }, 'Cancel'), out));
+  let saved = false;
+  const isDirty = () => {
+    if (saved) return false;
+    const now = readFields(form);
+    return Object.entries(now).some(([k, v]) => clean(k, v) !== clean(k, e[k]));
+  };
+  const onBeforeUnload = (ev) => {
+    if (isDirty()) { ev.preventDefault(); ev.returnValue = ''; }
+  };
+  window.addEventListener('beforeunload', onBeforeUnload);
+  onLeave(() => window.removeEventListener('beforeunload', onBeforeUnload));
+  if (registerDirty) registerDirty(isDirty, () => window.removeEventListener('beforeunload', onBeforeUnload));
+
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     if (!form.reportValidity()) return;
@@ -319,6 +393,8 @@ function editPanel(root, d, meta, close) {
     if (!Object.keys(changed).length) return out.show('Nothing changed.', 'warn');
     const res = await submit(button, out, () => api(`/entries/${enc(e.id)}`, { method: 'PATCH', body: changed }));
     if (!res) return;
+    saved = true;
+    window.removeEventListener('beforeunload', onBeforeUnload);
     forgetMeta();
     renderEntry(root, res, await getMeta().catch(() => meta), `Saved ${Object.keys(changed).join(', ')}.`);
   });

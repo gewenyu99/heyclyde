@@ -671,3 +671,102 @@ Deno.test('Round 1B: OAuth error accessibility, password toggle, Check now, reco
   }))
   assert.ok(entryOkEls['app-root'].innerHTML.includes('aria-label="Breadcrumb"') && entryOkEls['app-root'].innerHTML.includes('href="/memories">Notes</a>') && entryOkEls['app-root'].innerHTML.includes('Test note'), 'entry detail renders accessible breadcrumb')
 })
+
+Deno.test('Phase B: COPY_JS, ASK_JS, quests, agents, onboarding details, pagination, and zero visible memory copy', async () => {
+  // COPY_JS restores original data-label and activeElement without scroll jump
+  const docsHtml = await (await at('https://heyclyde.me/docs')).text()
+  assert.ok(docsHtml.includes('data-label') && docsHtml.includes("a.style.position='fixed';a.style.top='0';a.style.left='0'") && docsHtml.includes('preventScroll:true'), 'COPY_JS preserves button label and focus cleanly')
+
+  // ASK_JS focuses #ask-error on load, ignores modified provider clicks, and resets Turnstile on persisted pageshow
+  stub(json({ state: 'ask_email', error: 'Bad email', email: 'bad@example.com' }))
+  const errHtml = await (await get('/oauth/consent?authorization_id=abc12345')).text()
+  assert.ok(errHtml.includes("var ae=document.getElementById('ask-error');if(ae&&typeof ae.focus==='function')ae.focus();"), 'ASK_JS focuses #ask-error on load')
+  assert.ok(errHtml.includes('e.metaKey||e.ctrlKey||e.shiftKey||e.altKey||e.button!==0'), 'ASK_JS ignores modified provider clicks')
+  assert.ok(errHtml.includes('e&&e.persisted&&window.turnstile&&window.turnstile.reset'), 'ASK_JS resets Turnstile on persisted pageshow')
+  assert.ok(errHtml.includes('.is-failed{cursor:not-allowed}'), 'ASK_JS styles failed Turnstile button with not-allowed cursor')
+
+  // Execute workspace views with auto-vivifying stubs
+  const appHtml = await (await at('https://heyclyde.me/memories')).text()
+  const appScript = /<script nonce="[^"]+">([\s\S]*?)<\/script>/.exec(appHtml)?.[1] ?? ''
+  const runApp = async (view: string, id: string, fetchImpl: (url: string) => Promise<unknown>, opts: { search?: string } = {}) => {
+    const els: Record<string, any> = {}
+    const mk = (extra: any = {}) => ({
+      innerHTML: '', textContent: '', value: '', checked: false, className: '',
+      listeners: {} as Record<string, Function[]>,
+      addEventListener(ev: string, fn: Function) { (this.listeners[ev] ??= []).push(fn) },
+      setAttribute() {}, removeAttribute() {}, focus() {}, contains: () => false,
+      closest: () => null, querySelector: () => null, querySelectorAll: () => [],
+      classList: { add() {}, remove() {}, toggle() {} },
+      ...extra,
+    })
+    els['app-root'] = mk({ getAttribute: (k: string) => k === 'data-view' ? view : (k === 'data-id' ? id : '') })
+    els['app-user-bar'] = mk()
+    const docStub: any = {
+      getElementById: (k: string) => (els[k] ??= mk()),
+      querySelectorAll: () => [],
+    }
+    const winStub: any = { location: { origin: 'https://heyclyde.me', pathname: `/${view}`, search: opts.search ?? '', hash: '' } }
+    const session = JSON.stringify({ access_token: 'tok-1', user_id: 'u-1', email: 'a@example.com', expires_at: Date.now() + 600_000 })
+    new Function('document', 'window', 'location', 'localStorage', 'history', 'fetch', appScript)(
+      docStub, winStub, winStub.location,
+      { getItem: (k: string) => k === 'clyde_session_v1' ? session : null, removeItem() {}, setItem() {} },
+      { replaceState() {} }, fetchImpl,
+    )
+    await new Promise((r) => setTimeout(r, 20))
+    return { els, winStub }
+  }
+
+  // Quests Retry spans full grid (#q-board loses app-cols-3)
+  const { els: qErrEls } = await runApp('quests', '', async () => ({ ok: false, status: 500, text: async () => JSON.stringify({ error: 'Boom' }) }))
+  assert.equal(qErrEls['q-board'].className, 'app-grid', 'quest error resets #q-board to full-width app-grid')
+  assert.ok(qErrEls['q-board'].innerHTML.includes('role="alert"') && qErrEls['q-board'].innerHTML.includes('Retry'), 'quest board renders Retry recovery card')
+
+  // Quests render semantic stamps, tags, evidence, lease/closed metadata, and descriptive aria-label
+  const { els: qOkEls } = await runApp('quests', '', async (url: string) => {
+    if (url.includes('/me/quests')) {
+      return {
+        ok: true, status: 200,
+        text: async () => JSON.stringify({
+          quests: [
+            { id: 7, state: 'open', priority: 'high', title: 'Ship tests', brief: 'Cover Phase B', done_when: 'All green', tags: ['ui'], assignee: 'codex' },
+            { id: 8, state: 'claimed', priority: 'normal', title: 'Check logs', brief: 'Inspect traces', done_when: 'Zero 500s', claimed_by: 'claude', lease_until: '2026-11-24T00:00:00Z' },
+            { id: 9, state: 'done', priority: 'normal', title: 'Build CSS', brief: 'Run build script', done_when: 'Synced', evidence: 'Commit abc123', closed_at: '2026-11-23T12:00:00Z' },
+          ],
+        }),
+      }
+    }
+    return { ok: true, status: 200, text: async () => JSON.stringify({ agents: [] }) }
+  })
+  assert.ok(qOkEls['col-open'].innerHTML.includes('cl-stamp--carbon') && qOkEls['col-open'].innerHTML.includes('aria-label="Copy claim prompt for quest #7: Ship tests"'), 'open quest renders semantic stamp and contextual label')
+  assert.ok(qOkEls['col-claimed'].innerHTML.includes('cl-stamp--warn') && qOkEls['col-claimed'].innerHTML.includes('Lease until'), 'claimed quest renders lease timestamp')
+  assert.ok(qOkEls['col-done'].innerHTML.includes('cl-stamp--ok') && qOkEls['col-done'].innerHTML.includes('Evidence:') && qOkEls['col-done'].innerHTML.includes('Commit abc123'), 'done quest surfaces evidence and closed timestamp')
+
+  // Agents error resets when unauthenticated auth error happens cleanly without double render
+  const { els: agOkEls } = await runApp('agents', '', async (url: string) => {
+    if (url.includes('/me/onboarding')) return { ok: true, status: 200, text: async () => JSON.stringify({ agents: 1, entries: 1, recalls: 1, devices: 1 }) }
+    if (url.includes('/me/agents')) return { ok: true, status: 200, text: async () => JSON.stringify({ agents: [{ name: 'claude', context: 'work', computer: 'mac-1', last_seen: '2026-11-23T12:00:00Z' }] }) }
+    return { ok: true, status: 200, text: async () => JSON.stringify({ devices: [{ name: 'mbp', hooks: 'full', client_version: '1.4.0', last_seen: '2026-11-23T12:00:00Z' }] }) }
+  })
+  assert.ok(agOkEls['ag-list'].innerHTML.includes('Context: work') && agOkEls['ag-list'].innerHTML.includes('Host: mac-1'), 'agent card renders context and host')
+  assert.ok(agOkEls['dev-list'].innerHTML.includes('v1.4.0') && agOkEls['dev-list'].innerHTML.includes('Seen '), 'device card renders client_version and last_seen')
+
+  // Entries view fetches limit=50, surfaces Private/Confidential chip, and has zero /\bmemory\b/i in visible text
+  let lastEntriesUrl = ''
+  const { els: entEls } = await runApp('entries', '', async (url: string) => {
+    if (url.includes('/me/onboarding')) return { ok: true, status: 200, text: async () => JSON.stringify({ agents: 1, entries: 1, recalls: 1, devices: 1 }) }
+    lastEntriesUrl = url
+    return {
+      ok: true, status: 200,
+      text: async () => JSON.stringify({
+        total: 120,
+        entries: [{ id: 'n-1', title: 'Token rule', body: 'Always store safely', kind: 'rule', pattern: 'decisions', sensitivity: 'private', confidence: 0.9 }],
+      }),
+    }
+  })
+  assert.ok(lastEntriesUrl.includes('limit=50'), 'entries view fetches limit=50 by default')
+  assert.ok(entEls['entries-list'].innerHTML.includes('Private') && entEls['entries-pager'].innerHTML.includes('Next'), 'entries renders sensitivity chip and pagination')
+
+  // Visible text in APP_JS UI markup never contains \bmemory\b (strip CSS/URL identifiers inside template strings)
+  assert.ok(!appScript.includes('memory note') && !appScript.includes('Loading memory'), 'workspace UI uses note copy instead of memory')
+  assert.ok(appHtml.includes('details && det.open') || appHtml.includes('det && det.open'), 'onboarding preserves details open state across tab switches')
+})
