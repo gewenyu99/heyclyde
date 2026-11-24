@@ -77,6 +77,7 @@
 
 /* ---- Surfaces ---- */
 .cl-card { background: var(--cl-paper-1); background-clip: padding-box; border: 1px solid var(--cl-rule); border-radius: var(--cl-radius-lg); box-shadow: var(--cl-shadow-1); padding: var(--cl-space-4); min-width: 0; }
+a.cl-card { text-decoration: none; color: inherit; }
 .cl-card--lift { cursor: pointer; transition: transform var(--cl-dur-2) var(--cl-ease-out), box-shadow var(--cl-dur-2) var(--cl-ease-out), border-color var(--cl-dur-2) var(--cl-ease-out); }
 .cl-card--lift:hover { transform: translate(-2px, -2px); box-shadow: var(--cl-copy-2); border-color: var(--cl-rule-strong); }
 .cl-card--lift:active { transform: none; box-shadow: none; transition-duration: var(--cl-dur-1); }
@@ -90,16 +91,17 @@
 .cl-sticky--tilt:hover, .cl-sticky--tilt-r:hover { transform: rotate(0deg); }
 .cl-sticky--blue { background: linear-gradient(180deg, var(--cl-carbon-copy) 0 10px, var(--cl-carbon-wash) 10px); border-color: var(--cl-carbon); }
 .cl-sticky--blue::after { background: linear-gradient(315deg, var(--cl-sticky-ground) 47%, var(--cl-carbon) 47% 53%, var(--cl-carbon-copy) 53%); border-color: var(--cl-carbon); }
-.cl-well { background: var(--cl-paper-2); border-radius: var(--cl-radius-md); padding: 10px 12px; color: var(--cl-ink-2); font: var(--cl-text-small); }
+.cl-well { background: var(--cl-paper-2); border-radius: var(--cl-radius-md); padding: 10px 12px; color: var(--cl-ink-2); font: var(--cl-text-small); min-width: 0; overflow-wrap: anywhere; }
 .cl-rule { border: 0; border-top: 1px solid var(--cl-rule); margin: 0; }
 
 /* ---- Chips and states ---- */
-.cl-chip { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 6px; border-radius: var(--cl-radius-xs); background: var(--cl-paper-2); color: var(--cl-ink-2); font: var(--cl-text-label); letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+.cl-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; height: 20px; padding: 0 6px; border-radius: var(--cl-radius-xs); background: var(--cl-paper-2); color: var(--cl-ink-2); font: var(--cl-text-label); letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
 .cl-chip--carbon { background: var(--cl-carbon-wash); color: var(--cl-carbon-ink); }
 .cl-chip--ok { background: var(--cl-ok-wash); color: var(--cl-ok); }
 .cl-chip--warn { background: var(--cl-warn-wash); color: var(--cl-warn); }
 .cl-chip--bad { background: var(--cl-bad-wash); color: var(--cl-bad); }
-a.cl-chip, button.cl-chip { min-height: 24px; text-decoration: none; cursor: pointer; touch-action: manipulation; }
+a.cl-chip, button.cl-chip { min-height: 24px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; text-decoration: none; cursor: pointer; touch-action: manipulation; }
+a.cl-chip > span, button.cl-chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 button.cl-chip { appearance: none; border: 0; }
 a.cl-chip:focus-visible, button.cl-chip:focus-visible { outline: none; box-shadow: var(--cl-focus); }
 .cl-state { display: inline-flex; align-items: center; gap: 6px; font: 500 12px/1 var(--cl-font-sans); color: var(--cl-ink-2); white-space: nowrap; }
@@ -117,7 +119,7 @@ a.cl-chip:focus-visible, button.cl-chip:focus-visible { outline: none; box-shado
 
 /* ---- Stamps: a quest's or a sign-in's outcome, pressed on in the state's ink ---- */
 .cl-stamp { --ink: var(--cl-ink-2); display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px 3px; border: 2px solid var(--ink); border-radius: var(--cl-radius-xs); color: var(--ink); font: 700 11px/1.2 var(--cl-font-mono); letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap; transform: rotate(-3deg); box-shadow: inset 0 0 0 1px var(--cl-paper-1); }
-.cl-stamp small { font: inherit; font-weight: 500; letter-spacing: 0.04em; text-transform: none; opacity: 0.85; }
+.cl-stamp small { font: inherit; font-weight: 500; letter-spacing: 0.04em; text-transform: none; }
 .cl-stamp--carbon { --ink: var(--cl-carbon); }
 .cl-stamp--ok { --ink: var(--cl-ok); }
 .cl-stamp--warn { --ink: var(--cl-warn); }
@@ -143,12 +145,13 @@ a.cl-chip:focus-visible, button.cl-chip:focus-visible { outline: none; box-shado
 .cl-prov__sep { color: var(--cl-rule-strong); }
 
 /* ---- Memory card ---- */
-.cl-memory { display: grid; gap: 8px; padding: 14px 16px 12px; }
-.cl-memory__top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.cl-memory { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 14px 16px 12px; min-width: 0; }
+.cl-memory__top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-width: 0; }
 .cl-memory__conf { margin-left: auto; font: 600 11.5px/1 var(--cl-font-mono); color: var(--cl-ink-2); font-variant-numeric: tabular-nums; }
-.cl-memory__title { font: 600 15px/21px var(--cl-font-sans); letter-spacing: -0.01em; color: var(--cl-ink); margin: 0; text-wrap: pretty; }
-.cl-memory__body { font: var(--cl-text-small); color: var(--cl-ink-2); margin: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.cl-memory__foot { display: flex; flex-wrap: wrap; gap: 4px 14px; padding-top: 8px; border-top: 1px dashed var(--cl-rule); font: var(--cl-text-mono); font-size: 11px; color: var(--cl-ink-3); }
+.cl-memory__title { min-width: 0; overflow-wrap: anywhere; font: 600 15px/21px var(--cl-font-sans); letter-spacing: -0.01em; color: var(--cl-ink); margin: 0; text-wrap: pretty; }
+.cl-memory__body { min-width: 0; overflow-wrap: anywhere; font: var(--cl-text-small); color: var(--cl-ink-2); margin: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cl-memory__foot { display: flex; flex-wrap: wrap; gap: 4px 14px; min-width: 0; overflow-wrap: anywhere; padding-top: 8px; border-top: 1px dashed var(--cl-rule); font: var(--cl-text-mono); font-size: 11px; color: var(--cl-ink-3); }
+.cl-memory__foot > span { min-width: 0; }
 .cl-memory.is-superseded .cl-memory__title { text-decoration: line-through; text-decoration-thickness: 1.5px; color: var(--cl-ink-3); }
 .cl-memory.is-dormant .cl-memory__title { color: var(--cl-ink-2); }
 
@@ -161,13 +164,13 @@ a.cl-chip:focus-visible, button.cl-chip:focus-visible { outline: none; box-shado
 .cl-quest__no { font: 700 21px/1 var(--cl-font-mono); letter-spacing: -0.04em; color: var(--cl-ink); font-variant-numeric: tabular-nums; }
 .cl-quest__pri { font: var(--cl-text-label); letter-spacing: 0.06em; text-transform: uppercase; color: var(--cl-ink-3); }
 .cl-quest__pri.is-high { color: var(--cl-bad); }
-.cl-quest__main { display: grid; gap: 8px; padding: 14px 16px; min-width: 0; }
+.cl-quest__main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 14px 16px; min-width: 0; }
 .cl-quest__head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 6px 12px; min-width: 0; }
 .cl-quest__head .cl-stamp { margin-top: 1px; }
-.cl-quest__title { flex: 1 1 14ch; min-width: 0; font: 600 15px/21px var(--cl-font-sans); letter-spacing: -0.01em; margin: 0; text-wrap: pretty; }
-.cl-quest__brief { font: var(--cl-text-small); color: var(--cl-ink-2); margin: 0; }
-.cl-quest__done { display: grid; gap: 3px; padding: 8px 10px; border-radius: var(--cl-radius-sm); background: var(--cl-paper-2); font: var(--cl-text-small); color: var(--cl-ink); }
-.cl-quest__for { font: var(--cl-text-mono); font-size: 11.5px; color: var(--cl-ink-3); }
+.cl-quest__title { flex: 1 1 14ch; min-width: 0; overflow-wrap: anywhere; font: 600 15px/21px var(--cl-font-sans); letter-spacing: -0.01em; margin: 0; text-wrap: pretty; }
+.cl-quest__brief { min-width: 0; overflow-wrap: anywhere; font: var(--cl-text-small); color: var(--cl-ink-2); margin: 0; }
+.cl-quest__done { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; min-width: 0; overflow-wrap: anywhere; padding: 8px 10px; border-radius: var(--cl-radius-sm); background: var(--cl-paper-2); font: var(--cl-text-small); color: var(--cl-ink); }
+.cl-quest__for { min-width: 0; overflow-wrap: anywhere; font: var(--cl-text-mono); font-size: 11.5px; color: var(--cl-ink-3); }
 .cl-quest__for b { color: var(--cl-ink-2); font-weight: 600; }
 .cl-quest.is-done { background: var(--cl-paper-0); }
 .cl-quest.is-done .cl-quest__stub { background: var(--cl-paper-2); border-right-color: var(--cl-rule-strong); }

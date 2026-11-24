@@ -112,12 +112,16 @@ const DOC_CSS = `
 .paper{display:grid;gap:8px;padding:18px 20px}
 .paper h3{margin:0}.paper p{font:var(--cl-text-body)}
 .paper .cite{font:var(--cl-text-mono);font-size:12.5px;overflow-wrap:anywhere}
+.paper .cite a{display:inline-flex;align-items:center;min-height:24px}
+@media (max-width:720px),(pointer:coarse){.paper .cite a{min-height:44px;padding:6px 4px}}
 `;
 
 const FAQ_CSS = `
 .faq{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-bottom:84px}
 @media (max-width:760px){.faq{grid-template-columns:minmax(0,1fr)}}
 .faq div{padding:18px 20px}.faq h2,.faq h3{margin:0 0 6px}.faq p{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2)}
+.faq-links a{display:inline-flex;align-items:center;min-height:24px}
+@media (max-width:720px),(pointer:coarse){.faq-links a{min-height:44px;padding:6px 4px}}
 `;
 
 const ARROW_SVG = `<svg class="doodle-arrow" viewBox="0 0 120 36" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 20 C36 14 72 23 108 17"/><path d="M95 8 C102 12 108 15 113 17 C107 21 101 25 96 30"/></svg>`;
@@ -226,8 +230,8 @@ const RECALL_CSS = `
 .rc-nav{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 14px;margin:0 4px 14px}
 .rc-nav[hidden]{display:none}
 .rc-steps{display:flex;flex-wrap:wrap;gap:7px}
-.rc-pill{appearance:none;height:32px;padding:0 12px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-pill);background:var(--cl-paper-1);color:var(--cl-ink-2);font:600 12.5px/1 var(--cl-font-sans);cursor:pointer;touch-action:manipulation}
-@media (max-width:720px),(pointer:coarse){.rc-pill{min-height:44px;height:auto;padding:8px 12px}}
+.rc-pill{appearance:none;height:32px;padding:0 12px;border:1px solid var(--cl-edge);border-radius:var(--cl-radius-pill);background:var(--cl-paper-1);color:var(--cl-ink-2);font:600 12.5px/1 var(--cl-font-sans);cursor:pointer;touch-action:manipulation}
+@media (max-width:720px),(pointer:coarse){.rc-pill{min-height:44px;height:auto;padding:8px 12px}.rc-arrows .cl-btn--sm{min-width:44px}}
 .rc-pill:hover{border-color:var(--cl-ink-3);color:var(--cl-ink)}
 .rc-pill[aria-current="step"]{border-color:var(--cl-ink);background:var(--cl-sticky);color:var(--cl-ink);box-shadow:var(--cl-copy-1);transform:translate(-1px,-1px)}
 .rc-arrows{display:flex;align-items:center;gap:8px}
@@ -264,13 +268,16 @@ const RECALL_CSS = `
 @media (max-width:520px){.rc-strikes{grid-template-columns:minmax(0,1fr)}}
 .rc-strike{padding:7px 9px;border:1px dashed var(--cl-edge);border-radius:var(--cl-radius-sm);background:var(--cl-paper-0);font:var(--cl-text-mono);font-size:11px;color:var(--cl-ink-3)}
 .rc-strike b{display:block;color:var(--cl-ink-2);margin-bottom:2px}
-.rc-dead{opacity:.62}
-.rc-dead p{text-decoration:line-through;text-decoration-color:var(--cl-bad)}
+.rc-dead{background:var(--cl-paper-2);border-color:var(--cl-rule-strong);color:var(--cl-ink-2)}
+.rc-dead::after{background:linear-gradient(315deg,var(--cl-sticky-ground) 47%,var(--cl-rule-strong) 47% 53%,var(--cl-paper-2) 53%);border-color:var(--cl-rule-strong)}
+.rc-dead p{color:var(--cl-ink-2);text-decoration:line-through;text-decoration-color:var(--cl-bad)}
 .rc-how{list-style:none;margin:0;padding:0;display:grid;gap:12px;counter-reset:hw}
 .rc-how li{counter-increment:hw;display:grid;grid-template-columns:26px minmax(0,1fr);gap:11px;align-items:start;font:var(--cl-text-small);color:var(--cl-ink-2)}
 .rc-how li::before{content:counter(hw);width:26px;height:26px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--cl-carbon);background:var(--cl-carbon-wash);font:700 11.5px/1 var(--cl-font-mono);color:var(--cl-ink)}
 .rc-how b{display:block;margin-bottom:2px;font:var(--cl-text-body);font-weight:650;color:var(--cl-ink)}
 .rc-foot{margin:6px 4px 0;font:var(--cl-text-small);color:var(--cl-ink-2)}
+.rc-foot a{display:inline-flex;align-items:center;min-height:24px}
+@media (max-width:720px),(pointer:coarse){.rc-foot a{min-height:44px;padding:6px 4px}}
 .sv-sheet{fill:var(--cl-paper-1);stroke:var(--cl-edge);stroke-width:1.4}
 .sv-dim{fill:var(--cl-paper-1);stroke:var(--cl-rule-strong);stroke-width:1.2;opacity:.55}
 .sv-hit{fill:var(--cl-carbon-wash);stroke:var(--cl-carbon);stroke-width:1.6}
@@ -524,7 +531,7 @@ const PICK_CSS = `
 .pick{position:relative}
 .pick-in{position:absolute;top:0;left:0;width:1px;height:1px;margin:0;opacity:0;pointer-events:none}
 .pick-tabs{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px}
-.pick-tabs label{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 14px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-pill);background:var(--cl-paper-1);font:500 14px/1 var(--cl-font-sans);color:var(--cl-ink-2);cursor:pointer;touch-action:manipulation}
+.pick-tabs label{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 14px;border:1px solid var(--cl-edge);border-radius:var(--cl-radius-pill);background:var(--cl-paper-1);font:500 14px/1 var(--cl-font-sans);color:var(--cl-ink-2);cursor:pointer;touch-action:manipulation}
 @media (max-width:720px),(pointer:coarse){.pick-tabs label{min-height:44px;height:auto;padding:8px 14px}}
 .pick-tabs label:hover{border-color:var(--cl-ink-3);color:var(--cl-ink)}
 .pick-tabs img{display:block;width:20px;height:20px;object-fit:contain}
@@ -580,6 +587,7 @@ const DOCS = `<main id="main" tabindex="-1" class="doc doc--wide wrap">${hero("D
 ${copyBox(INSTALL, "Copy installer command")}
 <p><b>Register first, everywhere.</b> The first Clyde call in any app is <code>register_agent</code> (name, context, surface, description, computer, type, projects). In coding apps the hooks refuse every other tool until it happens.</p>
 ${copyBox(MCP, "Copy MCP server URL")}
+<h2 class="cl-sr-only">Choose an app</h2>
 <div class="apps">${appCards()}</div>${SOON_NOTE}
 <h2 id="hooks">Set up hooks</h2>
 <p>The hooks are required, not optional. Rules ask nicely. Hooks don't. Without them your agent goes back to its own memory and forgets the rest. The installer wires them in Antigravity, Claude Code, Codex, and Gemini CLI, and each card above shows its app's exact config.</p>
@@ -765,7 +773,7 @@ const FAQ_PAGE = `<main id="main" tabindex="-1" class="doc wrap">${hero("FAQ", "
   "Don't read this if you're a human. It's SEO slop for the bots.",
   SCENE_IMG("goldfish", "Clyde staring eye-to-eye at a goldfish in a bowl", 142, 165), "")}
 <div class="faq">${FAQ.map(([q, a], i) => `<div class="${i % 2 ? "cl-card" : "cl-sticky"}"><h2 class="cl-title-3">${esc(q)}</h2><p>${esc(a)}</p></div>`).join("")}</div>
-<p><a href="/docs">Install Clyde</a> · <a href="/how-it-works">How it works</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></p></main>`;
+<p class="faq-links"><a href="/docs">Install Clyde</a> · <a href="/how-it-works">How it works</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></p></main>`;
 
 // ---- The routes ----
 

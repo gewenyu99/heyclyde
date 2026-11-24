@@ -44,7 +44,7 @@ button.c-sum:focus-visible,button.c-qsum:focus-visible,.c-toggle:focus-visible,.
 .cl-memory__body{font:var(--cl-text-small);color:var(--cl-ink-2);margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .cl-memory__body.c-clamp4{-webkit-line-clamp:4}
 .cl-memory__body.is-open{display:block;-webkit-line-clamp:unset;white-space:pre-wrap}
-.c-body-more{appearance:none;border:0;background:none;padding:2px 0;justify-self:start;color:var(--cl-carbon);font:500 12px/1.2 var(--cl-font-sans);cursor:pointer}
+.c-body-more{appearance:none;border:0;background:none;display:inline-flex;align-items:center;min-height:24px;padding:2px 0;justify-self:start;color:var(--cl-carbon);font:500 12px/1.2 var(--cl-font-sans);cursor:pointer}
 .c-body-more:hover{text-decoration:underline;text-underline-offset:2px}
 .c-code{font-family:var(--cl-font-mono);font-size:0.88em;padding:1px 4px;border-radius:var(--cl-radius-xs);background:var(--cl-paper-2);color:var(--cl-ink)}
 .cl-quest__done .c-code{background:var(--cl-paper-1)}
@@ -61,7 +61,7 @@ button.c-sum:focus-visible,button.c-qsum:focus-visible,.c-toggle:focus-visible,.
 .c-meta-foot{display:flex;flex-wrap:wrap;align-items:center;gap:2px 6px;font:var(--cl-text-mono);font-size:11px;line-height:16px;color:var(--cl-ink-3);min-width:0;overflow-wrap:anywhere}
 .c-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0}
 .c-row .c-sp{flex:1}
-.c-art{appearance:none;display:inline-flex;align-items:center;gap:6px;max-width:100%;min-height:28px;height:auto;padding:3px 8px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-sm);background:var(--cl-paper-1);color:var(--cl-ink-2);font:var(--cl-text-mono);font-size:11.5px;touch-action:manipulation}
+.c-art{appearance:none;display:inline-flex;align-items:center;gap:6px;max-width:100%;min-height:28px;height:auto;padding:3px 8px;border:1px solid var(--cl-edge);border-radius:var(--cl-radius-sm);background:var(--cl-paper-1);color:var(--cl-ink-2);font:var(--cl-text-mono);font-size:11.5px;touch-action:manipulation}
 .c-art span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 button.c-art{cursor:pointer}button.c-art:hover{border-color:var(--cl-carbon);color:var(--cl-ink)}
 button.c-art:focus-visible{outline:none;box-shadow:var(--cl-focus)}
@@ -108,4 +108,4 @@ form.c-complete .cl-textarea{min-height:68px}
 .c-err-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px;min-width:0}
 .c-err-row .c-text{flex:1 1 200px;min-width:0}
 .c-skel{height:12px;border-radius:var(--cl-radius-sm);background:var(--cl-paper-2);margin:6px 12px}
-@media (pointer:coarse){.c-toggle,.c-fold,.c-more,.c-art,.c-open,.c-ext,.c-claim,.c-complete-btn,.c-body-more,button.c-sum,button.c-qsum,.cl-btn{min-height:44px}}`;
+@media (pointer:coarse){.c-toggle,.c-fold,.c-more,.c-art,.c-open,.c-ext,.c-claim,.c-complete-btn,.c-body-more,button.c-sum,button.c-qsum,.cl-btn{min-height:44px}.c-toggle,.c-fold{min-width:44px}.c-body-more{padding:4px 10px}}`;

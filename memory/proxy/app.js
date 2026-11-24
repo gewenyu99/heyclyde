@@ -18,14 +18,14 @@ const APP_ROUTES = [
 ];
 
 const APP_CSS = `
-.app-wrap{flex:1;padding-block:12px 64px;display:grid;gap:20px;align-content:start}
+.app-wrap{flex:1;padding-block:12px 64px;display:grid;grid-template-columns:minmax(0,1fr);gap:20px;align-content:start}
 .app-nav{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .app-nav .cl-nav__item{width:auto;flex:none}
 .app-bar-user{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:var(--cl-text-small);color:var(--cl-ink-2)}
 .app-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;padding-bottom:14px;border-bottom:1.5px dashed var(--cl-rule-strong)}
 .app-head h1{margin:4px 0 0}
 .app-head-acts{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.app-grid{display:grid;gap:16px}
+.app-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;min-width:0}
 .app-cols-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 .app-cols-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start}
 @media (max-width:900px){.app-cols-3{grid-template-columns:minmax(0,1fr)}}
@@ -35,9 +35,9 @@ const APP_CSS = `
 .app-form{display:grid;gap:14px;padding:20px}
 .app-form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
 .app-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-.app-meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.app-body{margin:0;white-space:pre-wrap;font:var(--cl-text-body);color:var(--cl-ink)}
-.app-table-wrap{overflow-x:auto;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-lg);background:var(--cl-paper-1)}
+.app-meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;min-width:0}
+.app-body{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%;font:var(--cl-text-body);color:var(--cl-ink)}
+.app-table-wrap{max-width:100%;min-width:0;overflow-x:auto;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-lg);background:var(--cl-paper-1)}
 .app-table{width:100%;border-collapse:collapse;font:var(--cl-text-small);color:var(--cl-ink-2)}
 .app-table th,.app-table td{text-align:left;vertical-align:top;padding:10px 14px;border-top:1px dashed var(--cl-rule)}
 .app-table thead th{border-top:0;font:var(--cl-text-label);text-transform:uppercase;letter-spacing:.06em;color:var(--cl-ink-3);background:var(--cl-paper-0)}
@@ -88,7 +88,7 @@ const APP_CSS = `
 .onb-pill__top{display:flex;align-items:center;justify-content:space-between;gap:8px;font:600 13px/1.2 var(--cl-font-sans);color:var(--cl-ink)}
 .onb-pill__sub{font:var(--cl-text-small);color:var(--cl-ink-2)}
 .onb-tabs{display:flex;gap:8px;flex-wrap:wrap}
-.onb-tab{appearance:none;display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-pill);background:var(--cl-paper-1);color:var(--cl-ink-2);font:600 12.5px/1.2 var(--cl-font-sans);cursor:pointer}
+.onb-tab{appearance:none;display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid var(--cl-edge);border-radius:var(--cl-radius-pill);background:var(--cl-paper-1);color:var(--cl-ink-2);font:600 12.5px/1.2 var(--cl-font-sans);cursor:pointer}
 .onb-tab img{width:16px;height:16px;display:block}
 .onb-tab.is-active{border-color:var(--cl-ink);background:var(--cl-sticky);color:var(--cl-ink);box-shadow:var(--cl-copy-1)}
 .onb-panel{display:grid;gap:12px}
@@ -146,9 +146,9 @@ const APP_CSS = `
 .gr-res-btn:hover,.gr-res-btn:focus-visible{background:var(--cl-sticky);outline:none}
 .gr-res-meta{font:var(--cl-text-mono);font-size:11px;color:var(--cl-ink-3)}
 .gr-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.gr-chip-btn{appearance:none;display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--cl-rule-strong);border-radius:var(--cl-radius-pill);background:var(--cl-paper-0);color:var(--cl-ink-2);font:600 11.5px/1.2 var(--cl-font-mono);cursor:pointer}
+.gr-chip-btn{appearance:none;display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--cl-edge);border-radius:var(--cl-radius-pill);background:var(--cl-paper-0);color:var(--cl-ink-3);font:600 11.5px/1.2 var(--cl-font-mono);cursor:pointer}
 .gr-chip-btn.is-on{border-color:var(--cl-ink);background:var(--cl-paper-1);color:var(--cl-ink)}
-.gr-chip-btn:not(.is-on){opacity:.48;text-decoration:line-through}
+.gr-chip-btn[data-edge-type]:not(.is-on){text-decoration:line-through}
 .gr-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
 .gr-dot--relates{background:var(--cl-pen-blue)}.gr-dot--supports{background:var(--cl-pen-green)}
 .gr-dot--contradicts{background:var(--cl-pen-red)}.gr-dot--supersedes{background:var(--cl-pen-amber)}
@@ -191,10 +191,10 @@ const APP_CSS = `
 .gr-list{padding:12px;display:grid;gap:8px}
 .gr-list-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-md);background:var(--cl-paper-1)}
 .gr-list-row.is-selected{border-color:var(--cl-carbon);background:var(--cl-carbon-wash)}
-.gr-list-btn{appearance:none;border:0;background:none;padding:0;text-align:left;cursor:pointer;font:600 13.5px/1.3 var(--cl-font-sans);color:var(--cl-ink);touch-action:manipulation}
+.gr-list-btn{appearance:none;border:0;background:none;padding:0;display:inline-flex;align-items:center;min-height:24px;text-align:left;cursor:pointer;font:600 13.5px/1.3 var(--cl-font-sans);color:var(--cl-ink);touch-action:manipulation}
 .gr-list-btn:focus-visible{outline:none;box-shadow:var(--cl-focus);border-radius:var(--cl-radius-xs)}
 .gr-svg:focus-visible{outline:none;box-shadow:inset 0 0 0 2px var(--cl-carbon)}
-.gr-node:focus-visible{outline:none}.gr-node:focus-visible circle.gr-vis{stroke:var(--cl-carbon);stroke-width:3.5}
+.gr-node:focus-visible{outline:none}.gr-node:focus-visible circle.gr-vis{stroke:var(--cl-ink);stroke-width:3.5}.gr-node:focus-visible circle.gr-hit{stroke:var(--cl-carbon);stroke-width:2.5}
 .gr-skel{padding:16px}
 @media (max-width:720px){.gr-svg{height:min(420px,60vh);height:min(420px,60dvh)}}
 .gr-ins-body{margin:0;font:var(--cl-text-small);color:var(--cl-ink-2);white-space:pre-wrap;max-height:220px;overflow:auto}
@@ -216,7 +216,8 @@ const APP_CSS = `
 .onb-tab:focus-visible,.gr-chip-btn:focus-visible,.gr-ins-link:focus-visible{outline:none;box-shadow:var(--cl-focus)}
 @media (max-width:720px),(pointer:coarse){
   .app-nav .cl-nav__item{min-height:44px;padding:8px 12px}
-  .app-bar-user .cl-btn--sm,.app-head-acts .cl-btn--sm,.onb-tab,.gr-chip-btn,.gr-res-btn,.gr-ins-link,.gr-list-btn{min-height:44px;height:auto;padding-block:8px}
+  .app-bar-user .cl-btn--sm,.app-head-acts .cl-btn--sm,.gr-zoom .cl-btn--sm,.onb-tab,.gr-chip-btn,.gr-res-btn,.gr-ins-link,.gr-list-btn{min-height:44px;height:auto;padding-block:8px}
+  .gr-zoom .cl-btn--sm{min-width:44px}
   .app-form .cl-btn,.signin-box .cl-btn[type="submit"],.app-filters .cl-btn[type="submit"]{min-height:44px;height:auto}
   .cl-pw-wrap .cl-btn{min-height:44px}
 }
@@ -525,16 +526,36 @@ function parseCallbackHash() {
   return true;
 }
 
+var refreshInFlight = null;
+
 async function refreshSession(s) {
   if (!s || !s.refresh_token) return null;
-  var r = await fetch('/auth/v1/token?grant_type=refresh_token', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ refresh_token: s.refresh_token })
-  });
-  if (!r.ok) { writeSession(null); return null; }
-  var d = await r.json();
-  return writeSession(d);
+  if (refreshInFlight) return refreshInFlight;
+  var cur = readSession();
+  if (cur && cur.refresh_token && cur.refresh_token !== s.refresh_token) {
+    return cur;
+  }
+  refreshInFlight = (async function() {
+    try {
+      var r = await fetch('/auth/v1/token?grant_type=refresh_token', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ refresh_token: s.refresh_token })
+      });
+      if (!r.ok) {
+        var latest = readSession();
+        if (latest && latest.refresh_token === s.refresh_token) {
+          writeSession(null);
+        }
+        return null;
+      }
+      var d = await r.json();
+      return writeSession(d);
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
 }
 
 async function api(path, opts) {
@@ -542,21 +563,48 @@ async function api(path, opts) {
   var s = readSession();
   if (!s) { renderSignIn(); throw new Error('Sign in required.'); }
   if (s.expires_at && Date.now() > s.expires_at - 30000 && s.refresh_token) {
-    s = (await refreshSession(s)) || s;
+    var ref = await refreshSession(s);
+    if (ref) {
+      s = ref;
+    } else {
+      var afterRef = readSession();
+      if (afterRef && afterRef.access_token !== s.access_token) s = afterRef;
+      else if (!afterRef) {
+        renderSignIn('Your session expired. Sign in again.');
+        throw new Error('Unauthorized');
+      }
+    }
   }
   var headers = Object.assign({ authorization: 'Bearer ' + s.access_token }, opts.headers || {});
   if (opts.body !== undefined && !headers['content-type']) headers['content-type'] = 'application/json';
   var r = await fetch(path, { method: opts.method || 'GET', headers: headers, body: opts.body });
-  if (r.status === 401 && s.refresh_token) {
-    var fresh = await refreshSession(s);
-    if (fresh) {
-      headers.authorization = 'Bearer ' + fresh.access_token;
+  if (r.status === 401) {
+    var cur = readSession();
+    if (cur && cur.access_token && cur.access_token !== s.access_token) {
+      s = cur;
+      headers.authorization = 'Bearer ' + s.access_token;
       r = await fetch(path, { method: opts.method || 'GET', headers: headers, body: opts.body });
+    }
+    if (r.status === 401) {
+      cur = readSession();
+      if (cur && cur.refresh_token) {
+        var fresh = await refreshSession(cur);
+        if (fresh) {
+          s = fresh;
+          headers.authorization = 'Bearer ' + fresh.access_token;
+          r = await fetch(path, { method: opts.method || 'GET', headers: headers, body: opts.body });
+        }
+      }
     }
   }
   if (r.status === 401) {
-    writeSession(null);
-    renderSignIn('Your session expired. Sign in again.');
+    var latest = readSession();
+    if (latest && latest.access_token === s.access_token) {
+      writeSession(null);
+      renderSignIn('Your session expired. Sign in again.');
+    } else if (!latest) {
+      renderSignIn('Your session expired. Sign in again.');
+    }
     throw new Error('Unauthorized');
   }
   if (opts.raw) return r;
@@ -583,7 +631,30 @@ function clearNotice(el) {
 
 var PROV_SKEL = '<div class="sign-prov-skel" aria-hidden="true"><div class="cl-auth-providers"><span class="cl-skel"></span><span class="cl-skel"></span></div><div class="cl-or-rule"><span class="cl-skel sign-or-skel"></span></div></div>';
 
+function renderInviteBanner() {
+  var el = document.getElementById('app-invite-banner');
+  if (!el) return;
+  if (!INV_BANNER_MSG) {
+    el.className = 'is-hidden';
+    if (typeof el.removeAttribute === 'function') {
+      el.removeAttribute('role');
+      el.removeAttribute('aria-live');
+    }
+    el.textContent = '';
+    return;
+  }
+  var isBad = INV_BANNER_KIND === 'bad';
+  el.className = isBad ? 'app-banner app-banner--bad' : 'app-banner app-banner--ok';
+  if (typeof el.setAttribute === 'function') {
+    el.setAttribute('role', isBad ? 'alert' : 'status');
+    el.setAttribute('aria-live', isBad ? 'assertive' : 'polite');
+  }
+  el.textContent = INV_BANNER_MSG;
+}
+
 function renderSignIn(msg) {
+  INV_BANNER_MSG = '';
+  renderInviteBanner();
   var pend = readPendingInvite();
   var nextTarget = afterSignIn || '/memories';
   if (pend && nextTarget.indexOf('invite=') < 0 && nextTarget.indexOf('code=') < 0) {
@@ -628,6 +699,27 @@ function renderSignIn(msg) {
   var pwBtn = document.getElementById('btn-pw-submit');
   wireOtpInput(document.getElementById('s-code'));
   wirePwToggle('btn-s-pw-vis', 's-pw');
+  function clearEmailErr() {
+    if (!emailEl) return;
+    if (typeof emailEl.removeAttribute === 'function') {
+      emailEl.removeAttribute('aria-invalid');
+      emailEl.removeAttribute('aria-describedby');
+    }
+    if (emailEl.parentElement && emailEl.parentElement.classList) emailEl.parentElement.classList.remove('is-error');
+  }
+  function flagEmailErr(errText) {
+    notice(banner, 'bad', errText);
+    if (!emailEl) return;
+    if (typeof emailEl.setAttribute === 'function') {
+      emailEl.setAttribute('aria-invalid', 'true');
+      emailEl.setAttribute('aria-describedby', 'sign-msg');
+    }
+    if (emailEl.parentElement && emailEl.parentElement.classList) emailEl.parentElement.classList.add('is-error');
+    if (typeof emailEl.focus === 'function') emailEl.focus();
+  }
+  if (emailEl && typeof emailEl.addEventListener === 'function') {
+    emailEl.addEventListener('input', clearEmailErr);
+  }
 
   if (togglePwBtn && togglePwBtn.addEventListener) togglePwBtn.addEventListener('click', function() {
     var hidden = pwForm.classList.toggle('is-hidden');
@@ -640,6 +732,7 @@ function renderSignIn(msg) {
     e.preventDefault();
     if (sendBtn && sendBtn.disabled) return;
     clearNotice(banner);
+    clearEmailErr();
     var email = emailEl.value.trim();
     setBusy(sendBtn, true, 'Sending…');
     try {
@@ -666,6 +759,7 @@ function renderSignIn(msg) {
     e.preventDefault();
     if (verifyBtn && verifyBtn.disabled) return;
     clearNotice(banner);
+    clearEmailErr();
     var email = emailEl.value.trim();
     var token = cleanOtp(document.getElementById('s-code').value);
     setBusy(verifyBtn, true, 'Verifying…');
@@ -690,15 +784,14 @@ function renderSignIn(msg) {
     e.preventDefault();
     if (pwBtn && pwBtn.disabled) return;
     clearNotice(banner);
+    clearEmailErr();
     var email = emailEl && emailEl.value ? emailEl.value.trim() : '';
     if (!email) {
-      notice(banner, 'bad', 'Enter your email address in the Email field above, then sign in.');
-      if (emailEl && typeof emailEl.focus === 'function') emailEl.focus();
+      flagEmailErr('Enter your email address in the Email field above, then sign in.');
       return;
     }
     if (emailEl && typeof emailEl.checkValidity === 'function' && !emailEl.checkValidity()) {
-      notice(banner, 'bad', 'Enter a valid email address like you@example.com above, then try again.');
-      if (emailEl && typeof emailEl.focus === 'function') emailEl.focus();
+      flagEmailErr('Enter a valid email address like you@example.com above, then try again.');
       return;
     }
     var password = document.getElementById('s-pw').value;
@@ -1194,7 +1287,12 @@ async function mountOnboarding(container, forceShow, onRefresh) {
     if (!container || !ob) return;
     var needs = ob.agents === 0 || ob.entries === 0 || ob.recalls === 0;
     if (!forceShow && !needs) {
+      var hadFocus = Boolean(focusRefresh || (typeof container.contains === 'function' && document.activeElement && container.contains(document.activeElement)));
       container.innerHTML = '';
+      if (hadFocus) {
+        var nextFocus = document.getElementById('q-in') || document.getElementById('main');
+        if (nextFocus && typeof nextFocus.focus === 'function') nextFocus.focus({ preventScroll: true });
+      }
       return;
     }
     var det = typeof container.querySelector === 'function' ? container.querySelector('#onb-box details') : null;
@@ -1271,10 +1369,7 @@ async function renderEntries() {
   var curOffset = Math.max(0, parseInt(sp.get('offset') || '0', 10) || 0);
   var entriesSeq = 0;
   var hasExtraInit = Boolean(sp.get('kind') || sp.get('project') || sp.get('context') || sp.get('agent') || (sp.get('state') && sp.get('state') !== 'active'));
-  var invCls = INV_BANNER_KIND === 'bad' ? 'app-banner app-banner--bad' : 'app-banner app-banner--ok';
-  var invRole = INV_BANNER_KIND === 'bad' ? 'alert' : 'status';
   root.innerHTML =
-    (INV_BANNER_MSG ? '<div class="' + invCls + '" role="' + invRole + '">' + esc(INV_BANNER_MSG) + '</div>' : '') +
     '<div id="onb-slot" class="app-grid"></div>' +
     mcpCard(
       'Save a note through your agent',
@@ -1366,11 +1461,11 @@ async function renderEntries() {
     var nextBtn = document.getElementById('btn-pg-next');
     if (prevBtn && prevBtn.addEventListener) prevBtn.addEventListener('click', function() {
       curOffset = Math.max(0, curOffset - PAGE_SIZE);
-      load({ scroll: true });
+      load({ scroll: true, focusPager: 'prev' });
     });
     if (nextBtn && nextBtn.addEventListener) nextBtn.addEventListener('click', function() {
       curOffset = curOffset + PAGE_SIZE;
-      load({ scroll: true });
+      load({ scroll: true, focusPager: 'next' });
     });
   }
 
@@ -1429,6 +1524,17 @@ async function renderEntries() {
       renderPager(total, entries.length, hasMore);
       if (opts.scroll && status && typeof status.scrollIntoView === 'function') {
         status.scrollIntoView({ block: 'nearest' });
+      }
+      if (opts.focusPager) {
+        var alt = opts.focusPager === 'prev' ? 'next' : 'prev';
+        var targetBtn = document.getElementById('btn-pg-' + opts.focusPager);
+        if (!targetBtn || targetBtn.disabled) targetBtn = document.getElementById('btn-pg-' + alt);
+        if (targetBtn && !targetBtn.disabled && typeof targetBtn.focus === 'function') {
+          targetBtn.focus({ preventScroll: true });
+        } else if (status) {
+          if (typeof status.setAttribute === 'function' && (typeof status.hasAttribute !== 'function' || !status.hasAttribute('tabindex'))) status.setAttribute('tabindex', '-1');
+          if (typeof status.focus === 'function') status.focus({ preventScroll: true });
+        }
       }
     } catch (err) {
       if (mySeq !== entriesSeq || isAuthFlowErr(err)) return;
@@ -1538,7 +1644,7 @@ async function renderEntryDetail() {
       '<article class="cl-card app-grid">' +
         '<div class="app-meta"><span class="cl-chip">' + esc(e.pattern || e.kind) + '</span>' + badgeState + sensBadge +
         (e.project ? '<span class="cl-chip cl-chip--carbon">' + esc(e.project) + '</span>' : '') +
-        (d.superseded_by ? '<a class="cl-chip cl-chip--warn" href="/entries/' + encodeURIComponent(d.superseded_by) + '">Replaced by ' + esc(d.superseded_by) + '</a>' : '') +
+        (d.superseded_by ? '<a class="cl-chip cl-chip--warn" href="/entries/' + encodeURIComponent(d.superseded_by) + '"><span>Replaced by ' + esc(d.superseded_by) + '</span></a>' : '') +
         '<span class="cl-memory__conf">Confidence ' + confText(e.confidence) + '</span></div>' +
         '<h2 class="cl-title-2">' + esc(e.title) + '</h2>' +
         '<pre class="app-body">' + esc(e.body) + '</pre>' +
@@ -1603,6 +1709,7 @@ async function renderGraph() {
         '<div class="cl-field gr-search-wrap"><label for="g-search">Find or jump to note</label>' +
           '<input id="g-search" class="cl-input" autocomplete="off" placeholder="Search by title or id..." role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="g-results">' +
           '<div id="g-results" class="gr-results is-hidden" role="listbox"></div>' +
+          '<div id="g-search-err" class="cl-hint cl-error is-hidden" role="alert" aria-live="polite"></div>' +
         '</div>' +
         '<div class="cl-field"><label for="g-depth">Depth</label><select id="g-depth" class="cl-select"><option value="1">1 hop</option><option value="2">2 hops</option><option value="3">3 hops</option></select></div>' +
         '<div class="cl-field"><label for="g-pattern">Pattern</label><select id="g-pattern" class="cl-select"><option value="">All patterns</option><option value="decisions">decisions</option><option value="projects">projects</option><option value="preferences">preferences</option><option value="observations">observations</option><option value="references">references</option><option value="recommendations">recommendations</option><option value="reactions">reactions</option></select></div>' +
@@ -1642,6 +1749,7 @@ async function renderGraph() {
   var prunedLbl = document.getElementById('g-pruned-lbl');
   var searchEl = document.getElementById('g-search');
   var resultsEl = document.getElementById('g-results');
+  var searchErrEl = document.getElementById('g-search-err');
   var modeGraphEl = document.getElementById('g-mode-graph');
   var modeListEl = document.getElementById('g-mode-list');
   var zoomWrapEl = document.getElementById('g-zoom');
@@ -1801,6 +1909,10 @@ async function renderGraph() {
     var n = vg.byId[state.selected] || vg.byId[state.data && state.data.center] || vg.nodes[0];
     if (!n) {
       box.innerHTML = '<p class="cl-hint">No visible nodes match these filters.</p>';
+      if (focusTitle) {
+        if (typeof box.setAttribute === 'function' && (typeof box.hasAttribute !== 'function' || !box.hasAttribute('tabindex'))) box.setAttribute('tabindex', '-1');
+        if (typeof box.focus === 'function') box.focus({ preventScroll: true });
+      }
       return;
     }
     state.selected = n.id;
@@ -1833,7 +1945,7 @@ async function renderGraph() {
     if (rec) rec.addEventListener('click', function() {
       state.center = n.id;
       syncGraphUrl();
-      load();
+      load({ focusInspector: true });
     });
     box.querySelectorAll('[data-pick]').forEach(function(btn) {
       btn.addEventListener('click', function() {
@@ -1921,7 +2033,7 @@ async function renderGraph() {
     updateViewBox();
   }
 
-  function draw() {
+  function draw(focusInspector) {
     if (!state.data) return;
     var vg = visibleGraph();
     var canvas = document.getElementById('g-canvas');
@@ -1939,11 +2051,11 @@ async function renderGraph() {
 
     if (!vg.nodes.length) {
       canvas.innerHTML = '<div class="cl-empty"><p class="cl-empty__title">No notes in the graph yet</p><p class="cl-empty__text">Once your agents save notes over MCP, they appear here.</p></div>';
-      renderInspector(vg, false);
+      renderInspector(vg, Boolean(focusInspector));
       return;
     }
 
-    renderInspector(vg, false);
+    renderInspector(vg, Boolean(focusInspector));
 
     if (state.viewMode === 'list') {
       var sorted = vg.nodes.slice().sort(function(a, b) {
@@ -2148,7 +2260,8 @@ async function renderGraph() {
     });
   }
 
-  async function load() {
+  async function load(opts) {
+    opts = opts || {};
     var reqId = ++graphSeq;
     var canvas = document.getElementById('g-canvas');
     var st = document.getElementById('g-status');
@@ -2165,7 +2278,7 @@ async function renderGraph() {
       state.data = data;
       state.selected = data.center;
       runLayout(data.nodes || [], data.edges || [], data.center);
-      draw();
+      draw(Boolean(opts.focusInspector));
     } catch (err) {
       if (isAuthFlowErr(err) || reqId !== graphSeq) return;
       state.data = null;
@@ -2179,6 +2292,10 @@ async function renderGraph() {
         }
       }
       renderInspector(visibleGraph(), false);
+      if (opts.focusInspector && canvas && typeof canvas.querySelector === 'function') {
+        var retryBtn = canvas.querySelector('[data-retry]');
+        if (retryBtn && typeof retryBtn.focus === 'function') retryBtn.focus({ preventScroll: true });
+      }
     }
   }
 
@@ -2226,9 +2343,21 @@ async function renderGraph() {
     updateViewBox();
   });
 
+  function clearSearchErr() {
+    if (!searchErrEl) return;
+    searchErrEl.textContent = '';
+    if (searchErrEl.classList) searchErrEl.classList.add('is-hidden');
+  }
+  function showSearchErr(msg) {
+    if (!searchErrEl) return;
+    searchErrEl.textContent = msg;
+    if (searchErrEl.classList) searchErrEl.classList.remove('is-hidden');
+  }
+
   var searchTimer = null;
   searchEl.addEventListener('input', function() {
     clearTimeout(searchTimer);
+    clearSearchErr();
     var q = searchEl.value.trim();
     if (!q) {
       ++searchSeq;
@@ -2241,6 +2370,7 @@ async function renderGraph() {
       try {
         var d = await api('/me/entries?q=' + encodeURIComponent(q) + '&state=all&limit=8');
         if (reqId !== searchSeq) return;
+        clearSearchErr();
         var hits = (d.entries || []).slice(0, 8);
         if (!hits.length) {
           resultsEl.innerHTML = '<div class="gr-res-btn" role="option" aria-disabled="true"><span>No matching notes</span></div>';
@@ -2255,21 +2385,25 @@ async function renderGraph() {
           btn.addEventListener('click', function() {
             state.center = btn.getAttribute('data-jump');
             searchEl.value = '';
+            resultsEl.innerHTML = '';
+            clearSearchErr();
             setSearchExpanded(false);
             syncGraphUrl();
-            load();
+            load({ focusInspector: true });
           });
         });
       } catch (e) {
         if (isAuthFlowErr(e) || reqId !== searchSeq) return;
-        resultsEl.innerHTML = '<div class="gr-res-btn" role="alert">' + "<span>Couldn't search notes. Try typing again.</span>" + '</div>';
-        setSearchExpanded(true);
+        resultsEl.innerHTML = '';
+        setSearchExpanded(false);
+        showSearchErr("Couldn't search notes. Try typing again.");
       }
     }, 180);
   });
 
   searchEl.addEventListener('keydown', function(ev) {
     if (ev.key === 'Escape') {
+      clearSearchErr();
       setSearchExpanded(false);
       return;
     }
@@ -2288,6 +2422,7 @@ async function renderGraph() {
     var idx = opts.indexOf(document.activeElement);
     if (ev.key === 'Escape') {
       ev.preventDefault();
+      clearSearchErr();
       setSearchExpanded(false);
       if (typeof searchEl.focus === 'function') searchEl.focus();
     } else if (ev.key === 'ArrowDown' && opts.length) {
@@ -2651,6 +2786,7 @@ async function start() {
       INV_BANNER_MSG = (e && e.message) ? ("Couldn't apply invite code: " + e.message) : "Couldn't apply invite code. Open your invite link again or contact support.";
     }
   }
+  renderInviteBanner();
   if (view === 'entries') return renderEntries();
   if (view === 'entry') return renderEntryDetail();
   if (view === 'graph') return renderGraph();
@@ -2707,6 +2843,7 @@ export function appPage(path, nonce) {
   const main = `<main id="main" tabindex="-1" class="wrap app-wrap">` +
     `<div class="app-head"><div><span class="cl-label">${view === "invite" ? "Clyde invite" : "Clyde workspace"}</span><h1 class="cl-title-1">${esc(spec.heading)}</h1>` +
     `<p class="cl-hint">${esc(spec.sub)}</p></div>${headActs}</div>` +
+    `<div id="app-invite-banner" class="is-hidden"></div>` +
     `<div id="app-root" class="app-grid" data-view="${view}" data-id="${esc(id)}"><noscript><p class="cl-error">Turn on JavaScript to use your Clyde workspace.</p></noscript></div>` +
     `</main>`;
 

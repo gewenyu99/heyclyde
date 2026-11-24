@@ -340,3 +340,39 @@ test('lean card interactions: long body More/Less, safe inline code XSS, collaps
   assert.ok(report2.frames['recall-more-empty'].text.includes('Nothing more in Clyde matches that.'), 'empty recall_more states no more matches')
   assert.ok(report2.frames['art-pdf'].text.includes('expires in 10 minutes') && report2.frames['art-pdf'].buttons.includes('Download') && !report2.frames['art-pdf'].buttons.includes('Expand'), 'binary artifact card shows expiry and omits dead toggle')
 })
+
+test('Round 3: card CSS contracts and transient get_entry / get_blob retries recover cleanly', () => {
+  const recallHtml = cardHtml('recall')
+  assert.ok(recallHtml.includes('data-loaded'), 'openEntry and preview track successful loads via data-loaded')
+  assert.match(CARD_CSS, /\.c-art\{[^}]*border:1px solid var\(--cl-edge\)/, '.c-art uses 3:1 --cl-edge border')
+  assert.match(CARD_CSS, /\.c-body-more\{[^}]*min-height:24px/, '.c-body-more meets 24px desktop target')
+  assert.match(CARD_CSS, /@media \(pointer:coarse\)\{[\s\S]*\.c-toggle,\.c-fold\{min-width:44px\}/, '.c-toggle and .c-fold meet 44px width on coarse pointers')
+  assert.match(CARD_CSS, /@media \(pointer:coarse\)\{[\s\S]*\.c-body-more\{padding:4px 10px\}/, '.c-body-more gets coarse touch padding')
+})
+
+test('Round 3: transient get_entry and get_blob errors retry and recover on second click', { skip: NO_CHROME }, () => {
+  const report = run([
+    {
+      id: 'entry-retry', card: 'recall', html: cardHtml('recall'), theme: 'light', result: FIXTURES.recall, width: 640,
+      calls: { get_entry: [{ error: { code: -32000, message: 'Transient 503' } }, FIXTURES.entry] },
+      clicks: ['article[data-id="e-1"] button.c-open'],
+      laterClicks: ['article[data-id="e-1"] button.c-open'],
+    },
+    {
+      id: 'blob-retry', card: 'entry', html: cardHtml('entry'), theme: 'dark', result: FIXTURES.entry, width: 640,
+      calls: { get_blob: [{ error: { code: -32000, message: 'Blob timeout' } }, FIXTURES.artifact] },
+      clicks: ['button.c-art'],
+      laterClicks: ['button.c-art'],
+    },
+  ])
+  const entryCalls = report.calls.filter((c: any) => c.frame === 'entry-retry' && c.name === 'get_entry')
+  assert.equal(entryCalls.length, 2, 'second Details click re-invokes get_entry after failure')
+  assert.ok(report.frames['entry-retry'].text.includes('The version guard'), 'second Details click renders entry links')
+  assert.ok(!report.frames['entry-retry'].text.includes('Transient 503'), 'stale get_entry error is cleared on retry')
+  assert.ok(report.frames['entry-retry'].buttons.includes('Hide details') && report.frames['entry-retry'].buttons.includes('Open'), 'Details button flips to Hide details and shows Open')
+
+  const blobCalls = report.calls.filter((c: any) => c.frame === 'blob-retry' && c.name === 'get_blob')
+  assert.equal(blobCalls.length, 2, 'second artifact click re-invokes get_blob after failure')
+  assert.ok(report.frames['blob-retry'].text.includes('Run the guard.'), 'second artifact click renders artifact preview')
+  assert.ok(!report.frames['blob-retry'].text.includes('Blob timeout'), 'stale get_blob error is cleared on retry')
+})

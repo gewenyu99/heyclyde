@@ -115,12 +115,14 @@ button:hover, .button:hover { background: var(--surface-2); text-decoration: non
 button:disabled { opacity: 0.5; cursor: default; }
 button.primary, .button.primary { background: var(--accent-fill); border-color: var(--accent-fill); color: #fff; }
 button.primary:hover, .button.primary:hover { background: var(--accent-fill-hover); border-color: var(--accent-fill-hover); }
-button.danger, button.armed { background: var(--bad); border-color: var(--bad); color: #fff; }
+button.small, .button.small { padding: 3px 8px; font-size: 12px; min-height: 24px; }
+button.link { background: none; border: 0; padding: 0; color: var(--accent-ink); font-weight: 500; min-height: 24px; }
+button.link:hover { text-decoration: underline; background: none; }
+button.danger, button.armed, button.link.armed, button.link.danger { background: var(--bad); border: 1px solid var(--bad); padding: 6px 12px; color: #fff; text-decoration: none; }
+button.small.danger, button.small.armed { padding: 3px 8px; }
+button.danger:hover, button.armed:hover, button.link.armed:hover, button.link.danger:hover { background: var(--bad); border-color: var(--bad); color: #fff; filter: brightness(0.92); text-decoration: none; }
 button.danger-outline { color: var(--bad-ink); border-color: var(--bad); }
 button.danger-outline:hover { background: var(--bad-wash); }
-button.small, .button.small { padding: 3px 8px; font-size: 12px; }
-button.link { background: none; border: 0; padding: 0; color: var(--accent-ink); font-weight: 500; }
-button.link:hover { text-decoration: underline; background: none; }
 
 input, select, textarea {
   font: inherit;
@@ -153,7 +155,7 @@ legend { font-size: 12px; font-weight: 600; color: var(--ink-2); padding: 0 4px;
 .segmented { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 6px; overflow: hidden; align-self: flex-start; }
 .segmented label { position: relative; }
 .segmented input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
-.segmented span { display: block; padding: 5px 12px; border-right: 1px solid var(--border); font-weight: 550; }
+.segmented span { display: flex; align-items: center; justify-content: center; padding: 5px 12px; border-right: 1px solid var(--border); font-weight: 550; }
 .segmented label:last-child span { border-right: 0; }
 .segmented input:checked + span { background: var(--accent-fill); color: #fff; }
 .segmented input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -331,7 +333,7 @@ tr.detail > td { background: var(--surface-2); padding: 10px; }
 tr.dim > td { color: var(--muted); }
 tr.hit > td { background: var(--accent-wash); }
 tr.hit > td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
-th .sort { background: none; border: 0; padding: 0; font: inherit; color: inherit; font-weight: 600; }
+th .sort { background: none; border: 0; padding: 2px 4px; min-width: 24px; min-height: 24px; font: inherit; color: inherit; font-weight: 600; }
 th .sort:hover { color: var(--accent-ink); background: none; }
 th[aria-sort] .sort { color: var(--ink); }
 .trunc { display: inline-block; max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
@@ -469,7 +471,7 @@ svg.graph:active { cursor: grabbing; }
 .node .dot { stroke: var(--surface); stroke-width: 1.5; }
 .node.old .dot { stroke-width: 1.5; stroke-dasharray: 2 1.5; }
 .node .ring { fill: none; stroke: var(--ink); stroke-width: 1.3; }
-.node.draft { opacity: 0.4; }
+.node.draft .dot { stroke-width: 1.8px; }
 .node .lock { fill: var(--ink); stroke: var(--surface); stroke-width: 0.6; }
 .node .hitbox { fill: transparent; }
 .node-label { font-size: 11px; font-weight: 600; fill: var(--ink); paint-order: stroke; stroke: var(--surface); stroke-width: 3px; pointer-events: none; }
@@ -483,7 +485,7 @@ svg.finding .node.match .dot { stroke: var(--ink); stroke-width: 2; }
 .legend-sep { width: 1px; height: 14px; background: var(--border-strong); }
 .sw { width: 10px; height: 10px; border-radius: 50%; background: var(--other); flex: none; }
 .sw.ring { background: var(--other); box-shadow: 0 0 0 1.5px var(--surface), 0 0 0 2.8px var(--ink); }
-.sw.faded { opacity: 0.4; }
+.sw.faded { background: var(--surface); border: 1.8px solid var(--ink-2); }
 .sw.hollow { background: var(--surface); border: 1.5px dashed var(--ink-2); }
 .sw.lock { border-radius: 2px; width: 8px; height: 7px; background: var(--ink); margin-top: 3px; }
 
@@ -518,6 +520,7 @@ svg.finding .node.match .dot { stroke: var(--ink); stroke-width: 2; }
 
 @media (max-width: 759px), (pointer: coarse) {
   button, .button, button.small, .button.small, .menu, .segmented label, .segmented span, summary, .check, .checks label { min-height: 44px; }
+  th .sort, .filters button.small { min-width: 44px; min-height: 44px; }
   .side li a { min-height: 44px; display: flex; align-items: center; }
   button.link { min-height: 44px; padding: 6px 4px; }
   input:not([type="checkbox"]):not([type="radio"]), select, textarea { min-height: 44px; font-size: 16px; }

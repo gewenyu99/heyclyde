@@ -271,13 +271,14 @@ function syncOpenBtn(btn, m, isOpen) {
   btn.setAttribute("aria-label", lbl + " for " + (m.title || "note"));
 }
 function openLocal(btn, m, holder, card) {
+  holder.textContent = ""; holder.setAttribute("data-loaded", "1");
   holder.hidden = false; syncOpenBtn(btn, m, true);
   var body = card.querySelector(".cl-memory__body"); if (body) body.className = "cl-memory__body is-open";
   add(holder, entryDetail(m, false));
   resized();
 }
 function openEntry(btn, m, holder, card) {
-  if (holder.firstChild) {
+  if (holder.getAttribute("data-loaded") === "1") {
     holder.hidden = !holder.hidden;
     syncOpenBtn(btn, m, !holder.hidden);
     var body = card.querySelector(".cl-memory__body");
@@ -286,9 +287,17 @@ function openEntry(btn, m, holder, card) {
     return;
   }
   if (noIpc) { openLocal(btn, m, holder, card); return; }
+  holder.textContent = ""; holder.hidden = true; syncOpenBtn(btn, m, false);
   btn.disabled = true; btn.setAttribute("aria-busy", "true");
   callTool("get_entry", { id: m.id }).then(function (r) {
-    btn.disabled = false; btn.removeAttribute("aria-busy"); var d = cardOf(r);
+    btn.disabled = false; btn.removeAttribute("aria-busy");
+    if (r && r.isError) {
+      holder.removeAttribute("data-loaded"); holder.hidden = false; btn.setAttribute("aria-expanded", "true");
+      add(holder, h("p", { class: "c-say is-bad", role: "alert", text: textOf(r) || "Couldn't open note. Try again, or ask your agent in chat." }));
+      resized(); return;
+    }
+    var d = cardOf(r);
+    holder.setAttribute("data-loaded", "1");
     holder.hidden = false; syncOpenBtn(btn, m, true);
     if (d && d.entry) {
       var body = card.querySelector(".cl-memory__body");
@@ -299,24 +308,36 @@ function openEntry(btn, m, holder, card) {
   }, function (e) {
     btn.disabled = false; btn.removeAttribute("aria-busy");
     if (isNoIpc(e)) { noIpc = true; openLocal(btn, m, holder, card); return; }
-    holder.hidden = false; add(holder, h("p", { class: "c-say is-bad", role: "alert", text: (e && e.message) || "Couldn't open note. Try again, or ask your agent in chat." })); resized();
+    holder.removeAttribute("data-loaded"); holder.hidden = false; btn.setAttribute("aria-expanded", "true");
+    add(holder, h("p", { class: "c-say is-bad", role: "alert", text: (e && e.message) || "Couldn't open note. Try again, or ask your agent in chat." })); resized();
   });
 }
 function preview(btn, a) {
   var host = btn.closest(".c-full") || btn.closest(".cl-memory") || btn.closest(".clyde");
   var box = host.querySelector(".c-preview[data-sha='" + a.sha256 + "']");
-  if (box) { box.hidden = !box.hidden; btn.setAttribute("aria-expanded", String(!box.hidden)); resized(); return; }
-  box = h("div", { class: "c-preview", "data-sha": a.sha256 }, h("div", { class: "c-skel" }));
-  btn.setAttribute("aria-expanded", "true"); btn.setAttribute("aria-busy", "true");
-  host.appendChild(box); resized();
+  if (box && box.getAttribute("data-loaded") === "1") { box.hidden = !box.hidden; btn.setAttribute("aria-expanded", String(!box.hidden)); resized(); return; }
+  if (box) { box.textContent = ""; box.hidden = false; box.appendChild(h("div", { class: "c-skel" })); }
+  else {
+    box = h("div", { class: "c-preview", "data-sha": a.sha256 }, h("div", { class: "c-skel" }));
+    host.appendChild(box);
+  }
+  btn.disabled = true; btn.setAttribute("aria-expanded", "true"); btn.setAttribute("aria-busy", "true");
+  resized();
   callTool("get_blob", { sha256: a.sha256 }).then(function (r) {
-    btn.removeAttribute("aria-busy");
-    box.textContent = ""; var d = cardOf(r);
+    btn.disabled = false; btn.removeAttribute("aria-busy");
+    box.textContent = "";
+    if (r && r.isError) {
+      box.removeAttribute("data-loaded");
+      add(box, h("p", { class: "c-say is-bad", role: "alert", text: textOf(r) || "Couldn't load preview. Try again, or ask your agent in chat." })); resized(); return;
+    }
+    var d = cardOf(r);
+    box.setAttribute("data-loaded", "1");
     add(box, d && d.artifact ? artifactView(d.artifact, true, null, true).el : h("p", { class: "c-text", text: textOf(r) })); resized();
   }, function (e) {
-    btn.removeAttribute("aria-busy");
+    btn.disabled = false; btn.removeAttribute("aria-busy");
     box.textContent = "";
-    if (isNoIpc(e)) { noIpc = true; add(box, h("p", { class: "c-say is-muted", role: "status", "aria-live": "polite", text: "Actions can't send from this card right now, so ask your agent in chat." })); resized(); return; }
+    if (isNoIpc(e)) { noIpc = true; box.setAttribute("data-loaded", "1"); add(box, h("p", { class: "c-say is-muted", role: "status", "aria-live": "polite", text: "Actions can't send from this card right now, so ask your agent in chat." })); resized(); return; }
+    box.removeAttribute("data-loaded");
     add(box, h("p", { class: "c-say is-bad", role: "alert", text: (e && e.message) || "Couldn't load preview. Try again, or ask your agent in chat." })); resized();
   });
 }

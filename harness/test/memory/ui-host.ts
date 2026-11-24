@@ -10,7 +10,8 @@ import { existsSync } from 'node:fs'
 
 export type Frame = {
   id: string; card: string; html: string; theme: 'light' | 'dark'; result: unknown;
-  width?: number; clicks?: string[]; noIpc?: boolean; withOpenAi?: boolean; stripMeta?: boolean;
+  width?: number; clicks?: string[]; laterClicks?: string[]; calls?: Record<string, unknown>;
+  noIpc?: boolean; withOpenAi?: boolean; stripMeta?: boolean;
 }
 
 /** The markup every fixture string carries. A card that escapes properly shows it as text and creates no such element. */
@@ -19,7 +20,7 @@ export const XSS = `<img src=x onerror="window.top.__xss=1"><script>window.top._
 /** A host page for these frames. `calls` answers tools/call by tool name. */
 export function hostPage(frames: Frame[], calls: Record<string, unknown> = {}): string {
   const cells = frames.map((f) => `<section><h2>${f.id} · ${f.theme}</h2><iframe id="${f.id}" style="width:${f.width ?? 640}px;height:200px;border:0;display:block;background:${f.theme === 'dark' ? '#262624' : '#faf9f5'}"></iframe></section>`).join('')
-  const data = JSON.stringify({ frames: frames.map(({ id, card, theme, result, clicks, noIpc, withOpenAi, stripMeta }) => ({ id, card, theme, result, clicks: clicks ?? [], noIpc: !!noIpc, withOpenAi: !!withOpenAi, stripMeta: !!stripMeta })), calls }).replace(/</g, '\\u003c')
+  const data = JSON.stringify({ frames: frames.map(({ id, card, theme, result, clicks, laterClicks, calls: frameCalls, noIpc, withOpenAi, stripMeta }) => ({ id, card, theme, result, clicks: clicks ?? [], laterClicks: laterClicks ?? [], calls: frameCalls ?? null, noIpc: !!noIpc, withOpenAi: !!withOpenAi, stripMeta: !!stripMeta })), calls }).replace(/</g, '\\u003c')
   const docs = JSON.stringify(Object.fromEntries(frames.map((f) => {
     if (!f.withOpenAi) return [f.id, f.html]
     const meta = (f.result as any)?._meta ?? null
@@ -53,7 +54,12 @@ window.addEventListener('message', (ev) => {
   else if (m.method === 'tools/call') {
     log.calls.push({ frame: f.id, name: m.params.name, arguments: m.params.arguments });
     if (f.noIpc) fail(-32603, 'IPC not available for MCP tool call');
-    else reply(calls[m.params.name] ?? { content: [{ type: 'text', text: 'no canned result' }], isError: true });
+    else {
+      let ans = f.calls && (m.params.name in f.calls) ? f.calls[m.params.name] : calls[m.params.name];
+      if (Array.isArray(ans)) ans = ans.length > 1 ? ans.shift() : ans[0];
+      if (ans && typeof ans === 'object' && ans.error) fail(ans.error.code ?? -32000, ans.error.message || 'Tool failed');
+      else reply(ans ?? { content: [{ type: 'text', text: 'no canned result' }], isError: true });
+    }
   }
   else if (m.id !== undefined) reply({});
 });
@@ -62,6 +68,9 @@ const click = (doc, sel) => { const el = doc.querySelector(sel); if (el) el.clic
 setTimeout(() => {
   for (const f of frames) { const doc = document.getElementById(f.id).contentDocument; for (const sel of f.clicks) click(doc, sel); }
 }, 700);
+setTimeout(() => {
+  for (const f of frames) { const doc = document.getElementById(f.id).contentDocument; for (const sel of f.laterClicks) click(doc, sel); }
+}, 1200);
 setTimeout(() => {
   const out = {};
   for (const f of frames) {
@@ -83,7 +92,7 @@ setTimeout(() => {
     };
   }
   document.getElementById('report').textContent = 'REPORT' + JSON.stringify({ frames: out, xss: window.__xss, ...log }) + 'END';
-}, 1800);
+}, 1900);
 </script></body></html>`
 }
 

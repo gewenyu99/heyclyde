@@ -223,7 +223,7 @@ function renderEntry(root, d, meta, message = '') {
   const id = e.id;
   const panel = h('div', { class: 'panel-slot' });
   const top = flash();
-  if (message) { top.show(message); window.scrollTo(0, 0); }
+  if (message) { top.tabIndex = -1; top.show(message); window.scrollTo(0, 0); }
   document.title = `${e.title || id} · memory`;
 
   let activeBtn = null;
@@ -327,6 +327,7 @@ function renderEntry(root, d, meta, message = '') {
           ['Delivered', plural(usage.delivered ?? 0, 'time')], ['Candidate', plural(usage.candidate ?? 0, 'time')],
           ['Last delivered', when(usage.last_delivered)],
         ]), feedbackList(usage.feedback || [])))));
+  if (message) top.focus({ preventScroll: true });
 }
 
 function feedbackList(items) {
@@ -350,7 +351,7 @@ function addLinkForm(root, d, meta) {
   const [tid, tlist] = datalist(union(meta.link_types, SEED_LINKS));
   const type = h('input', { name: 'type', value: 'relates', list: tid, class: 'type-input', autocomplete: 'off', required: true });
   const button = h('button', { type: 'submit', class: 'small' }, 'Add link');
-  const form = h('form', { class: 'row add-link' },
+  const form = h('form', { class: 'row add-link', novalidate: true },
     entryPicker('dst', { placeholder: 'target entry id', class: 'mono', required: true }), type, tlist, button, out);
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -405,7 +406,7 @@ function supersedePanel(root, d, meta, close) {
   const id = d.entry.id;
   const out = flash();
   const button = h('button', { type: 'submit', class: 'primary' }, 'Supersede');
-  const form = h('form', { class: 'card form', 'data-kind': 'supersedePanel' },
+  const form = h('form', { class: 'card form', 'data-kind': 'supersedePanel', novalidate: true },
     h('h2', null, 'Supersede this entry'),
     h('p', null, `Name the entry that replaces ${id}. Hybrid then hides it. Index strikes it through.`),
     field('Replaced by', entryPicker('by', { required: true, class: 'mono', placeholder: 'newer entry id' })),

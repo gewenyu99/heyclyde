@@ -770,3 +770,268 @@ Deno.test('Phase B: COPY_JS, ASK_JS, quests, agents, onboarding details, paginat
   assert.ok(!appScript.includes('memory note') && !appScript.includes('Loading memory'), 'workspace UI uses note copy instead of memory')
   assert.ok(appHtml.includes('details && det.open') || appHtml.includes('det && det.open'), 'onboarding preserves details open state across tab switches')
 })
+
+Deno.test('Round 3: concurrent refreshSession deduplication, shared invite banners, focus restoration, ARIA, and CSS fixes', async () => {
+  // 1. CSS & HTML contracts on connect page, workspace pages, and /docs
+  const connectHtml = await (await get('/')).text()
+  const appsHeadIdx = connectHtml.indexOf('.apps-head{display:grid')
+  const appsHeadMqIdx = connectHtml.indexOf('@media (max-width:860px){.apps-head{grid-template-columns:minmax(0,1fr)}}')
+  assert.ok(appsHeadIdx > 0 && appsHeadMqIdx > appsHeadIdx, 'mobile @media (max-width:860px) .apps-head rule follows desktop .apps-head rule')
+  assert.ok(connectHtml.includes('.apps{columns:2 380px'), 'connect page keeps .apps columns layout')
+
+  const docsHtml = await (await at('https://heyclyde.me/docs')).text()
+  const h1End = docsHtml.indexOf('</h1>')
+  const h2Choose = docsHtml.indexOf('<h2 class="cl-sr-only">Choose an app</h2>')
+  const firstH3 = docsHtml.indexOf('<h3 class="cl-title-3">')
+  assert.ok(h1End > 0 && h2Choose > h1End && firstH3 > h2Choose, '/docs includes sr-only h2 before h3 app cards')
+
+  const appHtml = await (await at('https://heyclyde.me/memories')).text()
+  const appScript = /<script nonce="[^"]+">([\s\S]*?)<\/script>/.exec(appHtml)?.[1] ?? ''
+  assert.ok(appHtml.includes('<div id="app-invite-banner" class="is-hidden"></div>'), 'workspace shell renders shared invite banner container')
+  assert.ok(appHtml.includes('.gr-chip-btn[data-edge-type]:not(.is-on){text-decoration:line-through}') && !appHtml.includes('.gr-chip-btn:not(.is-on){opacity:.48'), '/graph toggled-off chips drop opacity:.48 and scope line-through to edge buttons')
+  assert.ok(appHtml.includes('.gr-node:focus-visible circle.gr-vis{stroke:var(--cl-ink)') && appHtml.includes('.gr-node:focus-visible circle.gr-hit{stroke:var(--cl-carbon)'), 'graph node focus ring contrasts against decisions blue')
+  assert.ok(appHtml.includes('a.cl-chip--warn') || appHtml.includes('Replaced by'), 'entry view renders superseded chip')
+
+  // Helper to run APP_JS with stateful DOM + localStorage + focus tracking
+  function makeHarness(view: string, id: string, opts: { search?: string; session?: Record<string, unknown> | null; store?: Record<string, string>; fetchImpl: (url: string, init?: RequestInit) => Promise<unknown> }) {
+    const store: Record<string, string> = opts.store ?? {}
+    if (opts.session) store['clyde_session_v1'] = JSON.stringify(opts.session)
+    let activeEl: any = null
+    const els: Record<string, any> = {}
+    const mk = (extra: Record<string, unknown> = {}) => {
+      const attrs: Record<string, string> = {}
+      const node: any = {
+        innerHTML: '', textContent: '', value: '', checked: false, disabled: false, className: '', isConnected: true,
+        attrs,
+        listeners: {} as Record<string, Function[]>,
+        childrenNodes: [] as any[],
+        parentElement: null as any,
+        addEventListener(ev: string, fn: Function) { (this.listeners[ev] ??= []).push(fn) },
+        removeEventListener() {},
+        setAttribute(k: string, v: string) { attrs[k] = String(v) },
+        getAttribute(k: string) { return attrs[k] ?? null },
+        hasAttribute(k: string) { return k in attrs },
+        removeAttribute(k: string) { delete attrs[k] },
+        focus() { activeEl = this },
+        contains(target: any) { return target === this || this.childrenNodes.includes(target) },
+        closest: () => null,
+        querySelector: () => null,
+        querySelectorAll: () => [],
+        scrollIntoView() {},
+        checkValidity: () => true,
+        classList: {
+          set: new Set<string>(),
+          add(c: string) { this.set.add(c) },
+          remove(c: string) { this.set.delete(c) },
+          toggle(c: string, force?: boolean) { const on = force === undefined ? !this.set.has(c) : force; if (on) this.set.add(c); else this.set.delete(c); return on },
+        },
+        ...extra,
+      }
+      return node
+    }
+    els['app-root'] = mk({ getAttribute: (k: string) => k === 'data-view' ? view : (k === 'data-id' ? id : null) })
+    els['app-user-bar'] = mk()
+    els['app-invite-banner'] = mk()
+    els['main'] = mk()
+    const docStub: any = {
+      get activeElement() { return activeEl },
+      body: mk(),
+      getElementById: (k: string) => (els[k] ??= mk()),
+      querySelectorAll: () => [],
+      addEventListener() {},
+      removeEventListener() {},
+    }
+    const winStub: any = { location: { origin: 'https://heyclyde.me', pathname: `/${view}`, search: opts.search ?? '', hash: '' } }
+    const storageStub = {
+      getItem: (k: string) => (k in store ? store[k] : null),
+      setItem: (k: string, v: string) => { store[k] = String(v) },
+      removeItem: (k: string) => { delete store[k] },
+    }
+    new Function('document', 'window', 'location', 'localStorage', 'history', 'fetch', appScript)(
+      docStub, winStub, winStub.location, storageStub, { replaceState() {} }, opts.fetchImpl,
+    )
+    return { els, store, getActive: () => activeEl, mk }
+  }
+
+  // 2a. Concurrent proactive refreshSession deduplication (3 concurrent /me/* calls on expired session)
+  let refreshCalls = 0
+  const seenAuthHeaders: string[] = []
+  const hProactive = makeHarness('agents', '', {
+    session: { access_token: 'at-old', refresh_token: 'rt-0', user_id: 'u-1', email: 'a@example.com', expires_at: Date.now() - 5000 },
+    fetchImpl: async (url: string, init?: RequestInit) => {
+      if (url.includes('/auth/v1/token?grant_type=refresh_token')) {
+        refreshCalls++
+        await new Promise((r) => setTimeout(r, 15))
+        return {
+          ok: true, status: 200,
+          json: async () => ({ access_token: 'at-new', refresh_token: 'rt-1', expires_in: 3600, user: { id: 'u-1', email: 'a@example.com' } }),
+        }
+      }
+      seenAuthHeaders.push(String((init?.headers as any)?.authorization ?? ''))
+      if (url.includes('/me/onboarding')) return { ok: true, status: 200, text: async () => JSON.stringify({ agents: 1, entries: 1, recalls: 1, devices: 1 }) }
+      if (url.includes('/me/agents')) return { ok: true, status: 200, text: async () => JSON.stringify({ agents: [] }) }
+      return { ok: true, status: 200, text: async () => JSON.stringify({ devices: [] }) }
+    },
+  })
+  await new Promise((r) => setTimeout(r, 50))
+  assert.equal(refreshCalls, 1, '3 concurrent near-expiry api() calls only call /auth/v1/token once')
+  assert.deepEqual(seenAuthHeaders, ['Bearer at-new', 'Bearer at-new', 'Bearer at-new'], 'all concurrent api() calls use rotated access token')
+  assert.equal(JSON.parse(hProactive.store['clyde_session_v1']).refresh_token, 'rt-1', 'rotated refresh token persists in storage')
+
+  // 2b. Concurrent 401 retry race (all 3 requests initially hit 401 with old token, single refresh rotates once, all 3 retry & succeed)
+  let refresh401Calls = 0
+  const retriedAuth: string[] = []
+  const h401 = makeHarness('agents', '', {
+    session: { access_token: 'at-old', refresh_token: 'rt-0', user_id: 'u-1', email: 'a@example.com', expires_at: Date.now() + 600_000 },
+    fetchImpl: async (url: string, init?: RequestInit) => {
+      if (url.includes('/auth/v1/token?grant_type=refresh_token')) {
+        refresh401Calls++
+        await new Promise((r) => setTimeout(r, 15))
+        return {
+          ok: true, status: 200,
+          json: async () => ({ access_token: 'at-rot', refresh_token: 'rt-rot', expires_in: 3600, user: { id: 'u-1', email: 'a@example.com' } }),
+        }
+      }
+      const auth = String((init?.headers as any)?.authorization ?? '')
+      if (auth === 'Bearer at-old') {
+        return { ok: false, status: 401, text: async () => JSON.stringify({ error: 'expired' }) }
+      }
+      retriedAuth.push(auth)
+      if (url.includes('/me/onboarding')) return { ok: true, status: 200, text: async () => JSON.stringify({ agents: 1, entries: 1, recalls: 1, devices: 1 }) }
+      if (url.includes('/me/agents')) return { ok: true, status: 200, text: async () => JSON.stringify({ agents: [] }) }
+      return { ok: true, status: 200, text: async () => JSON.stringify({ devices: [] }) }
+    },
+  })
+  await new Promise((r) => setTimeout(r, 60))
+  assert.equal(refresh401Calls, 1, '3 concurrent 401 api() calls trigger only one token refresh')
+  assert.equal(retriedAuth.length, 3, 'all 3 concurrent calls retry after refresh')
+  assert.ok(retriedAuth.every((a) => a === 'Bearer at-rot'), 'all 3 retries use rotated access token')
+  assert.equal(JSON.parse(h401.store['clyde_session_v1']).access_token, 'at-rot', 'storage retains rotated session without wiping')
+
+  // 2c. Older failed refresh never wipes a session rotated while the failing refresh was in flight
+  let staleRefreshCalls = 0
+  const raceStore: Record<string, string> = {}
+  makeHarness('usage', '', {
+    store: raceStore,
+    session: { access_token: 'at-0', refresh_token: 'rt-0', user_id: 'u-1', email: 'a@example.com', expires_at: Date.now() - 5000 },
+    fetchImpl: async (url: string, init?: RequestInit) => {
+      if (url.includes('/auth/v1/token?grant_type=refresh_token')) {
+        staleRefreshCalls++
+        // Simulate another tab rotating localStorage while this refresh fails
+        raceStore['clyde_session_v1'] = JSON.stringify({ access_token: 'at-tab2', refresh_token: 'rt-tab2', user_id: 'u-1', email: 'a@example.com', expires_at: Date.now() + 3600_000 })
+        return { ok: false, status: 400, json: async () => ({ error: 'invalid_grant' }) }
+      }
+      assert.equal(String((init?.headers as any)?.authorization), 'Bearer at-tab2', 'adopts session rotated by another tab when stale refresh fails')
+      return { ok: true, status: 200, text: async () => JSON.stringify({ plan: 'free', state: 'paid', period: '2026-11', meters: [] }) }
+    },
+  })
+  await new Promise((r) => setTimeout(r, 30))
+  assert.equal(staleRefreshCalls, 1)
+  assert.equal(JSON.parse(raceStore['clyde_session_v1']).refresh_token, 'rt-tab2', 'failed older refresh does not wipe newer rotated session')
+
+  // 3. Invite banner renders on all non-/memories routes (and without duplication on /memories)
+  for (const [viewName, idVal] of [['graph', ''], ['quests', ''], ['agents', ''], ['apps', ''], ['usage', ''], ['settings', ''], ['entry', 'e-1'], ['entries', '']] as const) {
+    const hInv = makeHarness(viewName, idVal, {
+      search: '?invite=partner-ok',
+      session: { access_token: 'at-1', refresh_token: 'rt-1', user_id: 'u-1', email: 'a@example.com', expires_at: Date.now() + 600_000 },
+      fetchImpl: async (url: string) => {
+        if (url.includes('/me/invite/redeem')) return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true, unlimited: true, label: 'VIP' }) }
+        if (url.includes('/me/graph')) return { ok: true, status: 200, text: async () => JSON.stringify({ center: 'e-1', nodes: [], edges: [] }) }
+        if (url.includes('/me/entries/')) return { ok: true, status: 200, text: async () => JSON.stringify({ entry: { id: 'e-1', title: 'T', body: 'B', pattern: 'decisions', confidence: 0.9 } }) }
+        if (url.includes('/me/entries')) return { ok: true, status: 200, text: async () => JSON.stringify({ total: 0, entries: [] }) }
+        if (url.includes('/me/onboarding')) return { ok: true, status: 200, text: async () => JSON.stringify({ agents: 1, entries: 1, recalls: 1, devices: 1 }) }
+        if (url.includes('/me/quests')) return { ok: true, status: 200, text: async () => JSON.stringify({ quests: [] }) }
+        if (url.includes('/me/agents')) return { ok: true, status: 200, text: async () => JSON.stringify({ agents: [] }) }
+        if (url.includes('/me/devices')) return { ok: true, status: 200, text: async () => JSON.stringify({ devices: [] }) }
+        if (url.includes('/me/apps')) return { ok: true, status: 200, text: async () => JSON.stringify({ apps: [] }) }
+        return { ok: true, status: 200, text: async () => JSON.stringify({ plan: 'partner', state: 'paid', period: '2026-11', meters: [] }) }
+      },
+    })
+    await new Promise((r) => setTimeout(r, 25))
+    assert.equal(hInv.els['app-invite-banner'].className, 'app-banner app-banner--ok', `${viewName}: shared banner displays ok style`)
+    assert.ok(hInv.els['app-invite-banner'].textContent.includes('Partner pass active (VIP)'), `${viewName}: shared banner displays partner pass message`)
+    if (viewName === 'entries') {
+      assert.ok(!hInv.els['app-root'].innerHTML.includes('Partner pass active'), 'entries view avoids duplicate banner inside #app-root')
+    }
+  }
+
+  // 4. Focus preservation on pagination & onboarding auto-dismiss
+  let obStep = 0
+  const hFocus = makeHarness('entries', '', {
+    session: { access_token: 'at-1', refresh_token: 'rt-1', user_id: 'u-1', email: 'a@example.com', expires_at: Date.now() + 600_000 },
+    fetchImpl: async (url: string) => {
+      if (url.includes('/me/onboarding')) {
+        obStep++
+        return {
+          ok: true, status: 200,
+          text: async () => JSON.stringify(obStep === 1 ? { agents: 1, entries: 1, recalls: 0, devices: 1 } : { agents: 1, entries: 1, recalls: 1, devices: 1 }),
+        }
+      }
+      const isPage2 = url.includes('offset=50')
+      return {
+        ok: true, status: 200,
+        text: async () => JSON.stringify({
+          total: 60,
+          has_more: !isPage2,
+          entries: [{ id: isPage2 ? 'n-51' : 'n-1', title: 'Item', body: 'Body', pattern: 'decisions', confidence: 0.9 }],
+        }),
+      }
+    },
+  })
+  await new Promise((r) => setTimeout(r, 25))
+  // Click Next pager button -> page 2 disables Next, so focus moves to #btn-pg-prev
+  hFocus.els['btn-pg-prev'].disabled = false
+  hFocus.els['btn-pg-next'].disabled = true // simulates re-rendered page 2 state in stub
+  await hFocus.els['btn-pg-next'].listeners.click[0]()
+  await new Promise((r) => setTimeout(r, 25))
+  assert.equal(hFocus.getActive(), hFocus.els['btn-pg-prev'], 'pagination falls back focus to #btn-pg-prev when #btn-pg-next becomes disabled')
+
+  // Click onboarding refresh -> 3rd check completes and clears #onb-slot -> focus moves to #q-in
+  await hFocus.els['onb-refresh'].listeners.click[0]()
+  await new Promise((r) => setTimeout(r, 25))
+  assert.equal(hFocus.els['onb-slot'].innerHTML, '', 'onboarding card dismisses after 3rd check')
+  assert.equal(hFocus.getActive(), hFocus.els['q-in'], 'onboarding auto-dismiss moves focus to #q-in instead of body')
+
+  // 5. Graph recenter focus + search error outside role="listbox"
+  const hGraph = makeHarness('graph', '', {
+    session: { access_token: 'at-1', refresh_token: 'rt-1', user_id: 'u-1', email: 'a@example.com', expires_at: Date.now() + 600_000 },
+    fetchImpl: async (url: string) => {
+      if (url.includes('/me/entries?q=')) {
+        return { ok: false, status: 500, text: async () => JSON.stringify({ error: 'Search down' }) }
+      }
+      return {
+        ok: true, status: 200,
+        text: async () => JSON.stringify({
+          center: 'n-1',
+          nodes: [{ id: 'n-1', title: 'Node 1', pattern: 'decisions', confidence: 0.9 }, { id: 'n-2', title: 'Node 2', pattern: 'projects', confidence: 0.8 }],
+          edges: [{ src: 'n-1', dst: 'n-2', type: 'relates' }],
+        }),
+      }
+    },
+  })
+  await new Promise((r) => setTimeout(r, 25))
+  assert.ok(hGraph.els['app-root'].innerHTML.includes('<div id="g-search-err" class="cl-hint cl-error is-hidden" role="alert"'), 'graph search error live region sits outside role="listbox"')
+  hGraph.els['g-search'].value = 'broken'
+  hGraph.els['g-search'].listeners.input[0]()
+  await new Promise((r) => setTimeout(r, 220))
+  assert.ok(hGraph.els['g-search-err'].textContent.includes("Couldn't search notes"), 'graph search error renders in sibling #g-search-err')
+  assert.equal(hGraph.els['g-results'].innerHTML, '', 'role="listbox" #g-results does not contain role="alert" on error')
+  await hGraph.els['g-recenter'].listeners.click[0]()
+  await new Promise((r) => setTimeout(r, 25))
+  assert.equal(hGraph.getActive(), hGraph.els['g-ins-title'], 'graph recenter moves focus to #g-ins-title')
+
+  // 6. Sign-in #pw-form sets aria-invalid + aria-describedby="sign-msg" on #s-email and clears on input
+  const hSign = makeHarness('entries', '', {
+    session: null,
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({}) }),
+  })
+  await new Promise((r) => setTimeout(r, 20))
+  hSign.els['s-email'].value = ''
+  await hSign.els['pw-form'].listeners.submit[0]({ preventDefault() {} })
+  assert.equal(hSign.els['s-email'].attrs['aria-invalid'], 'true', 'empty email sets aria-invalid="true"')
+  assert.equal(hSign.els['s-email'].attrs['aria-describedby'], 'sign-msg', 'empty email points aria-describedby to #sign-msg')
+  assert.equal(hSign.getActive(), hSign.els['s-email'], 'empty email focuses #s-email')
+  hSign.els['s-email'].listeners.input[0]()
+  assert.equal(hSign.els['s-email'].attrs['aria-invalid'], undefined, 'input clears aria-invalid on #s-email')
+  assert.equal(hSign.els['s-email'].attrs['aria-describedby'], undefined, 'input clears aria-describedby on #s-email')
+})

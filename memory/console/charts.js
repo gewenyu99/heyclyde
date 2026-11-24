@@ -298,8 +298,8 @@ function drawGraph(stage, g, names) {
     .attr('tabindex', 0).attr('role', 'button').attr('aria-label', nodeLabel);
   node.filter((n) => n.authority === 'approved').append('circle').attr('class', 'ring').attr('r', (n) => radius(n) + 2.5);
   node.append('circle').attr('class', 'dot').attr('r', radius)
-    .style('fill', (n) => (n.current === false ? 'var(--surface)' : colorOf(projectOf(n))))
-    .style('stroke', (n) => (n.current === false ? colorOf(projectOf(n)) : null));
+    .style('fill', (n) => (n.current === false || n.authority === 'draft' ? 'var(--surface)' : colorOf(projectOf(n))))
+    .style('stroke', (n) => (n.current === false || n.authority === 'draft' ? colorOf(projectOf(n)) : null));
   node.filter((n) => n.private).append('path').attr('class', 'lock').attr('d', LOCK)
     .attr('transform', (n) => `translate(${radius(n) + 3},${-radius(n) - 2})`);
   node.filter((n) => n.pattern === 'projects').append('text').attr('class', 'node-label').attr('x', 13).attr('y', 4)

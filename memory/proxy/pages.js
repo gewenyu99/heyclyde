@@ -117,7 +117,6 @@ export const HERO_CSS = `
 .works li{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 13px;border:1px solid var(--cl-rule);border-radius:var(--cl-radius-pill);background:var(--cl-paper-1);font:500 13px/1 var(--cl-font-sans);color:var(--cl-ink-2)}
 .section{display:grid;gap:12px;margin:0 0 26px;max-width:720px}
 .section h2{margin:0}
-@media (max-width:860px){.apps-head{grid-template-columns:minmax(0,1fr)}}
 .how{list-style:none;margin:0 0 24px;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 @media (max-width:860px){.how{grid-template-columns:minmax(0,1fr)}}
 .how{counter-reset:how}
@@ -151,6 +150,7 @@ export const CONNECT_CSS = APP_STEPS_CSS + `
 .hero-note{max-width:44ch;padding:12px 16px;font:var(--cl-text-small)}
 .hero-art{min-width:0}.hero-art img{display:block;width:100%;max-width:484px;height:auto}
 .apps-head{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,420px);gap:24px;align-items:end;margin-bottom:24px}
+@media (max-width:860px){.apps-head{grid-template-columns:minmax(0,1fr)}}
 .apps-head .section{margin:0}
 .apps-head .cl-copy{box-shadow:var(--cl-copy-2);border-color:var(--cl-ink-3);padding:8px 8px 8px 14px}
 .apps{columns:2 380px;column-gap:16px;margin-bottom:68px}
