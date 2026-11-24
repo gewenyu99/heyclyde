@@ -9,7 +9,7 @@ const badge = { name: 'clyde-chat', context: 'work', surface: 'claude.ai', regis
 const result = (card: Record<string, unknown>, text = 'plain text the model reads') => ({ content: [{ type: 'text', text }], _meta: { 'clyde/card': card } })
 
 const mem = (n: number, extra: Record<string, unknown> = {}) => ({
-  id: `e-${n}`, title: `Deploys go through deploy.sh ${n}`, body: `Wen ships the memory function with cd memory && ./deploy.sh, which runs the version guard first. ${n === 1 ? XSS : ''}`,
+  id: `e-${n}`, title: `Deploys go through deploy.sh ${n}`, body: `Wen ships the memory function with \`cd memory && ./deploy.sh\`, which runs the version guard first. ${n === 1 ? XSS : ''}`,
   pattern: 'decisions', kind: 'fact', confidence: 0.86, verified: true, authority: 'draft', unreviewed: true, scope: 'global', valid_from: '2026-11-02',
   provenance: 'from codex on mac-mini in repo:like-vincent (work)', superseded_by: null, private: false, quote: null,
   artifacts: [{ name: 'deploy-notes.md', kind: 'document', size: 5120 }], trial: false, chance: null, ...extra,
@@ -26,11 +26,25 @@ export const FIXTURES: Record<string, unknown> = {
   entry: result({
     card: 'entry', version: 1, badge,
     entry: {
-      ...mem(4), links: [{ dir: 'to', type: 'supports', id: 'e-9', title: `The version guard ${XSS}` }],
+      ...mem(4, { provenance: 'from codex on oauth:claude-ai in repo:like-vincent (work) (you wrote this)' }),
+      links: [
+        { dir: 'to', type: 'supports', id: 'e-9', title: `The version guard ${XSS}` },
+        { dir: 'to', type: 'part_of', id: 'hub-1', title: 'Notes by codex' },
+      ],
       artifacts: [{ name: `plan${XSS}.md`, kind: 'document', media_type: 'text/markdown', size: 2048, sha256: 'a'.repeat(64) }],
     },
   }),
-  remembered: result({ card: 'remembered', version: 1, badge, entry: { ...mem(5, { confidence: 0.5, kind: 'observation', title: `Saved note ${XSS}` }), links: [], artifacts: [] } }),
+  remembered: result({
+    card: 'remembered', version: 1, badge,
+    entry: {
+      ...mem(5, {
+        confidence: 0.5, kind: 'observation', title: `Saved note \`a4c6f84\` ${XSS}`,
+        provenance: 'from clyde-chat on oauth:claude-ai (work) (you wrote this)',
+      }),
+      links: [{ dir: 'to', type: 'part_of', id: 'hub-1', title: 'Notes by clyde-chat' }],
+      artifacts: [],
+    },
+  }),
   artifact: result({
     card: 'artifact', version: 1, badge,
     artifact: { sha256: 'a'.repeat(64), name: 'deploy-notes.md', media_type: 'text/markdown', from: 0, to: 120, total: 400, url: null, next: 120, text: `# Deploy\n\n1. Run the guard.\n2. ${XSS}` },

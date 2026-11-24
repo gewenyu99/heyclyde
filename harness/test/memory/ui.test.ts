@@ -88,7 +88,7 @@ test('R67 the cards use only the design tokens', () => {
   assert.equal((CARD_CSS.match(/#[0-9a-f]{3,8}\b|rgb\(/gi) ?? []).length, 0, 'the card CSS has no literal colors')
 })
 
-test('R67 cards label confidence and agent-filed, and escape everything', { skip: NO_CHROME }, () => {
+test('R67 cards stay lean, drop noise, and escape everything', { skip: NO_CHROME }, () => {
   const ids = Object.keys(FIXTURES)
   assert.equal(ids.length, 7)
   const report = run(frames('light', 640))
@@ -98,18 +98,32 @@ test('R67 cards label confidence and agent-filed, and escape everything', { skip
     assert.equal(f.injected, 0, `${id} made no element from data`)
     assert.ok(f.text.includes('<b class="injected">'), `${id} shows the markup as text`)
   }
-  for (const id of ['recall', 'entry', 'remembered'] as const) {
-    assert.match(report.frames[id].text, /\d+% confidence/, `${id} labels confidence`)
+  for (const id of ['recall', 'entry'] as const) {
+    assert.match(report.frames[id].text, /\d+%/, `${id} shows confidence percentage`)
+    assert.ok(!report.frames[id].text.includes('% confidence'), `${id} drops verbose confidence label`)
     assert.ok(!report.frames[id].text.includes('unreviewed'), `${id} drops unreviewed label`)
-    assert.equal(report.frames[id].memoryPadding, '14px 16px 12px', `${id} keeps .cl-memory padding when open`)
+    assert.ok(!report.frames[id].text.includes('agent-filed'), `${id} drops agent-filed label`)
+    assert.equal(report.frames[id].memoryPadding, '10px 12px', `${id} keeps lean .cl-memory padding when open`)
   }
-  assert.match(report.frames.recall.text, /\bagent-filed\b/, 'draft memory renders as agent-filed')
-  assert.match(report.frames.remembered.text, /\bSaved\b/i, 'remembered card stamps Saved')
+  const rem = report.frames.remembered
+  assert.equal(rem.memoryPadding, '10px 12px', 'remembered keeps lean .cl-memory padding when open')
+  assert.ok(report.sizes.remembered.height <= 200, `remembered card height ${report.sizes.remembered.height}px <= 200px at 640px`)
+  assert.match(rem.text, /\bSaved\b/, 'remembered card marks Saved')
+  assert.ok(rem.text.includes('a4c6f84') && !rem.text.includes('`a4c6f84`'), 'remembered renders inline code without raw backticks')
+  for (const noise of ["won't forget", 'unreviewed', 'agent-filed', '% confidence', 'oauth:', 'Copy id', 'Notes by ', 'you wrote this']) {
+    assert.ok(!rem.text.includes(noise), `remembered omits "${noise}"`)
+  }
+  assert.deepEqual(rem.buttons, ['Open', 'Collapse'], 'remembered has only Open and one collapse toggle')
+  assert.ok(report.frames.entry.text.includes('The version guard'), 'entry shows real supports link')
+  for (const noise of ['Notes by ', 'oauth:', 'you wrote this', 'Copy id']) {
+    assert.ok(!report.frames.entry.text.includes(noise), `entry strips "${noise}"`)
+  }
+  assert.ok(report.frames.entry.text.includes('from codex in repo:like-vincent (work)'), 'entry keeps clean provenance')
   assert.equal(report.frames.agent.memoryPadding, null, 'agent card has no .cl-memory wrapper')
   assert.equal(report.xss, 0)
   // Compact stays one click away.
   const compact = run(frames('light', 640, { entry: ['button.c-toggle'], remembered: ['button.c-toggle'], artifact: ['button.c-toggle'] }))
-  for (const id of ['entry', 'remembered', 'artifact'] as const) assert.ok(compact.frames[id].compactItems >= 1, `${id} folds on Compact`)
+  for (const id of ['entry', 'remembered', 'artifact'] as const) assert.ok(compact.frames[id].compactItems >= 1, `${id} folds on Collapse`)
   assert.equal(compact.xss, 0)
 })
 
@@ -187,7 +201,7 @@ test('R67 card buttons call the tools, and degrade cleanly when host tool IPC is
     assert.ok(!noIpcReport.frames[id].text.includes('IPC not available'), `${id} hides raw IPC error`)
   }
   assert.match(noIpcReport.frames['recall-noipc'].text, /Feedback can't send from this card right now/)
-  assert.match(noIpcReport.frames['recall-noipc'].text, /\be-1\b/, 'Open falls back to local entry details without IPC')
+  assert.ok(noIpcReport.frames['recall-noipc'].buttons.includes('Hide details') && noIpcReport.frames['recall-noipc'].buttons.includes('Details') && noIpcReport.frames['recall-noipc'].buttons.includes('Open'), 'Details falls back to local entry details without IPC')
   assert.match(noIpcReport.frames['quests-noipc'].text, /Actions can't send from this card right now/)
 })
 
@@ -253,11 +267,13 @@ test('ChatGPT hybrid host with window.openai still completes MCP Apps handshake 
   ])
 })
 
-test('Round 1B: MCP card button targets, degraded fallback copy, Copy id, and Open in Clyde', { skip: NO_CHROME }, () => {
+test('Round 1B: MCP card button targets, degraded fallback copy, and Open in Clyde', { skip: NO_CHROME }, () => {
   for (const sel of ['.c-toggle', '.c-fold', '.c-more', '.c-art']) {
     assert.match(CARD_CSS, new RegExp(`\\${sel}\\{[^}]*min-height:28px`), `CARD_CSS includes ${sel} min-height:28px`)
   }
+  assert.match(CARD_CSS, /@media \(pointer:coarse\)\{[^}]*min-height:44px/, 'CARD_CSS bumps touch targets to 44px on coarse pointers')
   assert.ok(CARD_CSS.includes('touch-action:manipulation'), 'touch-action in CARD_CSS')
+  assert.ok(!CARD_CSS.includes('.c-sum .cl-state{font-size:0'), 'collapsed state text stays visible at <= 460px')
   const degradedRecall = structuredClone(FIXTURES.recall) as any
   degradedRecall._meta['clyde/card'].degraded = 'embed_timeout'
   const degradedFilter = structuredClone(FIXTURES.recall) as any
@@ -266,15 +282,61 @@ test('Round 1B: MCP card button targets, degraded fallback copy, Copy id, and Op
     { id: 'recall-deg', card: 'recall', html: cardHtml('recall'), theme: 'light', result: degradedRecall, width: 375, clicks: ['article[data-id="e-1"] button.c-open'] },
     { id: 'recall-filter', card: 'recall', html: cardHtml('recall'), theme: 'light', result: degradedFilter, width: 375 },
     { id: 'entry-open', card: 'entry', html: cardHtml('entry'), theme: 'dark', result: FIXTURES.entry, width: 375, clicks: ['button.c-ext'] },
-    { id: 'rem-card', card: 'remembered', html: cardHtml('remembered'), theme: 'light', result: FIXTURES.remembered, width: 375 },
+    { id: 'rem-card', card: 'remembered', html: cardHtml('remembered'), theme: 'light', result: FIXTURES.remembered, width: 375, clicks: ['button.c-ext'] },
   ])
   assert.ok(report.frames['recall-deg'].text.includes('Keyword search fallback active.'), 'plain-English degraded banner')
   assert.ok(!report.frames['recall-deg'].text.includes('embed_timeout'), 'raw degraded code kept out of visible text')
   assert.ok(report.frames['recall-filter'].text.includes('Relevance filter failed, so results are unfiltered.'), 'filter degraded banner explains unfiltered results')
   assert.ok(!report.frames['recall-filter'].text.includes('filter_failed'), 'raw filter_failed code kept out of visible text')
-  assert.ok(report.frames['recall-deg'].buttons.includes('Copy id') && report.frames['recall-deg'].buttons.includes('Open in Clyde'), 'expanded recall detail shows Copy id and Open in Clyde')
-  assert.ok(report.frames['entry-open'].buttons.includes('Copy id') && report.frames['entry-open'].buttons.includes('Open in Clyde'), 'entry card shows Copy id and Open in Clyde')
-  assert.ok(report.frames['rem-card'].buttons.includes('Copy id') && report.frames['rem-card'].buttons.includes('Open in Clyde'), 'remembered card shows Copy id and Open in Clyde')
-  for (const id of ['recall-deg', 'entry-open', 'rem-card'] as const) assert.equal(report.frames[id].overflow, false, `${id} zero horizontal overflow at 375px`)
-  assert.ok(report.requests.some((r: any) => r.frame === 'entry-open' && r.method === 'ui/open-link' && r.params?.url === 'https://heyclyde.me/entries/e-4'), 'Open in Clyde opens entry URL via ui/open-link')
+  for (const id of ['recall-deg', 'entry-open', 'rem-card'] as const) {
+    assert.ok(!report.frames[id].buttons.includes('Copy id'), `${id} drops Copy id`)
+    assert.ok(report.frames[id].buttons.includes('Open'), `${id} shows Open link button`)
+    assert.equal(report.frames[id].overflow, false, `${id} zero horizontal overflow at 375px`)
+  }
+  assert.ok(report.requests.some((r: any) => r.frame === 'entry-open' && r.method === 'ui/open-link' && r.params?.url === 'https://heyclyde.me/entries/e-4'), 'entry Open opens entry URL via ui/open-link')
+  assert.ok(report.requests.some((r: any) => r.frame === 'rem-card' && r.method === 'ui/open-link' && r.params?.url === 'https://heyclyde.me/entries/e-5'), 'remembered Open opens entry URL via ui/open-link')
+})
+
+test('lean card interactions: long body More/Less, safe inline code XSS, collapsed mobile state, and quest form validation', { skip: NO_CHROME }, () => {
+  const longRem = structuredClone(FIXTURES.remembered) as any
+  longRem._meta['clyde/card'].entry.body = 'Line one with `ui/script.ts` and `<img src=x>`.\nLine two.\nLine three.\nLine four.\nLine five.\n' + 'Detail '.repeat(60)
+  const report = run([
+    { id: 'rem-long', card: 'remembered', html: cardHtml('remembered'), theme: 'light', result: longRem, width: 640 },
+    { id: 'rem-long-open', card: 'remembered', html: cardHtml('remembered'), theme: 'light', result: longRem, width: 640, clicks: ['button.c-body-more'] },
+    { id: 'recall-360-collapsed', card: 'recall', html: cardHtml('recall'), theme: 'dark', result: FIXTURES.recall, width: 360, clicks: ['button.c-toggle'] },
+    {
+      id: 'quest-empty-submit', card: 'quests', html: cardHtml('quests'), theme: 'light', result: FIXTURES.quests, width: 640,
+      clicks: ['article[data-quest="13"] button.c-complete-btn', 'article[data-quest="13"] form.c-complete button[type="submit"]'],
+    },
+  ])
+  assert.ok(report.frames['rem-long'].buttons.includes('More'), 'long remembered body shows More toggle')
+  assert.ok(report.frames['rem-long'].text.includes('ui/script.ts') && !report.frames['rem-long'].text.includes('`ui/script.ts`'), 'inline code strips backticks')
+  assert.ok(report.frames['rem-long'].text.includes('<img src=x>') && report.frames['rem-long'].injected === 0, 'backticked HTML stays escaped')
+  assert.ok(report.frames['rem-long-open'].buttons.includes('Less'), 'clicking More flips to Less')
+  assert.ok(report.sizes['rem-long-open'].height > report.sizes['rem-long'].height, 'expanding long body grows height')
+  assert.equal(report.frames['recall-360-collapsed'].compactItems, 3, 'recall collapses all 3 rows at 360px')
+  assert.equal(report.frames['recall-360-collapsed'].overflow, false, 'collapsed recall fits 360px')
+  assert.ok(report.frames['recall-360-collapsed'].text.includes('on trial'), 'collapsed recall keeps state label legible at 360px')
+  assert.equal(report.calls.length, 0, 'whitespace-only quest completion does not call complete_quest')
+  assert.match(report.frames['quest-empty-submit'].text, /Add evidence showing done-when holds/, 'empty quest submit shows inline validation error')
+
+  const dualDegraded = structuredClone(FIXTURES.recall) as any
+  dualDegraded._meta['clyde/card'].degraded = 'embed-failed,filter-failed'
+  const morePage = structuredClone(FIXTURES.recall) as any
+  morePage._meta['clyde/card'].page = 'more'
+  morePage._meta['clyde/card'].query = 'deploy'
+  const moreEmpty = structuredClone(morePage) as any
+  moreEmpty._meta['clyde/card'].items = []
+  const pdfArt = structuredClone(FIXTURES.artifact) as any
+  pdfArt._meta['clyde/card'].artifact = { sha256: 'b'.repeat(64), name: 'spec.pdf', media_type: 'application/pdf', size: 8192, url: 'https://storage.example/spec.pdf', text: null }
+  const report2 = run([
+    { id: 'recall-dual', card: 'recall', html: cardHtml('recall'), theme: 'light', result: dualDegraded, width: 375 },
+    { id: 'recall-more', card: 'recall', html: cardHtml('recall'), theme: 'light', result: morePage, width: 640 },
+    { id: 'recall-more-empty', card: 'recall', html: cardHtml('recall'), theme: 'light', result: moreEmpty, width: 640 },
+    { id: 'art-pdf', card: 'artifact', html: cardHtml('artifact'), theme: 'dark', result: pdfArt, width: 375 },
+  ])
+  assert.match(report2.frames['recall-dual'].text, /keyword-only\s*·\s*unfiltered/i, 'dual degraded banner keeps both chips')
+  assert.ok(report2.frames['recall-more'].text.includes('3 more memories for') && !report2.frames['recall-more'].text.includes('more for 3'), 'recall_more uses clean grammar')
+  assert.ok(report2.frames['recall-more-empty'].text.includes('Nothing more in Clyde matches that.'), 'empty recall_more states no more matches')
+  assert.ok(report2.frames['art-pdf'].text.includes('expires in 10 minutes') && report2.frames['art-pdf'].buttons.includes('Download') && !report2.frames['art-pdf'].buttons.includes('Expand'), 'binary artifact card shows expiry and omits dead toggle')
 })

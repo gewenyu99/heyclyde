@@ -112,10 +112,12 @@ async function artifactCard(c: CardCall) {
   if (link) return { artifact: { sha256: sha, name, media_type: link[2], size: Number(link[3]), url: link[4], text: null } };
   const body = c.text.slice(c.text.indexOf("\n\n") + 2);
   const [from, to, total] = [Number(head![3]), Number(head![4]), Number(head![5])];
+  const shown = body.length > PREVIEW_MAX ? body.slice(0, PREVIEW_MAX) : body;
+  const actualTo = body.length > PREVIEW_MAX ? from + shown.length : to;
   return {
     artifact: {
-      sha256: sha, name, media_type: head![2], from, to, total, url: null,
-      text: clip(body, PREVIEW_MAX), next: to < total ? to : null,
+      sha256: sha, name, media_type: head![2], from, to: actualTo, total, url: null,
+      text: shown, next: actualTo < total ? actualTo : null,
     },
   };
 }

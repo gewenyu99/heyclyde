@@ -38,6 +38,19 @@ function add(el, c) {
   if (Array.isArray(c)) { for (var i = 0; i < c.length; i++) add(el, c[i]); return; }
   el.appendChild(typeof c === "object" && c.nodeType ? c : document.createTextNode(String(c)));
 }
+function richText(str) {
+  var s = String(str == null ? "" : str);
+  if (s.indexOf("\x60") === -1) return document.createTextNode(s);
+  var frag = document.createDocumentFragment();
+  var re = /\x60([^\x60\n]+)\x60/g, last = 0, m;
+  while ((m = re.exec(s)) !== null) {
+    if (m.index > last) frag.appendChild(document.createTextNode(s.slice(last, m.index)));
+    frag.appendChild(h("code", { class: "c-code", text: m[1] }));
+    last = re.lastIndex;
+  }
+  if (last < s.length) frag.appendChild(document.createTextNode(s.slice(last)));
+  return frag;
+}
 var PATHS = {
   check: "M3.5 8.5l3 3 6-7", x: "M4.5 4.5l7 7M11.5 4.5l-7 7", open: "M9 3h4v4M13 3L7.5 8.5M12 9.5V13H3V4h3.5",
   file: "M4 1.8h5l3 3v9.4H4zM9 1.8v3h3", image: "M2.5 3h11v10h-11zM2.5 11l3.5-3.5 3 3 2-2 2.5 2.5M10.5 6.2h.01",
@@ -62,7 +75,7 @@ function request(method, params) {
     var id = "clyde-" + (++seq);
     waiting[id] = { ok: ok, fail: fail };
     post({ jsonrpc: "2.0", id: id, method: method, params: params || {} });
-    setTimeout(function () { if (waiting[id]) { delete waiting[id]; fail(new Error("The chat app didn't answer.")); } }, 30000);
+    setTimeout(function () { if (waiting[id]) { delete waiting[id]; fail(new Error("The chat app didn't answer. Try again, or ask your agent in chat.")); } }, 30000);
   });
 }
 function notify(method, params) { post({ jsonrpc: "2.0", method: method, params: params || {} }); }
@@ -110,7 +123,7 @@ window.addEventListener("message", function (ev) {
   if (!m || m.jsonrpc !== "2.0") return;
   if (m.id !== undefined && !m.method) {
     var w = waiting[m.id]; if (!w) return; delete waiting[m.id];
-    if (m.error) w.fail(new Error(m.error.message || "The chat app refused.")); else w.ok(m.result);
+    if (m.error) w.fail(new Error(m.error.message || "The chat app refused that action. Try again, or ask your agent in chat.")); else w.ok(m.result);
     return;
   }
   if (m.method === "ui/notifications/tool-result") {
@@ -122,7 +135,7 @@ window.addEventListener("message", function (ev) {
     else if (!st.data) show(res);
   }
   else if (m.method === "ui/notifications/host-context-changed") context(m.params);
-  else if (m.method === "ui/notifications/tool-cancelled") failed("The call was cancelled.");
+  else if (m.method === "ui/notifications/tool-cancelled") failed("The call was cancelled.", "Cancelled");
   else if (m.id !== undefined && (m.method === "ui/resource-teardown" || m.method === "ping")) post({ jsonrpc: "2.0", id: m.id, result: {} });
 });
 
@@ -138,220 +151,296 @@ function agentBadge(b, big) {
     h("span", { class: "cl-agent__text" }, h("span", { class: "cl-agent__name", text: b.name }),
       h("span", { class: "cl-agent__meta", text: on ? [b.context, b.surface].filter(Boolean).join(" · ") : "not registered" })));
 }
-function toggleBtn(onFlip) {
-  var label = h("span", { text: "Expand" });
-  var btn = h("button", { class: GH + "c-toggle", type: "button", "aria-expanded": "false", onclick: function () { onFlip(btn.getAttribute("aria-expanded") !== "true"); } }, label, icon("more"));
-  btn.sync = function (open) { btn.setAttribute("aria-expanded", String(!!open)); label.textContent = open ? "Compact" : "Expand"; };
+function toggleBtn(onFlip, multi) {
+  var exp = multi ? "Expand all" : "Expand", col = multi ? "Collapse all" : "Collapse";
+  var label = h("span", { class: "cl-sr-only", text: exp });
+  var btn = h("button", { class: GH + "c-toggle", type: "button", "aria-expanded": "false", "aria-label": exp, title: exp, onclick: function () { onFlip(btn.getAttribute("aria-expanded") !== "true"); } }, label, icon("more"));
+  btn.sync = function (open) {
+    var text = open ? col : exp;
+    btn.setAttribute("aria-expanded", String(!!open));
+    btn.setAttribute("aria-label", text);
+    btn.title = text;
+    label.textContent = text;
+  };
   return btn;
 }
-function foldBtn(onclick) { return h("button", { class: GH + "c-fold", type: "button", title: "Collapse", onclick: onclick }, "Less", icon("more")); }
+function foldBtn(onclick) {
+  return h("button", { class: GH + "c-fold", type: "button", "aria-label": "Collapse", title: "Collapse", onclick: onclick },
+    h("span", { class: "cl-sr-only", text: "Collapse" }), icon("more"));
+}
 var LOGO = document.getElementById("clyde-logo");
 function logo() { var w = h("span", { class: "cl-wordmark" }); if (LOGO) w.appendChild(LOGO.content.cloneNode(true)); return w; }
-function sheet(what, b, toggle) { return h("div", { class: "clyde" }, h("div", { class: "c-head" }, logo(), h("span", { class: "c-what", text: what || "" }), agentBadge(b, false), toggle || null)); }
+function sheet(mid, right) {
+  var head = h("div", { class: "c-head" }, logo(), typeof mid === "string" ? h("span", { class: "c-what" }, h("span", { class: "c-what__txt", text: mid })) : mid);
+  if (right) add(head, right);
+  return h("div", { class: "clyde" }, head);
+}
 function desk() { return h("div", { class: "c-desk" }); }
-function meter(v) { var i = h("i"); i.style.width = Math.round(Math.max(0, Math.min(1, Number(v) || 0)) * 100) + "%"; return h("span", { class: "c-meter" }, i); }
-function confEl(m) { return h("span", { class: "cl-memory__conf" }, meter(m.confidence), Math.round(Number(m.confidence || 0) * 100) + "% confidence"); }
-function stateOf(m) {
-  if (m.superseded_by) return ["superseded", "superseded"];
-  if (m.trial) return ["trial", "on trial" + (m.chance ? " · " + m.chance + " of 3" : "")];
-  if (Number(m.confidence || 0) < 0.15) return ["dormant", "dormant"];
-  return ["settled", m.unreviewed ? "agent-filed" : "settled"];
+function realLinks(links) {
+  if (!Array.isArray(links)) return [];
+  return links.filter(function (l) {
+    return !(l && l.type === "part_of" && /^Notes by /i.test(String(l.title || "")));
+  });
+}
+function cleanProv(m) {
+  return m && m.provenance
+    ? String(m.provenance).replace(/(?:^|\s+)on\s+oauth:\S+/gi, "").replace(/\s*\(you wrote this\)/gi, "").trim()
+    : "";
 }
 var KIND_CHIP = { fact: "cl-chip--ok", wen: "cl-chip--carbon", plan: "cl-chip--warn" };
-function kindChip(kind, verified) {
-  var k = String(kind || "observation");
-  return h("span", { class: "cl-chip " + (KIND_CHIP[k] || ""), text: k + (verified === false ? " · unverified" : "") });
+function notableMark(m) {
+  if (m.superseded_by) return h("span", { class: "cl-state cl-state--superseded", text: "superseded" });
+  if (m.private) return h("span", { class: "cl-chip", text: "private" });
+  if (m.trial) return h("span", { class: "cl-state cl-state--trial", text: "on trial" + (m.chance ? " · " + m.chance + " of 3" : "") });
+  if (Number(m.confidence || 0) < 0.15) return h("span", { class: "cl-state cl-state--dormant", text: "dormant" });
+  if (m.kind === "wen" || m.kind === "fact" || m.kind === "plan") {
+    return h("span", { class: "cl-chip " + (KIND_CHIP[m.kind] || ""), text: m.kind });
+  }
+  return null;
+}
+function sumMark(m) {
+  if (m.superseded_by) return h("span", { class: "cl-state cl-state--superseded", text: "superseded" });
+  if (m.private) return h("span", { class: "cl-chip", text: "private" });
+  if (m.trial) return h("span", { class: "cl-state cl-state--trial", text: "on trial" + (m.chance ? " · " + m.chance + " of 3" : "") });
+  if (Number(m.confidence || 0) < 0.15) return h("span", { class: "cl-state cl-state--dormant", text: "dormant" });
+  return null;
+}
+function entryState(m) {
+  var out = [];
+  if (m.superseded_by) out.push(h("span", { class: "cl-state cl-state--superseded", text: "superseded" }));
+  else if (m.trial) out.push(h("span", { class: "cl-state cl-state--trial", text: "on trial" + (m.chance ? " · " + m.chance + " of 3" : "") }));
+  else if (Number(m.confidence || 0) < 0.15) out.push(h("span", { class: "cl-state cl-state--dormant", text: "dormant" }));
+  if (m.private) out.push(h("span", { class: "cl-chip", text: "private" }));
+  return out.length ? h("div", { class: "c-row" }, out) : null;
+}
+function linksList(links) {
+  var list = realLinks(links);
+  if (!list.length) return null;
+  return h("ul", { class: "c-links" }, list.map(function (l) {
+    return h("li", null, icon("link"),
+      h("span", { class: "cl-muted cl-mono", text: (l.dir === "to" ? "" : "from ") + l.type }),
+      h("span", null, richText(l.title)));
+  }));
 }
 function artChips(list, openable) {
   if (!list || !list.length) return null;
   return h("div", { class: "c-row" }, list.map(function (a) {
     var label = h("span", { text: a.name + " · " + a.kind + " · " + size(a.size) });
     var ic = icon(a.kind === "image" ? "image" : "file");
-    if (openable && a.sha256) return h("button", { class: "c-art", type: "button", title: "Preview " + a.name, onclick: function () { preview(this, a); } }, ic, label);
+    if (openable && a.sha256) return h("button", { class: "c-art", type: "button", "aria-expanded": "false", title: "Preview " + a.name, onclick: function () { preview(this, a); } }, ic, label);
     return h("span", { class: "c-art" }, ic, label);
   }));
 }
-function memoryTop(m) {
-  var s = stateOf(m);
-  return h("div", { class: "cl-memory__top" }, kindChip(m.kind, m.verified),
-    m.category && m.category !== "general" ? h("span", { class: "cl-chip", text: m.category }) : null,
-    m.context && m.context !== "general" ? h("span", { class: "cl-chip", text: m.context }) : null,
-    h("span", { class: "cl-state cl-state--" + s[0], text: s[1] }),
-    m.private ? h("span", { class: "cl-chip", text: "private" }) : null,
-    confEl(m));
+function entryFoot(m) {
+  var parts = [];
+  var k = m.kind && m.kind !== "observation" ? String(m.kind) : "";
+  if (m.verified === false) k = k ? k + " · unverified" : "unverified";
+  if (k) parts.push(k);
+  if (m.confidence !== null && m.confidence !== undefined) parts.push(Math.round(Number(m.confidence) * 100) + "%");
+  var prov = cleanProv(m);
+  if (prov) parts.push(prov);
+  if (m.valid_from) parts.push(m.valid_from);
+  return parts.length ? h("div", { class: "c-meta-foot", text: parts.join(" · ") }) : null;
 }
-function provLine(m) {
-  if (!m.provenance) return null;
-  var who = /^from (\S+)/.exec(m.provenance), rest = who ? m.provenance.slice(who[0].length) : m.provenance;
-  return h("div", { class: "cl-prov " + (who ? penOf(who[1]) : "") }, who ? h("span", null, "from ", h("span", { class: "cl-prov__who", text: who[1] })) : null, h("span", { text: rest.trim() }),
-    m.valid_from ? h("span", { class: "cl-prov__sep", text: "·" }) : null, m.valid_from ? h("span", { text: m.valid_from }) : null);
-}
-function memoryParts(m, full) {
-  return [memoryTop(m), h("h3", { class: "cl-memory__title", text: m.title }),
-    m.body ? h("p", { class: "cl-memory__body" + (full ? " is-open" : ""), text: m.body }) : null,
-    m.quote ? h("p", { class: "c-quote", text: "Wen: “" + m.quote + "”" }) : null,
-    m.superseded_by ? h("p", { class: "c-text", text: "Superseded by " + m.superseded_by + "." }) : null,
-    provLine(m)];
+function recallFoot(m) {
+  var parts = [cleanProv(m), m.valid_from].filter(Boolean);
+  return parts.length ? h("div", { class: "c-meta-foot", text: parts.join(" · ") }) : null;
 }
 function say(el, text, tone) {
   el.textContent = text; el.className = "c-say " + (tone === "muted" ? "is-muted" : tone ? "is-ok" : "is-bad"); el.hidden = false; resized();
 }
-var copyLive = null;
-function announceCardCopy(msg) {
-  if (!copyLive) {
-    copyLive = h("span", { class: "cl-sr-only", role: "status", "aria-live": "polite", "aria-atomic": "true" });
-    document.body.appendChild(copyLive);
-  }
-  copyLive.textContent = "";
-  setTimeout(function () { copyLive.textContent = msg; }, 10);
-}
-function copyIdBtn(id) {
-  var timer = null;
-  var btn = h("button", { class: GH + "c-copy-id", type: "button", "aria-label": "Copy note id " + id, onclick: function () {
-    function show(txt, ok) {
-      clearTimeout(timer);
-      btn.textContent = txt;
-      btn.classList.toggle("is-done", !!ok);
-      announceCardCopy(txt);
-      timer = setTimeout(function () { btn.textContent = "Copy id"; btn.classList.remove("is-done"); }, 1600);
-    }
-    function fb() {
-      var ta = document.createElement("textarea");
-      ta.value = id; ta.className = "cl-sr-only"; ta.setAttribute("readonly", "");
-      document.body.appendChild(ta); ta.select();
-      var ok = false; try { ok = !!document.execCommand("copy"); } catch (e) { ok = false; }
-      ta.remove(); return ok;
-    }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(id).then(function () { show("Copied", true); }, function () { var ok = fb(); show(ok ? "Copied" : "Copy failed", ok); });
-    } else {
-      var ok = fb(); show(ok ? "Copied" : "Copy failed", ok);
-    }
-  } }, "Copy id");
-  return btn;
-}
 function openClydeBtn(id) {
   if (!id) return null;
-  return h("button", { class: GH + "c-ext", type: "button", onclick: function () {
+  return h("button", { class: GH + "c-ext", type: "button", "aria-label": "Open in Clyde", title: "Open in Clyde", onclick: function () {
     openLink("https:" + "//heyclyde.me/entries/" + encodeURIComponent(id));
-  } }, "Open in Clyde", icon("open"));
+  } }, "Open", icon("open"));
 }
 
 // ---------- open: get_entry and get_blob inside a card ----------
 function entryDetail(e, openable) {
-  var parts = [], foot = [e.id, e.pattern, e.scope].filter(Boolean);
-  if (e.links && e.links.length) {
-    parts.push(h("span", { class: "cl-label", text: "Links" }), h("ul", { class: "c-links" }, e.links.map(function (l) {
-      return h("li", null, icon("link"), h("span", { class: "cl-muted cl-mono", text: (l.dir === "to" ? "" : "from ") + l.type }), h("span", { text: l.title }));
-    })));
-  }
-  if (e.artifacts && e.artifacts.length) parts.push(h("span", { class: "cl-label", text: "Artifacts" }), artChips(e.artifacts, openable !== false));
-  if (foot.length) parts.push(h("div", { class: "cl-memory__foot" }, foot.map(function (t) { return h("span", { text: t }); })));
+  var parts = [], ln = linksList(e.links);
+  if (ln) parts.push(ln);
+  if (openable !== false && e.artifacts && e.artifacts.length) parts.push(artChips(e.artifacts, true));
+  if (e.id) parts.push(h("div", { class: "c-row" }, openClydeBtn(e.id)));
   return parts;
 }
+function syncOpenBtn(btn, m, isOpen) {
+  var lbl = isOpen ? "Hide details" : "Details";
+  btn.textContent = lbl;
+  btn.setAttribute("aria-expanded", String(!!isOpen));
+  btn.setAttribute("aria-label", lbl + " for " + (m.title || "note"));
+}
 function openLocal(btn, m, holder, card) {
-  holder.hidden = false; btn.setAttribute("aria-expanded", "true");
+  holder.hidden = false; syncOpenBtn(btn, m, true);
   var body = card.querySelector(".cl-memory__body"); if (body) body.className = "cl-memory__body is-open";
   add(holder, entryDetail(m, false));
-  if (m.id) add(holder, h("div", { class: "c-row" }, copyIdBtn(m.id), openClydeBtn(m.id)));
   resized();
 }
 function openEntry(btn, m, holder, card) {
-  if (holder.firstChild) { holder.hidden = !holder.hidden; btn.setAttribute("aria-expanded", String(!holder.hidden)); resized(); return; }
+  if (holder.firstChild) {
+    holder.hidden = !holder.hidden;
+    syncOpenBtn(btn, m, !holder.hidden);
+    var body = card.querySelector(".cl-memory__body");
+    if (body) body.className = "cl-memory__body" + (holder.hidden ? "" : " is-open");
+    resized();
+    return;
+  }
   if (noIpc) { openLocal(btn, m, holder, card); return; }
-  btn.disabled = true;
+  btn.disabled = true; btn.setAttribute("aria-busy", "true");
   callTool("get_entry", { id: m.id }).then(function (r) {
-    btn.disabled = false; var d = cardOf(r);
-    holder.hidden = false; btn.setAttribute("aria-expanded", "true");
+    btn.disabled = false; btn.removeAttribute("aria-busy"); var d = cardOf(r);
+    holder.hidden = false; syncOpenBtn(btn, m, true);
     if (d && d.entry) {
-      var body = card.querySelector(".cl-memory__body"); if (body) { body.textContent = d.entry.body; body.className = "cl-memory__body is-open"; }
+      var body = card.querySelector(".cl-memory__body");
+      if (body) { body.textContent = ""; add(body, richText(d.entry.body)); body.className = "cl-memory__body is-open"; }
       add(holder, entryDetail(d.entry, true));
-      if (d.entry.id) add(holder, h("div", { class: "c-row" }, copyIdBtn(d.entry.id), openClydeBtn(d.entry.id)));
     } else add(holder, h("p", { class: "c-text", text: textOf(r) }));
     resized();
   }, function (e) {
-    btn.disabled = false;
+    btn.disabled = false; btn.removeAttribute("aria-busy");
     if (isNoIpc(e)) { noIpc = true; openLocal(btn, m, holder, card); return; }
-    holder.hidden = false; add(holder, h("p", { class: "c-say is-bad", role: "alert", text: e.message })); resized();
+    holder.hidden = false; add(holder, h("p", { class: "c-say is-bad", role: "alert", text: (e && e.message) || "Couldn't open note. Try again, or ask your agent in chat." })); resized();
   });
 }
 function preview(btn, a) {
-  var card = btn.closest(".cl-memory") || btn.closest(".clyde"), box = card.querySelector(".c-preview[data-sha='" + a.sha256 + "']");
-  if (box) { box.hidden = !box.hidden; resized(); return; }
+  var host = btn.closest(".c-full") || btn.closest(".cl-memory") || btn.closest(".clyde");
+  var box = host.querySelector(".c-preview[data-sha='" + a.sha256 + "']");
+  if (box) { box.hidden = !box.hidden; btn.setAttribute("aria-expanded", String(!box.hidden)); resized(); return; }
   box = h("div", { class: "c-preview", "data-sha": a.sha256 }, h("div", { class: "c-skel" }));
-  card.appendChild(box); resized();
+  btn.setAttribute("aria-expanded", "true"); btn.setAttribute("aria-busy", "true");
+  host.appendChild(box); resized();
   callTool("get_blob", { sha256: a.sha256 }).then(function (r) {
+    btn.removeAttribute("aria-busy");
     box.textContent = ""; var d = cardOf(r);
-    add(box, d && d.artifact ? artifactView(d.artifact, true).el : h("p", { class: "c-text", text: textOf(r) })); resized();
+    add(box, d && d.artifact ? artifactView(d.artifact, true, null, true).el : h("p", { class: "c-text", text: textOf(r) })); resized();
   }, function (e) {
+    btn.removeAttribute("aria-busy");
     box.textContent = "";
     if (isNoIpc(e)) { noIpc = true; add(box, h("p", { class: "c-say is-muted", role: "status", "aria-live": "polite", text: "Actions can't send from this card right now, so ask your agent in chat." })); resized(); return; }
-    add(box, h("p", { class: "c-say is-bad", role: "alert", text: e.message })); resized();
+    add(box, h("p", { class: "c-say is-bad", role: "alert", text: (e && e.message) || "Couldn't load preview. Try again, or ask your agent in chat." })); resized();
   });
 }
-function artifactView(a, startOpen, onFlip) {
+function artifactView(a, startOpen, onFlip, embedded, onOpenFocus) {
   var url = safeUrl(a.url), img = url && /^image\//.test(a.media_type || ""), open = !!startOpen;
   var file = h("div", { class: "cl-file" + (open ? "" : " is-compact") });
-  var info = [a.media_type, a.size ? size(a.size) : a.total ? a.total + " characters" : ""].filter(Boolean).join(" · ");
-  var dl = url && !img ? h("button", { class: SM.trim(), type: "button", onclick: function () { openLink(url); } }, icon("open"), "Download") : null;
+  var info = [a.size ? size(a.size) : a.total ? a.total + (a.total === 1 ? " character" : " characters") : "", a.media_type].filter(Boolean).join(" · ");
+  var dl = url && !img ? h("button", { class: GH + "c-ext", type: "button", "aria-label": "Download " + (a.name || "file"), title: "Download link expires in 10 minutes", onclick: function () { openLink(url); } }, "Download", icon("open")) : null;
   var hasBody = !!(img || (a.text !== null && a.text !== undefined)), bodyWrap = h("div", { hidden: !open });
-  var flipLbl = h("span", { text: open ? "Less" : "Open" });
-  var flip = hasBody && !startOpen ? h("button", { class: GH + "c-fold-art", type: "button", "aria-expanded": String(open), onclick: function () { setOpen(!open); } }, flipLbl, icon("more")) : null;
-  file.appendChild(h("div", { class: "cl-file__head" }, h("span", { class: "c-row" }, icon(img ? "image" : "file"), h("span", { text: a.name })), h("span", { class: "c-row" }, h("span", { text: info }), dl, flip)));
+  var sum = !embedded && hasBody ? h("button", {
+    class: "c-sum", type: "button", hidden: open, "aria-expanded": String(open),
+    onclick: function () { setOpen(true); if (onOpenFocus) onOpenFocus(); }
+  }, icon(img ? "image" : "file"), h("span", { class: "c-sum__title", text: a.name }),
+     info ? h("span", { class: "cl-muted cl-mono", text: info }) : null, icon("more")) : null;
+  if (embedded) {
+    file.appendChild(h("div", { class: "cl-file__head" },
+      h("span", { class: "c-row" }, icon(img ? "image" : "file"), h("span", { text: a.name })),
+      h("span", { class: "c-row" }, info ? h("span", { text: info }) : null, dl)));
+  } else if (sum) {
+    file.appendChild(sum);
+  } else if (dl) {
+    file.appendChild(h("p", { class: "c-say is-muted is-bin-note", text: "No inline preview for this file type. The download link expires in 10 minutes." }));
+  }
   if (img) bodyWrap.appendChild(h("div", null, h("img", { class: "c-img", src: url, alt: a.name, loading: "lazy", onload: resized })));
   if (a.text !== null && a.text !== undefined) {
     var pre = h("pre", { text: a.text }); bodyWrap.appendChild(pre);
     if (a.next) {
       var note = h("span", { class: "cl-muted", text: "Showing " + a.to + " of " + a.total + " characters" });
       var more = h("button", { class: GH.trim(), type: "button", onclick: function () {
-        more.disabled = true;
+        more.disabled = true; more.setAttribute("aria-busy", "true");
         callTool("get_blob", { sha256: a.sha256, offset: a.next }).then(function (r) {
+          more.removeAttribute("aria-busy");
           var d = cardOf(r);
           if (d && d.artifact) { pre.textContent += d.artifact.text; a.next = d.artifact.next; a.to = d.artifact.to; } else pre.textContent += "\n" + textOf(r);
           more.disabled = false; note.textContent = "Showing " + a.to + " of " + a.total + " characters"; if (!a.next) more.remove(); resized();
-        }, function (e) { if (isNoIpc(e)) noIpc = true; more.disabled = false; });
+        }, function (e) {
+          more.removeAttribute("aria-busy");
+          if (isNoIpc(e)) { noIpc = true; note.textContent = "Actions can't send from this card right now, so ask your agent in chat."; }
+          else { more.disabled = false; note.textContent = (e && e.message) || "Couldn't load more. Try again."; }
+          resized();
+        });
       } }, icon("more"), "Load more");
-      bodyWrap.appendChild(h("div", { class: "cl-file__head" }, note, more));
+      bodyWrap.appendChild(h("div", { class: "cl-file__foot" }, note, more));
     }
   }
   if (hasBody) file.appendChild(bodyWrap);
   function setOpen(v) {
     if (!hasBody) return;
     open = !!v; file.className = "cl-file" + (open ? "" : " is-compact"); bodyWrap.hidden = !open;
-    if (flip) { flip.setAttribute("aria-expanded", String(open)); flipLbl.textContent = open ? "Less" : "Open"; }
+    if (sum) { sum.hidden = open; sum.setAttribute("aria-expanded", String(open)); }
     if (onFlip) onFlip(); resized();
   }
-  return { el: file, isOpen: function () { return open; }, setOpen: setOpen };
+  return { el: file, hasBody: hasBody, isOpen: function () { return open; }, setOpen: setOpen, info: info, dl: dl };
 }
 
 // ---------- compact items & list cap ----------
 function memoryItem(m, opts) {
   opts = opts || {};
-  var open = false, s = stateOf(m), fold = foldBtn(function () { setOpen(false, true); });
-  var card = h("article", { class: "cl-card cl-memory is-compact" + (m.superseded_by ? " is-superseded" : ""), "data-id": m.id });
+  var open = false, fold = opts.fold ? foldBtn(function () { setOpen(false, true); }) : null;
+  var card = h("article", { class: "cl-memory is-compact" + (m.superseded_by ? " is-superseded" : ""), "data-id": m.id });
+  var mark = opts.saved ? h("span", { class: "c-saved", text: "Saved" }) : sumMark(m);
   var sum = h("button", { class: "c-sum", type: "button", "aria-expanded": "false", onclick: function () { setOpen(true, true); } },
-    opts.saved ? h("span", { class: "cl-stamp cl-stamp--ok", text: "Saved" }) : null,
-    h("span", { class: "cl-state cl-state--" + s[0], text: s[1] }),
-    h("span", { class: "c-sum__title", text: m.title }), confEl(m), icon("more"));
+    mark, opts.saved ? h("span", { class: "c-sep", text: "·" }) : null,
+    h("span", { class: "c-sum__title" }, richText(m.title)),
+    opts.recall ? h("span", { class: "cl-memory__conf", text: Math.round(Number(m.confidence || 0) * 100) + "%" }) : null,
+    icon("more"));
   var full = h("div", { class: "c-full", hidden: true });
-  if (opts.saved) full.appendChild(h("div", { class: "c-row" }, h("span", { class: "cl-stamp cl-stamp--ok is-new", text: "Saved" }),
-    h("span", { class: "c-text", text: "Your other agents won't forget this now." }), h("span", { class: "c-sp" }), h("span", { class: "cl-muted cl-mono", text: m.id }), fold));
-  add(full, memoryParts(m, !opts.recall));
-  if (opts.extra) add(full, opts.extra(card, fold));
-  if (opts.detail) {
-    full.appendChild(h("div", { class: "c-detail" }, entryDetail(m, true)));
-    full.appendChild(h("div", { class: "c-row" },
-      m.id ? copyIdBtn(m.id) : null,
-      m.id ? openClydeBtn(m.id) : null,
-      h("span", { class: "c-sp" }),
-      !opts.saved ? fold : null));
+  if (opts.recall) {
+    var holder = h("div", { class: "c-detail", hidden: true });
+    var openBtn = h("button", { class: GH + "c-open", type: "button", "aria-expanded": "false", "aria-label": "Details for " + (m.title || "note"), onclick: function () { openEntry(openBtn, m, holder, card); } }, "Details");
+    var acts = h("span", { class: "c-mem-actions" },
+      notableMark(m),
+      h("span", { class: "cl-memory__conf", text: Math.round(Number(m.confidence || 0) * 100) + "%" }),
+      openBtn, fold);
+    full.appendChild(h("div", { class: "cl-memory__top" }, h("h3", { class: "cl-memory__title" }, richText(m.title)), acts));
+    if (m.body) full.appendChild(h("p", { class: "cl-memory__body" }, richText(m.body)));
+    if (m.quote) full.appendChild(h("p", { class: "c-quote" }, "Wen: “", richText(m.quote), "”"));
+    if (m.artifacts && m.artifacts.length) full.appendChild(artChips(m.artifacts, false));
+    var rf = recallFoot(m); if (rf) full.appendChild(rf);
+    full.appendChild(holder);
+  } else if (opts.saved) {
+    full.appendChild(h("h3", { class: "cl-memory__title" }, richText(m.title)));
+    if (m.body) {
+      var bText = String(m.body);
+      var bodyEl = h("p", { class: "cl-memory__body c-clamp4" }, richText(bText));
+      full.appendChild(bodyEl);
+      var isExp = false;
+      var bMore = h("button", { class: "c-body-more", type: "button", hidden: true, "aria-expanded": "false", onclick: function () {
+        isExp = bodyEl.classList.toggle("is-open");
+        bMore.setAttribute("aria-expanded", String(isExp));
+        bMore.textContent = isExp ? "Less" : "More";
+        bMore.hidden = false;
+        resized();
+      } }, "More");
+      var syncMore = function () {
+        if (isExp || !bodyEl.isConnected) return;
+        var nextHidden = bodyEl.scrollHeight <= bodyEl.clientHeight + 2;
+        if (bMore.hidden !== nextHidden) { bMore.hidden = nextHidden; resized(); }
+      };
+      full.appendChild(bMore);
+      if (typeof ResizeObserver === "function") new ResizeObserver(syncMore).observe(bodyEl);
+      setTimeout(syncMore, 0);
+    }
+    var ln = linksList(m.links); if (ln) full.appendChild(ln);
+    if (m.artifacts && m.artifacts.length) full.appendChild(artChips(m.artifacts, true));
+  } else {
+    var es = entryState(m); if (es) full.appendChild(es);
+    full.appendChild(h("h3", { class: "cl-memory__title" }, richText(m.title)));
+    if (m.body) full.appendChild(h("p", { class: "cl-memory__body is-open" }, richText(m.body)));
+    if (m.quote) full.appendChild(h("p", { class: "c-quote" }, "Wen: “", richText(m.quote), "”"));
+    if (m.superseded_by) full.appendChild(h("p", { class: "c-text" }, "Superseded by ", h("code", { class: "c-code", text: m.superseded_by }), "."));
+    var eln = linksList(m.links); if (eln) full.appendChild(eln);
+    if (m.artifacts && m.artifacts.length) full.appendChild(artChips(m.artifacts, true));
+    var ef = entryFoot(m); if (ef) full.appendChild(ef);
   }
   card.appendChild(sum); card.appendChild(full);
   function setOpen(v, moveFocus) {
     open = !!v;
-    card.className = "cl-card cl-memory" + (open ? "" : " is-compact") + (m.superseded_by ? " is-superseded" : "");
+    card.className = "cl-memory" + (open ? "" : " is-compact") + (m.superseded_by ? " is-superseded" : "");
     sum.hidden = open; sum.setAttribute("aria-expanded", String(open)); full.hidden = !open;
-    if (moveFocus) (open ? fold : sum).focus();
+    if (moveFocus) {
+      var target = open ? (fold || (opts.onOpenFocus && opts.onOpenFocus())) : sum;
+      if (target) target.focus();
+    }
     if (opts.onFlip) opts.onFlip(); resized();
   }
   return { el: card, isOpen: function () { return open; }, setOpen: setOpen };
@@ -373,36 +462,45 @@ function capList(dk, rows, sync) {
 function recallCard(d) {
   var items = d.items || [], rows = [], cap = null;
   var toggle = items.length ? toggleBtn(function (want) {
-    if (cap) cap.setAll(want);
     rows.forEach(function (r) { r.setOpen(want); });
     sync(); resized();
-  }) : null;
-  var s = sheet((d.page === "more" ? "more for " : "recall · ") + "“" + (d.query || "") + "”" + (items.length ? " · " + items.length : ""), d.badge, toggle), dk = desk();
+  }, true) : null;
+  var headTxt = items.length
+    ? items.length + (d.page === "more" ? (items.length === 1 ? " more memory" : " more memories") : (items.length === 1 ? " memory" : " memories")) + (d.query ? " for “" + d.query + "”" : "")
+    : (d.page === "more" ? "more" : "recall") + (d.query ? " · “" + d.query + "”" : "");
+  var s = sheet(headTxt, toggle), dk = desk();
   dk.classList.add("c-recall-scroll");
   if (d.degraded) {
-    var deg = String(d.degraded), hasEmbed = /embed/i.test(deg), hasFilter = /filter/i.test(deg);
-    var chip = hasEmbed ? "Keyword-only" : (hasFilter ? "Unfiltered" : "Partial ranking");
-    var msg = hasEmbed && hasFilter ? "Keyword search fallback active, and relevance filtering was skipped."
-      : hasEmbed ? "Keyword search fallback active."
-      : hasFilter ? "Relevance filter failed, so results are unfiltered."
-      : "Some ranking signals failed, so results use partial scoring.";
-    dk.appendChild(h("p", { class: "c-text" }, h("span", { class: "cl-chip cl-chip--warn", text: chip }), " ", msg));
+    var deg = String(d.degraded), hasEmbed = /embed/i.test(deg), hasFilter = /filter/i.test(deg), hasFeat = /features/i.test(deg);
+    var chips = [hasEmbed && "Keyword-only", hasFilter && "Unfiltered", hasFeat && "Partial ranking"].filter(Boolean);
+    var chip = chips.length ? chips.join(" · ") : "Partial ranking";
+    var msgTxt = hasEmbed && !hasFilter && !hasFeat ? "Keyword search fallback active."
+      : hasFilter && !hasEmbed && !hasFeat ? "Relevance filter failed, so results are unfiltered."
+      : [hasEmbed && "Keyword search fallback active", hasFilter && "relevance filter failed, so results are unfiltered", hasFeat && "some ranking signals failed"].filter(Boolean).join("; ") + ".";
+    if (!hasEmbed && !hasFilter && !hasFeat) msgTxt = "Some ranking signals failed, so results use partial scoring.";
+    dk.appendChild(h("div", { class: "c-banner" }, h("span", { class: "cl-chip cl-chip--warn", text: chip }), h("span", { text: msgTxt })));
   }
   if (!items.length) {
-    dk.appendChild(h("div", { class: "cl-empty" }, h("p", { class: "cl-empty__title", text: "Nothing in Clyde matches that yet." }),
-      h("p", { class: "cl-empty__text", text: "Either nobody wrote it down, or it was phrased differently. Ask for more results, or tell your agent to remember it." })));
+    var emptyTitle = d.page === "more" ? "Nothing more in Clyde matches that." : "Nothing in Clyde matches that yet.";
+    var emptyText = d.page === "more"
+      ? "You reached the end of matches for this query. Rephrase it, or tell your agent what to save."
+      : "Either nobody wrote it down, or it was phrased differently. Ask your agent to search deeper, or tell it what to save.";
+    dk.appendChild(h("div", { class: "cl-empty" }, h("p", { class: "cl-empty__title", text: emptyTitle }),
+      h("p", { class: "cl-empty__text", text: emptyText })));
     s.appendChild(dk); return s;
   }
   var msg = h("p", { class: "c-say", role: "status", "aria-live": "polite", hidden: true });
   var yes = h("button", { class: PR + "c-used", type: "button", "aria-pressed": "false", onclick: function () { rate("helpful"); } }, "That helped");
-  var no = h("button", { class: GH + "c-wrong", type: "button", "aria-pressed": "false", onclick: function () { rate("nothing_useful"); } }, "That didn’t");
-  var foot = h("div", { class: "c-foot" }, yes, no);
+  var no = h("button", { class: GH + "c-wrong", type: "button", "aria-pressed": "false", onclick: function () { rate("nothing_useful"); } }, "That didn't");
+  var foot = h("div", { class: "c-foot" }, yes, no, msg);
   function refresh() {
     yes.disabled = no.disabled = st.busy || st.sent || noIpc;
     yes.setAttribute("aria-pressed", String(st.vote === "helpful"));
     no.setAttribute("aria-pressed", String(st.vote === "nothing_useful"));
   }
-  function sync() { if (toggle) toggle.sync(rows.every(function (r) { return r.isOpen(); }) && (!cap || cap.isAll())); }
+  function sync() {
+    if (toggle) toggle.sync(rows.some(function (r) { return !r.el.hidden && r.isOpen(); }));
+  }
   function rate(verdict) {
     if (st.busy || st.sent) return;
     st.busy = true; st.vote = verdict; refresh();
@@ -412,124 +510,148 @@ function recallCard(d) {
       st.busy = false; var result = textOf(reply);
       st.sent = /^Logged\./.test(result) || /^Already logged/.test(result);
       if (!st.sent) st.vote = null;
-      say(msg, /^Logged\./.test(result) ? "Feedback recorded." : result, st.sent); refresh();
+      var errTxt = /^No retrieval /i.test(result) ? "This recall session expired, so feedback couldn't be saved here." : result;
+      say(msg, /^Logged\./.test(result) ? "Feedback recorded." : (errTxt || (st.sent ? "Feedback recorded." : "Couldn't save feedback. Try again.")), st.sent); refresh();
     }, function (error) {
       st.busy = false; st.vote = null;
-      if (isNoIpc(error)) { noIpc = true; say(msg, "Feedback can't send from this card right now.", "muted"); }
-      else say(msg, error.message, false);
+      if (isNoIpc(error)) { noIpc = true; say(msg, "Feedback can't send from this card right now, so tell your agent in chat.", "muted"); }
+      else say(msg, (error && error.message) || "Couldn't save feedback. Try again.", false);
       refresh();
     });
   }
   items.forEach(function (m) {
-    var item = memoryItem(m, {
-      recall: true, onFlip: sync,
-      extra: function (card, fold) {
-        var holder = h("div", { class: "c-detail", hidden: true });
-        var open = h("button", { class: GH + "c-open", type: "button", "aria-expanded": "false", onclick: function () { openEntry(open, m, holder, card); } }, "Open", icon("open"));
-        return [artChips(m.artifacts, false), h("div", { class: "c-row" }, h("span", { class: "c-sp" }), fold, open), holder];
-      }
-    });
+    var item = memoryItem(m, { recall: true, fold: true, onFlip: sync });
     rows.push(item); dk.appendChild(item.el);
   });
   cap = capList(dk, rows, sync);
   rows.forEach(function (r) { r.setOpen(true); });
-  s.appendChild(dk); s.appendChild(foot); s.appendChild(msg);
+  s.appendChild(dk); s.appendChild(foot);
   refresh(); sync();
   return s;
 }
 function entryCard(d, saved) {
+  var m = d.entry || {};
   var item = null, toggle = toggleBtn(function (want) { if (item) item.setOpen(want); });
-  var s = sheet(saved ? "remember" : "memory", d.badge, toggle), dk = desk();
-  item = memoryItem(d.entry, { saved: saved, detail: true, onFlip: function () { toggle.sync(item.isOpen()); } });
+  var mid;
+  if (saved) {
+    var tag = m.project_slug || (m.category && m.category !== "general" ? m.category : null);
+    mid = h("span", { class: "c-what" }, h("span", { class: "c-saved", text: "Saved" }),
+      tag ? h("span", { class: "cl-chip c-head-chip", text: tag }) : null);
+  } else {
+    mid = [m.project_slug, m.category && m.category !== "general" ? m.category : m.pattern].filter(Boolean).join(" · ") || "entry";
+  }
+  var s = sheet(mid, [m.id ? openClydeBtn(m.id) : null, toggle]), dk = desk();
+  item = memoryItem(m, { saved: saved, fold: false, onOpenFocus: function () { return toggle; }, onFlip: function () { toggle.sync(item.isOpen()); } });
   item.setOpen(true);
   dk.appendChild(item.el); s.appendChild(dk);
   return s;
 }
 function artifactCard(d) {
-  var view = null, toggle = toggleBtn(function (want) { if (view) view.setOpen(want); });
-  var s = sheet("artifact · " + (d.artifact && d.artifact.name || ""), d.badge, toggle), dk = desk();
-  view = artifactView(d.artifact, false, function () { toggle.sync(view.isOpen()); });
+  var a = d.artifact || {}, view = null;
+  var toggle = toggleBtn(function (want) { if (view) view.setOpen(want); });
+  view = artifactView(a, false, function () { toggle.sync(view.isOpen()); }, false, function () { toggle.focus(); });
+  var mid = [a.name, view.info].filter(Boolean).join(" · ");
+  var s = sheet(mid, [view.dl, view.hasBody ? toggle : null]), dk = desk();
   view.setOpen(true);
   dk.appendChild(view.el); s.appendChild(dk);
   return s;
 }
-var STAMP = { open: "cl-stamp--carbon", claimed: "cl-stamp--warn", done: "cl-stamp--ok", abandoned: "cl-stamp--bad" };
+var QSTATE = { open: "c-qstate--open", claimed: "c-qstate--claimed", done: "c-qstate--done", abandoned: "c-qstate--abandoned" };
 function questCard(q, d, startOpen, onFlip) {
   var open = !!startOpen, me = d.badge && d.badge.registered ? d.badge.name : null;
-  var msg = h("p", { class: "c-say", role: "status", "aria-live": "polite", hidden: true }), row = h("div", { class: "c-row" });
+  var msg = h("p", { class: "c-say", role: "status", "aria-live": "polite", hidden: true });
   var fold = foldBtn(function () { setOpen(false, true); });
   var who = [h("span", null, "posted by ", h("b", { text: q.posted_by }))];
   if (q.assignee && q.assignee !== "any") who.push(h("span", null, " · for ", h("b", { text: q.assignee })));
   if (q.state === "claimed" && q.claimed_by) who.push(h("span", null, " · claimed by ", h("b", { text: q.claimed_by }), q.lease_until ? " until " + when(q.lease_until) : ""));
   if (q.state === "done") who.push(h("span", null, " · done by ", h("b", { text: q.claimed_by || "" }), q.closed_at ? " " + when(q.closed_at) : ""));
-  var stub = h("div", { class: "cl-quest__stub", hidden: !open }, h("span", { class: "cl-quest__pri" + (["urgent", "high"].includes(q.priority) ? " is-high" : ""), text: q.priority }),
-    h("span", { class: "cl-quest__no", text: "Nº" + q.id }));
+  var actRow = h("span", { class: "c-qact" }, h("span", { class: "c-qstate " + (QSTATE[q.state] || ""), text: q.state }));
   var main = h("div", { class: "cl-quest__main", hidden: !open },
-    h("div", { class: "cl-quest__head" }, h("h3", { class: "cl-quest__title", text: q.title }),
-      h("span", { class: "c-row" }, h("span", { class: "cl-stamp " + (STAMP[q.state] || ""), text: q.state }), fold)),
-    h("p", { class: "cl-quest__brief", text: q.brief }),
-    h("div", { class: "cl-quest__done" }, h("span", { class: "cl-label", text: "Done when" }), h("span", { class: "c-text", text: q.done_when })),
-    q.evidence ? h("p", { class: "c-quote", text: q.evidence }) : null,
+    h("div", { class: "cl-quest__head" },
+      h("span", { class: "c-qno", text: "#" + q.id }),
+      ["urgent", "high"].includes(q.priority) ? h("span", { class: "cl-chip cl-chip--bad", text: q.priority }) : null,
+      h("h3", { class: "cl-quest__title" }, richText(q.title)),
+      actRow),
+    h("p", { class: "cl-quest__brief" }, richText(q.brief)),
+    h("div", { class: "cl-quest__done" }, h("span", { class: "cl-label", text: "Done when:" }), h("span", null, richText(q.done_when))),
+    q.evidence ? h("p", { class: "c-quote" }, richText(q.evidence)) : null,
     q.tags && q.tags.length ? h("div", { class: "c-row" }, q.tags.map(function (t) { return h("span", { class: "cl-chip", text: t }); })) : null,
-    h("div", { class: "cl-quest__for" }, who, " · " + q.context), row, msg);
+    h("div", { class: "cl-quest__for" }, who, q.context ? " · " + q.context : ""),
+    msg);
   var sum = h("button", { class: "c-qsum", type: "button", hidden: open, "aria-expanded": String(open), onclick: function () { setOpen(true, true); } },
-    h("span", { class: "c-qno", text: "Nº" + q.id }),
-    ["urgent", "high"].includes(q.priority) ? h("span", { class: "cl-quest__pri is-high", text: q.priority }) : null,
-    h("span", { class: "c-sum__title", text: q.title }),
-    h("span", { class: "cl-stamp " + (STAMP[q.state] || ""), text: q.state }), icon("more"));
-  var card = h("article", { class: "cl-quest" + (open ? "" : " is-compact") + (q.state === "done" ? " is-done" : ""), "data-quest": q.id }, sum, stub, main);
+    h("span", { class: "c-qno", text: "#" + q.id }),
+    ["urgent", "high"].includes(q.priority) ? h("span", { class: "cl-chip cl-chip--bad", text: q.priority }) : null,
+    h("span", { class: "c-sum__title" }, richText(q.title)),
+    h("span", { class: "c-qstate " + (QSTATE[q.state] || ""), text: q.state }), icon("more"));
+  var card = h("article", { class: "cl-quest" + (open ? "" : " is-compact") + (q.state === "done" ? " is-done" : ""), "data-quest": q.id }, sum, main);
   function setOpen(v, moveFocus) {
     open = !!v; card.className = "cl-quest" + (open ? "" : " is-compact") + (q.state === "done" ? " is-done" : "");
-    sum.hidden = open; sum.setAttribute("aria-expanded", String(open)); stub.hidden = !open; main.hidden = !open;
+    sum.hidden = open; sum.setAttribute("aria-expanded", String(open)); main.hidden = !open;
     if (moveFocus) (open ? fold : sum).focus();
     if (onFlip) onFlip(); resized();
   }
   var item = { el: card, isOpen: function () { return open; }, setOpen: setOpen };
   function act(name, args, btn) {
-    btn.disabled = true;
+    btn.disabled = true; btn.setAttribute("aria-busy", "true");
     callTool(name, args).then(function (r) {
       var t = textOf(r), dd = cardOf(r), fresh = dd && dd.quests && dd.quests.filter(function (x) { return x.id === q.id; })[0];
-      if ((r && r.isError) || !fresh) { btn.disabled = false; say(msg, t.split("\n")[0], false); return; }
+      if ((r && r.isError) || !fresh) { btn.disabled = false; btn.removeAttribute("aria-busy"); say(msg, (r && r.isError ? t.split("\n").slice(0, 2).join(" ") : t.split("\n")[0]) || "Couldn't update quest. Try again.", false); return; }
       var next = questCard(fresh, d, true, onFlip); card.replaceWith(next.el); item.el = next.el; item.isOpen = next.isOpen; item.setOpen = next.setOpen;
-      say(next.el.querySelector(".c-say"), t.split("\n")[0], true);
-      var stamp = next.el.querySelector(".cl-quest__main .cl-stamp"); if (stamp) stamp.className += " is-new";
+      var badge = next.el.querySelector(".cl-quest__main .c-qstate"); if (badge) badge.className += " is-new";
+      say(next.el.querySelector(".c-say"), t.split("\n")[0] || "Updated.", true);
+      var focusEl = next.el.querySelector(".c-complete-btn, .c-claim, .c-fold");
+      if (focusEl) focusEl.focus();
+      resized();
     }, function (e) {
-      btn.disabled = false;
+      btn.disabled = false; btn.removeAttribute("aria-busy");
       if (isNoIpc(e)) { noIpc = true; btn.disabled = true; say(msg, "Actions can't send from this card right now, so ask your agent in chat.", "muted"); return; }
-      say(msg, e.message, false);
+      say(msg, (e && e.message) || "Action failed.", false);
     });
   }
   if (q.state === "open") {
     var claim = h("button", { class: PR + "c-claim", type: "button", onclick: function () { act("claim_quest", { id: q.id }, claim); } }, icon("bolt"), "Claim");
-    row.appendChild(claim);
+    actRow.appendChild(claim);
   }
   if (q.state === "claimed" && me && q.claimed_by === me) {
     var evId = "c-ev-" + q.id, enId = "c-en-" + q.id;
     var ev = h("textarea", { id: evId, class: "cl-textarea", name: "evidence", maxlength: "2000", required: true, placeholder: "How you know done-when holds" });
-    var en = h("input", { id: enId, class: "cl-input", name: "entry", required: true, placeholder: "The memory the work produced", autocomplete: "off" });
+    var en = h("input", { id: enId, class: "cl-input", name: "entry", required: true, placeholder: "Entry id from remember for this work", autocomplete: "off" });
     var go = h("button", { class: PR.trim(), type: "submit" }, icon("check"), "Complete quest");
-    var form = h("form", { class: "c-complete", hidden: true }, h("div", { class: "cl-field" }, h("label", { for: evId, text: "Evidence" }), ev),
-      h("div", { class: "cl-field" }, h("label", { for: enId, text: "Memory id" }), en), h("div", { class: "c-row" }, go));
-    form.addEventListener("submit", function (e) { e.preventDefault(); act("complete_quest", { id: q.id, evidence: ev.value.trim(), entry_id: en.value.trim() }, go); });
-    var toggleForm = h("button", { class: SM.trim(), type: "button", "aria-expanded": "false", onclick: function () { form.hidden = !form.hidden; toggleForm.setAttribute("aria-expanded", String(!form.hidden)); if (!form.hidden) ev.focus(); resized(); } }, icon("check"), "Complete");
-    row.appendChild(toggleForm);
+    var form = h("form", { class: "c-complete", novalidate: true, hidden: true }, h("div", { class: "cl-field" }, h("label", { for: evId, text: "Evidence" }), ev),
+      h("div", { class: "cl-field" }, h("label", { for: enId, text: "Entry id" }), en), h("div", { class: "c-row" }, go));
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var evVal = ev.value.trim(), enVal = en.value.trim();
+      if (!evVal) { say(msg, "Add evidence showing done-when holds.", false); ev.focus(); return; }
+      if (!enVal) { say(msg, "Add the entry id for this work.", false); en.focus(); return; }
+      act("complete_quest", { id: q.id, evidence: evVal, entry_id: enVal }, go);
+    });
+    var toggleForm = h("button", { class: SM + "c-complete-btn", type: "button", "aria-expanded": "false", onclick: function () { form.hidden = !form.hidden; toggleForm.setAttribute("aria-expanded", String(!form.hidden)); if (!form.hidden) ev.focus(); resized(); } }, icon("check"), "Complete");
+    actRow.appendChild(toggleForm);
     main.insertBefore(form, msg);
   }
-  if (!row.firstChild) row.hidden = true;
+  actRow.appendChild(fold);
   return item;
 }
 function questsCard(d) {
   var qs = d.quests || [], rows = [], cap = null;
-  function sync() { if (toggle) toggle.sync(rows.length > 0 && rows.every(function (r) { return r.isOpen(); }) && (!cap || cap.isAll())); }
+  function sync() { if (toggle) toggle.sync(rows.some(function (r) { return !r.el.hidden && r.isOpen(); })); }
   var toggle = qs.length ? toggleBtn(function (want) {
-    if (cap) cap.setAll(want);
     rows.forEach(function (r) { r.setOpen(want); });
     sync(); resized();
-  }) : null;
-  var s = sheet("quest board" + (qs.length ? " · " + qs.length : ""), d.badge, toggle), dk = desk();
-  if (d.head && !qs.length) dk.appendChild(h("p", { class: "c-text", text: d.head }));
-  if (!qs.length) dk.appendChild(h("div", { class: "cl-empty" }, h("p", { class: "cl-empty__title", text: "Quest board's empty." }),
-    h("p", { class: "cl-empty__text", text: "Nobody has pinned anything. Ask your agent to post one, with a done-when line anyone can check." })));
+  }, true) : null;
+  var s = sheet("quest board" + (qs.length ? " · " + qs.length : ""), toggle), dk = desk();
+  if (!qs.length) {
+    var qEmptyTitle = !d.show || d.show === "open" ? "Quest board's empty."
+      : d.show === "done" ? "No completed quests yet."
+      : d.show === "mine" ? "No quests for this agent yet."
+      : "No quests match.";
+    var qEmptyText = !d.show || d.show === "open"
+      ? "Nobody has pinned a quest yet. Ask your agent to post one with a done-when line anyone can check."
+      : "No quests match that filter. Ask your agent to check open quests or post a new one.";
+    dk.appendChild(h("div", { class: "cl-empty" }, h("p", { class: "cl-empty__title", text: qEmptyTitle }),
+      h("p", { class: "cl-empty__text", text: qEmptyText })));
+  }
   qs.forEach(function (q) { var item = questCard(q, d, true, sync); rows.push(item); dk.appendChild(item.el); });
   cap = capList(dk, rows, sync);
   sync();
@@ -537,21 +659,43 @@ function questsCard(d) {
   return s;
 }
 function agentCard(d) {
-  var a = d.agent, desc = a.description ? h("p", { class: "c-text c-say", text: a.description }) : null;
-  var toggle = desc ? toggleBtn(function (want) { desc.hidden = !want; toggle.sync(want); resized(); }) : null;
-  if (toggle) toggle.sync(true);
-  var s = sheet("agent · " + a.name, d.badge, toggle), dk = desk();
-  dk.appendChild(h("div", { class: "cl-card" }, h("div", { class: "c-hero" }, agentBadge({ name: a.name, context: a.context, surface: a.surface, registered: true }, true),
-    h("span", { class: "c-sp" }), a.since ? h("span", { class: "cl-label", text: "since " + a.since }) : null), desc));
+  var a = d.agent || {};
+  var desc = a.description ? h("p", { class: "c-text c-agent-desc" }, richText(a.description)) : null;
+  var body = h("div", { class: "c-agent-body" },
+    agentBadge({ name: a.name, context: a.context, surface: a.surface, registered: true }, false),
+    desc);
+  var sum = h("button", {
+    class: "c-sum c-agent-sum", type: "button", hidden: true, "aria-expanded": "false",
+    onclick: function () { body.hidden = false; sum.hidden = true; sum.setAttribute("aria-expanded", "true"); toggle.sync(true); toggle.focus(); resized(); }
+  }, h("span", { class: "c-sum__title", text: a.name || "" }),
+     a.context || a.surface ? h("span", { class: "cl-muted cl-mono", text: [a.context, a.surface].filter(Boolean).join(" · ") }) : null,
+     icon("more"));
+  var toggle = toggleBtn(function (want) {
+    body.hidden = !want;
+    sum.hidden = want;
+    sum.setAttribute("aria-expanded", String(!!want));
+    toggle.sync(want);
+    resized();
+  });
+  toggle.sync(true);
+  var mid = h("span", { class: "c-what" },
+    h("span", { class: "c-saved", text: "Registered" }),
+    a.since ? h("span", { class: "cl-muted c-what__txt", text: "since " + a.since }) : null);
+  var s = sheet(mid, toggle), dk = desk();
+  dk.appendChild(sum);
+  dk.appendChild(body);
   s.appendChild(dk);
   return s;
 }
 function errorCard(d) {
-  var s = sheet("", d.badge);
-  s.appendChild(h("div", { class: "c-hero" }, h("span", { class: "cl-stamp cl-stamp--bad", text: "Refused" }), h("p", { class: "c-text", text: d.error })));
+  var s = sheet("", null);
+  var lbl = d.label || (/^Error:/i.test(String(d.error || "")) ? "Error" : "Refused");
+  s.appendChild(h("div", { class: "c-err-row", role: "alert" },
+    h("span", { class: "cl-chip cl-chip--bad", text: lbl }),
+    h("p", { class: "c-text" }, richText(d.error))));
   return s;
 }
-function failed(text) { root.textContent = ""; root.appendChild(errorCard({ error: text })); resized(); }
+function failed(text, label) { root.textContent = ""; root.appendChild(errorCard({ error: text, label: label })); resized(); }
 function show(result) {
   var d = cardOf(result);
   root.textContent = "";
