@@ -179,7 +179,7 @@ export async function searchArchive(
     left join lateral (
       select l.src from memory.link l
       where l.owner_id = e.owner_id and l.dst = e.id and l.type = 'supersedes'
-      order by l.created_at desc limit 1
+      order by l.src desc limit 1
     ) sup on true
     where (
         (t.q is not null and e.tsv_en @@ t.q)
