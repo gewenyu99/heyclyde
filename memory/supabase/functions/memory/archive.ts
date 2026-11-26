@@ -304,113 +304,122 @@ export async function loadRecentColdRecords(
 /** Sweep one owner's qualified cold entries into an immutable content-addressed memory.blob (in Supabase Storage when on,
  * or inline bytea in local CI), verify the write, re-lock live rows with FOR UPDATE, bridge supersedes chains so older
  * notes never resurrect, and delete only unchanged rows. */
+export type TenantRunner = <T>(fn: (db: Sql) => Promise<T>) => Promise<T>;
+
 export async function sweepOwnerColdArchive(
   owner: string,
   db: Sql = sql,
   backend: ColdBlobBackend = defaultBackend,
   limit = SWEEP_BATCH_LIMIT,
+  protectedIds: string[] = [],
+  runPhase: TenantRunner = (fn) => fn(db),
 ): Promise<{ archived: number; byReason: Record<ArchiveReason, number> }> {
   const byReason: Record<ArchiveReason, number> = { superseded: 0, dormant: 0, stale_run: 0, miss_streak_orphan: 0 };
+  const nowMs = Date.now();
 
-  const candidates = await db`select e.*,
-      false as has_blobs, false as in_qrel, false as in_quest, false as in_unlearned,
-      sup.src as superseded_by,
-      exists (select 1 from memory.link ls where ls.owner_id = e.owner_id and ls.src = e.id and ls.type = 'supersedes') as supersedes_other,
-      (select count(*)::int from memory.link l
-        where l.owner_id = e.owner_id and l.type not in ('supersedes', 'part_of') and (l.src = e.id or l.dst = e.id)) as active_links
-    from memory.entry e
-    left join lateral (
-      select l.src from memory.link l
-      join memory.entry se on se.owner_id = l.owner_id and se.id = l.src
-      where l.owner_id = e.owner_id and l.dst = e.id and l.type = 'supersedes'
-      order by se.created_at desc, l.src desc limit 1
-    ) sup on true
-    where e.origin <> 'seed'
-      and coalesce(e.pattern, '') <> 'projects'
-      and e.created_at <= now() - make_interval(hours => ${ARCHIVE_MIN_AGE_HOURS})
-      and not exists (select 1 from memory.entry_blob xb where xb.owner_id = e.owner_id and xb.entry_id = e.id)
-      and not exists (select 1 from memory.quest q where q.owner_id = e.owner_id and (q.result_entry = e.id or q.history_entry = e.id))
-      and not exists (select 1 from memory.qrel qr where qr.entry_id = e.id)
-      and not exists (
-        select 1 from memory.retrieval r
-        where r.owner_id = e.owner_id and r.learned_at is null
-          and (r.delivered ? e.id or r.candidates ? e.id or r.on_trial ? e.id)
-      )
-      and (
-        sup.src is not null
-        or (
-          coalesce(e.authority, 'draft') <> 'approved'
-          and not exists (select 1 from memory.link ls where ls.owner_id = e.owner_id and ls.src = e.id and ls.type = 'supersedes')
-          and (
-            e.confidence < ${ARCHIVE_DORMANT_FLOOR}
-            or (e.scope like 'run:%' and e.confidence < 0.65 and e.created_at <= now() - make_interval(days => ${ARCHIVE_RUN_STALE_DAYS}))
-            or (coalesce(e.authority, 'draft') = 'draft' and e.miss_streak >= ${ARCHIVE_MISS_STREAK_MIN})
+  // Phase 1: Snapshot candidates inside a fast read transaction, then release the DB connection before Storage I/O.
+  const snap = await runPhase(async (rdb) => {
+    const candidates = await rdb`select e.*,
+        false as has_blobs, false as in_qrel, false as in_quest, false as in_unlearned,
+        sup.src as superseded_by,
+        exists (select 1 from memory.link ls where ls.owner_id = e.owner_id and ls.src = e.id and ls.type = 'supersedes') as supersedes_other,
+        (select count(*)::int from memory.link l
+          where l.owner_id = e.owner_id and l.type not in ('supersedes', 'part_of') and (l.src = e.id or l.dst = e.id)) as active_links
+      from memory.entry e
+      left join lateral (
+        select l.src from memory.link l
+        join memory.entry se on se.owner_id = l.owner_id and se.id = l.src
+        where l.owner_id = e.owner_id and l.dst = e.id and l.type = 'supersedes'
+        order by se.created_at desc, l.src desc limit 1
+      ) sup on true
+      where e.origin <> 'seed'
+        and coalesce(e.pattern, '') <> 'projects'
+        and e.created_at <= now() - (${ARCHIVE_MIN_AGE_HOURS}::int * interval '1 hour')
+        and not (e.id = any(${protectedIds}::text[]))
+        and not exists (select 1 from memory.entry_blob xb where xb.owner_id = e.owner_id and xb.entry_id = e.id)
+        and not exists (select 1 from memory.quest q where q.owner_id = e.owner_id and (q.result_entry = e.id or q.history_entry = e.id))
+        and not exists (
+          select 1 from memory.retrieval r
+          where r.owner_id = e.owner_id and r.learned_at is null
+            and (r.delivered ? e.id or r.candidates ? e.id or r.on_trial ? e.id)
+        )
+        and (
+          sup.src is not null
+          or (
+            coalesce(e.authority, 'draft') <> 'approved'
+            and not exists (select 1 from memory.link ls where ls.owner_id = e.owner_id and ls.src = e.id and ls.type = 'supersedes')
+            and (
+              e.confidence < ${ARCHIVE_DORMANT_FLOOR}
+              or (e.scope like 'run:%' and e.confidence < 0.65 and e.created_at <= now() - (${ARCHIVE_RUN_STALE_DAYS}::int * interval '1 day'))
+              or (coalesce(e.authority, 'draft') = 'draft' and e.miss_streak >= ${ARCHIVE_MISS_STREAK_MIN})
+            )
           )
         )
-      )
-    order by e.created_at asc, e.id asc
-    limit ${limit}`;
+      order by e.created_at asc, e.id asc
+      limit ${limit}`;
 
-  const nowMs = Date.now();
-  const qualified: { row: Row; reason: ArchiveReason }[] = [];
-  for (const r of candidates) {
-    const reason = archiveReason(r, nowMs);
-    if (reason) qualified.push({ row: r, reason });
-  }
-  if (!qualified.length) return { archived: 0, byReason };
+    const qualified: { row: Row; reason: ArchiveReason }[] = [];
+    for (const r of candidates) {
+      const reason = archiveReason(r, nowMs);
+      if (reason) qualified.push({ row: r, reason });
+    }
+    if (!qualified.length) return null;
 
-  const pickedIds = qualified.map((q) => String(q.row.id));
+    const pickedIds = qualified.map((q) => String(q.row.id));
+    const allSup = await rdb`select l.dst as old_id, l.src as new_id
+      from memory.link l join memory.entry se on se.owner_id = l.owner_id and se.id = l.src
+      where l.type = 'supersedes'
+      order by se.created_at asc, l.src asc`;
+    const supMap = new Map<string, string>();
+    for (const r of allSup) supMap.set(String(r.old_id), String(r.new_id));
 
-  // Resolve multi-hop supersedes chains across the owner's full supersedes graph so blame points at the true live head.
-  const allSup = await db`select l.dst as old_id, l.src as new_id
-    from memory.link l join memory.entry se on se.owner_id = l.owner_id and se.id = l.src
-    where l.type = 'supersedes'
-    order by se.created_at asc, l.src asc`;
-  const supMap = new Map<string, string>();
-  for (const r of allSup) supMap.set(String(r.old_id), String(r.new_id));
-
-  const provRows = await db`select entry_id, device, agent, agent_context, repo, cwd, session, run_scope
-    from memory.entry_provenance where entry_id = any(${pickedIds}::text[])`;
-  const provById = new Map<string, ColdProvenance>(
-    provRows.map((p) => [String(p.entry_id), {
-      device: p.device ? String(p.device) : null,
-      agent: p.agent ? String(p.agent) : null,
-      agent_context: p.agent_context ? String(p.agent_context) : null,
-      repo: p.repo ? String(p.repo) : null,
-      cwd: p.cwd ? String(p.cwd) : null,
-      session: p.session ? String(p.session) : null,
-      run_scope: p.run_scope ? String(p.run_scope) : null,
-    }]),
-  );
-
-  const linkRows = await db`select src, dst, type, weight from memory.link
-    where src = any(${pickedIds}::text[]) or dst = any(${pickedIds}::text[])`;
-  const linksById = new Map<string, ColdLink[]>();
-  for (const l of linkRows) {
-    const src = String(l.src), dst = String(l.dst), type = String(l.type), weight = Number(l.weight ?? 1);
-    if (pickedIds.includes(src)) linksById.set(src, [...(linksById.get(src) ?? []), { dir: "to", type, other: dst, weight }]);
-    if (pickedIds.includes(dst)) linksById.set(dst, [...(linksById.get(dst) ?? []), { dir: "from", type, other: src, weight }]);
-  }
-
-  const nowIso = new Date(nowMs).toISOString();
-  const records: ColdRecord[] = qualified.map(({ row, reason }) => {
-    const id = String(row.id);
-    const head = reason === "superseded" ? resolveSupersedesHead(id, supMap) : null;
-    return toLosslessColdRecord(
-      row,
-      reason,
-      head && head !== id ? head : (row.superseded_by ? String(row.superseded_by) : null),
-      provById.get(id) ?? null,
-      linksById.get(id) ?? [],
-      nowIso,
+    const provRows = await rdb`select entry_id, device, agent, agent_context, repo, cwd, session, run_scope
+      from memory.entry_provenance where entry_id = any(${pickedIds}::text[])`;
+    const provById = new Map<string, ColdProvenance>(
+      provRows.map((p) => [String(p.entry_id), {
+        device: p.device ? String(p.device) : null,
+        agent: p.agent ? String(p.agent) : null,
+        agent_context: p.agent_context ? String(p.agent_context) : null,
+        repo: p.repo ? String(p.repo) : null,
+        cwd: p.cwd ? String(p.cwd) : null,
+        session: p.session ? String(p.session) : null,
+        run_scope: p.run_scope ? String(p.run_scope) : null,
+      }]),
     );
+
+    const linkRows = await rdb`select src, dst, type, weight from memory.link
+      where src = any(${pickedIds}::text[]) or dst = any(${pickedIds}::text[])`;
+    const linksById = new Map<string, ColdLink[]>();
+    for (const l of linkRows) {
+      const src = String(l.src), dst = String(l.dst), type = String(l.type), weight = Number(l.weight ?? 1);
+      if (pickedIds.includes(src)) linksById.set(src, [...(linksById.get(src) ?? []), { dir: "to", type, other: dst, weight }]);
+      if (pickedIds.includes(dst)) linksById.set(dst, [...(linksById.get(dst) ?? []), { dir: "from", type, other: src, weight }]);
+    }
+
+    const nowIso = new Date(nowMs).toISOString();
+    const records: ColdRecord[] = qualified.map(({ row, reason }) => {
+      const id = String(row.id);
+      const head = reason === "superseded" ? resolveSupersedesHead(id, supMap) : null;
+      return toLosslessColdRecord(
+        row,
+        reason,
+        head && head !== id ? head : (row.superseded_by ? String(row.superseded_by) : null),
+        provById.get(id) ?? null,
+        linksById.get(id) ?? [],
+        nowIso,
+      );
+    });
+    return { qualified, pickedIds, records };
   });
+
+  if (!snap) return { archived: 0, byReason };
+  const { qualified, pickedIds, records } = snap;
 
   const ndjson = mergeNdjson(null, records);
   const bytes = new TextEncoder().encode(ndjson);
   const digest = await sha256(bytes);
 
-  // 1. Write immutable batch bytes to Supabase Storage FIRST and verify read-back before deleting anything.
+  // Phase 2: Write immutable batch bytes to Supabase Storage OUTSIDE any DB transaction and verify read-back.
   const useStorage = backend.storageOn();
   if (useStorage) {
     await backend.putBlob(digest, COLD_ARCHIVE_MEDIA_TYPE, bytes, owner);
@@ -420,73 +429,73 @@ export async function sweepOwnerColdArchive(
     }
   }
 
-  // 2. Inside one transaction: verify owner still exists, record memory.blob, lock rows FOR UPDATE to prevent TOCTOU
-  // clobbering of concurrent edits/revivals, bridge supersedes links so ancestors never resurrect, and delete.
+  // Phase 3: Re-open fast write transaction, record memory.blob, lock rows FOR UPDATE to prevent TOCTOU clobbering,
+  // bridge supersedes links so ancestors never resurrect, and delete only unchanged rows.
   const snapById = new Map(qualified.map((q) => [String(q.row.id), q]));
-  const deletedIds = await db.begin(async (tx) => {
-    // Guard against concurrent DELETE /me on non-Wen accounts.
-    const [hasEntries] = await tx`select 1 from memory.entry limit 1`;
-    if (!hasEntries) return [] as string[];
+  const deletedIds = await runPhase((wdb) =>
+    wdb.begin(async (tx) => {
+      const [hasEntries] = await tx`select 1 from memory.entry limit 1`;
+      if (!hasEntries) return [] as string[];
 
-    await tx`insert into memory.blob (sha256, media_type, size, content, stored)
-      values (${digest}, ${COLD_ARCHIVE_MEDIA_TYPE}, ${bytes.byteLength}, ${useStorage ? null : bytes}, ${useStorage ? "storage" : "db"})
-      on conflict (owner_id, sha256) do nothing`;
+      await tx`insert into memory.blob (sha256, media_type, size, content, stored)
+        values (${digest}, ${COLD_ARCHIVE_MEDIA_TYPE}, ${bytes.byteLength}, ${useStorage ? null : bytes}, ${useStorage ? "storage" : "db"})
+        on conflict (owner_id, sha256) do nothing`;
 
-    const locked = await tx`select e.id, e.origin, e.pattern, e.authority, e.confidence, e.miss_streak, e.scope,
-        e.created_at, e.payload_sha256, e.title, e.body,
-        exists (select 1 from memory.entry_blob xb where xb.owner_id = e.owner_id and xb.entry_id = e.id) as has_blobs,
-        exists (select 1 from memory.quest q where q.owner_id = e.owner_id and (q.result_entry = e.id or q.history_entry = e.id)) as in_quest,
-        exists (select 1 from memory.qrel qr where qr.entry_id = e.id) as in_qrel,
-        exists (
-          select 1 from memory.retrieval r
-          where r.owner_id = e.owner_id and r.learned_at is null
-            and (r.delivered ? e.id or r.candidates ? e.id or r.on_trial ? e.id)
-        ) as in_unlearned,
-        (
-          select l.src from memory.link l
-          where l.owner_id = e.owner_id and l.dst = e.id and l.type = 'supersedes'
-          limit 1
-        ) as superseded_by,
-        exists (select 1 from memory.link ls where ls.owner_id = e.owner_id and ls.src = e.id and ls.type = 'supersedes') as supersedes_other,
-        (select count(*)::int from memory.link l
-          where l.owner_id = e.owner_id and l.type not in ('supersedes', 'part_of') and (l.src = e.id or l.dst = e.id)) as active_links
-      from memory.entry e
-      where e.id = any(${pickedIds}::text[])
-      for update`;
+      const locked = await tx`select e.id, e.origin, e.pattern, e.authority, e.confidence, e.miss_streak, e.scope,
+          e.created_at, e.payload_sha256, e.title, e.body,
+          exists (select 1 from memory.entry_blob xb where xb.owner_id = e.owner_id and xb.entry_id = e.id) as has_blobs,
+          exists (select 1 from memory.quest q where q.owner_id = e.owner_id and (q.result_entry = e.id or q.history_entry = e.id)) as in_quest,
+          (e.id = any(${protectedIds}::text[])) as in_qrel,
+          exists (
+            select 1 from memory.retrieval r
+            where r.owner_id = e.owner_id and r.learned_at is null
+              and (r.delivered ? e.id or r.candidates ? e.id or r.on_trial ? e.id)
+          ) as in_unlearned,
+          (
+            select l.src from memory.link l
+            where l.owner_id = e.owner_id and l.dst = e.id and l.type = 'supersedes'
+            limit 1
+          ) as superseded_by,
+          exists (select 1 from memory.link ls where ls.owner_id = e.owner_id and ls.src = e.id and ls.type = 'supersedes') as supersedes_other,
+          (select count(*)::int from memory.link l
+            where l.owner_id = e.owner_id and l.type not in ('supersedes', 'part_of') and (l.src = e.id or l.dst = e.id)) as active_links
+        from memory.entry e
+        where e.id = any(${pickedIds}::text[])
+        for update of e`;
 
-    const safeIds: string[] = [];
-    for (const live of locked) {
-      const id = String(live.id);
-      const snap = snapById.get(id);
-      if (!snap) continue;
-      // Skip if text/payload was edited concurrently since snapshot.
-      if (String(live.title ?? "") !== String(snap.row.title ?? "")) continue;
-      if (String(live.body ?? "") !== String(snap.row.body ?? "")) continue;
-      if ((live.payload_sha256 ?? null) !== (snap.row.payload_sha256 ?? null)) continue;
-      const stillReason = archiveReason(live, nowMs);
-      if (!stillReason) continue;
-      safeIds.push(id);
-      byReason[stillReason]++;
-    }
-    if (!safeIds.length) return [] as string[];
+      const safeIds: string[] = [];
+      for (const live of locked) {
+        const id = String(live.id);
+        const s = snapById.get(id);
+        if (!s) continue;
+        if (String(live.title ?? "") !== String(s.row.title ?? "")) continue;
+        if (String(live.body ?? "") !== String(s.row.body ?? "")) continue;
+        if ((live.payload_sha256 ?? null) !== (s.row.payload_sha256 ?? null)) continue;
+        const stillReason = archiveReason(live, nowMs);
+        if (!stillReason) continue;
+        safeIds.push(id);
+        byReason[stillReason]++;
+      }
+      if (!safeIds.length) return [] as string[];
 
-    // Bridge C -> A before deleting B so no superseded predecessor A ever resurrects as active!
-    await tx`insert into memory.link (src, dst, type, weight)
-      select distinct up.src, down.dst, 'supersedes', 1.0
-      from memory.link down
-      join memory.link up on up.owner_id = down.owner_id and up.dst = down.src and up.type = 'supersedes'
-      where down.src = any(${safeIds}::text[])
-        and down.type = 'supersedes'
-        and up.src <> down.dst
-        and not (up.src = any(${safeIds}::text[]))
-      on conflict (owner_id, src, dst, type) do nothing`;
+      // Bridge C -> A before deleting B so no superseded predecessor A ever resurrects as active!
+      await tx`insert into memory.link (src, dst, type, weight)
+        select distinct up.src, down.dst, 'supersedes', 1.0
+        from memory.link down
+        join memory.link up on up.owner_id = down.owner_id and up.dst = down.src and up.type = 'supersedes'
+        where down.src = any(${safeIds}::text[])
+          and down.type = 'supersedes'
+          and up.src <> down.dst
+          and not (up.src = any(${safeIds}::text[]))
+        on conflict (owner_id, src, dst, type) do nothing`;
 
-    await tx`delete from memory.co_use where src = any(${safeIds}::text[]) or dst = any(${safeIds}::text[])`;
-    await tx`delete from memory.link where src = any(${safeIds}::text[]) or dst = any(${safeIds}::text[])`;
-    await tx`update memory.entry set project = null where project = any(${safeIds}::text[]) and not (id = any(${safeIds}::text[]))`;
-    await tx`delete from memory.entry where id = any(${safeIds}::text[])`;
-    return safeIds;
-  });
+      await tx`delete from memory.co_use where src = any(${safeIds}::text[]) or dst = any(${safeIds}::text[])`;
+      await tx`delete from memory.link where src = any(${safeIds}::text[]) or dst = any(${safeIds}::text[])`;
+      await tx`update memory.entry set project = null where project = any(${safeIds}::text[]) and not (id = any(${safeIds}::text[]))`;
+      await tx`delete from memory.entry where id = any(${safeIds}::text[])`;
+      return safeIds;
+    })
+  );
 
   if (deletedIds.length) forgetGraph(owner);
   return { archived: deletedIds.length, byReason };
@@ -512,10 +521,19 @@ export async function sweepAllColdArchives(
   if (!lease.length) return { owners: 0, archived: 0, skipped: "leased" };
 
   try {
+    // qrel is a global eval table readable only by postgres (root), never memory_tenant.
+    const qrelIds = (await root`select distinct entry_id::text as id from memory.qrel`).map((r) => String(r.id));
     const owners = await root`select distinct owner_id::text as owner_id from memory.entry`;
     let archived = 0;
     for (const { owner_id } of owners) {
-      const res = await asTenant(owner_id, () => sweepOwnerColdArchive(owner_id, sql, backend));
+      const res = await sweepOwnerColdArchive(
+        owner_id,
+        sql,
+        backend,
+        SWEEP_BATCH_LIMIT,
+        qrelIds,
+        (fn) => asTenant(owner_id, () => fn(sql)),
+      );
       archived += res.archived;
     }
     return { owners: owners.length, archived };
