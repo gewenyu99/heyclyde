@@ -7,6 +7,27 @@ import { type Row, secret, type Sql, sql } from "./db.ts";
 
 export const GEMINI_EMBED_MODEL = "gemini-embedding-001";
 const DEFAULT_GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta";
+export const VECTOR_DORMANT_FLOOR = 0.15;
+export const VECTOR_RUN_STALE_DAYS = 14;
+export const VECTOR_MISS_STREAK_COLD = 5;
+
+/** Whether an entry belongs in cold storage (kept permanently in memory.entry, evicted from memory.entry_embedding).
+ * Superseded entries, dormant entries (<0.15), stale run:* scratch notes (>14d and strength <0.65), and repeatedly-missed
+ * weak drafts stay searchable via search_archive without bloating vector scans or embedding spend. */
+export function isColdForVector(row: Row, nowMs = Date.now()): boolean {
+  if (row.superseded) return true;
+  const conf = Number(row.confidence ?? 0.5);
+  if (conf < VECTOR_DORMANT_FLOOR) return true;
+  const scope = typeof row.scope === "string" ? row.scope : "";
+  if (scope.startsWith("run:") && conf < 0.65 && row.created_at) {
+    const createdMs = row.created_at instanceof Date ? row.created_at.getTime() : Date.parse(String(row.created_at));
+    if (Number.isFinite(createdMs) && nowMs - createdMs > VECTOR_RUN_STALE_DAYS * 86_400_000) return true;
+  }
+  if (row.authority === "draft" && Number(row.miss_streak ?? 0) >= VECTOR_MISS_STREAK_COLD && conf < 0.35) {
+    return true;
+  }
+  return false;
+}
 
 export type EmbedDeps = {
   assertBudget?: (kind: Kind) => Promise<void>;
@@ -108,15 +129,30 @@ export function toPgvector(vec: number[]) {
   return "[" + vec.map((x) => x.toFixed(6)).join(",") + "]";
 }
 
-/** Embed every entry whose text or model changed since its last embedding. Returns the count embedded. */
+/** Embed every hot entry whose text or model changed, and evict vectors for cold entries (superseded, dormant, stale run
+ * scratch, or repeatedly-missed weak drafts). Evicted entries remain permanently in memory.entry and searchable via
+ * search_archive. Returns the count embedded. */
 export async function syncEmbeddings(db: Sql = sql, batch = 64): Promise<number> {
   const model = await activeEmbedModel();
-  const rows = await db`select e.id, e.title, e.body, e.evidence, e.search_text, e.sensitivity, x.content_sha256, x.model from memory.entry e
+  const rows = await db`select e.id, e.title, e.body, e.evidence, e.search_text, e.sensitivity,
+      e.confidence, e.scope, e.authority, e.miss_streak, e.created_at,
+      exists (select 1 from memory.link l where l.owner_id = e.owner_id and l.dst = e.id and l.type = 'supersedes') as superseded,
+      x.entry_id is not null as has_embedding, x.content_sha256, x.model
+    from memory.entry e
     left join memory.entry_embedding x on x.owner_id = e.owner_id and x.entry_id = e.id`;
+  const evict: string[] = [];
   const stale: [Row, string, string][] = [];
+  const nowMs = Date.now();
   for (const r of rows) {
+    if (isColdForVector(r, nowMs)) {
+      if (r.has_embedding) evict.push(String(r.id));
+      continue;
+    }
     const text = entryText(r), sha = await contentSha(text, model);
     if (r.content_sha256 !== sha || r.model !== model) stale.push([r, text, sha]);
+  }
+  if (evict.length) {
+    await db`delete from memory.entry_embedding where entry_id = any(${evict}::text[])`;
   }
   for (let i = 0; i < stale.length; i += batch) {
     const chunk = stale.slice(i, i + batch);

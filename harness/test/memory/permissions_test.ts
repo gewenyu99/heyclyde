@@ -302,7 +302,7 @@ Deno.test('R70 entryWhereClauses and questWhereSql emit parameterized realm, pro
 })
 
 Deno.test('R70 TOOLS keeps 18 tools and legacy required schemas', () => {
-  assert.equal(TOOLS.length, 19)
+  assert.equal(TOOLS.length, 20)
   const reg = TOOLS.find((t) => t.name === 'register_agent')!
   assert.deepEqual(reg.inputSchema.required, ['name', 'context', 'surface', 'description'])
   for (const prop of ['projects', 'computer', 'type', 'strict_projects']) {

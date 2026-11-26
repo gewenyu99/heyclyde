@@ -7,6 +7,7 @@ import * as limits from "./billing/limits.ts";
 import { config } from "./config.ts";
 import { sql } from "./db.ts";
 import * as quests from "./quests.ts";
+import * as deep from "./deep.ts";
 import * as service from "./service.ts";
 import { CARD_KEY as CARD, readUiResource, requestWantsUi, UI_EXTENSION, uiResources, uiTools, wantsUi } from "./ui/apps.ts";
 import { type Badge, cardData } from "./ui/data.ts";
@@ -121,6 +122,33 @@ export const TOOLS = [
     inputSchema: {
       type: "object", required: ["retrieval_id"],
       properties: { retrieval_id: str("The retrieval id of the recall, or of the last recall_more page") },
+    },
+  },
+  {
+    name: "search_archive",
+    ...hints("Search archive", true),
+    description: "Exhaustive full-text search across every memory in long-term storage, including cold entries evicted from " +
+      "vector search, dormant low-strength notes, superseded notes, and old run scratch. Uses zero embedding or LLM tokens.\n\n" +
+      "query: text or id fragment to find (English, 中文, or substring).\n" +
+      "include: all (default), cold (outside vector search: unembedded, dormant or superseded), dormant, or superseded.\n" +
+      "scope: optional exact scope or run:* for all run scratch.\n" +
+      "category, context, project: optional filters.\n" +
+      "after, before: optional YYYY-MM-DD date bounds on created_at.\n" +
+      "limit: 1 to 50 (default 20). offset: pagination offset (default 0).",
+    inputSchema: {
+      type: "object", required: ["query"],
+      properties: {
+        query: str("Text or id fragment to search across long-term storage"),
+        include: { type: "string", enum: ["all", "cold", "dormant", "superseded"], description: "Which memory tiers to search (default all)" },
+        scope: str("Optional scope filter (e.g. global, run:<id>, or run:*)"),
+        category: str("Optional category filter"),
+        context: str("Optional realm filter: general, work, home, hobby, personal or all"),
+        project: str("Optional project slug filter"),
+        after: str("Optional start date YYYY-MM-DD"),
+        before: str("Optional end date YYYY-MM-DD"),
+        limit: int("Max results per page, 1 to 50 (default 20)"),
+        offset: int("Pagination offset (default 0)"),
+      },
     },
   },
   {
@@ -630,6 +658,23 @@ const RUN: Record<string, (c: Call) => Promise<string>> = {
   recall: (c) => service.recall(c.session, s(c.args.query), s(c.args.task), c.client, s(c.args.scope) || null, c.principal, nameOf(c),
     c.args.depth ?? "packet", scopeOf(c), recallFilter(c.args)),
   recall_more: (c) => service.recallMore(c.session, s(c.args.retrieval_id), { device: c.principal, agent: nameOf(c) }, scopeOf(c)),
+  search_archive: (c) => {
+    const query = s(c.args.query).trim();
+    if (!query) throw new Refused("query is required.");
+    const include = c.args.include === undefined || c.args.include === null ? "all" : s(c.args.include).trim().toLowerCase();
+    if (!(deep.ARCHIVE_INCLUDES as readonly string[]).includes(include)) {
+      throw new Refused(`include must be one of ${deep.ARCHIVE_INCLUDES.join(", ")}.`);
+    }
+    return deep.searchArchive(sql, {
+      query,
+      include: include as deep.ArchiveInclude,
+      scope: s(c.args.scope).trim() || undefined,
+      after: s(c.args.after).trim() || undefined,
+      before: s(c.args.before).trim() || undefined,
+      limit: c.args.limit !== undefined ? Number(c.args.limit) : undefined,
+      offset: c.args.offset !== undefined ? Number(c.args.offset) : undefined,
+    }, scopeOf(c), recallFilter(c.args));
+  },
   get_entry: async (c) => (await service.getEntry(c.session, s(c.args.id), { device: c.principal, agent: nameOf(c) }, scopeOf(c))) ?? `No entry ${s(c.args.id)}.`,
   get_blob: ({ args, agent, sessionRepo, principal }) =>
     service.getBlob(s(args.sha256), Number(args.offset ?? 0), Number(args.limit ?? 20000), scopeOf({ agent, sessionRepo, principal })),

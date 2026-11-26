@@ -4,7 +4,7 @@
  */
 import assert from 'node:assert/strict'
 import { OPENAI_PRICES_MICRO_USD_PER_M } from '../../../memory/supabase/functions/memory/billing/cost.ts'
-import { activeEmbedModel, embed, entryText, GEMINI_EMBED_MODEL } from '../../../memory/supabase/functions/memory/embed.ts'
+import { activeEmbedModel, embed, entryText, GEMINI_EMBED_MODEL, isColdForVector } from '../../../memory/supabase/functions/memory/embed.ts'
 
 type RecordedFetch = { url: string; method: string; headers: Record<string, string>; body: any }
 
@@ -130,4 +130,16 @@ Deno.test('embed falls back to OpenAI when gemini_key is absent', async () => {
       assert.deepEqual(metered, [{ kind: 'embed', tokens: 17, model: 'text-embedding-3-large' }])
     })
   })
+})
+
+Deno.test('isColdForVector evicts superseded, dormant, stale run:* scratch, and repeatedly-missed weak drafts', () => {
+  const now = Date.parse('2026-11-26T12:00:00Z')
+  assert.equal(isColdForVector({ confidence: 0.7, scope: 'global', authority: 'draft', miss_streak: 0, superseded: false, created_at: '2026-11-01T00:00:00Z' }, now), false)
+  assert.equal(isColdForVector({ confidence: 0.9, scope: 'global', superseded: true }, now), true)
+  assert.equal(isColdForVector({ confidence: 0.14, scope: 'global', superseded: false }, now), true)
+  assert.equal(isColdForVector({ confidence: 0.5, scope: 'run:abc', created_at: '2026-11-01T00:00:00Z', superseded: false }, now), true)
+  assert.equal(isColdForVector({ confidence: 0.5, scope: 'run:abc', created_at: '2026-11-20T00:00:00Z', superseded: false }, now), false)
+  assert.equal(isColdForVector({ confidence: 0.8, scope: 'run:abc', created_at: '2026-11-01T00:00:00Z', superseded: false }, now), false)
+  assert.equal(isColdForVector({ confidence: 0.3, scope: 'global', authority: 'draft', miss_streak: 5, superseded: false }, now), true)
+  assert.equal(isColdForVector({ confidence: 0.3, scope: 'global', authority: 'approved', miss_streak: 5, superseded: false }, now), false)
 })

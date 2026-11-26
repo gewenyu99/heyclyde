@@ -121,3 +121,111 @@ export async function nextPage(db: Sql, p: Params, pool: string[], seen: Set<str
 }
 
 // Closing line helper comes from ./core/deep-rules.ts.
+
+export const ARCHIVE_INCLUDES = ["all", "cold", "dormant", "superseded"] as const;
+export type ArchiveInclude = (typeof ARCHIVE_INCLUDES)[number];
+
+export type ArchiveSearchArgs = {
+  query: string;
+  include?: ArchiveInclude;
+  scope?: string;
+  before?: string;
+  after?: string;
+  limit?: number;
+  offset?: number;
+};
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const escapeLike = (s: string) => s.replace(/[\\%_]/g, "\\$&");
+
+/** Full-archive text search across all memories in memory.entry, including vector-evicted (cold), dormant, and superseded
+ * rows. Uses Postgres full-text, CJK bigrams, and substring matching with zero embedding or LLM spend. */
+export async function searchArchive(
+  db: Sql,
+  args: ArchiveSearchArgs,
+  agentScope: AgentScope = null,
+  filter?: EntryFilter,
+): Promise<string> {
+  const query = args.query.trim();
+  const include: ArchiveInclude = args.include ?? "all";
+  const limit = Math.min(50, Math.max(1, Math.trunc(args.limit ?? 20)));
+  const offset = Math.max(0, Math.trunc(args.offset ?? 0));
+  const likePattern = `%${escapeLike(query)}%`;
+  const terms = [...new Set(bigrams(query))].map((t) => `%${escapeLike(t)}%`);
+  const tierSql = include === "cold"
+    ? db`and (x.entry_id is null or e.confidence < 0.15 or sup.src is not null)`
+    : include === "dormant"
+    ? db`and e.confidence < 0.15`
+    : include === "superseded"
+    ? db`and sup.src is not null`
+    : db``;
+  const scopeSql = args.scope
+    ? args.scope === "run:*"
+      ? db`and e.scope like 'run:%'`
+      : db`and e.scope = ${args.scope}`
+    : db``;
+  const beforeSql = args.before && DATE_RE.test(args.before) ? db`and e.created_at < (${args.before}::date + interval '1 day')` : db``;
+  const afterSql = args.after && DATE_RE.test(args.after) ? db`and e.created_at >= ${args.after}::date` : db``;
+  const zhSql = terms.length ? db`or e.search_text like any(${terms}::text[])` : db``;
+
+  const rows = await db`select e.id, e.title, e.body, e.kind, e.pattern, e.scope, e.confidence, e.sensitivity,
+      e.created_at, sup.src as superseded_by, x.entry_id is not null as has_embedding,
+      coalesce(ts_rank_cd(e.tsv_en, t.q), 0)
+        + case when e.id ilike ${likePattern} then 2.0 else 0 end
+        + case when e.title ilike ${likePattern} then 1.0 else 0 end as rank_score
+    from memory.entry e
+    cross join (select nullif(replace(plainto_tsquery('english', ${query})::text, ' & ', ' | '), '')::tsquery as q) t
+    left join memory.entry_embedding x on x.owner_id = e.owner_id and x.entry_id = e.id
+    left join lateral (
+      select l.src from memory.link l
+      where l.owner_id = e.owner_id and l.dst = e.id and l.type = 'supersedes'
+      order by l.created_at desc limit 1
+    ) sup on true
+    where (
+        (t.q is not null and e.tsv_en @@ t.q)
+        ${zhSql}
+        or e.id ilike ${likePattern}
+        or e.title ilike ${likePattern}
+        or (e.sensitivity = 'normal' and (e.body ilike ${likePattern} or e.evidence ilike ${likePattern}))
+      )
+      ${tierSql}
+      ${scopeSql}
+      ${beforeSql}
+      ${afterSql}
+      ${entryWhereSql(db, "e", agentScope, filter)}
+    order by rank_score desc, e.created_at desc, e.id
+    limit ${limit + 1} offset ${offset}`;
+
+  const hasMore = rows.length > limit;
+  const page = rows.slice(0, limit);
+  if (!page.length) {
+    return offset > 0
+      ? `No more archive matches for "${query}" (include=${include}, offset=${offset}).`
+      : `No archive matches for "${query}" (include=${include}).`;
+  }
+  const items = page.map((raw, i) => {
+    const r = redact(raw);
+    const conf = Number(r.confidence ?? 0);
+    const tier = r.superseded_by
+      ? `superseded by ${r.superseded_by}`
+      : conf < 0.15
+      ? "dormant"
+      : r.has_embedding
+      ? "hot"
+      : "cold (unembedded)";
+    const day = r.created_at instanceof Date ? r.created_at.toISOString().slice(0, 10) : String(r.created_at ?? "").slice(0, 10);
+    const snippet = r.sensitivity === "private" || r.sensitivity === "confidential"
+      ? "(private; open with get_entry)"
+      : clip(String(r.body ?? "").replace(/\s+/g, " ").trim(), 220);
+    return [
+      `[${offset + i + 1}] ${r.id}: ${r.title}`,
+      `    ${tier} · kind ${r.kind ?? "observation"} · strength ${conf.toFixed(2)} · ${r.scope ?? "global"} · ${day}`,
+      `    ${snippet}`,
+    ].join("\n");
+  });
+  const head = `Archive search for "${query}" (include=${include}, showing ${offset + 1}-${offset + page.length}${hasMore ? "+" : ""}):`;
+  const foot = hasMore
+    ? `More matches: search_archive(query=${JSON.stringify(query)}, include=${JSON.stringify(include)}, offset=${offset + page.length}). Open any note with get_entry(id).`
+    : "End of archive matches. Open any note with get_entry(id).";
+  return [head, "", ...items, "", foot].join("\n");
+}

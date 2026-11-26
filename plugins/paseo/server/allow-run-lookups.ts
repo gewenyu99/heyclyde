@@ -14,6 +14,7 @@ const ALLOWED_HTTP_TYPES = new Set(["http", "sse", "streamable-http", "streamabl
 const BARE_CLYDE_TOOLS = new Set([
   "clyde_recall",
   "clyde_recall_more",
+  "clyde_search_archive",
   "clyde_remember",
   "clyde_feedback",
   "clyde_check_messages",

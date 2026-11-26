@@ -187,6 +187,18 @@ export function residents(server: PluginServerContext) {
     recall_more: z.object({
       retrieval_id: z.string().min(1),
     }),
+    search_archive: z.object({
+      query: z.string().min(1),
+      include: z.enum(["all", "cold", "dormant", "superseded"]).optional(),
+      scope: z.string().optional(),
+      category: z.string().optional(),
+      context: z.string().optional(),
+      project: z.string().optional(),
+      after: z.string().optional(),
+      before: z.string().optional(),
+      limit: z.number().int().optional(),
+      offset: z.number().int().optional(),
+    }),
     remember: z.object({
       pattern: z.string().min(1),
       title: z.string().min(1),
@@ -270,6 +282,7 @@ export function residents(server: PluginServerContext) {
       description: ({
         recall: "Recall relevant project history with query and task. " + rules,
         recall_more: "Read more results with retrieval_id.",
+        search_archive: "Exhaustive full-text search across all long-term memories, including cold unembedded, dormant, and superseded notes.",
         remember: "Save a verified decision or result before replying. Requires pattern, title, body and evidence.",
         feedback: "Give feedback with retrieval_id and entries or nothing_useful.",
         list_quests: "List quests on the shared quest board.",
