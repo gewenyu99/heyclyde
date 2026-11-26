@@ -8,7 +8,7 @@ import { allowed, authenticate, baseOf, type Principal, viaProxy } from "./auth.
 import * as billing from "./billing/index.ts";
 import * as limits from "./billing/limits.ts";
 import { config } from "./config.ts";
-import { asTenant, hold, setting, sql, wen } from "./db.ts";
+import { asTenant, hold, root, setting, sql, wen } from "./db.ts";
 import { learn } from "./learn.ts";
 import * as mcp from "./mcp.ts";
 import * as me from "./me.ts";
@@ -206,6 +206,9 @@ async function exportBlobs(offset: number) {
  * table as NDJSON, one {table, row} per line, and its row count in x-rows. Pages keep each request inside the
  * function's limits, so the export can't be cut off mid-stream. bytea goes out as base64. */
 async function exportPage(url: URL) {
+  await root`insert into memory.setting (name, value)
+    values ('export_active_until', (now() + interval '20 minutes')::text)
+    on conflict (name) do update set value = excluded.value`.catch(() => {});
   const table = url.searchParams.get("table");
   if (!table) {
     const tables = [];
@@ -398,11 +401,17 @@ async function serve(req: Request, url: URL, path: string, who: Principal): Prom
   }
   if (m === "POST" && path === "/blobs/sweep") {
     // Uploads nobody cited in two hours: the file in incoming/, and the row that says it is expected.
-    // Also sweep dead/superseded/stale/orphan memories into cheap Supabase Storage cold archives.
+    // Cold-archive cleanup runs asynchronously via waitUntil (unless ?sync=1 is passed by tests) so pg_cron never times out.
     const files = store.storageOn() ? await store.sweepIncoming() : 0;
     const rows = await sql`delete from memory.upload where created_at < now() - make_interval(secs => ${store.UPLOAD_TTL_SECONDS}) returning 1`;
-    const cold = store.storageOn() ? await sweepAllColdArchives() : { owners: 0, archived: 0 };
-    return json({ swept: files, uploads: rows.length, cold });
+    if (url.searchParams.get("sync") === "1") {
+      const cold = await sweepAllColdArchives(undefined, { ignoreBackupWindow: true });
+      return json({ swept: files, uploads: rows.length, cold });
+    }
+    if (store.storageOn()) {
+      EdgeRuntime.waitUntil(sweepAllColdArchives().catch((e) => console.error("cold archive sweep failed:", e)));
+    }
+    return json({ swept: files, uploads: rows.length, cold_started: store.storageOn() });
   }
   if (m === "POST" && path === "/recall") return httpRecall(req, who);
   if (m === "GET" && path === "/export") return exportPage(url);

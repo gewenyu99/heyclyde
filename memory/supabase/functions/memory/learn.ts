@@ -101,7 +101,10 @@ async function strengthen(db: Sql, src: string, dst: string, session: string, ri
 /** R43 for one recall: link the pairs among its used entries and their projects, and count a miss on every other co_used link
  * with an end it showed, when the recall is on the clock. Says whether any co_used link changed. */
 async function coUse(db: Sql, r: Row, shown: string[], used: string[]): Promise<boolean> {
-  const pairs = coPairs(used);
+  const liveSet = used.length >= 2
+    ? new Set((await db`select id from memory.entry where id = any(${used}::text[])`).map((e) => e.id as string))
+    : new Set<string>();
+  const pairs = coPairs(used.filter((id) => liveSet.has(id)));
   const session = String(r.mcp_session ?? r.id);
   for (const [a, b] of pairs) await strengthen(db, a, b, session, r.id, "used together");
   if (pairs.length) {

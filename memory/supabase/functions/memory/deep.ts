@@ -3,7 +3,7 @@
 // nodes past the frontier it logged, and the dormant and superseded entries that match the query's words. Each item is labelled
 // with its kind, strength and state. A page asks no judge and embeds nothing, and it spends no trial chance.
 import { searchColdStorage } from "./archive.ts";
-import { currentOwner, type Row, type Sql } from "./db.ts";
+import type { Row, Sql } from "./db.ts";
 import type { Params } from "./params.ts";
 import { type AgentScope, canReadEntry, type EntryFilter, entryWhereSql } from "./permissions.ts";
 import {
@@ -179,15 +179,16 @@ export async function searchArchive(
     left join memory.entry_embedding x on x.owner_id = e.owner_id and x.entry_id = e.id
     left join lateral (
       select l.src from memory.link l
+      join memory.entry se on se.owner_id = l.owner_id and se.id = l.src
       where l.owner_id = e.owner_id and l.dst = e.id and l.type = 'supersedes'
-      order by l.src desc limit 1
+      order by se.created_at desc, l.src desc limit 1
     ) sup on true
     where (
         (t.q is not null and e.tsv_en @@ t.q)
         ${zhSql}
         or e.id ilike ${likePattern}
         or e.title ilike ${likePattern}
-        or (e.sensitivity = 'normal' and (e.body ilike ${likePattern} or e.evidence ilike ${likePattern}))
+        or (e.sensitivity <> 'private' and (e.body ilike ${likePattern} or e.evidence ilike ${likePattern}))
       )
       ${tierSql}
       ${scopeSql}
@@ -198,18 +199,18 @@ export async function searchArchive(
     limit ${offset + limit + 1}`;
 
   const seenIds = new Set(rows.map((r) => String(r.id)));
-  const coldMatches = await searchColdStorage(currentOwner(), {
+  const coldMatches = await searchColdStorage(db, {
     query,
     include,
     scope: args.scope,
     before: args.before,
     after: args.after,
-  });
+  }, agentScope, filter);
   const combined: Row[] = [
     ...rows,
     ...coldMatches
-      .filter((c) => !seenIds.has(c.id))
-      .map((c) => ({
+      .filter(({ record: c }) => !seenIds.has(c.id))
+      .map(({ record: c, score }) => ({
         id: c.id,
         title: c.title,
         body: c.body,
@@ -223,8 +224,16 @@ export async function searchArchive(
         has_embedding: false,
         in_cold_storage: true,
         archive_reason: c.reason,
+        rank_score: score,
       })),
   ];
+  combined.sort((a, b) =>
+    Number(b.rank_score ?? 0) - Number(a.rank_score ?? 0) ||
+    String(b.created_at instanceof Date ? b.created_at.toISOString() : b.created_at ?? "").localeCompare(
+      String(a.created_at instanceof Date ? a.created_at.toISOString() : a.created_at ?? ""),
+    ) ||
+    String(a.id).localeCompare(String(b.id))
+  );
 
   const hasMore = combined.length > offset + limit;
   const page = combined.slice(offset, offset + limit);
@@ -247,7 +256,7 @@ export async function searchArchive(
       ? `archived (${r.archive_reason ?? "cold"})`
       : "cold (unembedded)";
     const day = r.created_at instanceof Date ? r.created_at.toISOString().slice(0, 10) : String(r.created_at ?? "").slice(0, 10);
-    const snippet = r.sensitivity === "private" || r.sensitivity === "confidential"
+    const snippet = r.sensitivity === "private"
       ? "(private; open with get_entry)"
       : clip(String(r.body ?? "").replace(/\s+/g, " ").trim(), 220);
     return [

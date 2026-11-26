@@ -16,6 +16,7 @@ export const VECTOR_MISS_STREAK_COLD = 5;
  * weak drafts stay searchable via search_archive without bloating vector scans or embedding spend. */
 export function isColdForVector(row: Row, nowMs = Date.now()): boolean {
   if (row.superseded) return true;
+  if (row.origin === "seed" || row.pattern === "projects" || row.authority === "approved") return false;
   const conf = Number(row.confidence ?? 0.5);
   if (conf < VECTOR_DORMANT_FLOOR) return true;
   const scope = typeof row.scope === "string" ? row.scope : "";
@@ -23,7 +24,7 @@ export function isColdForVector(row: Row, nowMs = Date.now()): boolean {
     const createdMs = row.created_at instanceof Date ? row.created_at.getTime() : Date.parse(String(row.created_at));
     if (Number.isFinite(createdMs) && nowMs - createdMs > VECTOR_RUN_STALE_DAYS * 86_400_000) return true;
   }
-  if (row.authority === "draft" && Number(row.miss_streak ?? 0) >= VECTOR_MISS_STREAK_COLD && conf < 0.35) {
+  if (row.authority === "draft" && Number(row.miss_streak ?? 0) >= VECTOR_MISS_STREAK_COLD && conf < 0.45) {
     return true;
   }
   return false;
@@ -135,7 +136,7 @@ export function toPgvector(vec: number[]) {
 export async function syncEmbeddings(db: Sql = sql, batch = 64): Promise<number> {
   const model = await activeEmbedModel();
   const rows = await db`select e.id, e.title, e.body, e.evidence, e.search_text, e.sensitivity,
-      e.confidence, e.scope, e.authority, e.miss_streak, e.created_at,
+      e.origin, e.pattern, e.confidence, e.scope, e.authority, e.miss_streak, e.created_at,
       exists (select 1 from memory.link l where l.owner_id = e.owner_id and l.dst = e.id and l.type = 'supersedes') as superseded,
       x.entry_id is not null as has_embedding, x.content_sha256, x.model
     from memory.entry e

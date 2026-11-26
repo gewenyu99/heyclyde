@@ -132,14 +132,17 @@ Deno.test('embed falls back to OpenAI when gemini_key is absent', async () => {
   })
 })
 
-Deno.test('isColdForVector evicts superseded, dormant, stale run:* scratch, and repeatedly-missed weak drafts', () => {
+Deno.test('isColdForVector evicts superseded, dormant, stale run:* scratch, and repeatedly-missed weak drafts while protecting seed, projects, and approved notes', () => {
   const now = Date.parse('2026-11-26T12:00:00Z')
   assert.equal(isColdForVector({ confidence: 0.7, scope: 'global', authority: 'draft', miss_streak: 0, superseded: false, created_at: '2026-11-01T00:00:00Z' }, now), false)
-  assert.equal(isColdForVector({ confidence: 0.9, scope: 'global', superseded: true }, now), true)
+  assert.equal(isColdForVector({ confidence: 0.9, scope: 'global', authority: 'approved', superseded: true }, now), true)
+  assert.equal(isColdForVector({ confidence: 0.05, origin: 'seed', scope: 'global', superseded: false }, now), false)
+  assert.equal(isColdForVector({ confidence: 0.05, pattern: 'projects', scope: 'global', superseded: false }, now), false)
+  assert.equal(isColdForVector({ confidence: 0.5, authority: 'approved', scope: 'run:abc', created_at: '2026-11-01T00:00:00Z', superseded: false }, now), false)
   assert.equal(isColdForVector({ confidence: 0.14, scope: 'global', superseded: false }, now), true)
   assert.equal(isColdForVector({ confidence: 0.5, scope: 'run:abc', created_at: '2026-11-01T00:00:00Z', superseded: false }, now), true)
   assert.equal(isColdForVector({ confidence: 0.5, scope: 'run:abc', created_at: '2026-11-20T00:00:00Z', superseded: false }, now), false)
   assert.equal(isColdForVector({ confidence: 0.8, scope: 'run:abc', created_at: '2026-11-01T00:00:00Z', superseded: false }, now), false)
-  assert.equal(isColdForVector({ confidence: 0.3, scope: 'global', authority: 'draft', miss_streak: 5, superseded: false }, now), true)
+  assert.equal(isColdForVector({ confidence: 0.4, scope: 'global', authority: 'draft', miss_streak: 5, superseded: false }, now), true)
   assert.equal(isColdForVector({ confidence: 0.3, scope: 'global', authority: 'approved', miss_streak: 5, superseded: false }, now), false)
 })

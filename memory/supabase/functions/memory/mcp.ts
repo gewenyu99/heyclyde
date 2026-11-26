@@ -686,7 +686,7 @@ const RUN: Record<string, (c: Call) => Promise<string>> = {
   blame: (c) => {
     const id = s(c.args.id).trim();
     if (!id) throw new Refused("id is required.");
-    return blameEntry(sql, id);
+    return blameEntry(sql, id, scopeOf(c));
   },
   get_blob: ({ args, agent, sessionRepo, principal }) =>
     service.getBlob(s(args.sha256), Number(args.offset ?? 0), Number(args.limit ?? 20000), scopeOf({ agent, sessionRepo, principal })),

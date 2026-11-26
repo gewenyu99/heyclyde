@@ -9,6 +9,7 @@ import { runShadows } from "./shadow.ts";
 import { type Params, type ParamSet, paramSet } from "./params.ts";
 import { ARMS, fetchEntries, type Frontier, pack, type Ranked, redact as redactPrivate, renderEntry } from "./search.ts";
 import { closingLine, deepPool, DEPTHS, nextPage, PAGE_HEAD } from "./deep.ts";
+import { getColdEntry } from "./archive.ts";
 import * as store from "./blobs.ts";
 import { MEDIA_TYPE_RE, Refused, SCOPE_RE } from "./write.ts";
 import { redact, redactText } from "./redact.ts";
@@ -325,7 +326,13 @@ export async function recallMore(session: string, retrievalId: string, viewer: V
 /** The entry rendered for an agent, with its links and blobs. null when there is no such entry. */
 export async function getEntry(session: string, id: string, viewer: Viewer = null, agentScope: AgentScope = null): Promise<string | null> {
   const rows = await fetchEntries(sql, [id], agentScope);
-  if (!(id in rows)) return null;
+  if (!(id in rows)) {
+    const cold = await getColdEntry(sql, id, viewer, agentScope);
+    if (cold) {
+      await sql`insert into memory.event (session_id, event, payload) values (${session}, 'get_entry', ${sql.json({ entry_id: id, cold: true })})`;
+    }
+    return cold;
+  }
   if (!canReadEntry(agentScope, rows[id])) throw new Refused(accessDeniedReason(agentScope, rows[id]));
   const provenance = (await provenanceLines(sql, [id], viewer)).get(id);
   if (provenance) rows[id].provenance = provenance;
