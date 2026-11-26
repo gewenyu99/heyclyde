@@ -71,9 +71,12 @@ test('cold archive end-to-end: sweep, multi-hop blame, get_entry fallback, priva
   assert.equal(remaining.includes(idBlobNote), true, 'blob-holding entry must remain in memory.entry')
   assert.equal(remaining.includes(idRecentOld), true, '<24h entry must remain in memory.entry')
 
-  // Verify attached blob is still 100% readable through get_blob!
+  // Verify attached blob is still 100% readable through get_blob (returns signed download URL, never private-locked)!
   const blobRead = await mcp.tool('get_blob', { sha256: blobSha })
-  assert.match(blobRead.text, new RegExp(`artifact-payload-${tag}`))
+  assert.match(blobRead.text, /Download it within 10 minutes: (http[^\s]+)/)
+  const dlUrl = /Download it within 10 minutes: (http[^\s]+)/.exec(blobRead.text)![1]
+  const dlRes = await request('GET', dlUrl, { timeoutMs: 10_000 })
+  assert.equal(dlRes.text, `artifact-payload-${tag}`)
 
   // Verify blame(id3) reconstructs BOTH collapsed cold ancestors id2 and id1!
   const blameOut = await mcp.tool('blame', { id: id3 })
