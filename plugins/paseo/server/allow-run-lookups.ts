@@ -20,6 +20,7 @@ const BARE_CLYDE_TOOLS = new Set([
   "clyde_check_messages",
   "clyde_ack_messages",
   "clyde_get_entry",
+  "clyde_blame",
   "clyde_get_blob",
   "clyde_list_quests",
   "clyde_post_quest",

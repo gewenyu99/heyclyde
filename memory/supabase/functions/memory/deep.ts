@@ -2,7 +2,8 @@
 // recall and the pages before it showed, in the order the recall ranked them, then what recall hides: for best-first spreading the
 // nodes past the frontier it logged, and the dormant and superseded entries that match the query's words. Each item is labelled
 // with its kind, strength and state. A page asks no judge and embeds nothing, and it spends no trial chance.
-import type { Row, Sql } from "./db.ts";
+import { searchColdStorage } from "./archive.ts";
+import { currentOwner, type Row, type Sql } from "./db.ts";
 import type { Params } from "./params.ts";
 import { type AgentScope, canReadEntry, type EntryFilter, entryWhereSql } from "./permissions.ts";
 import {
@@ -194,10 +195,39 @@ export async function searchArchive(
       ${afterSql}
       ${entryWhereSql(db, "e", agentScope, filter)}
     order by rank_score desc, e.created_at desc, e.id
-    limit ${limit + 1} offset ${offset}`;
+    limit ${offset + limit + 1}`;
 
-  const hasMore = rows.length > limit;
-  const page = rows.slice(0, limit);
+  const seenIds = new Set(rows.map((r) => String(r.id)));
+  const coldMatches = await searchColdStorage(currentOwner(), {
+    query,
+    include,
+    scope: args.scope,
+    before: args.before,
+    after: args.after,
+  });
+  const combined: Row[] = [
+    ...rows,
+    ...coldMatches
+      .filter((c) => !seenIds.has(c.id))
+      .map((c) => ({
+        id: c.id,
+        title: c.title,
+        body: c.body,
+        kind: c.kind,
+        pattern: c.pattern,
+        scope: c.scope,
+        confidence: c.confidence,
+        sensitivity: c.sensitivity,
+        created_at: c.created_at,
+        superseded_by: c.superseded_by ?? null,
+        has_embedding: false,
+        in_cold_storage: true,
+        archive_reason: c.reason,
+      })),
+  ];
+
+  const hasMore = combined.length > offset + limit;
+  const page = combined.slice(offset, offset + limit);
   if (!page.length) {
     return offset > 0
       ? `No more archive matches for "${query}" (include=${include}, offset=${offset}).`
@@ -206,12 +236,15 @@ export async function searchArchive(
   const items = page.map((raw, i) => {
     const r = redact(raw);
     const conf = Number(r.confidence ?? 0);
+    const where = r.in_cold_storage ? " · cold storage" : "";
     const tier = r.superseded_by
-      ? `superseded by ${r.superseded_by}`
+      ? `superseded by ${r.superseded_by}${where}`
       : conf < 0.15
-      ? "dormant"
+      ? `dormant${where}`
       : r.has_embedding
       ? "hot"
+      : r.in_cold_storage
+      ? `archived (${r.archive_reason ?? "cold"})`
       : "cold (unembedded)";
     const day = r.created_at instanceof Date ? r.created_at.toISOString().slice(0, 10) : String(r.created_at ?? "").slice(0, 10);
     const snippet = r.sensitivity === "private" || r.sensitivity === "confidential"

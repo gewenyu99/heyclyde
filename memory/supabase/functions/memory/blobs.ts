@@ -259,6 +259,28 @@ export async function quotaCap(_db: Sql = sql): Promise<number> {
   return /^\d+$/.test(v) ? Number(v) : DEFAULT_QUOTA;
 }
 
+/** Write a cold-archive text object (NDJSON shard, index, or blame JSON) under cold/<owner>/<relPath> in memory-blobs. */
+export async function putColdText(owner: string, relPath: string, text: string, contentType = "application/x-ndjson") {
+  const bytes = new TextEncoder().encode(text);
+  const r = await call(`/object/${BUCKET}/cold/${owner}/${relPath}`, {
+    method: "POST",
+    body: bytes as BodyInit,
+    headers: { "content-type": contentType, "x-upsert": "true" },
+  });
+  if (!r.ok) throw new Error(`Storage refused cold object ${relPath}: ${r.status} ${(await r.text()).slice(0, 200)}`);
+}
+
+/** Read a cold-archive text object under cold/<owner>/<relPath>, or null if absent. */
+export async function getColdText(owner: string, relPath: string): Promise<string | null> {
+  const r = await call(`/object/${BUCKET}/cold/${owner}/${relPath}`);
+  if (r.status === 400 || r.status === 404) {
+    await r.body?.cancel();
+    return null;
+  }
+  if (!r.ok) throw new Error(`Storage couldn't read cold object ${relPath} (${r.status}).`);
+  return await r.text();
+}
+
 export async function quota(db: Sql = sql) {
   const [row] = await db`select coalesce(sum(size), 0)::bigint as used from memory.blob`;
   return { used: Number(row.used), cap: await quotaCap(db) };

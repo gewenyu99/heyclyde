@@ -2,6 +2,7 @@
 // nightly export and the embed sync. auth.ts decides who a request is before anything here runs.
 import "jsr:@supabase/functions-js@2/edge-runtime.d.ts";
 import * as admin from "./admin.ts";
+import { sweepAllColdArchives } from "./archive.ts";
 import { servingArms } from "./allocation.ts";
 import { allowed, authenticate, baseOf, type Principal, viaProxy } from "./auth.ts";
 import * as billing from "./billing/index.ts";
@@ -397,9 +398,11 @@ async function serve(req: Request, url: URL, path: string, who: Principal): Prom
   }
   if (m === "POST" && path === "/blobs/sweep") {
     // Uploads nobody cited in two hours: the file in incoming/, and the row that says it is expected.
+    // Also sweep dead/superseded/stale/orphan memories into cheap Supabase Storage cold archives.
     const files = store.storageOn() ? await store.sweepIncoming() : 0;
     const rows = await sql`delete from memory.upload where created_at < now() - make_interval(secs => ${store.UPLOAD_TTL_SECONDS}) returning 1`;
-    return json({ swept: files, uploads: rows.length });
+    const cold = store.storageOn() ? await sweepAllColdArchives() : { owners: 0, archived: 0 };
+    return json({ swept: files, uploads: rows.length, cold });
   }
   if (m === "POST" && path === "/recall") return httpRecall(req, who);
   if (m === "GET" && path === "/export") return exportPage(url);

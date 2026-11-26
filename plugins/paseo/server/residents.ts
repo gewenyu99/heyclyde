@@ -246,6 +246,9 @@ export function residents(server: PluginServerContext) {
     get_entry: z.object({
       id: z.string().min(1),
     }),
+    blame: z.object({
+      id: z.string().min(1),
+    }),
     get_blob: z.object({
       sha256: z.string().min(1),
       offset: z.number().int().optional(),
@@ -289,6 +292,7 @@ export function residents(server: PluginServerContext) {
         post_quest:
           "Post multi-step work with title, brief, done_when, tags, and priority (urgent, high, normal, low).",
         get_entry: "Read the note named by id.",
+        blame: "Show superseded revision history for a note id, including collapsed cold-storage versions.",
         get_blob: "Read an artifact by sha256.",
         check_messages: "Read messages for this agent.",
         ack_messages: "Acknowledge handled message ids.",

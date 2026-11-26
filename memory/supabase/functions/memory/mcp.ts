@@ -7,6 +7,7 @@ import * as limits from "./billing/limits.ts";
 import { config } from "./config.ts";
 import { sql } from "./db.ts";
 import * as quests from "./quests.ts";
+import { blameEntry } from "./archive.ts";
 import * as deep from "./deep.ts";
 import * as service from "./service.ts";
 import { CARD_KEY as CARD, readUiResource, requestWantsUi, UI_EXTENSION, uiResources, uiTools, wantsUi } from "./ui/apps.ts";
@@ -156,6 +157,12 @@ export const TOOLS = [
     ...hints("Get note", true),
     description: "Opens one note by id, with its evidence, source, links and artifacts.",
     inputSchema: { type: "object", required: ["id"], properties: { id: str("Entry id") } },
+  },
+  {
+    name: "blame",
+    ...hints("Blame note history", true),
+    description: "Shows the revision history of a note: every earlier note it superseded (including collapsed versions moved to cold storage).",
+    inputSchema: { type: "object", required: ["id"], properties: { id: str("Current or historical entry id to inspect") } },
   },
   {
     name: "get_blob",
@@ -676,6 +683,11 @@ const RUN: Record<string, (c: Call) => Promise<string>> = {
     }, scopeOf(c), recallFilter(c.args));
   },
   get_entry: async (c) => (await service.getEntry(c.session, s(c.args.id), { device: c.principal, agent: nameOf(c) }, scopeOf(c))) ?? `No entry ${s(c.args.id)}.`,
+  blame: (c) => {
+    const id = s(c.args.id).trim();
+    if (!id) throw new Refused("id is required.");
+    return blameEntry(sql, id);
+  },
   get_blob: ({ args, agent, sessionRepo, principal }) =>
     service.getBlob(s(args.sha256), Number(args.offset ?? 0), Number(args.limit ?? 20000), scopeOf({ agent, sessionRepo, principal })),
   upload_blob: ({ principal, args }) => service.uploadBlob(principal, args),
